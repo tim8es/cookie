@@ -25,7 +25,16 @@
 - Owner и transfer ownership — защищённая процедура, не обычный настраиваемый переключатель. Владелец, работающий мастером, может иметь StaffProfile, но полномочия и услуга остаются независимыми.
 - Принцип **default deny** для невыданных permissions и недоступных филиалов, серверное enforcement в API, событиях и агентских инструментах.
 
-**Открытые детали:** каталог permission codes; может ли один Identity иметь несколько role assignments; правила вычисления effective permissions; права на контакты клиентов и самостоятельное редактирование графика; аудит изменений ролей. Отдельно проверить злоупотребление сменой названия, эскалацию прав и cross-location IDOR.
+**Открытые детали:** каталог permission codes; конкретный алгоритм effective permissions при нескольких ролях (рекомендация изложена ниже); права на контакты клиентов и самостоятельное редактирование графика; аудит изменений ролей. Отдельно проверить злоупотребление сменой названия, эскалацию прав и cross-location IDOR.
+
+## Множественные роли и филиальные области действия (ACCEPTED, 2026-11-14)
+- Один Identity может иметь Membership в разных организациях, а внутри одной Organization — **несколько независимых RoleAssignments**. У каждого назначения собственные roleId и location scope; в филиале A пользователь может быть одновременно staff и administrator, а в филиале B — только staff.
+- Отображаемое название OrganizationRole и StaffProfile.positionTitle не участвуют в policy evaluation.
+- **Предлагаемый алгоритм (PROPOSED):** для запроса сначала установить доверенные identityId, tenantId и locationId; выбрать только активные RoleAssignments данного Membership, включающие locationId; объединить их разрешённые permission codes; далее проверить resource ownership, специальные restrictions и entitlement. Для чтения по организации разрешение organisation-wide должно быть явно выдано, а не выведено из наличия доступов к двум филиалам.
+- **Default deny:** отсутствие разрешения, отсутствие назначенного филиала или конфликт с политикой ресурса ведёт к отказу. Реализация deny-overrides и системных non-delegable permissions ещё на ревью.
+- **Security tests:** администратор A/мастер B не получает admin-права в B через прямой API, chatbot, worker или AI tool; права не растут из-за переименования роли, токенов другого tenant и собственной смены membership.
+
+**Нерешено:** точная матрица permission codes, возможность явных deny, scope контактов клиентов, безопасность изменения собственных role assignments, мультифилиальная работа мастера.
 
 ## Решение
 AuthN — отдельный platform provider. AuthZ — централизуемый policy contract, но проверяемый в каждом business command/query. Tenant context сервер извлекает из доверенных claim/session/link и сопоставляет с Membership; клиент не может сам назначить tenant простым request body. В SaaS данные разделяются tenant_id и фильтрами/constraints; дополнительный PostgreSQL RLS рассмотреть как defense in depth, не замену unit/contract tests. В self-hosted модель сохраняется.
