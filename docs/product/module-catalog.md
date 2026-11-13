@@ -4,7 +4,7 @@
 
 | Product module | Ценность | Обязательные capabilities | Фаза |
 |---|---|---|---|
-| Catalog | Общий каталог услуг и базовые цены; в F2 необязательные price overrides филиалов | Organizations, Locations, persistence | F1/F2 |
+| Catalog | Общий каталог Service, базовые цены и F2-переопределения по филиалу и мастеру в филиале | Organizations, Locations, Staff, persistence | F1/F2 |
 | Staff | Сотрудники, единый профиль мастера и назначения в несколько филиалов (F2), доступы | Identity, organizations, Locations | F1/F2 |
 | Scheduling | Графики и доступность | Staff, organization-timezone | F1 |
 | Booking | Создать, изменить и отменить бронь | Catalog, Scheduling, Customers | F1 |
