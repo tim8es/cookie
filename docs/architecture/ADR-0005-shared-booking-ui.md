@@ -6,16 +6,19 @@
 Одна бизнес-логика и система компонентов, три поверхности: публичная страница, iframe embed widget, Telegram Mini App. Никаких трёх независимых booking applications.
 
 ## Предложение
-React/Vite shared Booking UI + route/state packages. Адаптер shell определяет auth/session (web vs Telegram), окружение, тему/контекст и интеграцию с платформой. Embed — iframe, загрузочный JS устанавливает безопасный iframe и postMessage с явной проверкой origin; не доверять parent window без валидации.
+Framework-agnostic требование к общему Booking UI; предварительный основной кандидат Svelte 5 + Vite, React — сравнение. SvelteKit только если SSR/hybrid routes обоснованы; для Go backend статический frontend может устранить дополнительный server runtime. UI построен на shared components + route/state packages. Адаптер shell определяет auth/session (web vs Telegram), окружение, тему/контекст и интеграцию с платформой. Embed — iframe, загрузочный JS устанавливает безопасный iframe и postMessage с явной проверкой origin; не доверять parent window без валидации.
 
 ## Почему iframe
 Изоляция CSS, CSP и сторонних сайтов, один релиз UI; цена — ограничения height/resize, cross-origin cookies и коммуникация с parent. Для авторизованного аккаунта в iframe возможно переключение top-level workflow, если third-party cookies недоступны.
 
 ## Альтернативы
-Web component без iframe (стили/JS могут конфликтовать с сайтом); полное отдельное приложение для Mini App (дублирование UX); SSR app вместо Vite (когда SEO/индексация стали доказанной необходимостью).
+Web component без iframe (стили/JS могут конфликтовать с сайтом); полное отдельное приложение для Mini App (дублирование UX); SvelteKit с SSR (требует отдельного анализа runtime/адаптера, может добавить сервис), React/Vite, web component без iframe и полностью отдельный Mini App. Vite — build tool, не альтернатива SSR сама по себе.
 
 ## Контракт
 UI читает каталог/слоты из API, команды выполняет через Booking API. Telegram initData проверяет backend. Для guest доступа нет длинных токенов в URL. Настройки бренда задаются конфигурацией организации, не fork CSS.
+
+## Производительность и размер
+Мобильный календарь должен быть быстрым на бюджетных устройствах. Сравнение Svelte/React проводить на идентичном UX-сценарии с метриками LCP/INP/CLS, размером загруженного JS, интерактивностью календаря и доступностью; не считать победу фреймворка без измерений.
 
 ## Acceptance
 Те же тестовые записи из всех поверхностей; mobile/desktop, iframe origin checks, корректные пустые состояния, е2е flow повторной записи и ссылок, отсутствие двойных бронирований.
