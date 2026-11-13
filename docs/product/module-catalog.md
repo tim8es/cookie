@@ -14,6 +14,7 @@
 | Notifications | Напоминания, шаблоны, доставка | Events, Jobs, Providers | F2 |
 | Simple Discounts | Промокоды/скидки | Catalog, Booking quote | F2 |
 | Basic Analytics | Достоверные отчёты | Booking/Visit events | F2 |
+| Related-service recommendations | Настраиваемые предложения услуг без составных броней | Catalog, Booking read/start flow, Entitlements | F2 add-on, proposed |
 | AI Assistant | Диалог и безопасные tool calls | Channel, Booking APIs, policy | F2 add-on |
 | Staff Schedule Approval | Согласование запросов | Scheduling, policy, notifications | F2 add-on |
 | Maps: Yandex/2GIS | Кнопки/ссылки онлайн-записи | Public booking URL, partner API access | F2 add-on/RESEARCH |
