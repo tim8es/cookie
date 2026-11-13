@@ -24,8 +24,9 @@
 | #15 | consistency audit & explicit owner approval | blocked by #8–#14 |
 
 ## F1 — после F0 Gate
-| #16 | Bootstrap/CI |
+| Issue | Задача |
 |---|---|
+| #16 | Bootstrap/CI |
 | #17 | Kernel runtime |
 | #18 | Identity/Tenant/Policy |
 | #19 | Persistence/outbox/jobs |
@@ -35,8 +36,9 @@
 | #23 | Technical UI/calendars |
 
 ## F2 — коммерческая версия
-| #24 | Shared web/widget/Mini App |
+| Issue | Задача |
 |---|---|
+| #24 | Shared web/widget/Mini App |
 | #25 | Profile/repeat/reschedule/cancel |
 | #26 | Business workspace |
 | #27 | Themes/onboarding |
