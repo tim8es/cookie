@@ -5,7 +5,7 @@
 | Product module | Ценность | Обязательные capabilities | Фаза |
 |---|---|---|---|
 | Catalog | Услуги и прайс | Organizations, persistence | F1 |
-| Staff | Сотрудники, доступы, профили | Identity, organizations | F1 |
+| Staff | Сотрудники, единый профиль мастера и назначения в несколько филиалов (F2), доступы | Identity, organizations, Locations | F1/F2 |
 | Scheduling | Графики и доступность | Staff, organization-timezone | F1 |
 | Booking | Создать, изменить и отменить бронь | Catalog, Scheduling, Customers | F1 |
 | Client Booking UI | Страница, widget, Mini App | Booking read/write API | F1/F2 |
