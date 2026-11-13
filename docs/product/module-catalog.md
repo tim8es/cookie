@@ -12,7 +12,7 @@
 | Business Workspace | Управление и календарь | Business modules, permissions | F1/F2 |
 | Telegram Channel | Меню, FAQ, уведомления, handoff администратору | Identity/linking, Booking API, Jobs | F2 |
 | Notifications | Напоминания, шаблоны, доставка | Events, Jobs, Providers | F2 |
-| Simple Discounts | Промокоды/скидки | Catalog, Booking quote | F2 |
+| Configurable Discounts & Promotions | Настраиваемое совместное применение автоматических скидок и промокодов | Catalog pricing/Quote, Booking, policy, audit | F2, обязательная продуктовая возможность; детали расчёта на ревью |
 | Basic Analytics | Достоверные отчёты | Booking/Visit events | F2 |
 | Related-service recommendations | Настраиваемые предложения услуг без составных броней | Catalog, Booking read/start flow, Entitlements | F2 add-on, proposed |
 | AI Assistant | Диалог и безопасные tool calls | Channel, Booking APIs, policy | F2 add-on |
