@@ -48,6 +48,7 @@
 | #31 | AI assistant |
 | #32 | Staff schedule approvals |
 | #33 | Yandex/2GIS feasibility/adapters |
+| #44 | Related-service recommendations (F2 optional) |
 | #34 | Staff/admin chat commands |
 | #35 | Tenant entitlements / SaaS |
 | #36 | Docker self-hosted |
