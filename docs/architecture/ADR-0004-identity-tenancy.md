@@ -9,6 +9,12 @@
 - Channel identity link: подтверждённая привязка Telegram user к Identity/Customer с учётом правила согласия.
 - Guest booking token: scoped, limited lifetime/replay, разрешает только строго обозначенное действие.
 
+## Мультифилиальность (ACCEPTED для F2)
+- Organization — граница tenant для SaaS, объединяет **несколько** Locations. Один Identity может иметь роли в разных организациях.
+- CRM Customer принадлежит Organization, история посещений связывается с филиалами через Booking.locationId; не смешивать CRM разных organizations.
+- Membership может иметь организационную область действия или scope только назначенных Locations. Конкретные матрицы owner/manager/admin/staff требуют дальнейшего решения.
+- На backend проверять не только tenantId, но и доступ к конкретному locationId и целевой записи. UI-фильтр «мой филиал» не заменяет authorization.
+
 ## Решение
 AuthN — отдельный platform provider. AuthZ — централизуемый policy contract, но проверяемый в каждом business command/query. Tenant context сервер извлекает из доверенных claim/session/link и сопоставляет с Membership; клиент не может сам назначить tenant простым request body. В SaaS данные разделяются tenant_id и фильтрами/constraints; дополнительный PostgreSQL RLS рассмотреть как defense in depth, не замену unit/contract tests. В self-hosted модель сохраняется.
 
