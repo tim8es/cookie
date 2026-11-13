@@ -1,0 +1,37 @@
+# Стратегия качества и верификации
+
+**Статус: PROPOSED.** Следовать при начале coding, автоматизация тестов — задачи roadmap.
+
+## Принцип
+Нет «готово» без автоматически проверяемого поведения. Critical path: выбор услуги -> свободное время -> атомарная запись -> отображение во всех каналах -> перенос/отмена.
+
+## Пирамида
+- Unit: правила модуля, price quote, слоты, статусы, permissions.
+- Contract: публичный interface/capability каждого модуля, adapters/error codes/schema version.
+- Integration with real Postgres: миграции, транзакции, exclusions, idempotency/outbox.
+- End-to-end Playwright: клиентский web/виджет/Mini App shell, кабинет, онбординг.
+- Simulated provider tests: Telegram webhook, AI timeout/tool calls, map adapter errors.
+- Security: tenant isolation, IDOR, CSRF/session, scope escalation.
+- Load: concurrent booking and latency/connection saturation at measured profiles; no фантазийных SLA.
+
+## Обязательные «сломать продукт» тесты
+1. Два клиента одновременно выбирают один интервал.
+2. Два разных канала одновременно отправляют одну idempotent command.
+3. Администратор меняет график при занятых слотах.
+4. Отказ Telegram/AI/карты после успешной записи не теряет бронирование.
+5. Клиент одной организации пытается изменить данные другой.
+6. Рестарт worker в момент отправки уведомлений не создаёт неконтролируемые дубли.
+7. Миграция + rollback и восстановление бэкапа проходят в тестовом окружении.
+
+## Инженерный definition of done
+- PR с привязанным Issue, тест-планом и документацией.
+- Типизация, линтер, unit/contract/integration tests проходят в CI.
+- Новое публичное capability описано контрактом, error policy и version.
+- Нет прямого импорта внутренних файлов чужого модуля или чужого SQL.
+- Новая операция с ПДн имеет permissions, аудит и retention правила.
+- Изменение схемы сопровождается миграцией и сценарием восстановления.
+- Изменения UI проверены на мобильном экране и desktop.
+- Если у модуля нет документации или теста отключения, он не готов.
+
+## Gate документации перед coding
+REQ подтверждены, ADR ключевых tradeoffs решены или помечены как unblockable; декомпозиция с критериями приёмки, CI-план и risk register просмотрены; PR с документацией review/merge. После этого отдельно стартовать код.
