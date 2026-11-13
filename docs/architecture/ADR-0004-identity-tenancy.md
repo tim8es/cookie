@@ -15,6 +15,18 @@
 - Membership может иметь организационную область действия или scope только назначенных Locations. Конкретные матрицы owner/manager/admin/staff требуют дальнейшего решения.
 - На backend проверять не только tenantId, но и доступ к конкретному locationId и целевой записи. UI-фильтр «мой филиал» не заменяет authorization.
 
+## Ролевая модель — решение 2026-11-14
+**ACCEPTED:** вариант Б: стандартные типы ролей и ограниченное конфигурирование отдельных разрешений с областями организации/филиалов. **ACCEPTED:** type/code, displayName и должность/специализация сотрудника — независимые поля.
+
+- RoleType/baseType — стабильный технический идентификатор защищённого шаблона, не редактируемая «должность».
+- OrganizationRole — roleId, organizationId, baseType, displayName и разрешённые overrides прав. Название владелец может менять без изменения baseType. Допускаются именованные варианты одного типа при соблюдении security guardrails.
+- Membership/RoleAssignment — связь Identity с конкретной OrganizationRole и scope Locations. Авторизация решается по permission codes и контексту ресурса, **никогда** по displayName или positionTitle.
+- StaffProfile.positionTitle описывает специальность для бизнеса/клиента; не выдаёт разрешения.
+- Owner и transfer ownership — защищённая процедура, не обычный настраиваемый переключатель. Владелец, работающий мастером, может иметь StaffProfile, но полномочия и услуга остаются независимыми.
+- Принцип **default deny** для невыданных permissions и недоступных филиалов, серверное enforcement в API, событиях и агентских инструментах.
+
+**Открытые детали:** каталог permission codes; может ли один Identity иметь несколько role assignments; правила вычисления effective permissions; права на контакты клиентов и самостоятельное редактирование графика; аудит изменений ролей. Отдельно проверить злоупотребление сменой названия, эскалацию прав и cross-location IDOR.
+
 ## Решение
 AuthN — отдельный platform provider. AuthZ — централизуемый policy contract, но проверяемый в каждом business command/query. Tenant context сервер извлекает из доверенных claim/session/link и сопоставляет с Membership; клиент не может сам назначить tenant простым request body. В SaaS данные разделяются tenant_id и фильтрами/constraints; дополнительный PostgreSQL RLS рассмотреть как defense in depth, не замену unit/contract tests. В self-hosted модель сохраняется.
 
