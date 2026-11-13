@@ -1,29 +1,42 @@
-# Карта документации
+# Карта документации и ревью
 
-> Рабочее имя продукта — Cookie / Kuki. Источник истины до утверждения разработки — документы в этом каталоге и связанные GitHub Issues. Существующий код отсутствует.
+**Порядок чтения:** требования → пользовательские сценарии → архитектура → стек → безопасность/эксплуатация → roadmap → open decisions. Все документы написаны на русском. Нет производственного кода.
 
-## Порядок чтения и ревью
-1. [Видение](product/vision.md) — проблема, целевой сегмент и границы продукта.
-2. [Требования и матрица поставки](product/requirements.md) — что, для кого и в каком релизе.
-3. [Пользовательские сценарии](product/journeys.md) — клиента, сотрудника, администратора, владельца.
-4. [Системная архитектура](architecture/system.md) — границы платформы и развёртывания.
-5. [Модульный каталог и правила зависимостей](architecture/modules.md).
-6. [Данные, бронирование, целостность](architecture/data-and-booking.md).
-7. [Технический стек и альтернативы](architecture/tech-stack.md).
-8. [Безопасность, права и персональные данные](operations/security-and-privacy.md).
-9. [Развёртывание, лицензирование и эксплуатация](operations/deployment.md).
-10. [Качество и тестирование](quality/test-strategy.md).
-11. [Roadmap и контрольные точки](delivery/roadmap.md).
-12. [Как работаем с требованиями и задачами](delivery/workflow.md).
-13. [Реестр решений и вопросов](decisions/register.md).
-14. [ADR-0001, плагинное ядро](architecture/ADR-0001-plugin-kernel.md).
+## Продукт
+- [Видение](product/vision.md) (общий курс ACCEPTED).
+- [PRD / требования, стадии F0–F3](product/requirements.md) (PROPOSED детализация).
+- [Сценарии пользователей и UX-гипотезы](product/journeys.md) (PROPOSED).
+- [Каталог продуктовых модулей](product/module-catalog.md) (PROPOSED).
+- [Бизнес-модель и рынок](product/business-model.md) (RESEARCH).
 
-## Семантика статусов
-- **ACCEPTED / зафиксировано:** пользователь уже согласовал направление, менять только через запись решения.
-- **PROPOSED / на ревью:** рекомендация; пока не является требованием к реализации.
-- **RESEARCH / проверить:** зависит от API, спроса, регуляторных условий или расчётов.
-- **DEFERRED / позднее:** не блокирует текущую веху.
-- Ветка документации и draft-PR до ревью НЕ означают согласования всех деталей.
+## Архитектура
+- [Обзор системы](architecture/system.md).
+- [Каталог технических модулей, контракты](architecture/modules.md).
+- [Данные и согласованность брони](architecture/data-and-booking.md).
+- [Предложенный технический стек](architecture/tech-stack.md).
+- [ADR-0001 minimal kernel](architecture/ADR-0001-plugin-kernel.md).
+- [ADR-0002 stack](architecture/ADR-0002-technical-stack.md).
+- [ADR-0003 atomic booking](architecture/ADR-0003-booking-consistency.md).
+- [ADR-0004 identity/tenancy](architecture/ADR-0004-identity-tenancy.md).
+- [ADR-0005 UI/embedded widget](architecture/ADR-0005-shared-booking-ui.md).
+- [ADR-0006 SaaS/self-hosted](architecture/ADR-0006-distribution.md).
+- [ADR-0007 AI/channel safety](architecture/ADR-0007-channel-ai-command-safety.md).
 
-## Важное правило
-GitHub Issues — единица работы; документы — источник требований и обоснований. Дорожная карта ссылается на Issue, Issue ссылаются на документ/REQ/ADR. Задачи не дробим до «одна кнопка = одно issue».
+## Эксплуатация, качество и планирование
+- [Security и ПДн](operations/security-and-privacy.md).
+- [Развёртывание и лицензирование](operations/deployment.md).
+- [Тестовая стратегия](quality/test-strategy.md).
+- [Дорожная карта](delivery/roadmap.md).
+- [Индекс Issues](delivery/backlog-index.md).
+- [Процесс разработки, критерии готовности](delivery/workflow.md).
+- [Реестр рисков](delivery/risk-register.md).
+- [Реестр решений](decisions/register.md).
+
+## Правила статусов
+- **ACCEPTED:** подтверждено в обсуждении; нельзя молча менять.
+- **PROPOSED:** разработанная рекомендация, нужна проверка и утверждение.
+- **RESEARCH:** существенная неизвестность; не обещать клиентам.
+- **DEFERRED:** идея без обязательств первого релиза.
+
+## F0 Gate
+Открытые задачи [#8–#15](https://github.com/tim8es/cookie/issues/1) должны быть просмотрены владельцем. Технические решения не зафиксированы окончательно только потому, что уже оформлены в ADR с PROPOSED. PR документации — точка review, merge и явное разрешение начать F1 обязательны.
