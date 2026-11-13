@@ -28,9 +28,9 @@
 | DEC-022 | Возможный SSR SvelteKit может добавить серверный runtime даже при Go API; рассмотреть статический Svelte/Vite | PROPOSED | ADR-0002; decision gate в #10 |
 
 | DEC-023 | Клиент SaaS включает/выключает уже установленный модуль мгновенно без перезапуска сервера | ACCEPTED требование | ADR-0001, #9, #35; entitlement + server-side authorization |
-| DEC-024 | Новый исполняемый код модулей внедряется централизованным SaaS release либо self-hosted обновлением; hot-install без deployment не обязателен в F2 | PROPOSED / подтвердить | Это отдельный вопрос от DEC-023 |
+| DEC-024 | Новый исполняемый код модулей внедряется централизованным SaaS release либо self-hosted обновлением; hot-install без deployment не обязателен в F2 | ACCEPTED | Подтверждено 2026-11-14; отличается от мгновенного подключения возможностей для tenant (DEC-023) |
 | DEC-025 | Одна услуга на одну бронь; последующие услуги — новые самостоятельные бронирования | ACCEPTED | ADR-0003, #11 |
-| DEC-026 | Настраиваемые рекомендации связанных услуг без мультиуслуги в одной записи | ACCEPTED направление, implementation PROPOSED | Отдельное optional F2 расширение |
+| DEC-026 | Настраиваемые рекомендации связанных услуг без мультиуслуги в одной записи | ACCEPTED направление, implementation PROPOSED | Вариант оформления отдельным F2 add-on в #44, детали UX/лицензии ещё на ревью |
 | DEC-027 | Выбор входа по телефону либо Telegram, без обязательной отдельной регистрации; email необязателен | ACCEPTED | ADR-0004, #12; OTP details pending |
 | DEC-028 | Telegram Login для сайта: OIDC/PKCE; Mini App: signed initData; бот: доверенный Telegram update | PROPOSED tech | https://core.telegram.org/bots/telegram-login ; https://core.telegram.org/bots/webapps |
 
