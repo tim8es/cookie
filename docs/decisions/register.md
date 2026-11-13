@@ -27,6 +27,13 @@
 | DEC-021 | Лёгкий и быстрый мобильный UI — обязательная нефункциональная цель, стек оценивается по измерениям | ACCEPTED требование | ADR-0002; заранее не выдумывать RAM/JS/RPS budgets |
 | DEC-022 | Возможный SSR SvelteKit может добавить серверный runtime даже при Go API; рассмотреть статический Svelte/Vite | PROPOSED | ADR-0002; decision gate в #10 |
 
+| DEC-023 | Клиент SaaS включает/выключает уже установленный модуль мгновенно без перезапуска сервера | ACCEPTED требование | ADR-0001, #9, #35; entitlement + server-side authorization |
+| DEC-024 | Новый исполняемый код модулей внедряется централизованным SaaS release либо self-hosted обновлением; hot-install без deployment не обязателен в F2 | PROPOSED / подтвердить | Это отдельный вопрос от DEC-023 |
+| DEC-025 | Одна услуга на одну бронь; последующие услуги — новые самостоятельные бронирования | ACCEPTED | ADR-0003, #11 |
+| DEC-026 | Настраиваемые рекомендации связанных услуг без мультиуслуги в одной записи | ACCEPTED направление, implementation PROPOSED | Отдельное optional F2 расширение |
+| DEC-027 | Выбор входа по телефону либо Telegram, без обязательной отдельной регистрации; email необязателен | ACCEPTED | ADR-0004, #12; OTP details pending |
+| DEC-028 | Telegram Login для сайта: OIDC/PKCE; Mini App: signed initData; бот: доверенный Telegram update | PROPOSED tech | https://core.telegram.org/bots/telegram-login ; https://core.telegram.org/bots/webapps |
+
 ## Решения, требующие явного утверждения перед coding
 Точный стек, границы plugin/kernel, схема tenants/identity/permission, concurrency booking, архитектура виджета и авторизации, доменная модель, публичные API/ивенты, стратегия лицензирования и upgrade.
 
