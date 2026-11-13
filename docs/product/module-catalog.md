@@ -10,7 +10,7 @@
 | Booking | Создать, изменить и отменить бронь | Catalog, Scheduling, Customers | F1 |
 | Client Booking UI | Страница, widget, Mini App | Booking read/write API | F1/F2 |
 | Business Workspace | Управление и календарь | Business modules, permissions | F1/F2 |
-| Telegram Channel | Канал чата и уведомлений | Identity/linking, Booking API, Jobs | F2 |
+| Telegram Channel | Меню, FAQ, уведомления, handoff администратору | Identity/linking, Booking API, Jobs | F2 |
 | Notifications | Напоминания, шаблоны, доставка | Events, Jobs, Providers | F2 |
 | Simple Discounts | Промокоды/скидки | Catalog, Booking quote | F2 |
 | Basic Analytics | Достоверные отчёты | Booking/Visit events | F2 |
