@@ -19,11 +19,11 @@ flowchart LR
 ### F0 — Documentation baseline / **текущий этап**
 Эпик #1; задачи #8–#15. Выход: согласованный PRD/UX пути, дифференциация, архитектура modules/core, proposed & accepted ADRs, stack, security, экономическая гипотеза, связанные Issues и правила разработки.
 
-**Gate F0:** owner ознакомился с draft PR, внёс замечания, все блокирующие решения получили ACCEPTED или сознательный non-blocker status, нет противоречий и orphan features; docs PR слит. Только после отдельного решения пользователя начинается код.
+**Gate F0:** owner ознакомился с draft PR, внёс замечания, все блокирующие решения получили ACCEPTED или сознательный non-blocker status, нет противоречий и orphan features; docs PR слит. Для стека возможно условное решение на документальных критериях с ограниченной валидацией как первой F1 задачей #16. Никаких coding spikes до явного разрешения пользователя начинать разработку.
 
 ### F1 — Технический end-to-end срез (не продаётся)
 Эпики #2 и #3; задачи #16–#23.
-- Platform: #16 bootstrap/CI, #17 kernel, #18 identity/tenancy/policy, #19 persistence/jobs.
+- Platform: #16 условный tech spike (только если согласован и после F0 Gate) + bootstrap/CI, #17 kernel, #18 identity/tenancy/policy, #19 persistence/jobs.
 - Domain: #20 catalog/staff/scheduling, #21 booking consistency, #22 API/events.
 - Interface: #23 technical booking UI + business calendar.
 **Gate F1:** сквозная запись в Postgres через web, конкурентные тесты, tenant/role safety, отказ дополнительного модуля не ломает booking. Есть воспроизводимые тесты.
