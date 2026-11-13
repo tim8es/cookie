@@ -16,7 +16,7 @@
 | Basic Analytics | Достоверные отчёты | Booking/Visit events | F2 |
 | Related-service recommendations | Настраиваемые предложения услуг без составных броней | Catalog, Booking read/start flow, Entitlements | F2 add-on, proposed |
 | AI Assistant | Диалог и безопасные tool calls | Channel, Booking APIs, policy | F2 add-on |
-| Staff Schedule Approval | Согласование запросов | Scheduling, policy, notifications | F2 add-on |
+| Staff Schedule Approval | Базовый процесс запросов и одобрений при выбранном владельцем режиме | Scheduling, policy, notifications | F2 обязательный модуль/возможность; расширенные workflow add-on позже |
 | Maps: Yandex/2GIS | Кнопки/ссылки онлайн-записи | Public booking URL, partner API access | F2 add-on/RESEARCH |
 | Loyalty Pro | Баллы, сертификаты, абонементы | Customers, Quotes, settlement | F3 |
 | Voice | Команды голосом | Channel adapter, transcription, policy | F3 |
