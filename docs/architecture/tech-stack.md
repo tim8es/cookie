@@ -1,37 +1,39 @@
-# Технический стек: предварительный выбор
+# Технический стек Cookie — shortlist и критерии выбора
 
-**Статус: PROPOSED.** Конкретные версии зафиксируем непосредственно перед bootstrap; Node.js поддерживаемый LTS.
+**Статус: PROPOSED / НЕ УТВЕРЖДЁН.** Детальное обоснование и Gate: [ADR-0002](ADR-0002-technical-stack.md), GitHub Issue #10.
 
-| Слой | Кандидат | Почему / компромисс |
+## Базовые требования
+Быстрое бронирование, отсутствие двойных броней, минимальные расходы SaaS, self-hosted через Docker, единый frontend для сайта/виджета/Telegram Mini App, тонкий kernel, независимые business modules и доступная сопровождению сборка.
+
+| Слой | Текущий shortlist | Статус / ограничение |
 |---|---|---|
-| Язык | TypeScript + Node.js LTS | Общая типизация web/backend, скорость агентной разработки |
-| Монорепозиторий | pnpm workspaces | Меньше infrastructure overhead, общий lockfile; Turbo/Nx только по потребности |
-| HTTP API | Fastify + JSON Schema/TypeBox + OpenAPI | Лёгкий адаптер, schema validation; Fastify plugins не являются domain modules |
-| Внутренние модули | Pure TS, ports/adapters, compile-time registry | Минимальный kernel и управляемые контракты без arbitrary plugins |
-| Хранилище | PostgreSQL | Транзакции, ограничения перекрытий, надежность |
-| Data access | Drizzle + reviewed SQL migrations | Типизированные запросы, полный SQL контроль; альтернатива Kysely |
-| Фоновые задачи | pg-boss или аналог на Postgres | Нет Redis и отдельного брокера в F1; проверить поддержку/maintenance |
-| Web | React + Vite + TypeScript | Общий UI для web, Mini App и iframe widget |
-| Web data | TanStack Query | Server state; не вводить сложный global store до необходимости |
-| Telegram | Bot API, библиотека выбрать перед реализацией | Telegram adapter изолирован от business |
-| Тесты | Vitest, Playwright, Postgres integration/Testcontainers | Unit, contract, UI, concurrency |
-| Логи | Pino structured logs, metrics | Корреляция, диагностика, ошибки |
-| Развёртывание | Docker Compose + reverse proxy + GitHub Actions | Portable SaaS/self-hosted; без Kubernetes на старте |
+| Backend runtime | **Go** vs **Node.js + TypeScript** | Оба под оценкой, финальный выбор не сделан |
+| Основной frontend | **Svelte 5**; React как сравнение, SolidJS резерв | Выбирать по UX, размеру JS, a11y и библиотекам |
+| Build / web framework | **Vite**; SvelteKit только если он обоснован SSR/роутингом | Статическая SPA и SvelteKit SSR имеют разные требования к hosting |
+| API contract | OpenAPI/JSON Schema, типизированный клиент | Независимо от backend языка |
+| HTTP API | Go stdlib/chi или TS Fastify | HTTP framework = адаптер, не ядро |
+| Module architecture | Минимальный kernel + ports/adapters | Согласован принцип, контракт ещё обсуждается |
+| Storage | PostgreSQL | Предварительно поддержан, транзакционные механизмы в ADR-0003 |
+| Persistence | TS: Drizzle/Kysely/SQL; Go: pgx/sqlc | После выбора языка и booking ADR |
+| Jobs | PostgreSQL-backed: TS pg-boss / Go River и альтернативы | Реальные retries/outbox, не нужен Redis заранее |
+| Frontend state | Framework native state + typed API; query cache по необходимости | Не добавлять global framework без практической потребности |
+| Monorepo | Общая repo, TS pnpm / Go workspace при соответствующем выборе | Не навязывать один build orchestrator |
+| Telegram | Выбрать SDK под runtime | Канал отдельно от доменной логики |
+| Testing | Vitest/go test, Playwright, PostgreSQL integration/concurrency | Связать с contract tests и CI |
+| Observability | Structured logs, tracing/correlation, DB metrics | Конкретные библиотеки после backend |
+| Deployment | Docker Compose, versioned image, reverse proxy, CI/CD | Без Kubernetes и сложных брокеров в F1 |
 
-## Уточнения
-- Для embed предпочтителен iframe: CSS изоляция и общий интерфейс; авторизацию проектировать без зависимости от third-party cookies. Не помещать долгоживущие токены в querystring.
-- Для Telegram Mini App обязательно проверять signed initData на сервере, включая актуальность auth_date.
-- Сайт, бот и AI используют один domain command API, не имеют собственных правил брони.
-- Админку можно держать в том же SPA workspace или отдельной сборке; решение после UX-макетов.
-- Не включать платежный процессинг, микросервисы, Redis, Kubernetes как обязательные зависимости для F1.
+## Нефункциональные метрики
+- Mobile first: измерять LCP, INP, CLS на реальном интерфейсе и host странице embed, не делать вывод о быстродействии только по названию UI framework.
+- Backend: измерять idle RAM, CPU, Docker image, p95/p99 booking API, конкуренцию и DB contention на одинаковой fixture.
+- Пока **нет** обоснованных целевых RAM/JS/RPS значений: установить измеримые thresholds после технического spike и оценки цены VPS.
+- Ускорение kernel/микросервисная извлекаемость не оправдывают динамические плагины с произвольным кодом на первом этапе.
 
-## Основания выбора — официальные документы
-- Fastify plugins: https://fastify.dev/docs/latest/Reference/Plugins/
-- Fastify validation: https://fastify.dev/docs/latest/Reference/Validation-and-Serialization/
-- Drizzle Postgres: https://orm.drizzle.team/docs/get-started-postgresql
-- Drizzle migrations: https://orm.drizzle.team/docs/migrations
-- pg-boss: https://pgboss.io/introduction
-- Telegram Mini Apps: https://core.telegram.org/bots/webapps
+## Важная развилка SvelteKit
+SvelteKit не обязательно означает SSR, но SSR-режим может добавить отдельный runtime и сложность self-hosted. Svelte 5 + Vite со статической сборкой — более простой baseline для embedded booking. Решение о SSR принимать по SEO/маршрутам и on-boarding, а не «потому что современно».
 
-## Подготовить ADR
-ADR-0002 Stack/versions, ADR-0003 Booking transaction, ADR-0004 Identity/Tenancy, ADR-0005 Shared booking UI/embed, ADR-0006 SaaS/self-hosted.
+## План проверки
+**F0:** только ревью документации и критериев, без прототипов и code spikes.
+**После разрешения F1:** ограниченный backend spike Go vs Node и UI smoke Svelte vs React только если без измерений решение не очевидно; зафиксировать ADR и начать продуктовую реализацию на одном стеке.
+
+**Полный ADR:** [ADR-0002](ADR-0002-technical-stack.md).
