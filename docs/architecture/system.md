@@ -37,8 +37,8 @@ flowchart TB
 - Kernel: реестр модулей/capabilities, dependency graph, lifecycle, контекст выполнения, hooks. Без сущностей салона, клиента, записи.
 - Platform: identity, policy, tenants, persistence, jobs/outbox, telemetry, entitlements.
 - Domain: организации, каталог, staff, графики, бронь, клиенты, уведомления, visits.
-- Adapters: Fastify HTTP, Telegram, web-widget, AI-tool, карты, будущий MCP.
-- Один process/container API и один Postgres в MVP; фоновые workers можно выделить отдельно. Микросервисов в F1 нет.
+- Adapters: HTTP API (Fastify при Node.js; stdlib/chi при Go), Telegram, web-widget, AI-tool, карты, будущий MCP. Domain и kernel не зависят от выбранного HTTP runtime.
+- Один backend runtime/API process и один Postgres в MVP; фоновые workers можно выделить отдельно. Статические web-ресурсы по возможности обслуживаются без отдельного Node SSR runtime; выбор зависит от ADR-0002/ADR-0005. Микросервисов в F1 нет.
 - Каждый бизнес-модуль имеет публичный контракт, принадлежащие ему таблицы/миграции. Синхронные инварианты защищаются транзакциями; побочные эффекты — outbox/events.
 - Конечный бизнес-модуль не зависит от UI, Telegram и AI.
 
