@@ -19,8 +19,14 @@ Organization, Location, Staff, Service, StaffService, ScheduleRule, ScheduleExce
 - **ACCEPTED F2:** Organization управляет единым Service-каталогом. У Service есть базовая цена, а Location может иметь собственное значение цены для этой Service без её дублирования. Если переопределение отсутствует, действует общая цена.
 - **PROPOSED:** эффективная стоимость перед подтверждением определяется на сервере в Catalog/Quote по (tenantId, locationId, serviceId), проверив доступность Service в этом филиале: explicit location price override → Service basePrice. Nullable override отличать от 0. Определённая цена не должна произвольно подменяться клиентским API.
 - **PROPOSED:** сохранять PriceSnapshot в Booking после успешного подтверждения. Изменение цены в каталоге не переписывает уже существующие подтверждённые записи. Если quote устарел между просмотром и commit, API должен явно сообщить клиенту об изменении и получить подтверждение обновлённой цены, а не молча согласиться на другую сумму.
-- Разрешения на изменение цен ограничены Organization и Location по RoleAssignments; нельзя применить override чужой организации. Скидки, индивидуальная стоимость мастера, налоги/валюта и расчёты — самостоятельные решения.
+- Разрешения на изменение цен ограничены Organization и Location по RoleAssignments; нельзя применить override чужой организации. Индивидуальная стоимость мастера принята в DEC-053; скидки, налоги/валюта и расчёты — самостоятельные решения.
 - Длительность услуги не меняется при филиальном price override, а отдельный post-service buffer относится к занятости мастера, не к цене услуги.
+
+## Индивидуальные цены услуги мастера внутри филиала (ACCEPTED F2 / PROPOSED data contract)
+- **ACCEPTED:** цена конкретной Service может быть индивидуальной у StaffProfile в данном Location. Тот же StaffProfile в другом Location может иметь другую цену; Service ID и единая длительность не меняются, новые копии услуг/сотрудников не создаются.
+- **PROPOSED resolver:** `(tenantId, locationId, staffId, serviceId)` → explicit StaffLocationServicePrice override → LocationServicePrice override → Service.basePrice. Валидировать StaffLocationAssignment и StaffService availability (в рамках конкретного филиала); отсутствие override отличается от установленной нулевой цены.
+- **PROPOSED Quote/Booking:** стоимость рассчитывает доверенный Catalog/Quote; при подтверждении сервер сверяет актуальную цену и сохраняет согласованную effective price в PriceSnapshot. API не может принимать произвольную стоимость как источник истины. Цена зафиксированной Confirmed брони не меняется от позднего изменения прайса.
+- Контракты с REQ-010 (скидки), изменение цены между Quote и CreateBooking, точное право сотрудника менять собственные цены и границы currency/tax — на отдельном ревью.
 
 ## Длительность Service (ACCEPTED F1/F2, DEC-049)
 - Каждая Service имеет одну duration, используемую для любых мастеров/филиалов организации; нет staff/location-specific overrides. Для другого временного варианта требуется отдельная Service.
