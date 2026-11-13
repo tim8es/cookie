@@ -13,6 +13,7 @@
 - [Обзор системы](architecture/system.md).
 - [Каталог технических модулей, контракты](architecture/modules.md).
 - [Данные и согласованность брони](architecture/data-and-booking.md).
+- [Организации, филиалы, сотрудники, права — раунд 2](architecture/organization-location-and-access.md) (PROPOSED).
 - [Предложенный технический стек](architecture/tech-stack.md).
 - [ADR-0001 minimal kernel](architecture/ADR-0001-plugin-kernel.md).
 - [ADR-0002 stack](architecture/ADR-0002-technical-stack.md).
