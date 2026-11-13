@@ -1,0 +1,22 @@
+# ADR-0004 — Личность, организации, клиенты и доступы
+
+**Статус: PROPOSED** · Issue #12 · REQ-005,007,016.
+
+## Разделяем сущности
+- Identity: кто аутентифицирован (пользователь).
+- Membership: роль пользователя в организации, допускается несколько ролей/организаций.
+- Customer: профиль посетителя **в рамках конкретной организации**, необязательно зарегистрированный пользователь.
+- Channel identity link: подтверждённая привязка Telegram user к Identity/Customer с учётом правила согласия.
+- Guest booking token: scoped, limited lifetime/replay, разрешает только строго обозначенное действие.
+
+## Решение
+AuthN — отдельный platform provider. AuthZ — централизуемый policy contract, но проверяемый в каждом business command/query. Tenant context сервер извлекает из доверенных claim/session/link и сопоставляет с Membership; клиент не может сам назначить tenant простым request body. В SaaS данные разделяются tenant_id и фильтрами/constraints; дополнительный PostgreSQL RLS рассмотреть как defense in depth, не замену unit/contract tests. В self-hosted модель сохраняется.
+
+## Контактные данные
+Сбор минимального контакта во время записи, аккаунт необязателен. Для входа через Telegram сервер сверяет signed initData/auth_date; web-flow для существующей записи требует проверку владения контактом/короткоживущую ссылку, не просто номер или ID.
+
+## Согласия и ПДн
+Обработка записи и маркетинговые согласия — отдельные основания/сценарии. Сроки, экспорт, удаление, внешние LLM и размещение в РФ требуют review и юридической консультации перед коммерческим запуском.
+
+## Проверки
+Role matrix, cross-tenant IDOR, guest token replay, Telegram forged initData, actor impersonation через AI/MCP, audit of writes. Протестировать до F2.
