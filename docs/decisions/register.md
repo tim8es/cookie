@@ -34,6 +34,10 @@
 | DEC-027 | Выбор входа по телефону либо Telegram, без обязательной отдельной регистрации; email необязателен | ACCEPTED | ADR-0004, #12; OTP details pending |
 | DEC-028 | Telegram Login для сайта: OIDC/PKCE; Mini App: signed initData; бот: доверенный Telegram update | PROPOSED tech | https://core.telegram.org/bots/telegram-login ; https://core.telegram.org/bots/webapps |
 
+| DEC-029 | Первая продаваемая версия F2 поддерживает несколько филиалов одной Organization с общей CRM и единым кабинетом | ACCEPTED 2026-11-14 | REQ-024; org/location model; #8, #12, #20, #24, #26, #35–36 |
+| DEC-030 | F1 может быть с одной тестовой Location, но locationId обязан присутствовать в Booking/API с первого среза | PROPOSED technical implementation | Мультифилиальность F2 обязательна; не допустить costly migration |
+| DEC-031 | Self-hosted содержит одну Organization по умолчанию и несколько Locations внутри неё | PROPOSED technical boundary | ADR-0006; #36; несколько организаций в одной self-hosted установке не оговорено |
+
 ## Решения, требующие явного утверждения перед coding
 Точный стек, границы plugin/kernel, схема tenants/identity/permission, concurrency booking, архитектура виджета и авторизации, доменная модель, публичные API/ивенты, стратегия лицензирования и upgrade.
 
