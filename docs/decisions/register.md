@@ -67,10 +67,13 @@
 | DEC-050 | Если услуга реально требует другой длительности, создаётся отдельная Service; duration snapshot сохраняется у Booking | PROPOSED technical modeling | Не менять уже подтверждённые записи после редактирования каталога; поля/schema/правила миграции на ревью |
 
 | DEC-051 | Общий каталог Service организации содержит базовую цену; филиал может переопределить цену конкретной Service без дублирования услуги | ACCEPTED 2026-11-14 | Вопрос №15, вариант Б; REQ-035; #8, #20, #21, #26 |
-| DEC-052 | Эффективная цена выбирается по явному location override с fallback на базовую Service.price; цена повторно проверяется при бронировании и фиксируется в price snapshot | PROPOSED technical implementation | Каталог/Quote/Booking; детали скидок, правил изменения опубликованной цены и тарификации не утверждены |
+| DEC-052 | Эффективная цена по location override с fallback на базовую Service.price; цена повторно проверяется при бронировании и фиксируется в price snapshot | PROPOSED technical implementation | В F2 также учитывается staff-location override (DEC-053/054); при изменении цены между Quote и commit без повторного согласия — DEC-055 |
 
 | DEC-053 | В F2 допускается индивидуальная цена Service для конкретного мастера в конкретном филиале при сохранении единой Service.duration | ACCEPTED 2026-11-14 | Вопрос №16, вариант Б; REQ-036; #20, #21, #22, #26 |
-| DEC-054 | Эффективная цена разрешается через staff+location override → location override → базовую Service price; фиксируется price snapshot | PROPOSED technical implementation | Каталог/Quote/Booking; field/row model, право менять цены и поведение при изменении quote ещё на ревью |
+| DEC-054 | Эффективная цена разрешается через staff+location override → location override → базовую Service price; фиксируется price snapshot | PROPOSED technical implementation | Каталог/Quote/Booking; field/row model, право менять цены на ревью; действующая цена на момент CreateBooking и отсутствие повторного согласия — DEC-055 |
+
+| DEC-055 | При подтверждении новой записи используется текущая серверная цена для выбранных услуги, мастера и филиала; при её изменении после показа Quote повторное согласие клиента не требуется | ACCEPTED 2026-11-14 | Вопрос №17, вариант В; REQ-037; ADR-0003; #11, #21, #22, #23, #26 |
+| DEC-056 | Перед commit заново рассчитать цену и зафиксировать применённую сумму в PriceSnapshot; вернуть фактическую стоимость в успешном ответе и показать её после записи | PROPOSED implementation | Точный контракт атомарности/аудита и требования раскрытия цены в UX/правовой проверке до production; PRICE_CHANGED/reconfirm не используется в обычном потоке |
 
 ## Решения, требующие явного утверждения перед coding
 Точный стек, границы plugin/kernel, схема tenants/identity/permission, concurrency booking, архитектура виджета и авторизации, доменная модель, публичные API/ивенты, стратегия лицензирования и upgrade.
