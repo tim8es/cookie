@@ -31,6 +31,7 @@
 - [Процесс разработки, критерии готовности](delivery/workflow.md).
 - [Реестр рисков](delivery/risk-register.md).
 - [Реестр решений](decisions/register.md).
+- [Архитектурное ревью: раунд 1](decisions/architecture-review-round-1.md) — вопросы владельцу до принятия ключевых ADR.
 
 ## Правила статусов
 - **ACCEPTED:** подтверждено в обсуждении; нельзя молча менять.
