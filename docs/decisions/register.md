@@ -15,7 +15,7 @@
 | DEC-009 | Chat/voice для работников/бизнеса — важное направление | ACCEPTED | Voice later, права на операции P1 |
 | DEC-010 | AI, согласование графиков, карты — самостоятельные модули, запланированы для коммерческой версии | ACCEPTED направление | Для карт API feasibility RESEARCH, нельзя обещать бесконтрольно |
 | DEC-011 | MCP для внешних агентов — будущее расширение | ACCEPTED направление | P2/P3 после проверки спроса |
-| DEC-012 | TS/Node + Fastify + React/Vite + Postgres/Drizzle/pg-boss | PROPOSED | ADR-0002 и spikes |
+| DEC-012 | Backend Go vs Node.js/TS; frontend Svelte 5 (Svelte/Vite либо SvelteKit по потребности SSR) vs React | PROPOSED / не утверждено | ADR-0002 и #10; критерии документационно в F0, кодовый spike только после разрешения F1 |
 | DEC-013 | Первый технический срез F1, продаваемая F2 | PROPOSED | Gate по задачам |
 | DEC-014 | SaaS цены 690/1490 и разовая 24900 | RESEARCH | Ни один тариф не утверждён |
 | DEC-015 | Проверить ПДн и локализацию РФ до эксплуатации | ACCEPTED требование | Security/compliance review |
@@ -24,6 +24,8 @@
 | DEC-018 | Одна бизнес-организация может иметь несколько сотрудников/ролей | ACCEPTED | Детали полномочий PROPOSED |
 | DEC-019 | Встраивание виджета через iframe | PROPOSED | Проверить 3rd-party browser behavior |
 | DEC-020 | Разработка начинается только после чтения/правок/одобрения проектной документации | ACCEPTED | F0 gate |
+| DEC-021 | Лёгкий и быстрый мобильный UI — обязательная нефункциональная цель, стек оценивается по измерениям | ACCEPTED требование | ADR-0002; заранее не выдумывать RAM/JS/RPS budgets |
+| DEC-022 | Возможный SSR SvelteKit может добавить серверный runtime даже при Go API; рассмотреть статический Svelte/Vite | PROPOSED | ADR-0002; decision gate в #10 |
 
 ## Решения, требующие явного утверждения перед coding
 Точный стек, границы plugin/kernel, схема tenants/identity/permission, concurrency booking, архитектура виджета и авторизации, доменная модель, публичные API/ивенты, стратегия лицензирования и upgrade.
