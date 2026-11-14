@@ -103,3 +103,8 @@ interface CookieModule {
 - Multi-tenant SaaS vs self-hosted deployment.
 - Версионирование контрактов и события/outbox.
 - Пользовательская авторизация web/Telegram, персональные данные.
+
+## Рекомендуемый F0 default для единого owner-review (PROPOSED, 2026-11-14)
+- Оставить принятые владельцем границы minimal kernel без предметной логики, hot-install произвольного кода не нужен. Конкретизировать `manifest / registry / lifecycle / contract version / request context / diagnostics` на уровне платформенного пакета, не превращая kernel в Domain Booking/Identity/DB.
+- Shared transaction context допускается через platform-port только для строго согласованных инвариантов; доменные модули не импортируют внутренние хранилища друг друга. Негативный contract test должен обнаруживать cross-module imports.
+- **Рекомендуемое решение F0-P04, НЕ ACCEPTED.** [Blueprint](f0-implementation-blueprint.md) и [единый пакет владельцу](../decisions/f0-owner-review-package-20261114.md). Открытое approval — #9.
