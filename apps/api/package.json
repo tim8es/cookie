@@ -1,0 +1,10 @@
+{
+  "name": "@cookie/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "fastify": "5.12.8",
+    "pg": "8.23.1"
+  }
+}
