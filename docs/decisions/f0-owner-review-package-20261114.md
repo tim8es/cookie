@@ -50,6 +50,15 @@
 4. **Операции:** юрисдикция/ПДн, коммерческий hosting РФ, backup/restore, ротация secrets, graceful cancellation/export, incident runbooks.
 5. **Тариф:** capacity по уникальным действующим bookable StaffProfile, multi-location без двойного счёта, отсутствие booking quotas и автосписаний, отказ активации сверх tier с сохранением ранее Confirmed.
 
+## Закрытие технических пробелов (PROPOSED F0 evidence)
+
+- [Контракты Booking/AuthZ/Staff/Subscription](../architecture/f0-contracts-and-invariants.md) с конкретными состояния/DB guard и failure modes.
+- [41 тестовый сценарий](../quality/f1-pilot-acceptance-cases.md) с разделением F1/internal vs first real pilot; ни один ещё не исполнялся.
+- [Runbooks операций, backup/restore, PDn/privacy gate](../operations/pilot-operational-readiness.md).
+- [Верифицированная конкурентная матрица, противоречия источников и unit economics](../product/market-economics-validation.md). В частности, 6 ноября 2026 Планёрка объявила снижение бесплатных встреч до 10, хотя /prices ещё показывает 20; BookNow противоречит сам себе по auto-renewal.
+
+**Рекомендация для владельца:** одобрить техническое направление/состав первого пилота, а измерения нагрузки, внешнюю юридическую экспертизу, договоры/платёжный provider и реальную маржу **не считать фактами F0** — выполнить в gate соответствующей стадии.
+
 ## Что показываем владельцу одним пакетом
 
 **Порядок ревью (вместо интервью):**
