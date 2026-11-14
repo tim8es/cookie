@@ -63,3 +63,30 @@ jobs:
           path: pnpm-lock.yaml
           if-no-files-found: warn
           retention-days: 7
+  lockfile:
+    name: Commit reproducible pnpm lockfile on trusted feature push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/f1-bootstrap-20261114'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+      - name: Resolve and commit dependency lock once
+        run: |
+          pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+          if [ -n "$(git status --porcelain -- pnpm-lock.yaml)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add pnpm-lock.yaml
+            git commit -m "build(F1): commit reproducible pnpm lockfile"
+            git push origin HEAD:feature/f1-bootstrap-20261114
+          else
+            echo "Lockfile already tracked and unchanged"
+          fi
