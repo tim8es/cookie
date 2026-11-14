@@ -76,3 +76,10 @@ Cookie — платформа записи для малых салонов (2�
 - [ ] Проставлено ACCEPTED и проверена согласованность ADR-0002, tech-stack.md, register.md и Issue #10.
 
 **Исходные документы:** https://nodejs.org/en/learn/asynchronous-work/dont-block-the-event-loop ; https://go.dev/doc/effective_go ; https://svelte.dev/docs/kit/page-options ; https://svelte.dev/docs/kit/adapters ; https://vite.dev/guide/
+
+## Консолидированная рекомендация на owner-review (PROPOSED F0-P01/P02/P03, 2026-11-14)
+- **Предпочтительный backend для старта F1: Node.js 26 LTS + TypeScript + Fastify**, потому что одна языковая среда для solo сопровождения/интеграций и меньше разработки дублирующего стека. **Go остаётся обоснованным fallback**, если эквивалентный F1 spike и стоимость эксплуатации докажут существенный выигрыш RAM/latency против скорости работы/поддержки.
+- **Предпочтительный UI: Svelte 5 + Vite static SPA**, общие компоненты для public/embed/Telegram shells. SSR/SvelteKit подключать только при доказанном SEO/use-case и обсчитанной стоимости дополнительного runtime; React — backup при фактических ограничениях a11y/calendar libraries.
+- **PostgreSQL stateful source of truth**: SQL-first migrations + typed query access (Kysely candidate), один worker из общей кодовой базы, PostgreSQL-backed jobs/outbox. Redis/Kafka и микросервисы не нужны без метрик. Node 26 по официальному графику в LTS на дату документа, версии пакетов заморозить при #16.
+- **Статус только PROPOSED**: owner ещё не одобрил этот baseline; не считать наличие секции сменой всего ADR в ACCEPTED. Измеримые критерии отказа: воспроизводимая latency/resource/cost ошибка в F1 при равной БД и однотипной нагрузке, либо реально неосуществимый UX stack. Подробности — [blueprint](f0-implementation-blueprint.md) и [F0 review package](../decisions/f0-owner-review-package-20261114.md). #10 остаётся open до принятия.
+- Внешние источники: https://nodejs.org/en/about/previous-releases ; https://svelte.dev/docs/kit/adapters ; https://www.postgresql.org/docs/current/rangetypes.html
