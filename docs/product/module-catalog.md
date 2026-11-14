@@ -21,6 +21,7 @@
 | Loyalty Pro | Баллы, сертификаты, абонементы | Customers, Quotes, settlement | F3 |
 | Voice | Команды голосом | Channel adapter, transcription, policy | F3 |
 | MCP | Внешние агенты | Identity, authz, domain capabilities | F3 |
+| SaaS Subscription / Entitlements | 30-дневный trial при регистрации, индивидуальный предварительный оффер, post-trial no-new-bookings, платные tiers по уникальным действующим bookable мастерам, добровольный upgrade без квоты бронирований | Organization/Identity/Staff, Booking API policy, consent/audit, paid provider | F2 pilot-critical, product rules ACCEPTED DEC-099/101/103/105/107/109/111/113, implementation PROPOSED |
 | Finance/Payroll/Stock | Финансы и склад | Visits/Products/Payments | F3 |
 
 ## Правила комплектации
