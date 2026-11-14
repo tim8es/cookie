@@ -129,6 +129,13 @@ Effective permissions: доверенно получить identity/tenant/locat
 
 **Definition of Ready для инженерного Issue:** ссылка на REQ+ACCEPTED product DEC, предложенный и одобренный ADR/default, business owner, негативный test, dependency, pilot/F1 scope. Для нового небезопасного допущения делать заметку на PR и отдельное ревью, не прятать в коде.
 
+## 6a. Детальный контракт реализации и negative tests
+
+- [Доменные контракты и инварианты](f0-contracts-and-invariants.md) уточняют запись/промокоды, общую БД и locks, tenant/guest access, subscription states, архивирование мастеров и состояние ПДн после trial.
+- [41 сценарий приёмки](../quality/f1-pilot-acceptance-cases.md) разделён на F1/Pilot/Pre-real-pilot gates. Эти тесты **спроектированы, но не выполнены**.
+- [Эксплуатационный runbook](../operations/pilot-operational-readiness.md) определяет observability, safety-first incident recovery, export/retention/backup gates.
+- [Конкурентная проверка и сценарная экономика](../product/market-economics-validation.md) не принимает новые цены, но фиксирует фактические расхождения публичных тарифов.
+
 ## 7. Список специально оставленных инженерных альтернатив
 
 - Go backend — если F1 измерения показывают недопустимый footprint или throughput, а эксплуатационная стоимость компенсирует второй язык.
