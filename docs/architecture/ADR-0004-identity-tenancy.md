@@ -70,3 +70,10 @@ AuthN — отдельный platform provider. AuthZ — централизуе
 
 ## Проверки
 Role matrix, cross-tenant IDOR, guest token replay, Telegram forged initData, actor impersonation через AI/MCP, audit of writes. Протестировать до F2.
+
+## Рекомендуемая authZ модель для пакетного owner-review (PROPOSED F0-P06, 2026-11-14)
+- `Identity` отдельно от Organization Membership/RoleAssignment и `Customer` внутри tenant; один user может иметь scoped roles в нескольких филиалах/организациях. Роль отображаемым названием не даёт привилегий.
+- Effective allow = union **только** активных явно выданных permission codes для текущего доверенного tenant/location; после union применяются **hard** restrictions по resource ownership/field-level visibility и tenant entitlements. `default deny` для неразрешённого и отсутствующих scopes; Owner transfer и owner-only protected actions не выдаются обычным admin/self-service.
+- Клиент/guest может читать и изменять **только свою** Booking по verified identity/short-lived scoped token; авторизация только по ID или непроверенному телефону запрещена. Staff видит только собственные связанные визиты и клиентов, телефон/история/заметки требуют специальных выданных прав; сервер фильтрует все экспорты/поиски и bot/API ответы.
+- Phone OTP и Telegram OIDC+PKCE/initData проверяются сервером; credential linking требует verified proof. Конкретные OTP provider, юридические основания ПДн/retention, enum permissions и протокол Owner transfer — технический/юридический review, не выдуманный ACCEPTED.
+- [Blueprint §2](f0-implementation-blueprint.md) содержит стартовую матрицу owner/admin/staff/client; #12 остаётся открытым до reviewer sign-off.
