@@ -45,6 +45,12 @@ Register -> validate dependency graph -> start -> ready -> stop. Без hot-load
 - UI показывать только актуальные для пользователя возможности; API, jobs и AI tools независимо enforce tenant scopes и права доступа (согласуется с разделом «Установка кода, активация салона и разрешения пользователя»).
 - Progressive UX/configuration — продуктовое требование, а детальный механизм feature flags/дистрибуции, отдельные deploy boundaries и лицензирование модулей пока PROPOSED. Не разворачивать отдельные сервисы ради формальной модульности.
 
+## Первый пилот и необязательные модули (ACCEPTED DEC-095 / REQ-058)
+- Пилот включает **не только web booking**: Telegram channel adapter и notification delivery — часть первого пользовательского продукта, при той же modular/platform архитектуре.
+- **Bookings/Catalog/Scheduling/Identity** остаются source of truth и проверяют tenant, permissions и slot collisions. **Telegram** использует общие business commands через публичный API/ports, а **notifications** потребляют outbox/jobs после commit; retry/dedup не могут менять подтверждённый статус брони.
+- **DEC-093:** это выбранная композиция пилотных модулей, а не обязательство собрать все optional add-ons F2; AI #31 и карты #33 не входят автоматически. Не копировать бизнес-логику слотов внутрь Telegram и не вводить отдельный stateful booking engine для бота.
+- **PROPOSED DEC-096:** сценарный Telegram UX, FAQ/handoff и набор уведомлений с явными шаблонами и состояниями доставки; архитектурные детали и критерии пилота согласовать с #29/#30 и #39.
+
 ## Channel layer
 Чат-оркестратор использует общие business commands. Telegram, будущий VK/MAX/WhatsApp адаптируют форматы и доступные взаимодействия; идентичный внешний UX невозможен при разных API платформ. AI — optional interpreter, не owner записей.
 
