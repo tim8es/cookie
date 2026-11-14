@@ -9,6 +9,16 @@
 - **PROPOSED:** конкретные технологии, схемы данных/прав, детали модульных контрактов, интерфейсы, deployment.
 - **RESEARCH:** цены, подтверждённый спрос, условия интеграций карт, юридическая модель, конкретный hosting.
 
+## Пакет F0 для одного ревью владельцем (PROPOSED)
+
+- [Рекомендуемые решения — единый пакет F0-P01..P12](docs/decisions/f0-owner-review-package-20261114.md).
+- [Implementation blueprint: стек, границы, Booking, authZ, screen map](docs/architecture/f0-implementation-blueprint.md).
+- [Traceability REQ-001–067](docs/delivery/requirements-traceability-f0.md).
+- [Коммерческий playbook первых салонов](docs/product/pilot-commercial-playbook.md).
+- [Итог документального аудита и блокеры F0 Gate](docs/delivery/f0-consistency-audit-20261114.md).
+
+Эти новые материалы представляют **рекомендации автора пакета**; они не изменяют статус принятия первоначальных решений без ревью владельца. F0 Gate остаётся закрытым, код/merge/deploy не разрешены.
+
 ## Начать чтение
 1. [Карта всей документации](docs/README.md).
 2. [Продуктовое видение](docs/product/vision.md).
