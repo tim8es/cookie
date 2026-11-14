@@ -37,3 +37,9 @@ SvelteKit не обязательно означает SSR, но SSR-режим 
 **После разрешения F1:** ограниченный backend spike Go vs Node и UI smoke Svelte vs React только если без измерений решение не очевидно; зафиксировать ADR и начать продуктовую реализацию на одном стеке.
 
 **Полный ADR:** [ADR-0002](ADR-0002-technical-stack.md).
+
+## Рекомендуемое направление F0 (PROPOSED, не замена утверждённого стека)
+- **Backend для F1:** Node.js **26 LTS** + TypeScript + Fastify. Go остаётся контролируемой альтернативой при подтверждённом измерениями операционном преимуществе; заранее не делать два приложения.
+- **Frontend:** Svelte 5 + Vite static SPA как базовый production candidate; React fallback, SvelteKit/SSR только с product/SEO доказательством.
+- **DB/jobs:** PostgreSQL, SQL-first typed access (Kysely candidate) и транзакционный outbox + PostgreSQL-backed worker; не вносить Redis/Kafka без нагрузки. Monorepo pnpm, API/worker/static UI в одной release-version.
+- **Состав/выбор библиотек и реальный runtime budget НЕ доказаны** — фиксировать на #16 после owner-review. Детали/риски в [ADR-0002](ADR-0002-technical-stack.md) и [blueprint](f0-implementation-blueprint.md).
