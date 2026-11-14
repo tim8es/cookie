@@ -1,0 +1,65 @@
+name: F1 quality gates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feature/f1-bootstrap-20261114
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Types, lint, unit, PostgreSQL integration, web build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cookie_ci
+          POSTGRES_PASSWORD: cookie_ci
+          POSTGRES_DB: cookie_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cookie_ci -d cookie_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://cookie_ci:cookie_ci@127.0.0.1:5432/cookie_ci
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+      - name: Install pinned direct dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck API and shared contracts
+        run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: PostgreSQL migration integration
+        run: pnpm test:integration
+      - name: Build API and migration CLI
+        run: pnpm build
+      - name: Check and build Svelte static app
+        run: |
+          pnpm --filter @cookie/web check
+          pnpm --filter @cookie/web build
+      - name: Save generated pnpm lockfile for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cookie-pnpm-lock
+          path: pnpm-lock.yaml
+          if-no-files-found: warn
+          retention-days: 7
