@@ -69,7 +69,12 @@ Register -> validate dependency graph -> start -> ready -> stop. Без hot-load
 ## Учёт уникальных bookable мастеров в тарифе (ACCEPTED DEC-109 / REQ-065)
 - Оплачиваемая вместимость tier основана на **уникальных действующих Staff, доступных для записи в Organization**. Multi-location master не умножает количество billable seats; администраторы без услуг и архивные мастера исключены. Совмещение admin+bookable master не освобождает от учёта мастера.
 - **PROPOSED DEC-110:** расчёт по стабильным staff ID и факту active & bookable хотя бы в одной Location, не по location assignment, user membership или имени. Работает как центральное server-side entitlement, а не frontend-only/канальный подсчёт; IDOR/tenant isolation, audit и реакция на изменения.
-- **OPEN:** правила временной недоступности, отсутствия слотов/отпуска; нельзя автоматически приравнять отпуск к архивному мастеру. **Q45** решает overflow/upgrade/downgrade без изменения уже Confirmed или понижения безопасности.
+- **OPEN:** правила временной недоступности, отсутствия слотов/отпуска; нельзя автоматически приравнять отпуск к архивному мастеру. **DEC-111 Q45 ACCEPTED:** сверхлимитный мастер может быть добавлен в справочник, но активация только после добровольного upgrade; downgrade детали на review.
+
+## Превышение tier при активации мастера (ACCEPTED DEC-111 / REQ-066)
+- Модуль Staff/Catalog разрешает **создать и сохранить профиль** нового мастера даже при полном paid tier. Но операция, делающая его действующим и доступным клиентской записи, должна через Subscription/Entitlements убедиться, что уникальный billable count по DEC-109/REQ-065 не превысит вместимость tier.
+- **ACCEPTED:** при превышении отказать в активации нового мастера без изменения текущих действующих мастеров, календарей и Confirmed Booking. Предложить отдельный, **добровольный upgrade**. Ни создание профиля, ни проба активации не инициируют списание/автоматический upgrade.
+- **PROPOSED DEC-112:** разделить draft profile vs active bookable, enforce при activation/publish/StaffLocationAssignment/import/API, транзакционная проверка/конкурентные активации/idempotency, audit и корректное сообщение. Не переносить коммерческую логику в minimal kernel; временные статусы/нештатный downgrade/платёжный контракт на review.
 
 ## Channel layer
 Чат-оркестратор использует общие business commands. Telegram, будущий VK/MAX/WhatsApp адаптируют форматы и доступные взаимодействия; идентичный внешний UX невозможен при разных API платформ. AI — optional interpreter, не owner записей.
