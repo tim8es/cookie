@@ -36,5 +36,9 @@
 - Пентест базовых сценариев/OWASP, security checklist перед публичным запуском.
 - Матрица доступа owner/admin/staff/client/guest утверждена в виде отдельной задачи.
 
+## Pilot security runbooks и граница legal review
+
+[Операционная готовность и обработка инцидентов](pilot-operational-readiness.md) фиксируют threat signals, процедуру реагирования на cross-tenant leak и compromised guest/TG token, требования к scoped export, бэкапам и хранению ПДн. [41 тестовый сценарий](../quality/f1-pilot-acceptance-cases.md) включает negative access checks. Ни один тест пока не выполнен; юридические сроки хранения, согласия, hosting/provider obligations и обязанности по уведомлению надзорных органов подлежат отдельной внешней проверке до реальных салонов.
+
 ## Решения на ревью
 Отдельные базы tenant vs shared schema, способы OTP, Telegram linking, retention, уровни аудита и категории данных.
