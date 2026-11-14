@@ -1,6 +1,6 @@
 # ADR-0003 — Атомарное бронирование и согласованность графика
 
-**Статус: PROPOSED** · Issue #11 · REQ-002,003,006.
+**Статус: ACCEPTED (F0 baseline 2026-11-14, owner approval)**; конкретная реализация, негативные интеграционные тесты и legal/operational evidence остаются обязательными на следующих этапах. · Issue #11 · REQ-002,003,006.
 
 ## Решение на ревью
 Один Bookings domain API для всех каналов, одни правила availability и booking. PostgreSQL фиксирует активные booking intervals транзакционно, с DB-level защитой от overlap (проверить exclusion constraint по tenant+staff+time-range, исключив отменённые состояния). Команды используют idempotency key, tenant context и контроль permission. Перенос — атомарное изменение старой/новой брони по согласованной статусной модели.
@@ -215,4 +215,7 @@ Load/concurrency tests, DST/границы суток, idempotent replay, compar
 - Стандартная команда `CreateBooking`: tenant+actor authorization / trial-paid entitlement / staff+service schedule / server quote → PostgreSQL transaction → row lock на staff scope (всегда одинаковый lock order для schedule changes) → Confirmed + snapshots + idempotency result + outbox → COMMIT → клиенту success. Два разных канала не создают разных доменных экземпляров брони.
 - Последний DB-инвариант: GiST exclusion по `tenantId, staffId, tstzrange(startAt, occupiedUntil,'[)')` для активных состояний. Multi-location staff конфликтует по одному staffId вне зависимости от locationId; список active states и реальный DDL/extension btree_gist проверить на настоящем PostgreSQL.
 - `RescheduleBooking` меняет только время в прежней Confirmed с прежними PriceSnapshot/промокодом, при неуспехе старая запись не теряется. `CancelBooking` сохраняет audit и атомарно освобождает interval, правила одноразового промокода из REQ сохраняются. Изменение service/staff/location — новая бронь после отмены, поэтому post-trial paywall не обходится.
-- Точный SQL-план и contention tests ещё PROPOSED, не объявлять проверенными. [Blueprint §3](f0-implementation-blueprint.md), [test-strategy](../quality/test-strategy.md); закрытие #11 после owner review и F1 инженерной проверки в разрешённых рамках.
+- **Подход F0-P05 ACCEPTED**; точный SQL-план и contention tests остаются неопробованными до F1, не объявлять проверенными. [Blueprint §3](f0-implementation-blueprint.md), [test-strategy](../quality/test-strategy.md); закрытие #11 после owner review и F1 инженерной проверки в разрешённых рамках.
+
+## Запись об утверждении F0 — 2026-11-14
+Владелец явно **утвердил пакет F0-P01–F0-P12 как архитектурный baseline** и отдельно разрешил начать F1 (bootstrap, CI, PostgreSQL, основа приложения). В рамках этого ADR приняты архитектурное направление, границы и критерии тестирования. **Не подтверждены исполнением**: SQL concurrency, нагрузка, мобильный UX, реальные security tests, ПДн/платежи, закрытые provider APIs и коммерческие продажи. Требования к отсутствию пилота/реальных ПДн до отдельного согласования сохраняются. Изменение baseline через новый ADR/PR, не молчаливым коммитом.
