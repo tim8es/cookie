@@ -56,6 +56,11 @@ Register -> validate dependency graph -> start -> ready -> stop. Без hot-load
 - AI-консультант — **отдельный optional module после пилота** (#31), который в будущем может обращаться к тем же permission-checked commands и queries с отдельными entitlement, audit и подтверждениями. Отключенный AI не влияет на работу сценарного Telegram (#29), notification delivery (#30) и core booking.
 - **PROPOSED DEC-098:** отдельный adapter API и модульная точка расширения. Избегать избыточной AI-инфраструктуры, пока сценарный пилот не покажет спрос.
 
+## Post-trial ограничение создания броней (ACCEPTED DEC-105 / REQ-063)
+- По окончании 30-дневного trial без платной лицензии **CreateBooking недоступен для Organization через все каналы**: public web, Telegram, admin, API. Channel adapters не вправе создавать локальный bypass к central entitlements. Фактическая проверка на сервере не сводится к скрытию кнопки.
+- **Независимые права:** чтение/обслуживание ранее Confirmed, разрешённый RescheduleBooking только по времени, CancelBooking и экспорт данных должны сохраняться без оплаты; прежние правила actor/tenant/RBAC/ABAC обязательны. Ошибка notification provider не меняет Booking; policy изменения не ретроактивно пересчитывают записи.
+- **PROPOSED DEC-106:** domain-level policy on CreateBooking, статус trial_expired/paid_active, check at commit, audit, idempotency and race handling, channel UX and future reactivation; detailed access matrix/data retention on review. Не закладывать «вечный Free booking» как дефолтную entitlement.
+
 ## Channel layer
 Чат-оркестратор использует общие business commands. Telegram, будущий VK/MAX/WhatsApp адаптируют форматы и доступные взаимодействия; идентичный внешний UX невозможен при разных API платформ. AI — optional interpreter, не owner записей.
 
