@@ -156,6 +156,10 @@
 112. **DEC-093 / REQ-057:** при отключенном необязательном AI/картах/аналитике основной pilot booking и Telegram/scripted flow не ломаются; сервер независимо от UI проверяет права, tenant isolation, ПДн и entitlements. Pilot acceptance требует базовой эксплуатационной готовности, но **не означает завершение полного F2 Gate**.
 113. **DEC-096 PROPOSED:** проверить минимальный Telegram menu/FAQ/booking/handoff, настройки уведомлений/отписок и согласия; точные сценарии/тайминги и AI add-on решаются на продуктово-техническом review, без наращивания scope автоматически.
 
+114. **DEC-097 / REQ-059 ACCEPTED:** запуск пилотного Telegram-бота без настроенного LLM/model provider/token quota/vector DB; работают кнопочное меню, выбор услуги/мастера/слота, FAQ, подтверждение booking и handoff администратору. Никакой скрытой зависимости от AI API.
+115. Параллельные web и Telegram callbacks обращаются к одному permission-checked Booking API, idempotent повтор не дублирует Confirmed; notification delivery после commit (DEC-095) с retry и ошибками, не меняющими статус брони.
+116. Проверить **module-off**: AI addon отключён/не установлен — сценарный Telegram, notifications и core booking сохраняют работоспособность; будущая активация AI не требует изменения доменных инвариантов. **DEC-098 PROPOSED** архитектурный контракт расширения, не часть пилотной приемки.
+
 ## Инженерный definition of done
 - PR с привязанным Issue, тест-планом и документацией.
 - Типизация, линтер, unit/contract/integration tests проходят в CI.
