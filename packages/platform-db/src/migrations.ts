@@ -22,8 +22,13 @@ interface Migration {
  * checksum record commit atomically; a session advisory lock serializes
  * concurrent deploys using the same PostgreSQL database.
  */
-export async function runMigrations(pool: Pool, directory: string): Promise<string[]> {
-  const sqlFiles = (await readdir(directory)).filter((name) => name.endsWith(".sql")).sort();
+export async function runMigrations(
+  pool: Pool,
+  directory: string,
+): Promise<string[]> {
+  const sqlFiles = (await readdir(directory))
+    .filter((name) => name.endsWith(".sql"))
+    .sort();
   if (sqlFiles.length === 0) {
     throw new Error("No SQL migration files found");
   }
@@ -61,13 +66,17 @@ export async function runMigrations(pool: Pool, directory: string): Promise<stri
       "SELECT filename, sha256 FROM public.cookie_schema_migrations",
     );
     const known = new Map(result.rows.map((row) => [row.filename, row.sha256]));
-    const expected = new Map(migrations.map((migration) => [migration.filename, migration]));
+    const expected = new Map(
+      migrations.map((migration) => [migration.filename, migration]),
+    );
 
     // Fail before performing any new migration if history was rewritten or removed.
     for (const [filename, sha256] of known) {
       const entry = expected.get(filename);
       if (!entry) {
-        throw new Error(`Applied migration missing from repository: ${filename}`);
+        throw new Error(
+          `Applied migration missing from repository: ${filename}`,
+        );
       }
       if (entry.sha256 !== sha256) {
         throw new Error(`Applied migration checksum mismatch: ${filename}`);

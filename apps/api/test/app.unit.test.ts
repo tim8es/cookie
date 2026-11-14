@@ -46,7 +46,10 @@ test("readiness fails closed and does not leak database errors", async (t) => {
   const response = await app.inject({ method: "GET", url: "/health/ready" });
 
   assert.equal(response.statusCode, 503);
-  assert.deepEqual(response.json(), { service: "cookie-api", status: "not-ready" });
+  assert.deepEqual(response.json(), {
+    service: "cookie-api",
+    status: "not-ready",
+  });
   assert.doesNotMatch(response.body, /do-not-expose/);
 });
 

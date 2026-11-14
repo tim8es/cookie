@@ -17,7 +17,10 @@ const pool = new Pool({
   connectionTimeoutMillis: 3_000,
 });
 try {
-  const applied = await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
+  const applied = await runMigrations(
+    pool,
+    resolve(process.cwd(), "db/migrations"),
+  );
   process.stdout.write(`Migrations applied: ${applied.length}\n`);
 } finally {
   await pool.end();

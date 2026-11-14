@@ -21,7 +21,9 @@ test(
     let tempDir: string | undefined;
     try {
       const firstRun = await runMigrations(pool, directory);
-      assert.ok(firstRun.length === 0 || firstRun.includes("0001_bootstrap.sql"));
+      assert.ok(
+        firstRun.length === 0 || firstRun.includes("0001_bootstrap.sql"),
+      );
 
       const secondRun = await runMigrations(pool, directory);
       assert.deepEqual(secondRun, []);
@@ -38,7 +40,10 @@ test(
 
       tempDir = await mkdtemp(join(tmpdir(), "cookie-migration-"));
       const sql = await readFile(join(directory, "0001_bootstrap.sql"), "utf8");
-      await writeFile(join(tempDir, "0001_bootstrap.sql"), sql + "\nSELECT 1;\n");
+      await writeFile(
+        join(tempDir, "0001_bootstrap.sql"),
+        sql + "\nSELECT 1;\n",
+      );
       await assert.rejects(runMigrations(pool, tempDir), /checksum mismatch/);
     } finally {
       if (tempDir) await rm(tempDir, { recursive: true, force: true });
