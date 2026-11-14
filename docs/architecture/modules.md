@@ -81,3 +81,6 @@ Register -> validate dependency graph -> start -> ready -> stop. Без hot-load
 
 ## Решения до старта coding
 Кто координирует transaction scheduling+booking; versioning manifest; стандарты errors/events; granularity policy, identity, tenancy; tenant segregation.
+
+## F0 blueprint — рекомендуемые модули (PROPOSED)
+Разделить minimal kernel (registry/lifecycle/contracts) от platform (Identity/Tenant/Policy/Persistence/Entitlements/Jobs) и domain (Organization/Catalog/Staff/Scheduling/Customer/Booking/Pricing). Channel adapters (Svelte shells/Telegram) не имеют своей Booking database. Новая Booking разрешается только tenant entitlement; existing Confirmed можно управлять и экспортировать после unpaid trial. [Blueprint](f0-implementation-blueprint.md) и [решения для одного review](../decisions/f0-owner-review-package-20261114.md); конкретные порты/проверки на engineering review F1.
