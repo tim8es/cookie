@@ -57,29 +57,3 @@ jobs:
         run: |
           pnpm --filter @cookie/web check
           pnpm --filter @cookie/web build
-  format-once:
-    name: Normalize source formatting on trusted F1 branch
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/f1-bootstrap-20261114'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.24.0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "26"
-      - run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Format TypeScript files and commit only on feature branch
-        run: |
-          pnpm format
-          if [ -n "$(git status --porcelain -- apps packages)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add apps packages
-            git commit -m "style(F1): normalize TypeScript source formatting"
-            git push origin HEAD:feature/f1-bootstrap-20261114
-          fi
