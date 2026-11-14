@@ -9,6 +9,11 @@
 - **PROPOSED:** конкретные технологии, схемы данных/прав, детали модульных контрактов, интерфейсы, deployment.
 - **RESEARCH:** цены, подтверждённый спрос, условия интеграций карт, юридическая модель, конкретный hosting.
 
+- [Доменные контракты и инварианты бронирования/тарифов/AuthZ](docs/architecture/f0-contracts-and-invariants.md).
+- [Каталог 41 приёмочного сценария для F1/пилота](docs/quality/f1-pilot-acceptance-cases.md).
+- [Операционная готовность / runbooks / защита ПДн](docs/operations/pilot-operational-readiness.md).
+- [Рыночная матрица и модель unit economics](docs/product/market-economics-validation.md).
+- [Итоговый F0 owner review / evidence gate](docs/delivery/f0-closure-review-20261114.md).
 ## Пакет F0 для одного ревью владельцем (PROPOSED)
 
 - [Рекомендуемые решения — единый пакет F0-P01..P12](docs/decisions/f0-owner-review-package-20261114.md).
