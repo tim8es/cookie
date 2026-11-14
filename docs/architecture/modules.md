@@ -68,7 +68,7 @@ Register -> validate dependency graph -> start -> ready -> stop. Без hot-load
 
 ## Учёт уникальных bookable мастеров в тарифе (ACCEPTED DEC-109 / REQ-065)
 - Оплачиваемая вместимость tier основана на **уникальных действующих Staff, доступных для записи в Organization**. Multi-location master не умножает количество billable seats; администраторы без услуг и архивные мастера исключены. Совмещение admin+bookable master не освобождает от учёта мастера.
-- **PROPOSED DEC-110:** расчёт по стабильным staff ID и факту active & bookable хотя бы в одной Location, не по location assignment, user membership или имени. Работает как центральное server-side entitlement, а не frontend-only/канальный подсчёт; IDORA/tenant isolation, audit и реакция на изменения.
+- **PROPOSED DEC-110:** расчёт по стабильным staff ID и факту active & bookable хотя бы в одной Location, не по location assignment, user membership или имени. Работает как центральное server-side entitlement, а не frontend-only/канальный подсчёт; IDOR/tenant isolation, audit и реакция на изменения.
 - **OPEN:** правила временной недоступности, отсутствия слотов/отпуска; нельзя автоматически приравнять отпуск к архивному мастеру. **Q45** решает overflow/upgrade/downgrade без изменения уже Confirmed или понижения безопасности.
 
 ## Channel layer
