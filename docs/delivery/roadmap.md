@@ -95,6 +95,13 @@ flowchart LR
 ### F0 readiness audit — решение владельца ещё требуется (2026-11-14)
 [Подробный документальный аудит](f0-consistency-audit-20261114.md) завершён после утверждения Q46. **Вердикт: F0 Gate BLOCKED**, несмотря на завершение запланированного раунда продуктовых вопросов. На ревью остаются baseline технического стека (#10/ADR-0002), минимальные контракты kernel (#9), DB/atomic booking (#11), Identity/roles/privacy (#12), screen map/UI (#13), экономическая проверка и readiness #14, traceability #8, owner review #15. Требуется либо документально закрыть, либо явно разрешить перенос деталей в F1 без подмены критичных гарантий. Никаких coding/merge/pilot без отдельного разрешения.
 
+### Доказательства готовности к F1 и pilot (F0-proposed, 2026-11-14)
+- [Технические domain contracts](../architecture/f0-contracts-and-invariants.md) готовы на owner-review; они не являются автоматически ACCEPTED.
+- [41 acceptance/negative tests](../quality/f1-pilot-acceptance-cases.md) подготовлены как список доказательств, в F0 они **NOT RUN**.
+- [Реальный pilot operational gate](../operations/pilot-operational-readiness.md): только после проверки security, ПДн РФ, restore, notifications, consent и действительных персональных коммерческих условий.
+- [Рыночная matrix/юнит-экономика](../product/market-economics-validation.md): данные внешних источников отделены от собственных непроверенных гипотез.
+- Пакет [F0 closure review](f0-closure-review-20261114.md) требует owner sign-off; **сама подготовка документов не разрешает F1 coding**.
+
 ### F1 — Технический end-to-end срез (не продаётся)
 Эпики #2 и #3; задачи #16–#23.
 - Platform: #16 условный tech spike (только если согласован и после F0 Gate) + bootstrap/CI, #17 kernel, #18 identity/tenancy/policy, #19 persistence/jobs.
