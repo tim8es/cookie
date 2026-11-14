@@ -61,6 +61,11 @@ Register -> validate dependency graph -> start -> ready -> stop. Без hot-load
 - **Независимые права:** чтение/обслуживание ранее Confirmed, разрешённый RescheduleBooking только по времени, CancelBooking и экспорт данных должны сохраняться без оплаты; прежние правила actor/tenant/RBAC/ABAC обязательны. Ошибка notification provider не меняет Booking; policy изменения не ретроактивно пересчитывают записи.
 - **PROPOSED DEC-106:** domain-level policy on CreateBooking, статус trial_expired/paid_active, check at commit, audit, idempotency and race handling, channel UX and future reactivation; detailed access matrix/data retention on review. Не закладывать «вечный Free booking» как дефолтную entitlement.
 
+## Коммерческий tier по числу мастеров (ACCEPTED DEC-107 / REQ-064)
+- **Продуктовое правило:** уровни платной подписки отличаются количеством учитываемых мастеров; **число создаваемых Booking внутри оплаченного уровня не ограничено коммерческой квотой**. Сайт, Telegram и Business Workspace читают единый tenant-scoped entitlement; не создавать самостоятельную подсистему квот на Booking по каналам.
+- Не путать коммерческие квоты с защитными техническими rate limits, антиспамом, проверкой занятости или permissions — они сохраняются. **PROPOSED DEC-108:** проверять вместимость tier на сервере и безопасно обрабатывать изменение числа учитываемых мастеров, renewal/upgrade/downgrade.
+- **OPEN Q44:** кого считать оплачиваемым мастером при нескольких филиалах, неактивных профилях и совмещении ролей. Не зашивать способ подсчёта в архитектуру, пока бизнес-правило не принято.
+
 ## Channel layer
 Чат-оркестратор использует общие business commands. Telegram, будущий VK/MAX/WhatsApp адаптируют форматы и доступные взаимодействия; идентичный внешний UX невозможен при разных API платформ. AI — optional interpreter, не owner записей.
 
