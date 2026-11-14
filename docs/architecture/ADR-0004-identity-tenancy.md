@@ -1,6 +1,6 @@
 # ADR-0004 — Личность, организации, клиенты и доступы
 
-**Статус: PROPOSED** · Issue #12 · REQ-005,007,016.
+**Статус: ACCEPTED (F0 baseline 2026-11-14, owner approval)**; конкретная реализация, негативные интеграционные тесты и legal/operational evidence остаются обязательными на следующих этапах. · Issue #12 · REQ-005,007,016.
 
 ## Разделяем сущности
 - Identity: кто аутентифицирован (пользователь).
@@ -77,3 +77,6 @@ Role matrix, cross-tenant IDOR, guest token replay, Telegram forged initData, ac
 - Клиент/guest может читать и изменять **только свою** Booking по verified identity/short-lived scoped token; авторизация только по ID или непроверенному телефону запрещена. Staff видит только собственные связанные визиты и клиентов, телефон/история/заметки требуют специальных выданных прав; сервер фильтрует все экспорты/поиски и bot/API ответы.
 - Phone OTP и Telegram OIDC+PKCE/initData проверяются сервером; credential linking требует verified proof. Конкретные OTP provider, юридические основания ПДн/retention, enum permissions и протокол Owner transfer — технический/юридический review, не выдуманный ACCEPTED.
 - [Blueprint §2](f0-implementation-blueprint.md) содержит стартовую матрицу owner/admin/staff/client; #12 остаётся открытым до reviewer sign-off.
+
+## Запись об утверждении F0 — 2026-11-14
+Владелец явно **утвердил пакет F0-P01–F0-P12 как архитектурный baseline** и отдельно разрешил начать F1 (bootstrap, CI, PostgreSQL, основа приложения). В рамках этого ADR приняты архитектурное направление, границы и критерии тестирования. **Не подтверждены исполнением**: SQL concurrency, нагрузка, мобильный UX, реальные security tests, ПДн/платежи, закрытые provider APIs и коммерческие продажи. Требования к отсутствию пилота/реальных ПДн до отдельного согласования сохраняются. Изменение baseline через новый ADR/PR, не молчаливым коммитом.
