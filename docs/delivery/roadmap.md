@@ -16,6 +16,11 @@ flowchart LR
     G2 -->|Нет| F2
 ~~~
 
+### F0 пакет технических рекомендаций и порядок единого review (PROPOSED 2026-11-14)
+- Подготовлены [12 рекомендуемых F0 default-решений](../decisions/f0-owner-review-package-20261114.md), [implementation blueprint](../architecture/f0-implementation-blueprint.md), [матрица 67 REQ](requirements-traceability-f0.md) и [коммерческий playbook](../product/pilot-commercial-playbook.md).
+- **Не утверждено владельцем:** Node.js 26/TS/Fastify, Svelte 5/Vite static, SQL-подход, конкретные RBAC hard restrictions и trial timezone boundary. Предложения не перезаписывают ACCEPTED DEC-001–114, требуют одного review владельца.
+- **F0 Gate пока BLOCKED:** #8–#15 open, ADR-0001–0005 требуют sign-off, legal/commercial pilot ready отдельный gate, PR #43 остаётся Draft. Следовать [аудиту](f0-consistency-audit-20261114.md). После owner review — обновить статусы и пройти отдельный explicit approval перед coding.
+
 ### F0 — Documentation baseline / **текущий этап**
 Эпик #1; задачи #8–#15. Выход: согласованный PRD/UX пути, дифференциация, архитектура modules/core, proposed & accepted ADRs, stack, security, экономическая гипотеза, связанные Issues и правила разработки.
 
