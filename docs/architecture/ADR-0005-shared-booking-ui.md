@@ -27,3 +27,9 @@ UI читает каталог/слоты из API, команды выполн�
 
 ## Acceptance
 Те же тестовые записи из всех поверхностей; mobile/desktop, iframe origin checks, корректные пустые состояния, е2е flow повторной записи и ссылок, отсутствие двойных бронирований.
+
+## Рекомендуемая screen map для пакетного owner-review (PROPOSED F0-P02/P07, 2026-11-14)
+- **Static Svelte 5 + Vite baseline** для общего public web/iframe/Telegram Mini App UI; SSR не внедрять до подтверждённой SEO ценности, React — fallback только при проверенной проблеме a11y/calendar ecosystem.
+- Минимальные экраны: individual pilot offer до регистрации → регистрация и 30-day trial → wizard услуг/мастеров/графиков → business calendar / запись / перенос / отмена; public flow услуга → staff/location → slot → verified identity → quote → Confirmed; Telegram bot FAQ/menu/handoff; subscription status, voluntary upgrade, archive/export и сообщения о trial expiry.
+- Критические ошибки: нет слотов, конкурентный 409, устаревший quote, отказ authZ/expired link, fail notification vs committed Booking, staff tier full, trial expired, embed cookie/origin mismatch и сетевой retry. Никакого optimistic success до DB commit.
+- [Полная screen map](f0-implementation-blueprint.md#5-screen-map--готовый-документальный-набросок-не-дизайн-макеты); high-fidelity UI/benchmark на реальном телефоне — после разрешения F1. #13 ждёт owner review screen map.
