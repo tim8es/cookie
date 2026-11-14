@@ -21,12 +21,13 @@
     "noEmit": true
   },
   "include": [
-    "apps/**/*.ts",
+    "apps/api/**/*.ts",
     "packages/**/*.ts",
     "scripts/**/*.ts"
   ],
   "exclude": [
     "dist",
-    "node_modules"
+    "node_modules",
+    "apps/web"
   ]
 }
