@@ -34,6 +34,16 @@
 - [Реестр решений](decisions/register.md).
 - [Архитектурное ревью: раунд 1](decisions/architecture-review-round-1.md) — вопросы владельцу до принятия ключевых ADR.
 
+## Единый пакет на ревью F0 (предложения, не подтверждение владельца)
+
+- [Краткий пакет решений F0-P01..P12](decisions/f0-owner-review-package-20261114.md) — приоритетный документ для владельца.
+- [Технический blueprint](architecture/f0-implementation-blueprint.md) — runtime, API, транзакции, доступы, UX screen map и порядок F1.
+- [Traceability REQ-001–067 → проверяемый смысл/фаза/Issue](delivery/requirements-traceability-f0.md).
+- [Коммерческий playbook и шаблон индивидуального предложения](product/pilot-commercial-playbook.md).
+- [F0 consistency audit с P0 блокерами](delivery/f0-consistency-audit-20261114.md).
+
+**Порядок:** владелец проверяет пакет один раз, вносит существенные замечания, автор применяет их в ADR/issues и только после отдельного утверждения решается F0 Gate. Не превращать выбор каждого библиотечного пакета в новый продуктовый вопрос.
+
 ## Правила статусов
 - **ACCEPTED:** подтверждено в обсуждении; нельзя молча менять.
 - **PROPOSED:** разработанная рекомендация, нужна проверка и утверждение.
