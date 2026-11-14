@@ -210,3 +210,9 @@ UTC instants + IANA timezone, explicit service duration/buffer. **ACCEPTED:** о
 
 ## Acceptance
 Load/concurrency tests, DST/границы суток, idempotent replay, compare schedule change vs booking, multi-tenant conflict isolation; решение зафиксировать до #21.
+
+## Рекомендуемый DB/command contract для owner-review (PROPOSED F0-P05, 2026-11-14)
+- Стандартная команда `CreateBooking`: tenant+actor authorization / trial-paid entitlement / staff+service schedule / server quote → PostgreSQL transaction → row lock на staff scope (всегда одинаковый lock order для schedule changes) → Confirmed + snapshots + idempotency result + outbox → COMMIT → клиенту success. Два разных канала не создают разных доменных экземпляров брони.
+- Последний DB-инвариант: GiST exclusion по `tenantId, staffId, tstzrange(startAt, occupiedUntil,'[)')` для активных состояний. Multi-location staff конфликтует по одному staffId вне зависимости от locationId; список active states и реальный DDL/extension btree_gist проверить на настоящем PostgreSQL.
+- `RescheduleBooking` меняет только время в прежней Confirmed с прежними PriceSnapshot/промокодом, при неуспехе старая запись не теряется. `CancelBooking` сохраняет audit и атомарно освобождает interval, правила одноразового промокода из REQ сохраняются. Изменение service/staff/location — новая бронь после отмены, поэтому post-trial paywall не обходится.
+- Точный SQL-план и contention tests ещё PROPOSED, не объявлять проверенными. [Blueprint §3](f0-implementation-blueprint.md), [test-strategy](../quality/test-strategy.md); закрытие #11 после owner review и F1 инженерной проверки в разрешённых рамках.
