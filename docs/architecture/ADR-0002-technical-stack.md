@@ -1,8 +1,8 @@
 # ADR-0002 — Выбор стека по требованиям Cookie, а не по привычным технологиям
 
-**Статус:** PROPOSED / сравнение открыто · Issue #10 · 2026-11-13.
-**Блокирует:** утверждение F0 для backend/frontend.
-**Не разрешает:** писать код приложения или benchmarking spike до отдельного approval владельца.
+**Статус: ACCEPTED (F0 baseline 2026-11-14, owner approval)** · Issue #10. Конкретные версии библиотек, performance benchmarks и F1 spike — инженерная проверка.
+**F0 разблокировано владельцем 2026-11-14:** Node.js 26 LTS + TypeScript/Fastify и Svelte 5/Vite static — baseline, Go/React при измеримой необходимости; производственная пригодность — по тестам F1.
+**Разрешено:** F1 engineering и ограниченные F1 spikes отдельно подтверждены владельцем 2026-11-14; реальный коммерческий пилот/ПДн запрещены до отдельного gate.
 
 ## Контекст
 Cookie — платформа записи для малых салонов (2–10 сотрудников), поддерживает SaaS и self-hosted, одно Booking API, Telegram и общий web/embedded/Mini App интерфейс. Нужны низкие RAM/CPU/операционные расходы, хорошая мобильная отзывчивость, модульность и поддержка одним разработчиком с Codex. Полноценный реальный микросервисный ландшафт в F1 не нужен.
@@ -12,7 +12,7 @@ Cookie — платформа записи для малых салонов (2�
 - **Открыто:** runtime backend; frontend framework и режим рендеринга; HTTP framework; database access/migrations; job runner; tooling монорепозитория; тестовый стек.
 
 ## Решение о подходе к выбору (принято направление, не стек)
-Никакая комбинация Node.js/React/Vite не считается утверждённой. 
+**Исторический контекст до решения 2026-11-14:** ранее никакая комбинация Node.js/React/Vite не считалась утверждённой; F0 baseline теперь Node.js 26 LTS/TypeScript/Fastify + Svelte 5/Vite static. 
 - Backend сравнить **Go** и **Node.js + TypeScript** на одинаковых требованиях. Go не исключается по причине нового языка; Node.js не выбирается автоматически из-за общего TypeScript.
 - Frontend основной кандидат **Svelte 5**; **React** — контрольная альтернатива; **SolidJS** остаётся резервом, если реальная проблема с DOM performance. Vite — инструмент сборки, а не аргумент в пользу React.
 - **SvelteKit vs Svelte+Vite — отдельная развилка.** SvelteKit с SSR может потребовать отдельный серверный runtime, в том числе Node.js (зависит от adapter), даже если основной backend Go. Если SEO-публичной витрины не требуется, Svelte/Vite SPA со статическими файлами проще и легче в self-hosted. SvelteKit можно использовать в режиме static/prerender/SPA или как отдельное SSR-приложение только при доказанном продуктовым спросом требовании. Решить после описания страниц и индексации.
@@ -81,5 +81,8 @@ Cookie — платформа записи для малых салонов (2�
 - **Предпочтительный backend для старта F1: Node.js 26 LTS + TypeScript + Fastify**, потому что одна языковая среда для solo сопровождения/интеграций и меньше разработки дублирующего стека. **Go остаётся обоснованным fallback**, если эквивалентный F1 spike и стоимость эксплуатации докажут существенный выигрыш RAM/latency против скорости работы/поддержки.
 - **Предпочтительный UI: Svelte 5 + Vite static SPA**, общие компоненты для public/embed/Telegram shells. SSR/SvelteKit подключать только при доказанном SEO/use-case и обсчитанной стоимости дополнительного runtime; React — backup при фактических ограничениях a11y/calendar libraries.
 - **PostgreSQL stateful source of truth**: SQL-first migrations + typed query access (Kysely candidate), один worker из общей кодовой базы, PostgreSQL-backed jobs/outbox. Redis/Kafka и микросервисы не нужны без метрик. Node 26 по официальному графику в LTS на дату документа, версии пакетов заморозить при #16.
-- **Статус только PROPOSED**: owner ещё не одобрил этот baseline; не считать наличие секции сменой всего ADR в ACCEPTED. Измеримые критерии отказа: воспроизводимая latency/resource/cost ошибка в F1 при равной БД и однотипной нагрузке, либо реально неосуществимый UX stack. Подробности — [blueprint](f0-implementation-blueprint.md) и [F0 review package](../decisions/f0-owner-review-package-20261114.md). #10 остаётся open до принятия.
+- **F0 baseline ACCEPTED владельцем 2026-11-14:** owner одобрил этот baseline; не считать наличие секции сменой всего ADR в ACCEPTED. Измеримые критерии отказа: воспроизводимая latency/resource/cost ошибка в F1 при равной БД и однотипной нагрузке, либо реально неосуществимый UX stack. Подробности — [blueprint](f0-implementation-blueprint.md) и [F0 review package](../decisions/f0-owner-review-package-20261114.md). #10 остаётся open до принятия.
 - Внешние источники: https://nodejs.org/en/about/previous-releases ; https://svelte.dev/docs/kit/adapters ; https://www.postgresql.org/docs/current/rangetypes.html
+
+## Запись об утверждении F0 — 2026-11-14
+Владелец явно **утвердил пакет F0-P01–F0-P12 как архитектурный baseline** и отдельно разрешил начать F1 (bootstrap, CI, PostgreSQL, основа приложения). В рамках этого ADR приняты архитектурное направление, границы и критерии тестирования. **Не подтверждены исполнением**: SQL concurrency, нагрузка, мобильный UX, реальные security tests, ПДн/платежи, закрытые provider APIs и коммерческие продажи. Требования к отсутствию пилота/реальных ПДн до отдельного согласования сохраняются. Изменение baseline через новый ADR/PR, не молчаливым коммитом.
