@@ -20,7 +20,8 @@
     "start:api": "node dist/apps/api/src/main.js",
     "dev:web": "pnpm --filter @cookie/web dev",
     "build:web": "pnpm --filter @cookie/web build",
-    "typecheck:web": "pnpm --filter @cookie/web check"
+    "typecheck:web": "pnpm --filter @cookie/web check",
+    "check:boundaries": "node scripts/check-boundaries.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",
