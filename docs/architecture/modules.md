@@ -48,8 +48,13 @@ Register -> validate dependency graph -> start -> ready -> stop. Без hot-load
 ## Первый пилот и необязательные модули (ACCEPTED DEC-095 / REQ-058)
 - Пилот включает **не только web booking**: Telegram channel adapter и notification delivery — часть первого пользовательского продукта, при той же modular/platform архитектуре.
 - **Bookings/Catalog/Scheduling/Identity** остаются source of truth и проверяют tenant, permissions и slot collisions. **Telegram** использует общие business commands через публичный API/ports, а **notifications** потребляют outbox/jobs после commit; retry/dedup не могут менять подтверждённый статус брони.
-- **DEC-093:** это выбранная композиция пилотных модулей, а не обязательство собрать все optional add-ons F2; AI #31 и карты #33 не входят автоматически. Не копировать бизнес-логику слотов внутрь Telegram и не вводить отдельный stateful booking engine для бота.
+- **ACCEPTED DEC-097:** AI #31 точно не входит в первый пилот; карты #33 и остальные optional add-ons не входят автоматически. Не копировать бизнес-логику слотов внутрь Telegram и не вводить отдельный stateful booking engine для бота.
 - **PROPOSED DEC-096:** сценарный Telegram UX, FAQ/handoff и набор уведомлений с явными шаблонами и состояниями доставки; архитектурные детали и критерии пилота согласовать с #29/#30 и #39.
+
+## Telegram-бот без обязательной AI-зависимости (ACCEPTED DEC-097 / REQ-059)
+- В пилоте **Telegram = сценарный channel adapter**; меню, callback/commands, FAQ и handoff работают без LLM, inference gateway, vector store или model provider. Кнопки и состояния бота не становятся отдельным источником истины для bookings.
+- AI-консультант — **отдельный optional module после пилота** (#31), который в будущем может обращаться к тем же permission-checked commands и queries с отдельными entitlement, audit и подтверждениями. Отключенный AI не влияет на работу сценарного Telegram (#29), notification delivery (#30) и core booking.
+- **PROPOSED DEC-098:** отдельный adapter API и модульная точка расширения. Избегать избыточной AI-инфраструктуры, пока сценарный пилот не покажет спрос.
 
 ## Channel layer
 Чат-оркестратор использует общие business commands. Telegram, будущий VK/MAX/WhatsApp адаптируют форматы и доступные взаимодействия; идентичный внешний UX невозможен при разных API платформ. AI — optional interpreter, не owner записей.
