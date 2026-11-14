@@ -34,6 +34,11 @@
 - [Реестр решений](decisions/register.md).
 - [Архитектурное ревью: раунд 1](decisions/architecture-review-round-1.md) — вопросы владельцу до принятия ключевых ADR.
 
+- [Доменные контракты Booking, Staff, Entitlements и AuthZ](architecture/f0-contracts-and-invariants.md).
+- [Сценарии тестирования F1 и пилота (41)](quality/f1-pilot-acceptance-cases.md).
+- [Операционный runbook и pre-real-pilot gate](operations/pilot-operational-readiness.md).
+- [Конкурентное исследование и unit economics](product/market-economics-validation.md).
+- [Краткий итог F0 и критерии owner sign-off](delivery/f0-closure-review-20261114.md).
 ## Единый пакет на ревью F0 (предложения, не подтверждение владельца)
 
 - [Краткий пакет решений F0-P01..P12](decisions/f0-owner-review-package-20261114.md) — приоритетный документ для владельца.
