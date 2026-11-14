@@ -16,8 +16,11 @@
     "format:check": "prettier --check apps packages scripts",
     "test": "tsx --test apps/api/test/*.unit.test.ts packages/contracts/test/*.unit.test.ts",
     "test:integration": "tsx --test apps/api/test/*.integration.test.ts",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "start:api": "node dist/apps/api/src/main.js"
+    "db:migrate": "tsx packages/platform-db/src/cli.ts",
+    "start:api": "node dist/apps/api/src/main.js",
+    "dev:web": "pnpm --filter @cookie/web dev",
+    "build:web": "pnpm --filter @cookie/web build",
+    "typecheck:web": "pnpm --filter @cookie/web check"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",
