@@ -50,3 +50,6 @@ flowchart TB
 
 ## Гейты
 Работа без add-on; отсутствие прямых импортов; конкурентная бронь; tenant/policy isolation; восстановление backup; деградация при отказе Telegram/AI. Детали — отдельные документы.
+
+## Границы рекомендуемой F0 реализации (PROPOSED)
+Приоритетный путь F1: API+worker одного TypeScript release, Svelte static UI, PostgreSQL; все каналы через единые Booking/Policy commands, нет fork business logic. Сервисные границы в [f0-implementation-blueprint.md](f0-implementation-blueprint.md) и [F0 owner-review package](../decisions/f0-owner-review-package-20261114.md). Это дополнение к согласованным продуктовым направлениям, не официальный approval стека/кода.
