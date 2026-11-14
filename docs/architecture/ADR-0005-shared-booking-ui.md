@@ -1,6 +1,6 @@
 # ADR-0005 — Общий Booking UI для сайта, виджета и Mini App
 
-**Статус: PROPOSED** · Issue #13 · REQ-004,015.
+**Статус: ACCEPTED (F0 baseline 2026-11-14, owner approval)**; конкретная реализация, негативные интеграционные тесты и legal/operational evidence остаются обязательными на следующих этапах. · Issue #13 · REQ-004,015.
 
 ## Цель
 Одна бизнес-логика и система компонентов, три поверхности: публичная страница, iframe embed widget, Telegram Mini App. Никаких трёх независимых booking applications.
@@ -32,4 +32,7 @@ UI читает каталог/слоты из API, команды выполн�
 - **Static Svelte 5 + Vite baseline** для общего public web/iframe/Telegram Mini App UI; SSR не внедрять до подтверждённой SEO ценности, React — fallback только при проверенной проблеме a11y/calendar ecosystem.
 - Минимальные экраны: individual pilot offer до регистрации → регистрация и 30-day trial → wizard услуг/мастеров/графиков → business calendar / запись / перенос / отмена; public flow услуга → staff/location → slot → verified identity → quote → Confirmed; Telegram bot FAQ/menu/handoff; subscription status, voluntary upgrade, archive/export и сообщения о trial expiry.
 - Критические ошибки: нет слотов, конкурентный 409, устаревший quote, отказ authZ/expired link, fail notification vs committed Booking, staff tier full, trial expired, embed cookie/origin mismatch и сетевой retry. Никакого optimistic success до DB commit.
-- [Полная screen map](f0-implementation-blueprint.md#5-screen-map--готовый-документальный-набросок-не-дизайн-макеты); high-fidelity UI/benchmark на реальном телефоне — после разрешения F1. #13 ждёт owner review screen map.
+- [Полная screen map](f0-implementation-blueprint.md#5-screen-map--готовый-документальный-набросок-не-дизайн-макеты); high-fidelity UI/benchmark на реальном телефоне — в разрешённом F1. **F0 screen map одобрен владельцем 2026-11-14;** реальные тесты по #13 ещё впереди.
+
+## Запись об утверждении F0 — 2026-11-14
+Владелец явно **утвердил пакет F0-P01–F0-P12 как архитектурный baseline** и отдельно разрешил начать F1 (bootstrap, CI, PostgreSQL, основа приложения). В рамках этого ADR приняты архитектурное направление, границы и критерии тестирования. **Не подтверждены исполнением**: SQL concurrency, нагрузка, мобильный UX, реальные security tests, ПДн/платежи, закрытые provider APIs и коммерческие продажи. Требования к отсутствию пилота/реальных ПДн до отдельного согласования сохраняются. Изменение baseline через новый ADR/PR, не молчаливым коммитом.
