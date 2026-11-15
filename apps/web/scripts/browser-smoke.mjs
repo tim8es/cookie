@@ -204,13 +204,33 @@ async function checkLabeledControls(cdp, screen) {
 }
 
 async function captureEvidence(cdp, name, stage) {
+  const geometry = await evaluate(cdp, `({
+    innerWidth: innerWidth,
+    innerHeight: innerHeight,
+    fullHeight: document.documentElement.scrollHeight,
+  })`);
+  // Explicit clip prevents Chromium from expanding a mobile screenshot to
+  // include horizontally scrollable child navigation beyond the viewport.
+  const captureHeight = stage === "05-detail"
+    ? geometry.innerHeight
+    : Math.max(geometry.innerHeight, geometry.fullHeight);
   const screenshot = await cdp.send("Page.captureScreenshot", {
     format: "png",
-    captureBeyondViewport: stage !== "detail",
+    captureBeyondViewport: true,
     fromSurface: true,
+    clip: {
+      x: 0,
+      y: 0,
+      width: geometry.innerWidth,
+      height: captureHeight,
+      scale: 1,
+    },
   });
   const buffer = Buffer.from(screenshot.data, "base64");
   assert.ok(buffer.length > 1500, name + "/" + stage + ": screenshot is empty");
+  // PNG IHDR width/height; reject visually misleading "mobile" captures.
+  assert.equal(buffer.readUInt32BE(16), geometry.innerWidth, name + "/" + stage + ": wrong screenshot width");
+  assert.equal(buffer.readUInt32BE(20), captureHeight, name + "/" + stage + ": wrong screenshot height");
   writeFileSync(join(evidenceDir, name + "-" + stage + ".png"), buffer);
 }
 
@@ -237,6 +257,9 @@ async function scenario(cdp, origin, width, height) {
   });
   await cdp.send("Page.navigate", { url: origin + "?browser-smoke=" + name });
   await requireDom(cdp, name + " onboarding", "document.querySelector('.welcome-form')");
+  const dimensions = await evaluate(cdp, "({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio })");
+  assert.equal(dimensions.width, width, name + ": Chromium mobile emulation used wrong CSS viewport");
+  assert.equal(dimensions.height, height, name + ": Chromium emulation used wrong viewport height");
   await checkWidth(cdp, name + " welcome");
   await checkLabeledControls(cdp, name + " welcome");
   await captureEvidence(cdp, name, "01-onboarding");
