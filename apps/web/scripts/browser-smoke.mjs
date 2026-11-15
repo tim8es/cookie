@@ -162,6 +162,15 @@ async function click(cdp, selector) {
   assert.equal(clicked, true, "Button missing: " + selector);
 }
 
+async function submitValidForm(cdp, formSelector) {
+  const invalid = await evaluate(cdp, "(() => {const form = document.querySelector(" +
+    JSON.stringify(formSelector) + "); if (!form) return ['form missing']; return " +
+    "Array.from(form.elements).filter((item) => item.willValidate && !item.checkValidity())" +
+    ".map((item) => ({name:item.getAttribute('name'), value:item.value, error:item.validationMessage}));})()");
+  assert.deepEqual(invalid, [], "Invalid native form state: " + formSelector);
+  await click(cdp, formSelector + " button[type=submit]");
+}
+
 async function fill(cdp, selector, value, eventName = "input") {
   const changed = await evaluate(cdp, "(() => {const item = document.querySelector(" +
     JSON.stringify(selector) + "); if (!item) return false; item.value = " +
@@ -196,21 +205,21 @@ async function scenario(cdp, origin, width, height) {
   await checkWidth(cdp, name + " welcome");
 
   await fill(cdp, ".welcome-form input", "Студия Smoke " + name);
-  await click(cdp, ".welcome-form button[type=submit]");
+  await submitValidForm(cdp, ".welcome-form");
   await requireDom(cdp, name + " services", "document.querySelector('.section-head h1')?.textContent === 'Услуги и цены'");
   await checkWidth(cdp, name + " services");
 
-  await click(cdp, ".workspace-grid form button[type=submit]");
+  await submitValidForm(cdp, ".workspace-grid form");
   await requireDom(cdp, name + " staff", "document.querySelector('.section-head h1')?.textContent === 'Мастера'");
-  await click(cdp, ".workspace-grid form button[type=submit]");
+  await submitValidForm(cdp, ".workspace-grid form");
   await requireDom(cdp, name + " schedule", "document.querySelector('.section-head h1')?.textContent === 'Расписание'");
-  await click(cdp, ".workspace-grid form button[type=submit]");
+  await submitValidForm(cdp, ".workspace-grid form");
 
   await requireDom(cdp, name + " synthetic slots", "document.querySelector('.booking-form .slot-grid button')");
   await checkWidth(cdp, name + " booking");
   await click(cdp, ".booking-form .slot-grid button");
   await requireDom(cdp, name + " selected slot", "document.querySelector('.booking-form .slot-grid button[aria-pressed=true]')");
-  await click(cdp, ".booking-form button[type=submit]");
+  await submitValidForm(cdp, ".booking-form");
   await requireDom(cdp, name + " synthetic success", "document.querySelector('.success-screen')?.textContent.includes('не подтверждена backend')");
 
   await click(cdp, ".success-screen .btn-primary");

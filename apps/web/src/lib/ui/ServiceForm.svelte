@@ -31,7 +31,7 @@
         value={serviceDuration}
         oninput={(event) => onDurationChange(event.currentTarget.valueAsNumber)}
         min="1"
-        step="5"
+        step="1"
         required
       />
     </label>
