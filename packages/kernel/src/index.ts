@@ -88,7 +88,8 @@ function fail(code: string, message: string): never {
 
 function versionOf(input: string): Version {
   const match = VERSION_PATTERN.exec(input);
-  if (!match) return fail("INVALID_MANIFEST", "Invalid semantic version: " + input);
+  if (!match)
+    return fail("INVALID_MANIFEST", "Invalid semantic version: " + input);
   return {
     major: Number(match[1]),
     minor: Number(match[2]),
@@ -104,7 +105,8 @@ function isAtLeast(actual: Version, requested: Version): boolean {
 
 function supports(actualVersion: string, range: string): boolean {
   if (range === "*") return true;
-  const operator = range.startsWith("^") || range.startsWith("~") ? range[0] : "";
+  const operator =
+    range.startsWith("^") || range.startsWith("~") ? range[0] : "";
   const requestedText = operator ? range.slice(1) : range;
   const actual = versionOf(actualVersion);
   const requested = versionOf(requestedText);
@@ -114,7 +116,11 @@ function supports(actualVersion: string, range: string): boolean {
     if (requested.minor > 0) {
       return actual.major === 0 && actual.minor === requested.minor;
     }
-    return actual.major === 0 && actual.minor === 0 && actual.patch === requested.patch;
+    return (
+      actual.major === 0 &&
+      actual.minor === 0 &&
+      actual.patch === requested.patch
+    );
   }
   if (operator === "~") {
     return actual.major === requested.major && actual.minor === requested.minor;
@@ -128,19 +134,29 @@ function supports(actualVersion: string, range: string): boolean {
 
 function validate(module: CookieModule): void {
   const { id, version, provides = [], requires = [] } = module.manifest;
-  if (!ID_PATTERN.test(id)) fail("INVALID_MANIFEST", "Invalid module ID: " + id);
+  if (!ID_PATTERN.test(id))
+    fail("INVALID_MANIFEST", "Invalid module ID: " + id);
   versionOf(version);
   const seenProvided = new Set<string>();
   const seenRequired = new Set<string>();
   for (const capability of provides) {
-    if (!CAPABILITY_PATTERN.test(capability.name) || seenProvided.has(capability.name)) {
-      fail("INVALID_MANIFEST", "Invalid or duplicate provided capability in " + id);
+    if (
+      !CAPABILITY_PATTERN.test(capability.name) ||
+      seenProvided.has(capability.name)
+    ) {
+      fail(
+        "INVALID_MANIFEST",
+        "Invalid or duplicate provided capability in " + id,
+      );
     }
     versionOf(capability.version);
     seenProvided.add(capability.name);
   }
   for (const capability of requires) {
-    if (!CAPABILITY_PATTERN.test(capability.name) || seenRequired.has(capability.name)) {
+    if (
+      !CAPABILITY_PATTERN.test(capability.name) ||
+      seenRequired.has(capability.name)
+    ) {
       fail("INVALID_MANIFEST", "Invalid or duplicate requirement in " + id);
     }
     if (capability.range !== "*") {
@@ -178,7 +194,10 @@ export function createKernel(
     entry.status = "disabled";
   }
 
-  const providers = new Map<string, { readonly id: string; readonly version: string }>();
+  const providers = new Map<
+    string,
+    { readonly id: string; readonly version: string }
+  >();
   for (const [id, entry] of entries) {
     if (entry.status === "disabled") continue;
     for (const capability of entry.module.manifest.provides ?? []) {
@@ -199,7 +218,10 @@ export function createKernel(
         fail("MISSING_PROVIDER", id + " requires " + requirement.name);
       }
       if (!supports(provider.version, requirement.range)) {
-        fail("INCOMPATIBLE_CAPABILITY", id + " requires " + requirement.name + " " + requirement.range);
+        fail(
+          "INCOMPATIBLE_CAPABILITY",
+          id + " requires " + requirement.name + " " + requirement.range,
+        );
       }
       dependenciesForModule.push(provider.id);
     }
@@ -257,34 +279,61 @@ export function createKernel(
           try {
             module.register({
               provide(name, implementation) {
-                if (!(module.manifest.provides ?? []).some((item) => item.name === name)) {
+                if (
+                  !(module.manifest.provides ?? []).some(
+                    (item) => item.name === name,
+                  )
+                ) {
                   fail("UNDECLARED_PROVIDER", id + " attempted " + name);
                 }
-                if (implementation === undefined || implementation === null || capabilities.has(name)) {
-                  fail("INVALID_PROVIDER", "Invalid capability implementation: " + name);
+                if (
+                  implementation === undefined ||
+                  implementation === null ||
+                  capabilities.has(name)
+                ) {
+                  fail(
+                    "INVALID_PROVIDER",
+                    "Invalid capability implementation: " + name,
+                  );
                 }
                 capabilities.set(name, implementation);
               },
             });
             for (const provided of module.manifest.provides ?? []) {
               if (!capabilities.has(provided.name)) {
-                fail("MISSING_IMPLEMENTATION", id + " did not provide " + provided.name);
+                fail(
+                  "MISSING_IMPLEMENTATION",
+                  id + " did not provide " + provided.name,
+                );
               }
             }
 
             // Providers must already be running; a failed optional provider is unavailable.
             for (const dependency of dependencies.get(id) ?? []) {
               if (entries.get(dependency)?.status !== "running") {
-                fail("UNAVAILABLE_PROVIDER", id + " depends on unavailable module " + dependency);
+                fail(
+                  "UNAVAILABLE_PROVIDER",
+                  id + " depends on unavailable module " + dependency,
+                );
               }
             }
             await module.start?.({
               resolve<T>(name: string): T {
-                if (!(module.manifest.requires ?? []).some((item) => item.name === name)) {
-                  return fail("UNDECLARED_REQUIREMENT", id + " cannot resolve " + name);
+                if (
+                  !(module.manifest.requires ?? []).some(
+                    (item) => item.name === name,
+                  )
+                ) {
+                  return fail(
+                    "UNDECLARED_REQUIREMENT",
+                    id + " cannot resolve " + name,
+                  );
                 }
                 const provider = providers.get(name);
-                if (!provider || entries.get(provider.id)?.status !== "running") {
+                if (
+                  !provider ||
+                  entries.get(provider.id)?.status !== "running"
+                ) {
                   return fail("UNAVAILABLE_PROVIDER", name + " is not running");
                 }
                 return capabilities.get(name) as T;
