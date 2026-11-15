@@ -158,7 +158,7 @@ async function requireDom(cdp, name, expression) {
 
 async function click(cdp, selector) {
   const clicked = await evaluate(cdp, "(() => {const item = document.querySelector(" +
-    JSON.stringify(selector) + "); if (!item) return false; item.click(); return true;})()");
+    JSON.stringify(selector) + "); if (!item) return false; item.focus(); item.click(); return true;})()");
   assert.equal(clicked, true, "Button missing: " + selector);
 }
 
