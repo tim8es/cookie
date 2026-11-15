@@ -500,13 +500,7 @@ export async function reviewDisableShiftInternal(
              decision_key_sha256=$4,applied_receipt=$5::jsonb,
              decided_at=clock_timestamp()
         WHERE tenant_id=$1::uuid AND id=$2::uuid AND status='pending'`,
-      [
-        tenantId,
-        request.id,
-        reviewer,
-        decisionHash,
-        JSON.stringify(disabled),
-      ],
+      [tenantId, request.id, reviewer, decisionHash, JSON.stringify(disabled)],
     );
     await enqueueOutbox(client, {
       tenantId,
@@ -515,7 +509,11 @@ export async function reviewDisableShiftInternal(
       payload: { requestId: request.id, shiftId: request.shift_id },
     });
     await client.query("COMMIT");
-    return { requestId: request.id, status: "applied", disabledShift: disabled };
+    return {
+      requestId: request.id,
+      status: "applied",
+      disabledShift: disabled,
+    };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;
