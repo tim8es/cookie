@@ -38,7 +38,7 @@ interface InternalMutationBase {
 }
 
 /** Internal business-operator cancellation. Client self-service is NOT enabled. */
-export interface InternalCancelBooking extends InternalMutationBase {}
+export type InternalCancelBooking = InternalMutationBase;
 
 /** Time-only reschedule: no change of service, master, branch, or price. */
 export interface InternalRescheduleBooking extends InternalMutationBase {
