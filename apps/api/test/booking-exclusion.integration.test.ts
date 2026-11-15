@@ -20,7 +20,10 @@ interface BookingInput {
   readonly priceKopecks?: number;
 }
 
-async function insertConfirmed(client: Pool | PoolClient, b: BookingInput): Promise<void> {
+async function insertConfirmed(
+  client: Pool | PoolClient,
+  b: BookingInput,
+): Promise<void> {
   await client.query(
     `INSERT INTO cookie_booking.bookings
        (tenant_id,id,customer_id,staff_id,location_id,service_id,status,
@@ -29,8 +32,16 @@ async function insertConfirmed(client: Pool | PoolClient, b: BookingInput): Prom
         price_kopecks_snapshot)
      VALUES ($1,$2,$3,$4,$5,$6,'Confirmed',$7,$8,$9,60,10,$10)`,
     [
-      b.tenantId, b.id, b.customerId, b.staffId, b.locationId, b.serviceId,
-      b.startAt, b.endAt, b.occupiedUntil, b.priceKopecks ?? 150000,
+      b.tenantId,
+      b.id,
+      b.customerId,
+      b.staffId,
+      b.locationId,
+      b.serviceId,
+      b.startAt,
+      b.endAt,
+      b.occupiedUntil,
+      b.priceKopecks ?? 150000,
     ],
   );
 }
@@ -72,7 +83,9 @@ test(
 
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
-      await pool.query("INSERT INTO cookie_identity.identities (id) VALUES ($1)", [owner]);
+      await pool.query("INSERT INTO cookie_identity.identities (id) VALUES ($1)", [
+        owner,
+      ]);
       await pool.query(
         `INSERT INTO cookie_tenancy.organizations (id,owner_identity_id,display_name)
          VALUES ($1,$3,'Synthetic booking A'),($2,$3,'Synthetic booking B')`,
@@ -251,13 +264,19 @@ test(
         "cookie_catalog.services",
         "cookie_tenancy.locations",
       ]) {
-        await pool.query(`DELETE FROM ${table} WHERE tenant_id = ANY($1::uuid[])`, [
-          [tenantA, tenantB],
-        ]).catch(() => undefined);
+        await pool
+          .query(`DELETE FROM ${table} WHERE tenant_id = ANY($1::uuid[])`, [
+            [tenantA, tenantB],
+          ])
+          .catch(() => undefined);
       }
-      await pool.query("DELETE FROM cookie_tenancy.organizations WHERE id=ANY($1::uuid[])", [[tenantA,tenantB]])
+      await pool
+        .query("DELETE FROM cookie_tenancy.organizations WHERE id=ANY($1::uuid[])", [
+          [tenantA, tenantB],
+        ])
         .catch(() => undefined);
-      await pool.query("DELETE FROM cookie_identity.identities WHERE id=$1", [owner])
+      await pool
+        .query("DELETE FROM cookie_identity.identities WHERE id=$1", [owner])
         .catch(() => undefined);
       await pool.end();
     }
