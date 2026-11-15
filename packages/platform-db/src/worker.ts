@@ -152,7 +152,9 @@ export async function superviseOutboxWorker(
         consecutivePollErrors,
       });
       if (consecutivePollErrors >= maxErrors) {
-        throw new Error("Outbox supervisor halted after repeated polling errors");
+        throw new Error(
+          "Outbox supervisor halted after repeated polling errors",
+        );
       }
     }
 
