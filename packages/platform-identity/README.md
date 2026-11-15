@@ -24,3 +24,14 @@ This package is an incremental part of [Issue #18](https://github.com/tim8es/coo
 
 ## Validation
 `pnpm test` includes negative scope, customer-field, owner, cross-tenant and audit tests. `pnpm build` includes the policy source, and CI checks formatting, TypeScript and current module boundaries.
+
+
+## PostgreSQL-backed F1 slice (Issue #18 / #19, 2026-11-15)
+- `db/migrations/0002_identity_tenancy.sql` introduces versioned schemas `cookie_identity` and `cookie_tenancy` with synthetic-only identity IDs, Organizations, Locations, Memberships, Roles, location-scoped RoleAssignments and compact authorization preflight audit. **No email, phone, login credential, payment data or message content is stored.**
+- Composite tenant foreign keys on Membership, RoleAssignment, Role and Location protect against cross-tenant references. One branch-scoped assignment represents a single branch; assigning a role to multiple locations requires multiple assignments. No cross-tenant role import is allowed.
+- `loadPolicySnapshot(client, trustedActor)` reads the membership and role assignment set with **one SQL statement**, so it cannot combine roles from different versions of those tables within that statement. The caller must authenticate `trustedActor` independently, open the database client and define the transaction boundary.
+- `requireTenantPermission` links the existing default-deny evaluator with a PostgreSQL audit port. It emits only actor/tenant/correlation UUID, permission and decision; not contacts, tokens or booking payload. Audit failure blocks sensitive preflight. A preflight log is **not** a committed mutation audit.
+- The schema intentionally does not yet model real StaffProfile/booking/customer links. Staff resource access remains denied by this DB-backed path until database-verified links are implemented.
+- Negative integration tests use a temporary PostgreSQL transaction and **only synthetic UUIDs**. They test branch-specific roles, cross-tenant composite foreign keys, a delegated Owner attempt, persisted allow/deny decisions and membership revocation.
+
+**Remaining work / security boundary:** no HTTP authentication, no OTP or Telegram verification, no access-token issuance, no API business endpoint or real customer data is introduced. No production RLS/DB least privilege policy or secure mutating command transaction is claimed. A one-statement policy read may become stale before a later mutation; the actual command must enforce its own transaction-scoped authorization and revocation/concurrency contract. The real audit/retention/legal/backup gate and outbox remain open in #18/#19.
