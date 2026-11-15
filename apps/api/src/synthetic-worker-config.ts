@@ -14,9 +14,12 @@ export function parseSyntheticWorkerConfig(
   if (
     env.COOKIE_SYNTHETIC_WORKER !== "enabled" ||
     (env.DATABASE_URL !== ci && env.DATABASE_URL !== dev) ||
-    (env.CI === "true" && (env.DATABASE_URL !== ci || env.TEST_DATABASE_URL !== ci))
+    (env.CI === "true" &&
+      (env.DATABASE_URL !== ci || env.TEST_DATABASE_URL !== ci))
   ) {
-    throw new Error("Synthetic worker may only run on an explicit local/CI test database");
+    throw new Error(
+      "Synthetic worker may only run on an explicit local/CI test database",
+    );
   }
   return { databaseUrl: env.DATABASE_URL };
 }
