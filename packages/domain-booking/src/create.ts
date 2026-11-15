@@ -11,7 +11,8 @@ import { enqueueOutbox } from "../../platform-db/src/outbox.js";
 import { requireTenantPermission } from "../../platform-identity/src/postgres.js";
 import type { TrustedActor } from "../../platform-identity/src/authorization.js";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UTC_MINUTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/;
 
 export type CreateBookingFailureCode =
@@ -229,7 +230,9 @@ async function checkSlot(
       stepMinutes: 1,
       shifts: toIntervals(shiftResult.rows),
       breaks: toIntervals(blocked.filter((row) => row.kind === "break")),
-      exceptions: toIntervals(blocked.filter((row) => row.kind === "exception")),
+      exceptions: toIntervals(
+        blocked.filter((row) => row.kind === "exception"),
+      ),
       occupied,
     },
     startAt,
@@ -350,9 +353,17 @@ export async function createBookingInternal(
           post_service_buffer_minutes_snapshot,price_kopecks_snapshot)
        VALUES ($1,$2,$3,$4,$5,$6,'Confirmed',$7,$8,$9,$10,$11,$12)`,
       [
-        tenantId, bookingId, input.customerId, input.staffId, input.locationId,
-        input.serviceId, startAt, result.endAt, result.occupiedUntil,
-        service.duration_minutes, service.post_service_buffer_minutes,
+        tenantId,
+        bookingId,
+        input.customerId,
+        input.staffId,
+        input.locationId,
+        input.serviceId,
+        startAt,
+        result.endAt,
+        result.occupiedUntil,
+        service.duration_minutes,
+        service.post_service_buffer_minutes,
         result.priceKopecks,
       ],
     );
@@ -360,14 +371,25 @@ export async function createBookingInternal(
       tenantId,
       dedupeKey: `booking.created:${bookingId}`,
       topic: "booking.confirmed",
-      payload: { bookingId, locationId: input.locationId, staffId: input.staffId },
+      payload: {
+        bookingId,
+        locationId: input.locationId,
+        staffId: input.staffId,
+      },
     });
     await client.query(
       `INSERT INTO cookie_booking.command_receipts
          (tenant_id,actor_identity_id,operation,key_sha256,request_sha256,
           booking_id,result)
        VALUES ($1,$2,'booking.create',$3,$4,$5,$6::jsonb)`,
-      [tenantId, actorId, keyHash, requestHash, bookingId, JSON.stringify(result)],
+      [
+        tenantId,
+        actorId,
+        keyHash,
+        requestHash,
+        bookingId,
+        JSON.stringify(result),
+      ],
     );
     await client.query("COMMIT");
     started = false;
