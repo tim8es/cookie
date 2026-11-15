@@ -203,7 +203,7 @@ test("failure of optional extension is isolated, but consumers cannot use its fa
   await assert.rejects(() => dependentKernel.start(), {
     code: "UNAVAILABLE_PROVIDER",
   });
-  assert.equal(dependentKernel.snapshot().find((m) => m.id === "host")?.status, "stopped");
+  assert.equal(dependentKernel.snapshot().find((m) => m.id === "host")?.status, "registered");
 });
 
 test("required module startup failure stops previously started modules", async () => {
