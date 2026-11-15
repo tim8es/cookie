@@ -141,7 +141,7 @@
         <Input
           value={clientAlias}
           oninput={(event) => onAliasChange(event.currentTarget.value)}
-          maxlength="80"
+          maxlength={80}
           required
           placeholder="Тестовый клиент"
         />
