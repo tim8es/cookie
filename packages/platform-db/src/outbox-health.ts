@@ -1,9 +1,6 @@
 import type { Pool } from "pg";
 
-import {
-  readOutboxQueueMetrics,
-  type OutboxQueueMetrics,
-} from "./worker.js";
+import { readOutboxQueueMetrics, type OutboxQueueMetrics } from "./worker.js";
 
 /**
  * Explicit operator-owned alert thresholds; no hard-coded product SLA.
@@ -77,9 +74,7 @@ function validatePair(
 }
 
 /** Caller must supply an explicit, reviewed policy. No hidden alert SLA. */
-export function validateOutboxHealthPolicy(
-  policy: OutboxHealthPolicy,
-): void {
+export function validateOutboxHealthPolicy(policy: OutboxHealthPolicy): void {
   if (!policy) throw new Error("Outbox health policy required");
   validatePair(policy.due, "due");
   validatePair(policy.oldestDueSeconds, "oldestDueSeconds");
@@ -130,11 +125,7 @@ export function evaluateOutboxHealth(
   validateMetrics(metrics);
 
   const findings: OutboxHealthFinding[] = [];
-  const checks: readonly [
-    OutboxHealthCode,
-    number,
-    OutboxAlertLimits,
-  ][] = [
+  const checks: readonly [OutboxHealthCode, number, OutboxAlertLimits][] = [
     ["DUE_BACKLOG", metrics.due, policy.due],
     ["OLDEST_DUE", metrics.oldestDueSeconds, policy.oldestDueSeconds],
     ["EXPIRED_LEASES", metrics.expiredLeases, policy.expiredLeases],
