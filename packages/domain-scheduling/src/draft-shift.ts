@@ -419,6 +419,8 @@ export async function editShiftDraftInternal(
   pool: Pool,
   input: InternalEditShiftDraft,
   assertMayChange: AssertMayChangeDraft,
+  /** Trusted composition: caller owns BEGIN/COMMIT/ROLLBACK and release. */
+  transactionClient?: PoolClient,
 ): Promise<ShiftDraftReceipt> {
   validateBase(input);
   if (
@@ -435,10 +437,11 @@ export async function editShiftDraftInternal(
   const requestHash = digest(
     JSON.stringify([input.shiftId, input.expectedRevision, startAt, endAt]),
   );
-  const client = await pool.connect();
+  const client = transactionClient ?? (await pool.connect());
+  const ownsTransaction = transactionClient === undefined;
   let active = false;
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
     active = true;
 
     // Immutable staff/location are resolved before the staff lock.
@@ -483,7 +486,7 @@ export async function editShiftDraftInternal(
       requestHash,
     );
     if (previous) {
-      await client.query("COMMIT");
+      if (ownsTransaction) await client.query("COMMIT");
       active = false;
       return previous;
     }
@@ -569,13 +572,15 @@ export async function editShiftDraftInternal(
       oldEndAt,
       oldRevision: shift.draft_revision,
     });
-    await client.query("COMMIT");
+    if (ownsTransaction) await client.query("COMMIT");
     active = false;
     return receipt;
   } catch (error) {
-    if (active) await client.query("ROLLBACK").catch(() => undefined);
+    if (active && ownsTransaction) {
+      await client.query("ROLLBACK").catch(() => undefined);
+    }
     throw error;
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
