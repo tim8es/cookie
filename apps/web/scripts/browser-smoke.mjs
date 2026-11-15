@@ -235,7 +235,9 @@ async function main() {
     preview = spawn(process.execPath, [
       previewBin, "preview", "--host", "127.0.0.1",
       "--port", String(previewPort), "--strictPort",
-    ], { cwd: rootDir, stdio: ["ignore", "pipe", "pipe"] });
+    ], { cwd: rootDir, stdio: ["pipe", "pipe", "pipe"] });
+    // Vite's interactive CLI may shut down on stdin EOF. Keep the pipe open.
+    // Closing it here makes startup look successful but leaves no HTTP server.
     preview.stdout.on("data", (chunk) => previewLogs.push(String(chunk).slice(0, 1500)));
     preview.stderr.on("data", (chunk) => previewLogs.push(String(chunk).slice(0, 1500)));
     const origin = "http://127.0.0.1:" + previewPort + "/";
@@ -272,6 +274,11 @@ async function main() {
         console.error("BROWSER DIAGNOSTICS", JSON.stringify(diagnostics));
       } catch { /* Best effort after browser crash/navigation. */ }
     }
+    console.error("PREVIEW PROCESS", JSON.stringify({
+      pid: preview?.pid,
+      exitCode: preview?.exitCode,
+      signalCode: preview?.signalCode,
+    }));
     console.error("PREVIEW LOGS", previewLogs.join("").slice(-2200));
     console.error("CHROME LOGS", chromeLogs.join("").slice(-2200));
     throw error;
