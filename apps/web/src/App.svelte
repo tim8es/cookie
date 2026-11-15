@@ -7,6 +7,7 @@
   import type { Screen } from "./lib/navigation";
   import Sidebar from "./lib/ui/Sidebar.svelte";
   import Topbar from "./lib/ui/Topbar.svelte";
+  import PublicHeader from "./lib/ui/PublicHeader.svelte";
   import CalendarView from "./lib/ui/CalendarView.svelte";
   import BookingForm from "./lib/ui/BookingForm.svelte";
   import ServiceForm from "./lib/ui/ServiceForm.svelte";
@@ -104,6 +105,7 @@
   }
   function goto(next: Screen): void {
     screen = next;
+    if (next === "booking") notice = "";
     error = "";
     createdBooking = null;
     if (next === "booking") {
@@ -204,17 +206,23 @@
 </script>
 
 <svelte:head>
-  <title>Cookie — кабинет салона · демо</title>
+  <title>{screen === "booking" ? "Cookie — онлайн-запись · демо" : "Cookie — кабинет салона · демо"}</title>
   <meta name="description" content="Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными." />
 </svelte:head>
 
-<div class="app-shell">
-  <Sidebar {screen} {stepCount} onNavigate={goto} />
+<div class="app-shell" class:public-shell={screen === "booking"}>
+  {#if screen !== "booking"}
+    <Sidebar {screen} {stepCount} onNavigate={goto} />
+  {/if}
 
   <div class="main-area">
-    <Topbar {screen} bind:preview canCreateBooking={!!org} onNavigate={goto} />
+    {#if screen === "booking"}
+      <PublicHeader onBack={() => goto("home")} />
+    {:else}
+      <Topbar {screen} bind:preview canCreateBooking={!!org} onNavigate={goto} />
+    {/if}
 
-    <main class="content">
+    <main class="content" class:public-content={screen === "booking"}>
       {#if error}<div class="alert alert-error" role="alert"><span aria-hidden="true">!</span><div><strong>Операция не выполнена</strong><p>{error}</p></div><button class="alert-close" type="button" onclick={() => error = ""} aria-label="Закрыть ошибку">×</button></div>{/if}
       {#if notice}<div class="alert alert-ok" role="status"><span aria-hidden="true">✓</span><p>{notice}</p><button class="alert-close" type="button" onclick={() => notice = ""} aria-label="Закрыть сообщение">×</button></div>{/if}
       {#if initializing || busy}
@@ -370,7 +378,7 @@
         {/if}
       {/if}
 
-      {#if !initializing}<footer class="footer"><span>Cookie / frontend preview · F1 · никакие записи не отправляются на сервер</span><button type="button" onclick={() => void resetDemo()} disabled={busy}>Сбросить демо-данные</button></footer>{/if}
+      {#if !initializing}<footer class="footer"><span>Cookie · frontend preview · запись не отправляется на сервер</span>{#if screen !== "booking"}<button type="button" onclick={() => void resetDemo()} disabled={busy}>Сбросить демо-данные</button>{/if}</footer>{/if}
     </main>
   </div>
 </div>
