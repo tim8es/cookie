@@ -10,9 +10,7 @@ import {
   createBookingInternal,
   type InternalCreateBooking,
 } from "../../../packages/domain-booking/src/create.js";
-import {
-  rescheduleBookingInternal,
-} from "../../../packages/domain-booking/src/reschedule.js";
+import { rescheduleBookingInternal } from "../../../packages/domain-booking/src/reschedule.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 
 test(
