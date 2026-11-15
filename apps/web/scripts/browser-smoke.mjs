@@ -2,7 +2,7 @@
 // Serve the compiled Vite bundle using local Node HTTP; connect to loopback Chrome DevTools.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { createReadStream, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer as createHttpServer, get as httpGet } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -12,6 +12,7 @@ import { setTimeout as pause } from "node:timers/promises";
 
 const webDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const distDir = join(webDir, "dist");
+const evidenceDir = join(webDir, "artifacts", "visual-smoke");
 const browserCandidates = [
   process.env.COOKIE_BROWSER_BINARY,
   "google-chrome",
@@ -109,6 +110,7 @@ async function waitForHttp(url) {
 function createClient(webSocketUrl) {
   const socket = new WebSocket(webSocketUrl);
   const pending = new Map();
+  const listeners = new Map();
   let nextId = 0;
   const ready = new Promise((resolveReady, rejectReady) => {
     socket.addEventListener("open", resolveReady, { once: true });
@@ -116,7 +118,11 @@ function createClient(webSocketUrl) {
   });
   socket.addEventListener("message", (event) => {
     const packet = JSON.parse(event.data);
-    if (!packet.id || !pending.has(packet.id)) return;
+    if (!packet.id) {
+      for (const fn of listeners.get(packet.method) ?? []) fn(packet.params);
+      return;
+    }
+    if (!pending.has(packet.id)) return;
     const entry = pending.get(packet.id);
     pending.delete(packet.id);
     if (packet.error) entry.reject(new Error(packet.error.message));
@@ -128,6 +134,11 @@ function createClient(webSocketUrl) {
   });
   return {
     ready,
+    onEvent(method, listener) {
+      const list = listeners.get(method) ?? [];
+      list.push(listener);
+      listeners.set(method, list);
+    },
     send(method, params = {}) {
       const id = ++nextId;
       return new Promise((resolveSend, rejectSend) => {
@@ -179,6 +190,30 @@ async function fill(cdp, selector, value, eventName = "input") {
   assert.equal(changed, true, "Input missing: " + selector);
 }
 
+async function checkLabeledControls(cdp, screen) {
+  const unlabeled = await evaluate(cdp, `(() => {
+    const controls = [...document.querySelectorAll("button, input, select, textarea")];
+    return controls.filter((item) => {
+      if (!item.getClientRects().length || item.disabled || item.type === "hidden") return false;
+      if (item.getAttribute("aria-label")?.trim() || item.getAttribute("aria-labelledby")) return false;
+      if (item.tagName === "BUTTON") return !item.textContent?.trim();
+      return !item.labels?.length;
+    }).map((item) => item.outerHTML.slice(0, 200));
+  })()`);
+  assert.deepEqual(unlabeled, [], screen + ": interactive controls need accessible names");
+}
+
+async function captureEvidence(cdp, name, stage) {
+  const screenshot = await cdp.send("Page.captureScreenshot", {
+    format: "png",
+    captureBeyondViewport: stage !== "detail",
+    fromSurface: true,
+  });
+  const buffer = Buffer.from(screenshot.data, "base64");
+  assert.ok(buffer.length > 1500, name + "/" + stage + ": screenshot is empty");
+  writeFileSync(join(evidenceDir, name + "-" + stage + ".png"), buffer);
+}
+
 async function checkWidth(cdp, screen) {
   const metrics = await evaluate(cdp, "({width:innerWidth, doc:document.documentElement.scrollWidth, body:document.body.scrollWidth})");
   assert.ok(
@@ -187,9 +222,9 @@ async function checkWidth(cdp, screen) {
   );
 }
 
-async function keyboard(cdp, key, virtualCode) {
+async function keyboard(cdp, key, virtualCode, modifiers = 0) {
   const params = {
-    key, code: key, windowsVirtualKeyCode: virtualCode, nativeVirtualKeyCode: virtualCode,
+    key, code: key, windowsVirtualKeyCode: virtualCode, nativeVirtualKeyCode: virtualCode, modifiers,
   };
   await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", ...params });
   await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", ...params });
@@ -203,6 +238,8 @@ async function scenario(cdp, origin, width, height) {
   await cdp.send("Page.navigate", { url: origin + "?browser-smoke=" + name });
   await requireDom(cdp, name + " onboarding", "document.querySelector('.welcome-form')");
   await checkWidth(cdp, name + " welcome");
+  await checkLabeledControls(cdp, name + " welcome");
+  await captureEvidence(cdp, name, "01-onboarding");
 
   await fill(cdp, ".welcome-form input", "Студия Smoke " + name);
   await submitValidForm(cdp, ".welcome-form");
@@ -217,17 +254,29 @@ async function scenario(cdp, origin, width, height) {
 
   await requireDom(cdp, name + " synthetic slots", "document.querySelector('.booking-form .slot-grid button')");
   await checkWidth(cdp, name + " booking");
+  await checkLabeledControls(cdp, name + " booking");
+  await captureEvidence(cdp, name, "02-booking");
   await click(cdp, ".booking-form .slot-grid button");
   await requireDom(cdp, name + " selected slot", "document.querySelector('.booking-form .slot-grid button[aria-pressed=true]')");
   await submitValidForm(cdp, ".booking-form");
   await requireDom(cdp, name + " synthetic success", "document.querySelector('.success-screen')?.textContent.includes('не подтверждена backend')");
+  await captureEvidence(cdp, name, "03-confirmation");
 
   await click(cdp, ".success-screen .btn-primary");
   await requireDom(cdp, name + " calendar event", "document.querySelector('.calendar-event')");
   await checkWidth(cdp, name + " calendar");
+  await checkLabeledControls(cdp, name + " calendar");
+  await captureEvidence(cdp, name, "04-calendar-week");
   await click(cdp, ".calendar-event");
   await requireDom(cdp, name + " calendar detail", "document.querySelector('[role=dialog] .close-button')");
   await requireDom(cdp, name + " dialog initial focus", "document.activeElement?.classList.contains('close-button')");
+  await captureEvidence(cdp, name, "05-detail");
+  await keyboard(cdp, "Tab", 9);
+  await requireDom(cdp, name + " dialog focus second action", "document.activeElement?.classList.contains('btn-wide')");
+  await keyboard(cdp, "Tab", 9);
+  await requireDom(cdp, name + " dialog Tab wrapped", "document.activeElement?.classList.contains('close-button')");
+  await keyboard(cdp, "Tab", 9, 8);
+  await requireDom(cdp, name + " dialog Shift+Tab wrapped", "document.activeElement?.classList.contains('btn-wide')");
   await keyboard(cdp, "Escape", 27);
   await poll(name + " Escape closes modal", async () =>
     !(await evaluate(cdp, "Boolean(document.querySelector('[role=dialog]'))")));
@@ -236,6 +285,7 @@ async function scenario(cdp, origin, width, height) {
   await click(cdp, ".segmented button:first-child");
   await requireDom(cdp, name + " calendar day", "document.querySelector('.day-timeline .timeline-entry')");
 
+  await captureEvidence(cdp, name, "06-calendar-day");
   await cdp.send("Page.reload", { ignoreCache: true });
   await requireDom(cdp, name + " restored synthetic booking", "document.querySelectorAll('.stat-card')[2]?.querySelector('strong')?.textContent === '01'");
   await checkWidth(cdp, name + " restored home");
@@ -256,6 +306,8 @@ async function scenario(cdp, origin, width, height) {
 
 async function main() {
   assert.ok(existsSync(join(distDir, "index.html")), "Run pnpm build:web before smoke");
+  rmSync(evidenceDir, { recursive: true, force: true });
+  mkdirSync(evidenceDir, { recursive: true });
   const staticServer = createHttpServer(staticResponse);
   const previewPort = await new Promise((resolvePort, reject) => {
     staticServer.once("error", reject);
@@ -293,10 +345,33 @@ async function main() {
     await cdp.ready;
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
-
+    await cdp.send("Network.enable");
+    const externalUrls = [];
+    let pageRequests = 0;
+    cdp.onEvent("Network.requestWillBeSent", (params) => {
+      const url = params?.request?.url;
+      if (!url) return;
+      if (url.startsWith("http://") || url.startsWith("https://")) {
+        pageRequests++;
+        const hostname = new URL(url).hostname;
+        if (hostname !== "127.0.0.1") externalUrls.push(url);
+      }
+    });
     for (const [width, height] of [[1280, 800], [375, 812], [320, 568]]) {
       await scenario(cdp, origin, width, height);
     }
+    assert.deepEqual(externalUrls, [], "Synthetic frontend made external network requests");
+    assert.ok(pageRequests >= 3, "Expected local JS/CSS/page requests to be observed");
+    writeFileSync(join(evidenceDir, "manifest.json"), JSON.stringify({
+      data: "synthetic sessionStorage only",
+      backend: "not connected",
+      chromium: "headless",
+      viewports: ["1280x800", "375x812", "320x568"],
+      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day"],
+      checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "no external requests"],
+      externalRequests: externalUrls.length,
+    }, null, 2) + "\n");
+    console.log("PASS evidence: 18 PNG screenshots and manifest; external requests =", externalUrls.length);
   } catch (error) {
     if (cdp) {
       try {

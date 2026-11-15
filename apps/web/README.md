@@ -115,6 +115,16 @@ persistence → error/forbidden previews → reset. It fails if the whole docume
 overflows the viewport; the calendar's intentionally scrollable internal week
 grid is allowed.
 
+The CI browser test also captures **18 Chromium screenshots** (six UI milestones
+at each of the three viewports) and a `manifest.json` in
+`apps/web/artifacts/visual-smoke/`. The workflow attaches these to the
+`cookie-frontend-visual-smoke` Actions artifact for **seven days**, even if a
+later stage fails. Screenshots use only synthetic names/data. The test also
+asserts that all visible interactive controls have a label, dialog Tab and
+Shift+Tab wrap correctly, Escape returns focus, and the page makes **no
+external HTTP(S) requests** in mock mode. These are scoped automated checks,
+not a full WCAG audit. Review the actual PNGs before claiming visual QA done.
+
 This is a real Chromium DOM/keyboard test on synthetic browser-local data,
 **not** production backend E2E, cross-browser coverage, touch-device
 verification, pixel-level visual QA, payment testing or authorization testing.

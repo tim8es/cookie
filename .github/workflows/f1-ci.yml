@@ -71,3 +71,11 @@ jobs:
           pnpm --filter @cookie/web build
       - name: Synthetic browser onboarding and booking smoke
         run: node apps/web/scripts/browser-smoke.mjs
+      - name: Attach synthetic visual evidence for review
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cookie-frontend-visual-smoke
+          path: apps/web/artifacts/visual-smoke/
+          if-no-files-found: ignore
+          retention-days: 7
