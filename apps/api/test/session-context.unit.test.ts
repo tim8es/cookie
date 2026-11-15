@@ -118,18 +118,12 @@ test("tenant is selected from the verified session, not a request URL or arbitra
 });
 
 test("successful request uses generated correlation and permission-checked identity", async (t) => {
-  let seen:
-    | {
-        actor: { identityId: string; tenantId: string; correlationId: string };
-        resource: { kind: string; tenantId: string };
-        permission: string;
-      }
-    | undefined;
+  const seen: Array<{ actor: { identityId: string; tenantId: string; correlationId: string }; resource: { kind: string; tenantId: string }; permission: string }> = [];
   const app = createApp(readDatabase, {
     sessionRoutes: dependencies({
       policy: {
         assertPermission: async (actor, resource, permission) => {
-          seen = { actor, resource, permission };
+          seen.push({ actor, resource, permission });
         },
       },
     }),
@@ -148,13 +142,13 @@ test("successful request uses generated correlation and permission-checked ident
   });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.json(), { tenantId: TENANT_A });
-  assert.equal(seen?.actor.identityId, IDENTITY);
-  assert.equal(seen?.actor.tenantId, TENANT_A);
-  assert.equal(seen?.resource.kind, "organization");
-  assert.equal(seen?.resource.tenantId, TENANT_A);
-  assert.equal(seen?.permission, "organization.context.read");
-  assert.match(seen?.actor.correlationId ?? "", /^[0-9a-f-]{36}$/);
-  assert.notEqual(seen?.actor.correlationId, "spoofed");
+  assert.equal(seen[0]?.actor.identityId, IDENTITY);
+  assert.equal(seen[0]?.actor.tenantId, TENANT_A);
+  assert.equal(seen[0]?.resource.kind, "organization");
+  assert.equal(seen[0]?.resource.tenantId, TENANT_A);
+  assert.equal(seen[0]?.permission, "organization.context.read");
+  assert.match(seen[0]?.actor.correlationId ?? "", /^[0-9a-f-]{36}$/);
+  assert.notEqual(seen[0]?.actor.correlationId, "spoofed");
 });
 
 test("policy denial is 403, storage failure is 503 with no sensitive details", async (t) => {
