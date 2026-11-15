@@ -25,10 +25,7 @@ for (const event of ["SIGINT", "SIGTERM"] as const) {
 const syntheticHandler = idempotentProviderHandler({
   supportsIdempotencyKey: true,
   async send(event) {
-    if (
-      event.topic !== "test.synthetic" ||
-      event.payload.synthetic !== true
-    ) {
+    if (event.topic !== "test.synthetic" || event.payload.synthetic !== true) {
       throw new Error("Synthetic worker refuses non-synthetic event");
     }
     // No external side effect. Future real adapters require separate approval.
@@ -57,7 +54,9 @@ try {
     },
   });
 } catch {
-  process.stderr.write("Synthetic outbox worker stopped after an internal failure\n");
+  process.stderr.write(
+    "Synthetic outbox worker stopped after an internal failure\n",
+  );
   process.exitCode = 1;
 } finally {
   await pool.end();
