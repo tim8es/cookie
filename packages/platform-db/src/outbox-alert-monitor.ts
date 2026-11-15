@@ -6,7 +6,9 @@ import type {
 
 /** Pure, restart-local state; future durable alert storage is a separate gate. */
 export interface OutboxAlertState {
-  readonly active: Readonly<Partial<Record<OutboxHealthCode, OutboxHealthSeverity>>>;
+  readonly active: Readonly<
+    Partial<Record<OutboxHealthCode, OutboxHealthSeverity>>
+  >;
 }
 
 export type OutboxAlertChangeKind =
@@ -112,7 +114,9 @@ export function reconcileOutboxAlerts(
     ...previous.active,
   };
   const current = new Map<OutboxHealthCode, OutboxHealthSeverity>(
-    snapshot.findings.map((finding) => [finding.code, finding.severity] as const),
+    snapshot.findings.map(
+      (finding) => [finding.code, finding.severity] as const,
+    ),
   );
   const transitions: OutboxAlertTransition[] = [];
 
@@ -279,7 +283,9 @@ export async function superviseOutboxHealth(
     consecutiveUnavailable =
       sample.status === "unavailable" ? consecutiveUnavailable + 1 : 0;
     if (consecutiveUnavailable >= maxUnavailable) {
-      throw new Error("Outbox health monitor stopped after repeated unavailability");
+      throw new Error(
+        "Outbox health monitor stopped after repeated unavailability",
+      );
     }
     if (!options.signal.aborted) {
       await abortableDelay(intervalMs, options.signal);
