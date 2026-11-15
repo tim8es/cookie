@@ -14,6 +14,7 @@
     "packages/kernel/src/**/*.ts",
     "packages/platform-identity/src/**/*.ts",
     "packages/platform-db/src/**/*.ts",
+    "packages/domain-scheduling/src/**/*.ts",
     "scripts/**/*.ts"
   ],
   "exclude": [
