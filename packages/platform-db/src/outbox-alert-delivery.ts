@@ -1,8 +1,6 @@
 import type { Pool, QueryResultRow } from "pg";
 
-import type {
-  OutboxAlertChangeKind,
-} from "./outbox-alert-monitor.js";
+import type { OutboxAlertChangeKind } from "./outbox-alert-monitor.js";
 import type {
   OutboxHealthCode,
   OutboxHealthSeverity,
@@ -81,10 +79,7 @@ export async function claimOutboxAlertDeliveries(
 ): Promise<readonly OutboxAlertDeliveryLease[]> {
   const batchSize = options.batchSize ?? 10;
   const leaseMs = options.leaseMs ?? 30_000;
-  if (
-    !validInt(batchSize, 1, 100) ||
-    !validInt(leaseMs, 1, 600_000)
-  ) {
+  if (!validInt(batchSize, 1, 100) || !validInt(leaseMs, 1, 600_000)) {
     throw new Error("Invalid Outbox alert claim limits");
   }
 
