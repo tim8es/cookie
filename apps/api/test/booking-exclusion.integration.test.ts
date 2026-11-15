@@ -250,12 +250,13 @@ test(
         "cookie_staff.staff_profiles",
         "cookie_catalog.services",
         "cookie_tenancy.locations",
-        "cookie_tenancy.organizations",
       ]) {
         await pool.query(`DELETE FROM ${table} WHERE tenant_id = ANY($1::uuid[])`, [
           [tenantA, tenantB],
         ]).catch(() => undefined);
       }
+      await pool.query("DELETE FROM cookie_tenancy.organizations WHERE id=ANY($1::uuid[])", [[tenantA,tenantB]])
+        .catch(() => undefined);
       await pool.query("DELETE FROM cookie_identity.identities WHERE id=$1", [owner])
         .catch(() => undefined);
       await pool.end();
