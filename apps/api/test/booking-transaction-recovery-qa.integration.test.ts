@@ -279,7 +279,7 @@ test(
         createEvents: "1",
         cancelEvents: "0",
         cancelAudit: "0",
-        authAudit: "1",
+        authAudit: "2",
       });
 
       const cancelCommand = {
@@ -344,7 +344,7 @@ test(
         createEvents: "1",
         cancelEvents: "1",
         cancelAudit: "1",
-        authAudit: "2",
+        authAudit: "4",
       });
 
       const linked = await pool.query<{ id: string; topic: string }>(
