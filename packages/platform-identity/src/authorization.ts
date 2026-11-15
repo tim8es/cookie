@@ -236,3 +236,22 @@ export async function authorizeSensitive(
   });
   return decision;
 }
+
+/** Enforcement helper for command handlers: cannot mistake a denial for success. */
+export class AuthorizationDeniedError extends Error {
+  readonly code = "ACCESS_DENIED" as const;
+
+  constructor() {
+    super("Access denied");
+    this.name = "AuthorizationDeniedError";
+  }
+}
+
+export async function requireSensitiveAuthorization(
+  request: AuthorizationRequest,
+  snapshot: PolicySnapshot,
+  audit: PolicyAuditPort,
+): Promise<void> {
+  const decision = await authorizeSensitive(request, snapshot, audit);
+  if (!decision.allowed) throw new AuthorizationDeniedError();
+}
