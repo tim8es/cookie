@@ -182,7 +182,7 @@ function range(
  * Organization row with FOR SHARE serializes with owner-only updates, so
  * changing the mode cannot race a draft request or an approval commit.
  */
-async function readModeLocked(
+export async function readModeLocked(
   client: PoolClient,
   tenantId: string,
 ): Promise<SchedulePolicyReceipt> {
@@ -204,7 +204,7 @@ async function readModeLocked(
   };
 }
 
-async function requireOwner(
+export async function requireOwner(
   client: PoolClient,
   actor: TrustedActor,
 ): Promise<void> {
@@ -227,7 +227,7 @@ async function requireOwner(
   );
 }
 
-async function requireScopedManager(
+export async function requireScopedManager(
   client: PoolClient,
   actor: TrustedActor,
   staffId: string,
