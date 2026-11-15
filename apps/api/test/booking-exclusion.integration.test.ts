@@ -83,9 +83,10 @@ test(
 
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
-      await pool.query("INSERT INTO cookie_identity.identities (id) VALUES ($1)", [
-        owner,
-      ]);
+      await pool.query(
+        "INSERT INTO cookie_identity.identities (id) VALUES ($1)",
+        [owner],
+      );
       await pool.query(
         `INSERT INTO cookie_tenancy.organizations (id,owner_identity_id,display_name)
          VALUES ($1,$3,'Synthetic booking A'),($2,$3,'Synthetic booking B')`,
@@ -148,7 +149,7 @@ test(
       await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 30));
       await first.query("COMMIT");
       assert.deepEqual(
-        (await competingOutcome as { code?: string } | null)?.code,
+        ((await competingOutcome) as { code?: string } | null)?.code,
         "23P01",
         "a second location must not take a staff's post-service buffer",
       );
@@ -271,9 +272,10 @@ test(
           .catch(() => undefined);
       }
       await pool
-        .query("DELETE FROM cookie_tenancy.organizations WHERE id=ANY($1::uuid[])", [
-          [tenantA, tenantB],
-        ])
+        .query(
+          "DELETE FROM cookie_tenancy.organizations WHERE id=ANY($1::uuid[])",
+          [[tenantA, tenantB]],
+        )
         .catch(() => undefined);
       await pool
         .query("DELETE FROM cookie_identity.identities WHERE id=$1", [owner])
