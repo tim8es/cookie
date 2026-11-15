@@ -15,7 +15,6 @@ import {
   createShiftDraftInternal,
   editShiftDraftInternal,
 } from "../../../packages/domain-scheduling/src/draft-shift.js";
-import { publishShiftInternal } from "../../../packages/domain-scheduling/src/publish-shift.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 
 test(
