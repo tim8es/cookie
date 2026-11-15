@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { get as httpGet } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -56,10 +57,27 @@ async function poll(description, condition, timeoutMs = 12000) {
   throw new Error("Timeout: " + description + (lastError ? " (" + lastError.message + ")" : ""));
 }
 
+/** Node's direct loopback HTTP client avoids any environment-wide fetch proxy. */
+function getLocal(url) {
+  return new Promise((resolveResponse, rejectResponse) => {
+    const request = httpGet(url, { timeout: 1500 }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => resolveResponse({
+        status: response.statusCode,
+        text: Buffer.concat(chunks).toString("utf8"),
+      }));
+      response.on("error", rejectResponse);
+    });
+    request.on("timeout", () => request.destroy(new Error("Local HTTP timeout")));
+    request.on("error", rejectResponse);
+  });
+}
+
 async function waitForHttp(url) {
   await poll("Vite preview on " + url, async () => {
-    const response = await fetch(url, { signal: AbortSignal.timeout(1500) });
-    return response.ok;
+    const response = await getLocal(url);
+    return response.status === 200;
   }, 18000);
 }
 
@@ -234,10 +252,8 @@ async function main() {
     chrome.stdout.on("data", (chunk) => chromeLogs.push(String(chunk).slice(0, 1500)));
     chrome.stderr.on("data", (chunk) => chromeLogs.push(String(chunk).slice(0, 1500)));
     const target = await poll("Chrome DevTools page target", async () => {
-      const response = await fetch("http://127.0.0.1:" + chromePort + "/json/list", {
-        signal: AbortSignal.timeout(1200),
-      });
-      const pages = await response.json();
+      const response = await getLocal("http://127.0.0.1:" + chromePort + "/json/list");
+      const pages = JSON.parse(response.text);
       return pages.find((page) => page.type === "page" && page.webSocketDebuggerUrl);
     }, 20000);
     cdp = createClient(target.webSocketDebuggerUrl);
