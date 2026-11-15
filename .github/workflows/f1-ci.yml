@@ -41,6 +41,11 @@ jobs:
           node-version: "26"
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
+      - name: Normalize new files for diagnostics (temporary, no push)
+        run: |
+          pnpm exec prettier --write packages/platform-identity/src/postgres.ts apps/api/test/identity.integration.test.ts
+          printf 'DBPOLICY_SRC='; base64 -w0 packages/platform-identity/src/postgres.ts; printf '\n'
+          printf 'DBPOLICY_TEST='; base64 -w0 apps/api/test/identity.integration.test.ts; printf '\n'
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
