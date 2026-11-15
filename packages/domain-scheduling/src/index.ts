@@ -71,7 +71,10 @@ function parseInstant(value: string): number {
     throw new RangeError("Expected ISO 8601 UTC instant with Z suffix");
   }
   const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 19) !== value.slice(0, 19)) {
+  if (
+    !Number.isFinite(timestamp) ||
+    new Date(timestamp).toISOString().slice(0, 19) !== value.slice(0, 19)
+  ) {
     throw new RangeError("Invalid UTC instant");
   }
   return timestamp;
@@ -82,14 +85,18 @@ function parseInterval(startAt: string, endAt: string): NumericInterval {
   const end = parseInstant(endAt);
   if (end <= start) throw new RangeError("Time interval must be non-empty");
   if (end - start > 48 * 60 * MINUTE) {
-    throw new RangeError("Time interval exceeds the supported 48-hour F1 window");
+    throw new RangeError(
+      "Time interval exceeds the supported 48-hour F1 window",
+    );
   }
   return { start, end };
 }
 
 function assertMinutes(value: number, name: string, min: number): void {
   if (!Number.isSafeInteger(value) || value < min || value > 1_440) {
-    throw new RangeError(`${name} must be an integer between ${min} and 1440 minutes`);
+    throw new RangeError(
+      `${name} must be an integer between ${min} and 1440 minutes`,
+    );
   }
 }
 
@@ -98,7 +105,10 @@ function assertLocalDate(value: string): void {
     throw new RangeError("localDate must be YYYY-MM-DD");
   }
   const timestamp = Date.parse(`${value}T00:00:00Z`);
-  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== value) {
+  if (
+    !Number.isFinite(timestamp) ||
+    new Date(timestamp).toISOString().slice(0, 10) !== value
+  ) {
     throw new RangeError("Invalid localDate");
   }
 }
@@ -109,7 +119,11 @@ function prepare(request: AvailabilityRequest): Prepared {
   }
   assertLocalDate(request.localDate);
   assertMinutes(request.serviceDurationMinutes, "serviceDurationMinutes", 1);
-  assertMinutes(request.postServiceBufferMinutes, "postServiceBufferMinutes", 0);
+  assertMinutes(
+    request.postServiceBufferMinutes,
+    "postServiceBufferMinutes",
+    0,
+  );
   assertMinutes(request.stepMinutes, "stepMinutes", 1);
 
   // RangeError is intentional for an invalid IANA timeZone.
@@ -127,7 +141,9 @@ function prepare(request: AvailabilityRequest): Prepared {
       occupancy.staffId !== request.staffId ||
       !occupancy.locationId
     ) {
-      throw new RangeError("Occupied intervals must be trusted and tenant/staff-scoped");
+      throw new RangeError(
+        "Occupied intervals must be trusted and tenant/staff-scoped",
+      );
     }
   }
 
@@ -135,24 +151,40 @@ function prepare(request: AvailabilityRequest): Prepared {
     request,
     dateFormatter,
     durationMs: request.serviceDurationMinutes * MINUTE,
-    occupiedDurationMs: (request.serviceDurationMinutes + request.postServiceBufferMinutes) * MINUTE,
+    occupiedDurationMs:
+      (request.serviceDurationMinutes + request.postServiceBufferMinutes) *
+      MINUTE,
     stepMs: request.stepMinutes * MINUTE,
-    shifts: request.shifts.map((item) => parseInterval(item.startAt, item.endAt)),
+    shifts: request.shifts.map((item) =>
+      parseInterval(item.startAt, item.endAt),
+    ),
     unavailable: [
       ...request.breaks.map((item) => parseInterval(item.startAt, item.endAt)),
-      ...request.exceptions.map((item) => parseInterval(item.startAt, item.endAt)),
-      ...request.occupied.map((item) => parseInterval(item.startAt, item.occupiedUntil)),
+      ...request.exceptions.map((item) =>
+        parseInterval(item.startAt, item.endAt),
+      ),
+      ...request.occupied.map((item) =>
+        parseInterval(item.startAt, item.occupiedUntil),
+      ),
     ],
   };
 }
 
-function localDateAt(formatter: Intl.DateTimeFormat, timestamp: number): string {
+function localDateAt(
+  formatter: Intl.DateTimeFormat,
+  timestamp: number,
+): string {
   const parts = formatter.formatToParts(new Date(timestamp));
-  const get = (kind: string): string => parts.find((part) => part.type === kind)?.value ?? "";
+  const get = (kind: string): string =>
+    parts.find((part) => part.type === kind)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
-function intersects(leftStart: number, leftEnd: number, right: NumericInterval): boolean {
+function intersects(
+  leftStart: number,
+  leftEnd: number,
+  right: NumericInterval,
+): boolean {
   // Half-open [start, end): adjacent appointments do NOT conflict.
   return leftStart < right.end && right.start < leftEnd;
 }
@@ -160,7 +192,8 @@ function intersects(leftStart: number, leftEnd: number, right: NumericInterval):
 function availableAt(prepared: Prepared, start: number): AvailableSlot | null {
   const end = start + prepared.durationMs;
   const occupiedUntil = start + prepared.occupiedDurationMs;
-  if (localDateAt(prepared.dateFormatter, start) !== prepared.request.localDate) return null;
+  if (localDateAt(prepared.dateFormatter, start) !== prepared.request.localDate)
+    return null;
   const fittingShift = prepared.shifts.some(
     (shift) =>
       start >= shift.start &&
@@ -168,7 +201,11 @@ function availableAt(prepared: Prepared, start: number): AvailableSlot | null {
       (start - shift.start) % prepared.stepMs === 0,
   );
   if (!fittingShift) return null;
-  if (prepared.unavailable.some((interval) => intersects(start, occupiedUntil, interval))) {
+  if (
+    prepared.unavailable.some((interval) =>
+      intersects(start, occupiedUntil, interval),
+    )
+  ) {
     return null;
   }
   return {
@@ -182,7 +219,9 @@ function availableAt(prepared: Prepared, start: number): AvailableSlot | null {
  * Read-side provisional slots only. Callers must authorize/tenant-scope reads,
  * and re-check every mutable condition under the same DB transaction as create.
  */
-export function listAvailableSlots(request: AvailabilityRequest): AvailableSlot[] {
+export function listAvailableSlots(
+  request: AvailabilityRequest,
+): AvailableSlot[] {
   const prepared = prepare(request);
   const slots = new Map<number, AvailableSlot>();
   for (const shift of prepared.shifts) {
