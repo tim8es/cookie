@@ -29,7 +29,10 @@ test("alert operator replay requires trusted identity, bounded metadata and expl
     { ...valid, operator: { ...valid.operator, identityId: "unknown" } },
     { ...valid, operator: { ...valid.operator, correlationId: "" } },
     { ...valid, operator: { ...valid.operator, correlationId: "line\nfeed" } },
-    { ...valid, operator: { ...valid.operator, correlationId: "a".repeat(129) } },
+    {
+      ...valid,
+      operator: { ...valid.operator, correlationId: "a".repeat(129) },
+    },
     { ...valid, transitionId: "0" },
     { ...valid, transitionId: "9223372036854775808" },
     { ...valid, transitionId: "123); DROP TABLE x;" },
