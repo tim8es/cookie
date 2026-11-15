@@ -30,14 +30,8 @@ const empty: OutboxQueueMetrics = {
   oldestDueSeconds: 0,
 };
 const healthy = evaluateOutboxHealth(empty, policy);
-const warning = evaluateOutboxHealth(
-  { ...empty, pending: 1, due: 1 },
-  policy,
-);
-const critical = evaluateOutboxHealth(
-  { ...empty, pending: 4, due: 4 },
-  policy,
-);
+const warning = evaluateOutboxHealth({ ...empty, pending: 1, due: 1 }, policy);
+const critical = evaluateOutboxHealth({ ...empty, pending: 4, due: 4 }, policy);
 const outage: OutboxHealthSnapshot = {
   status: "unavailable",
   findings: [{ code: "METRICS_UNAVAILABLE", severity: "critical" }],
@@ -134,7 +128,10 @@ test("two simultaneous reasons independently raise and resolve in stable order",
 });
 
 test("malformed or contradictory snapshots fail before mutating alert state", () => {
-  const existing = reconcileOutboxAlerts(emptyOutboxAlertState(), warning).state;
+  const existing = reconcileOutboxAlerts(
+    emptyOutboxAlertState(),
+    warning,
+  ).state;
   const invalid = [
     {
       status: "healthy",
