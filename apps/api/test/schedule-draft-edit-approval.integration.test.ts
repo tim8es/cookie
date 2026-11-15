@@ -227,7 +227,11 @@ test(
            (id,tenant_id,dedupe_key,topic,payload,fingerprint,max_attempts)
          VALUES ($1::uuid,$2::uuid,$3,'schedule.draft.edit.applied',
                  '{"synthetic":true}'::jsonb,repeat('f',64),5)`,
-        [poisonId, tenant, `schedule.draft.edit.applied:${requested.requestId}`],
+        [
+          poisonId,
+          tenant,
+          `schedule.draft.edit.applied:${requested.requestId}`,
+        ],
       );
       await assert.rejects(
         reviewShiftDraftEditInternal(pool, review, allow),
