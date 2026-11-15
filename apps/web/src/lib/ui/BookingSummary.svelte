@@ -1,8 +1,6 @@
 <script lang="ts">
-  import { ArrowUpRight, Clock3, Info, ShieldCheck } from "@lucide/svelte";
-  import { Badge } from "../components/ui/badge/index.js";
+  import { CalendarDays, Clock3, ShieldCheck, UserRound } from "@lucide/svelte";
   import * as Card from "../components/ui/card/index.js";
-  import { Separator } from "../components/ui/separator/index.js";
   import { money, shortDate } from "../dates";
   import type { Service } from "../model";
 
@@ -14,43 +12,48 @@
 </script>
 
 <Card.Root class="booking-summary" aria-label="Сводка демо-визита">
-  <div class="booking-summary-heading">
-    <div>
-      <span class="eyebrow">ВАША ЗАПИСЬ</span>
-      <h2>Детали визита</h2>
+  <div class="ticket-top">
+    <div class="ticket-topline">
+      <span>Cookie / ваш визит</span>
+      <span class="ticket-demo">DEMO</span>
     </div>
-    <Badge variant="outline" class="booking-demo-label">Демо</Badge>
-  </div>
-
-  <div class="summary-service">
-    <div class="summary-service-icon" aria-hidden="true"><Clock3 size={19} /></div>
-    <div>
-      <strong>{service?.name ?? "Выберите услугу"}</strong>
-      <small>{service ? `${service.durationMinutes} минут` : "Услуга пока не выбрана"}</small>
+    <div class="ticket-mark" aria-hidden="true">
+      <span></span><span></span><span></span><span></span>
     </div>
-    <ArrowUpRight size={18} aria-hidden="true" class="summary-service-arrow" />
+    <h2>Время, которое<br />принадлежит вам.</h2>
+    <p>Ваш маленький план на красивый день.</p>
   </div>
-
-  <div class="summary-details">
-    <div class="summary-line"><span>Мастер</span><strong>{staffId ? staffName(staffId) : "Не выбран"}</strong></div>
-    <div class="summary-line"><span>Дата</span><strong>{bookingDate ? shortDate(bookingDate) : "—"}</strong></div>
-    <div class="summary-line"><span>Время</span><strong>{bookingTime || "Не выбрано"}</strong></div>
-  </div>
-
-  <Separator class="booking-summary-separator" />
-  <div class="summary-price">
-    <div>
-      <span>Базовая цена</span>
-      <small>По каталогу салона</small>
+  <div class="ticket-stitch" aria-hidden="true"></div>
+  <div class="ticket-body">
+    <div class="ticket-service">
+      <span>Выбранная услуга</span>
+      <strong>{service?.name ?? "Ожидает выбора"}</strong>
+      <small>{service ? `${service.durationMinutes} минут` : "Выберите услугу слева"}</small>
     </div>
-    <strong>{service ? money(service.basePriceRub) : "—"}</strong>
+    <dl class="ticket-details">
+      <div>
+        <dt><UserRound size={15} aria-hidden="true" /> Специалист</dt>
+        <dd>{staffId ? staffName(staffId) : "—"}</dd>
+      </div>
+      <div>
+        <dt><CalendarDays size={15} aria-hidden="true" /> День</dt>
+        <dd>{bookingDate ? shortDate(bookingDate) : "—"}</dd>
+      </div>
+      <div>
+        <dt><Clock3 size={15} aria-hidden="true" /> Начало</dt>
+        <dd>{bookingTime || "—"}</dd>
+      </div>
+    </dl>
+    <div class="ticket-total">
+      <div>
+        <span>По каталогу</span>
+        <small>Предварительная цена</small>
+      </div>
+      <strong>{service ? money(service.basePriceRub) : "—"}</strong>
+    </div>
+    <div class="ticket-fineprint">
+      <ShieldCheck size={16} aria-hidden="true" />
+      <p>Это не окончательная стоимость. Цена и свободное время будут подтверждаться сервером.</p>
+    </div>
   </div>
-  <div class="summary-security">
-    <ShieldCheck size={16} aria-hidden="true" />
-    <span>Цена указана для примера и не является окончательной стоимостью.</span>
-  </div>
-  <p class="summary-disclaimer">
-    <Info size={13} aria-hidden="true" />
-    Итоговую стоимость и доступность времени подтвердит backend.
-  </p>
 </Card.Root>

@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { ArrowRight, Plus } from "@lucide/svelte";
+  import { ArrowRight, Plus, SlidersHorizontal } from "@lucide/svelte";
   import { Button } from "../components/ui/button/index.js";
-  import { Badge } from "../components/ui/badge/index.js";
   import type { ViewState } from "../model";
   import { screens, type Screen } from "../navigation";
 
@@ -15,18 +14,17 @@
 
 <div class="demo-ribbon">
   <span class="ribbon-pulse" aria-hidden="true"></span>
-  <strong>Демонстрационный режим</strong>
-  <span>Локальные данные · реальные записи не создаются</span>
+  Демо: изменения сохраняются только в этой вкладке
 </div>
-
 <header class="topbar">
   <div class="topbar-title">
-    <span class="breadcrumb">Cookie <ArrowRight size={12} aria-hidden="true" /></span>
+    <span class="breadcrumb">Пространство <ArrowRight size={13} aria-hidden="true" /></span>
     <strong>{displayTitle}</strong>
   </div>
   <div class="topbar-actions">
     <label class="preview-control">
-      Проверить состояние
+      <SlidersHorizontal size={15} aria-hidden="true"/>
+      <span>Состояние</span>
       <select bind:value={preview} aria-label="Проверить демонстрационное состояние">
         <option value="normal">Обычное</option>
         <option value="empty">Пустое</option>
@@ -35,15 +33,10 @@
         <option value="conflict">Конфликт слота</option>
       </select>
     </label>
-    <Badge variant="outline" class="topbar-demo-badge">Demo</Badge>
-    <Button
-      class="btn-top"
-      size="lg"
-      type="button"
-      onclick={() => onNavigate("booking")}
-      disabled={!canCreateBooking}
-    >
-      <Plus size={17} strokeWidth={2} aria-hidden="true" /> Новая запись
+    <Button class="btn-top" size="lg" type="button"
+      onclick={() => onNavigate("booking")} disabled={!canCreateBooking}>
+      <Plus size={17} strokeWidth={2} aria-hidden="true" />
+      <span>Новая запись</span>
     </Button>
   </div>
 </header>

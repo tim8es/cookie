@@ -324,6 +324,8 @@ async function scenario(cdp, origin, width, height) {
   await cdp.send("Page.reload", { ignoreCache: true });
   await requireDom(cdp, name + " restored synthetic booking", "document.querySelectorAll('.stat-card')[2]?.querySelector('strong')?.textContent === '01'");
   await checkWidth(cdp, name + " restored home");
+  await checkLabeledControls(cdp, name + " workspace");
+  await captureEvidence(cdp, name, "07-workspace");
 
   await fill(cdp, ".preview-control select", "error", "change");
   await requireDom(cdp, name + " error preview", "document.querySelector('.state-card')?.textContent.includes('ошибка загрузки')");
@@ -402,11 +404,11 @@ async function main() {
       backend: "not connected",
       chromium: "headless",
       viewports: ["1280x800", "375x812", "320x568"],
-      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day"],
+      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace"],
       checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "no external requests"],
       externalRequests: externalUrls.length,
     }, null, 2) + "\n");
-    console.log("PASS evidence: 18 PNG screenshots and manifest; external requests =", externalUrls.length);
+    console.log("PASS evidence: 21 PNG screenshots and manifest; external requests =", externalUrls.length);
   } catch (error) {
     if (cdp) {
       try {

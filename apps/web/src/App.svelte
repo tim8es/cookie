@@ -19,6 +19,7 @@
   import LocationForm from "./lib/ui/LocationForm.svelte";
   import { weekdays } from "./lib/weekdays";
   import "./styles.css";
+  import "./visual-system.css";
 
   const api = createCookieUiApi();
   const blank: DemoSnapshot = { organization: null, locations: [], services: [], staff: [], schedules: [], bookings: [] };
@@ -238,15 +239,34 @@
         <section class="state-card" role="status"><span class="state-illustration">◇</span><h2>Демо: ничего не найдено</h2><p>Здесь будет сообщение о пустом списке, доступном действии и способе вернуться назад.</p><button class="btn btn-secondary" onclick={() => preview = "normal"}>Показать данные</button></section>
       {:else if screen === "home"}
         {#if !org}
-          <div class="welcome-grid">
-            <div class="welcome-copy"><span class="eyebrow">НАЧАЛО РАБОТЫ <span class="decor-line"></span></span><h1>Ваш салон.<br /><em>Ваш ритм.</em></h1><p>Простое пространство, где команда, услуги и записи работают вместе. Начните с тестового салона — без регистрации и реальных клиентов.</p><div class="welcome-metrics"><div><strong>5 шагов</strong><span>до первой записи</span></div><div><strong>0 ₽</strong><span>демо без платежей</span></div></div></div>
+          <div class="welcome-grid atelier-welcome">
+            <div class="welcome-copy">
+              <div class="welcome-introline">
+                <span class="welcome-brand">COOKIE / STUDIO</span>
+                <span class="welcome-edition">Практика красивого сервиса</span>
+              </div>
+              <div class="welcome-illustration" aria-hidden="true">
+                <span class="welcome-arc one"></span>
+                <span class="welcome-arc two"></span>
+                <span class="welcome-arc three"></span>
+                <span class="welcome-illustration-core"></span>
+              </div>
+              <h1>Красивый сервис<br /><span>начинается здесь.</span></h1>
+              <p>Записи, специалисты и расписание — в одном понятном пространстве. Попробуйте Cookie с демонстрационными данными.</p>
+              <div class="welcome-caption">
+                <span class="welcome-caption-line" aria-hidden="true"></span>
+                <span>Один салон. Сотни деталей. Один спокойный процесс.</span>
+              </div>
+            </div>
             <form class="welcome-form card" onsubmit={(event) => { event.preventDefault(); void createOrganization(); }}>
-              <div class="form-icon" aria-hidden="true"><Building2 size={22} strokeWidth={1.9} /></div>
-              <span class="eyebrow">ШАГ 01 / 05</span>
-              <h2>Создайте тестовый салон</h2>
-              <p class="muted">Попробуйте рабочее пространство на демонстрационных данных без регистрации.</p>
+              <div class="welcome-form-top">
+                <span>Ваше пространство</span>
+                <span class="welcome-form-step">01 / 05</span>
+              </div>
+              <h2>Начнём с названия.</h2>
+              <p class="muted">Создайте тестовую студию — без регистрации и без реальных клиентских данных.</p>
               <label class="field">
-                Название салона
+                Как называется салон?
                 <Input
                   value={organizationName}
                   oninput={(event) => organizationName = event.currentTarget.value}
@@ -255,21 +275,21 @@
                   placeholder="Студия Cookie (тест)"
                 />
               </label>
-              <div class="inline-note">Основной филиал создаётся автоматически как демонстрационный.</div>
+              <div class="welcome-form-help">Филиал для демо создадим автоматически. Следом добавим услуги и мастеров.</div>
               <Button class="welcome-submit" size="lg" type="submit">
-                Создать тестовое пространство
-                <ArrowRight size={17} aria-hidden="true" />
+                Создать тестовый салон
+                <ArrowRight size={18} aria-hidden="true" />
               </Button>
-              <div class="form-foot">Без email, пароля и персональных данных</div>
+              <p class="form-foot">Данные остаются в этой вкладке браузера</p>
             </form>
           </div>
         {:else}
-          <div class="section-head"><div><span class="eyebrow">ВАШЕ ПРОСТРАНСТВО</span><h1>Хорошего дня!</h1><p>Организация <strong>{org.name}</strong> · только демонстрационные данные</p></div><button class="btn btn-secondary" onclick={() => goto("booking")}>Открыть онлайн-запись ↗</button></div>
+          <div class="section-head dashboard-welcome"><div><p class="dashboard-kicker">Cookie / рабочее пространство</p><h1>Хорошего дня!</h1><p><strong>{org.name}</strong> · здесь начинается порядок в записи</p></div><button class="btn btn-secondary" onclick={() => goto("booking")}>Открыть запись ↗</button></div>
           <div class="stat-grid">
-            <div class="stat-card"><span>Услуги</span><strong>{data.services.length.toString().padStart(2, "0")}</strong><small>в каталоге</small><span class="stat-symbol">◇</span></div>
-            <div class="stat-card"><span>Мастера</span><strong>{data.staff.length.toString().padStart(2, "0")}</strong><small>в команде</small><span class="stat-symbol">♧</span></div>
-            <div class="stat-card"><span>Демо-записи</span><strong>{data.bookings.length.toString().padStart(2, "0")}</strong><small>в этой вкладке</small><span class="stat-symbol">▦</span></div>
-            <div class="stat-card"><span>Филиалы</span><strong>{data.locations.length.toString().padStart(2, "0")}</strong><small>тестовые точки</small><span class="stat-symbol">⌂</span></div>
+            <div class="stat-card"><span>Услуги</span><strong>{data.services.length.toString().padStart(2, "0")}</strong><small>в каталоге</small><span class="stat-symbol" aria-hidden="true">01</span></div>
+            <div class="stat-card"><span>Мастера</span><strong>{data.staff.length.toString().padStart(2, "0")}</strong><small>в команде</small><span class="stat-symbol" aria-hidden="true">02</span></div>
+            <div class="stat-card"><span>Демо-записи</span><strong>{data.bookings.length.toString().padStart(2, "0")}</strong><small>в этой вкладке</small><span class="stat-symbol" aria-hidden="true">03</span></div>
+            <div class="stat-card"><span>Филиалы</span><strong>{data.locations.length.toString().padStart(2, "0")}</strong><small>тестовые точки</small><span class="stat-symbol" aria-hidden="true">04</span></div>
           </div>
           <div class="dashboard-grid"><section class="card dashboard-onboarding"><div class="card-title"><div><span class="eyebrow">БЫСТРЫЙ СТАРТ</span><h2>Подготовьте салон к первой записи</h2></div><span class="round-progress">{stepCount}/5</span></div><div class="checklist">
             {#each [{key:"organization",text:"Создать салон",screen:"home"},{key:"services",text:"Добавить услугу и цену",screen:"services"},{key:"staff",text:"Добавить мастера",screen:"staff"},{key:"schedule",text:"Настроить график",screen:"schedule"},{key:"booking",text:"Создать тестовую запись",screen:"booking"}] as step, index}
@@ -364,7 +384,19 @@
           onCreateBooking={() => goto("booking")}
         />
       {:else if screen === "booking"}
-        <div class="booking-head"><div><span class="eyebrow">ОНЛАЙН-ЗАПИСЬ</span><h1>Записаться на услугу</h1><p>{org.name} · демонстрационная форма без реального бронирования</p></div></div>
+        <section class="booking-head booking-hero" aria-label="Онлайн-запись">
+          <div class="booking-hero-copy">
+            <span class="booking-hero-section">Cookie / запись к мастеру</span>
+            <h1>Время для себя.<br /><em>В вашем ритме.</em></h1>
+            <p>Выберите услугу, мастера и удобное время. Остальное мы уже собрали в одном месте.</p>
+          </div>
+          <div class="booking-hero-studio">
+            <div class="hero-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <span>Ваша студия</span>
+            <strong>{org.name}</strong>
+            <small>Демонстрационная запись</small>
+          </div>
+        </section>
         {#if createdBooking}
           <section class="card success-screen"><div class="success-symbol">✓</div><span class="eyebrow">ЗАПИСЬ СОЗДАНА ЛОКАЛЬНО</span><h2>Готово! Это демо-запись.</h2><p>Запись сохранена только в браузерной сессии. Она <strong>не подтверждена backend</strong> и не резервирует время у мастера.</p>
             <div class="success-receipt"><div><span>Услуга</span><strong>{getService(createdBooking.serviceId)}</strong></div><div><span>Дата и время</span><strong>{longDate(createdBooking.date)}, {createdBooking.time}</strong></div><div><span>Мастер</span><strong>{getStaff(createdBooking.staffId)}</strong></div><div><span>Демо-ID</span><strong class="mono">{createdBooking.id.slice(0, 8)}</strong></div></div>

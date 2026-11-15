@@ -1,30 +1,27 @@
 <script lang="ts">
-  import { ArrowLeft, CalendarCheck2, ShieldCheck } from "@lucide/svelte";
+  import { ArrowLeft, LockKeyhole } from "@lucide/svelte";
   import { Button } from "../components/ui/button/index.js";
-  import { Badge } from "../components/ui/badge/index.js";
 
   export let onBack: () => void;
 </script>
 
 <header class="public-header">
   <div class="public-brand">
-    <span class="public-brand-icon" aria-hidden="true">
-      <CalendarCheck2 size={19} strokeWidth={2} />
-    </span>
-    <div>
+    <span class="brand-seal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <div class="public-brand-type">
       <strong>cookie<span>.</span></strong>
-      <small>онлайн-запись</small>
+      <small>студия красивого времени</small>
     </div>
   </div>
   <div class="public-header-actions">
-    <Badge variant="outline" class="public-demo-status">Предпросмотр</Badge>
-    <Button type="button" variant="outline" size="lg" class="public-back" onclick={onBack}>
+    <span class="preview-stamp">Предпросмотр</span>
+    <Button type="button" variant="outline" class="public-back" onclick={onBack}>
       <ArrowLeft size={16} aria-hidden="true" />
-      В кабинет
+      <span>В кабинет</span>
     </Button>
   </div>
 </header>
 <div class="public-demo-notice" role="note">
-  <ShieldCheck size={15} aria-hidden="true" />
-  Демо-режим · запись не отправляется на сервер
+  <LockKeyhole size={14} aria-hidden="true" />
+  Тестовая запись — без передачи данных на сервер
 </div>
