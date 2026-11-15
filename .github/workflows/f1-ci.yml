@@ -46,7 +46,7 @@ jobs:
         run: |
           pnpm --filter @cookie/web add -D tailwindcss@4.1.17 @tailwindcss/vite@4.1.17
           touch apps/web/src/ui-theme.css
-          pnpm dlx shadcn-svelte@1.7.2 init --cwd apps/web --base-color neutral --css src/ui-theme.css --components-alias '$lib/components' --lib-alias '$lib' --utils-alias '$lib/utils' --hooks-alias '$lib/hooks' --ui-alias '$lib/components/ui' --skip-preflight
+          pnpm dlx shadcn-svelte@1.7.2 init --preset a2r6bw --cwd apps/web --base-color neutral --css src/ui-theme.css --components-alias '$lib/components' --lib-alias '$lib' --utils-alias '$lib/utils' --hooks-alias '$lib/hooks' --ui-alias '$lib/components/ui' --skip-preflight
           pnpm dlx shadcn-svelte@1.7.2 add --cwd apps/web --yes --skip-preflight button card input badge separator label dialog
           tar -czf /tmp/cookie-ui-kit.tgz apps/web/src/lib/components apps/web/src/lib/utils.ts apps/web/src/ui-theme.css apps/web/components.json apps/web/package.json pnpm-lock.yaml
           cp /tmp/cookie-ui-kit.tgz cookie-ui-kit.tgz
