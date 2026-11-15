@@ -101,6 +101,8 @@
   .workspace-grid { grid-template-columns: minmax(0,1fr); }
 }
 @media (max-width: 680px) {
+  /* Mobile owners should see the primary editing task before an empty catalog. */
+  .workspace-grid > .owner-form-panel { order: -1; }
   .workspace-grid > .card { padding: 23px 20px; }
   .owner-form { padding: 23px 20px; }
   .owner-form-heading { padding-bottom: 18px; margin-bottom: 18px; }

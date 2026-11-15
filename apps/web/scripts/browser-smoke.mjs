@@ -190,6 +190,19 @@ async function fill(cdp, selector, value, eventName = "input") {
   assert.equal(changed, true, "Input missing: " + selector);
 }
 
+async function checkMobileOwnerFormFirst(cdp, screen, width) {
+  if (width > 680) return;
+  const metrics = await evaluate(cdp, `(() => {
+    const panel = document.querySelector(".workspace-grid > .owner-form-panel");
+    const list = document.querySelector(".workspace-grid > .card");
+    return { panel: panel?.getBoundingClientRect().top, list: list?.getBoundingClientRect().top };
+  })()`);
+  assert.ok(
+    Number.isFinite(metrics.panel) && Number.isFinite(metrics.list) && metrics.panel < metrics.list,
+    screen + ": owner form should be visible before catalog on mobile " + JSON.stringify(metrics),
+  );
+}
+
 async function checkLabeledControls(cdp, screen) {
   const unlabeled = await evaluate(cdp, `(() => {
     const controls = [...document.querySelectorAll("button, input, select, textarea")];
@@ -282,17 +295,20 @@ async function scenario(cdp, origin, width, height) {
   await requireDom(cdp, name + " services", "document.querySelector('.section-head h1')?.textContent === 'Услуги и цены'");
   await checkWidth(cdp, name + " services");
   await checkLabeledControls(cdp, name + " services");
+  await checkMobileOwnerFormFirst(cdp, name + " services", width);
   await captureEvidence(cdp, name, "08-services");
 
   await submitValidForm(cdp, ".workspace-grid form");
   await requireDom(cdp, name + " staff", "document.querySelector('.section-head h1')?.textContent === 'Мастера'");
   await checkWidth(cdp, name + " staff");
   await checkLabeledControls(cdp, name + " staff");
+  await checkMobileOwnerFormFirst(cdp, name + " staff", width);
   await captureEvidence(cdp, name, "09-staff");
   await submitValidForm(cdp, ".workspace-grid form");
   await requireDom(cdp, name + " schedule", "document.querySelector('.section-head h1')?.textContent === 'Расписание'");
   await checkWidth(cdp, name + " schedule");
   await checkLabeledControls(cdp, name + " schedule");
+  await checkMobileOwnerFormFirst(cdp, name + " schedule", width);
   await captureEvidence(cdp, name, "10-schedule");
   await submitValidForm(cdp, ".workspace-grid form");
 
@@ -340,6 +356,7 @@ async function scenario(cdp, origin, width, height) {
   await requireDom(cdp, name + " locations", "document.querySelector('.section-head h1')?.textContent === 'Филиалы'");
   await checkWidth(cdp, name + " locations");
   await checkLabeledControls(cdp, name + " locations");
+  await checkMobileOwnerFormFirst(cdp, name + " locations", width);
   await captureEvidence(cdp, name, "11-locations");
   await click(cdp, ".nav-links button:first-child");
 
