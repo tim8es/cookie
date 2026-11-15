@@ -41,6 +41,12 @@ jobs:
           node-version: "26"
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
+      - name: Temporary monitor Prettier diagnostic (no push)
+        run: |
+          pnpm exec prettier --write packages/platform-db/src/outbox-alert-monitor.ts apps/api/test/outbox-alert-monitor.unit.test.ts apps/api/test/outbox-alert-monitor.integration.test.ts
+          printf 'ALERT_SRC_B64='; base64 -w0 packages/platform-db/src/outbox-alert-monitor.ts; printf '\n'
+          printf 'ALERT_UNIT_B64='; base64 -w0 apps/api/test/outbox-alert-monitor.unit.test.ts; printf '\n'
+          printf 'ALERT_INTEG_B64='; base64 -w0 apps/api/test/outbox-alert-monitor.integration.test.ts; printf '\n'
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
