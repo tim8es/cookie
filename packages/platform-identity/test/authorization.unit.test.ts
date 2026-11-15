@@ -321,6 +321,7 @@ test("owner-protected operations cannot be delegated by admin or renamed roles",
     allowed: false,
     reason: "owner-required",
   });
+  assert.equal(evaluateAuthorization({ ...request, ownerProtected: false }, policy).allowed, false);
 
   const ownerPolicy = snapshot(
     membership(
