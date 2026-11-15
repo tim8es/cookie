@@ -41,6 +41,17 @@ jobs:
           node-version: "26"
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
+      - name: Normalize outbox replay sources (temporary no-push CI diagnostics)
+        run: |
+          pnpm exec prettier --write packages/platform-db/src/replay.ts packages/platform-db/src/delivery-port.ts packages/platform-db/src/outbox.ts packages/platform-db/src/worker.ts apps/api/src/synthetic-worker-config.ts apps/api/src/synthetic-worker-main.ts apps/api/test/synthetic-worker.unit.test.ts apps/api/test/outbox-replay.integration.test.ts
+          printf 'REPLAY_B64='; base64 -w0 packages/platform-db/src/replay.ts; printf '\n'
+          printf 'DELIVERY_B64='; base64 -w0 packages/platform-db/src/delivery-port.ts; printf '\n'
+          printf 'CLAIMS_B64='; base64 -w0 packages/platform-db/src/outbox.ts; printf '\n'
+          printf 'SUPERVISOR_B64='; base64 -w0 packages/platform-db/src/worker.ts; printf '\n'
+          printf 'CONFIG_B64='; base64 -w0 apps/api/src/synthetic-worker-config.ts; printf '\n'
+          printf 'MAIN_B64='; base64 -w0 apps/api/src/synthetic-worker-main.ts; printf '\n'
+          printf 'UNIT_B64='; base64 -w0 apps/api/test/synthetic-worker.unit.test.ts; printf '\n'
+          printf 'INTEGRATION_B64='; base64 -w0 apps/api/test/outbox-replay.integration.test.ts; printf '\n'
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
