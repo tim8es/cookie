@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { Pool, PoolClient, QueryResultRow } from "pg";
+import type { Pool, QueryResultRow } from "pg";
 
 import { enqueueOutbox } from "../../platform-db/src/outbox.js";
 import type { TrustedActor } from "../../platform-identity/src/authorization.js";
