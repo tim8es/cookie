@@ -166,9 +166,10 @@ test(
 
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
-      await pool.query("INSERT INTO cookie_identity.identities(id) VALUES ($1::uuid)", [
-        owner,
-      ]);
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES ($1::uuid)",
+        [owner],
+      );
       await pool.query(
         `INSERT INTO cookie_tenancy.organizations(id,owner_identity_id,display_name)
          VALUES ($1::uuid,$2::uuid,'Synthetic lost ack tenant')`,
@@ -251,10 +252,18 @@ test(
         ["1", "1", "1", "1"],
         "server commit is durable despite lost acknowledgement",
       );
-      const durableCreate = await committedReceipt(pool, tenant, "booking.create");
-      const created = await createBookingInternal(pool, createCommand, async () => {
-        throw new Error("retry MUST NOT re-evaluate entitlement");
-      });
+      const durableCreate = await committedReceipt(
+        pool,
+        tenant,
+        "booking.create",
+      );
+      const created = await createBookingInternal(
+        pool,
+        createCommand,
+        async () => {
+          throw new Error("retry MUST NOT re-evaluate entitlement");
+        },
+      );
       assert.deepEqual(created, durableCreate);
       assert.deepEqual(await snapshot(pool, tenant), state);
       await assert.rejects(
@@ -280,11 +289,20 @@ test(
       assert.equal(moveFault.observed(), 1);
       state = await snapshot(pool, tenant, created.bookingId);
       assert.deepEqual(
-        [state.moveReceipts, state.moveEvents, state.moveAudit, state.startAt?.toISOString()],
+        [
+          state.moveReceipts,
+          state.moveEvents,
+          state.moveAudit,
+          state.startAt?.toISOString(),
+        ],
         ["1", "1", "1", "2027-08-20T13:00:00.000Z"],
       );
       assert.equal(state.priceKopecks, "125000");
-      const durableMove = await committedReceipt(pool, tenant, "booking.reschedule");
+      const durableMove = await committedReceipt(
+        pool,
+        tenant,
+        "booking.reschedule",
+      );
       const moved = await rescheduleBookingInternal(
         pool,
         moveCommand,
@@ -326,7 +344,11 @@ test(
         ["0", "1", "1", "1", "1"],
       );
       assert.ok(state.cancelledAt instanceof Date);
-      const durableCancel = await committedReceipt(pool, tenant, "booking.cancel");
+      const durableCancel = await committedReceipt(
+        pool,
+        tenant,
+        "booking.cancel",
+      );
       const cancelled = await cancelBookingInternal(
         pool,
         cancelCommand,
