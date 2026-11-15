@@ -15,6 +15,7 @@ const paths = [
   "styles/responsive.css",
   "styles/first-run.css",
   "styles/ledger.css",
+  "styles/owner-forms.css",
 ];
 
 for (const path of paths) {
@@ -37,7 +38,7 @@ for (const name of [
   assert.ok(tokens.includes(name + ":"), `Missing design token ${name}`);
 }
 
-for (const path of ["OnboardingScreen.svelte", "OwnerOverview.svelte", "BookingForm.svelte", "BookingSummary.svelte"]) {
+for (const path of ["OnboardingScreen.svelte", "OwnerOverview.svelte", "BookingForm.svelte", "BookingSummary.svelte", "ServiceForm.svelte", "StaffForm.svelte", "ScheduleForm.svelte", "LocationForm.svelte", "OwnerFormHeader.svelte"]) {
   assert.ok(existsSync(join(root, "lib/ui", path)), `Missing presentational screen: ${path}`);
 }
 const app = read("App.svelte");

@@ -71,7 +71,7 @@ the API from a presentation file.
 
 Before requesting design approval run `pnpm check:ui`,
 `pnpm --filter @cookie/web check`, `pnpm --filter @cookie/web build` and
-the 21-screenshot Chromium browser smoke across desktop and mobile.
+the 33-screenshot Chromium browser smoke across desktop and mobile.
 
 ## Folder ownership / layering
 

@@ -12,6 +12,7 @@
 | First-run split hero and form | `src/styles/onboarding.css`, `src/styles/first-run.css`, `src/lib/ui/OnboardingScreen.svelte` |
 | Owner shell, sidebar, topbar, shared UI helpers | `src/styles/foundation.css`; `src/lib/ui/Sidebar.svelte`, `Topbar.svelte` |
 | Owner dashboard and stats | `src/styles/ledger.css`; `src/lib/ui/OwnerOverview.svelte` |
+| Owner editor forms (services, staff, schedule, branches) | `src/styles/owner-forms.css`; `src/lib/ui/OwnerFormHeader.svelte` and the four `*Form.svelte` components |
 | Narrow-screen behavior | `src/styles/responsive.css` and narrowly scoped screen rules |
 | Generic accessible Button, Input, Card, Badge, Dialog | `src/lib/components/ui/` (version-controlled shadcn-svelte sources) |
 | Data/state, navigation and synthetic API operations | `src/App.svelte` and `src/lib/api.ts` (do not invent backend wire contracts) |
@@ -24,6 +25,7 @@
 - `OnboardingScreen.svelte`: presentation. Parent owns the organization input value and submit effect.
 - `OwnerOverview.svelte`: display only. Parent owns navigation, snapshot and date.
 - `BookingForm.svelte`: controlled fields, slot choice, submit callback. It never performs a network call.
+- `OwnerFormHeader.svelte`: shared presentational heading for the four owner editor forms. `ServiceForm`, `StaffForm`, `ScheduleForm`, `LocationForm` reuse Card/Button/Input where appropriate and keep native select controls for keyboard/mobile affordances.
 - `BookingSummary.svelte`: presentation only, uses catalog base price **not** a price quote.
 - `CalendarView.svelte` and `BookingDetail.svelte`: synthetic calendar and accessible details, still gradually migrating legacy visual styles.
 - `src/lib/components/ui`: reusable component primitives from a maintained source registry. Prefer reusing their props and classes to adding one-off buttons/cards. Review generated code and keep the lockfile frozen.
@@ -36,7 +38,7 @@ Use explicit, typed props and callbacks across screen boundaries. Do not import 
 2. Modify that component and its tokens; do not append more rules to `styles.css` or reintroduce a giant `App.svelte` view.
 3. Run `pnpm install --frozen-lockfile`, `pnpm check:ui`, `pnpm --filter @cookie/web check`, `pnpm --filter @cookie/web build`.
 4. Run `node apps/web/scripts/browser-smoke.mjs` (uses built dist, Chrome/Chromium), review full screenshots from 1280×800, 375×812 and 320×568.
-5. Pay particular attention to mobile overflow, readable form labels, focus restore, 21 synthetic screenshot states, browser-local data and the absence of external requests.
+5. Pay particular attention to mobile overflow, readable form labels, focus restore, 33 synthetic screenshot states, browser-local data and the absence of external requests.
 6. Add an isolated Draft PR, stacked on the previous frontend feature branch. **No merging without owner approval.**
 
 ### Non-negotiable product boundaries

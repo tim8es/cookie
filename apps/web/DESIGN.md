@@ -30,4 +30,4 @@ No production sign-in, live client data, payments, backend availability, discoun
 
 ## Visual verification
 
-The repository F1 workflow saves Chromium screenshots at 1280×800, 375×812, and 320×568. It covers the onboarding, public booking, local confirmation, week/day calendar, details dialog, **and restored owner workspace**. Manual device review remains necessary.
+The repository F1 workflow saves Chromium screenshots at 1280×800, 375×812, and 320×568. It covers the onboarding, public booking, local confirmation, week/day calendar, details dialog, **the four owner editor forms, and restored owner workspace**. Manual device review remains necessary.

@@ -281,11 +281,19 @@ async function scenario(cdp, origin, width, height) {
   await submitValidForm(cdp, ".welcome-form");
   await requireDom(cdp, name + " services", "document.querySelector('.section-head h1')?.textContent === 'Услуги и цены'");
   await checkWidth(cdp, name + " services");
+  await checkLabeledControls(cdp, name + " services");
+  await captureEvidence(cdp, name, "08-services");
 
   await submitValidForm(cdp, ".workspace-grid form");
   await requireDom(cdp, name + " staff", "document.querySelector('.section-head h1')?.textContent === 'Мастера'");
+  await checkWidth(cdp, name + " staff");
+  await checkLabeledControls(cdp, name + " staff");
+  await captureEvidence(cdp, name, "09-staff");
   await submitValidForm(cdp, ".workspace-grid form");
   await requireDom(cdp, name + " schedule", "document.querySelector('.section-head h1')?.textContent === 'Расписание'");
+  await checkWidth(cdp, name + " schedule");
+  await checkLabeledControls(cdp, name + " schedule");
+  await captureEvidence(cdp, name, "10-schedule");
   await submitValidForm(cdp, ".workspace-grid form");
 
   await requireDom(cdp, name + " synthetic slots", "document.querySelector('.booking-form .slot-grid button')");
@@ -327,6 +335,13 @@ async function scenario(cdp, origin, width, height) {
   await checkWidth(cdp, name + " restored home");
   await checkLabeledControls(cdp, name + " workspace");
   await captureEvidence(cdp, name, "07-workspace");
+  // Owner forms remain screen-local and never call the actual booking API.
+  await click(cdp, ".nav-links button:nth-child(6)");
+  await requireDom(cdp, name + " locations", "document.querySelector('.section-head h1')?.textContent === 'Филиалы'");
+  await checkWidth(cdp, name + " locations");
+  await checkLabeledControls(cdp, name + " locations");
+  await captureEvidence(cdp, name, "11-locations");
+  await click(cdp, ".nav-links button:first-child");
 
   await fill(cdp, ".preview-control select", "error", "change");
   await requireDom(cdp, name + " error preview", "document.querySelector('.state-card')?.textContent.includes('ошибка загрузки')");
@@ -405,11 +420,11 @@ async function main() {
       backend: "not connected",
       chromium: "headless",
       viewports: ["1280x800", "375x812", "320x568"],
-      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace"],
+      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations"],
       checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "no external requests"],
       externalRequests: externalUrls.length,
     }, null, 2) + "\n");
-    console.log("PASS evidence: 21 PNG screenshots and manifest; external requests =", externalUrls.length);
+    console.log("PASS evidence: 33 PNG screenshots and manifest; external requests =", externalUrls.length);
   } catch (error) {
     if (cdp) {
       try {
