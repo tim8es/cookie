@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 
 import {
   evaluateAuthorization,
@@ -54,7 +54,7 @@ test(
       application_name: "cookie-identity-test",
       max: 2,
     });
-    let client: Awaited<ReturnType<typeof pool.connect>> | undefined;
+    let client: PoolClient | undefined;
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
       client = await pool.connect();
@@ -70,7 +70,14 @@ test(
       );
       await client.query(
         "INSERT INTO cookie_tenancy.locations (id, tenant_id, display_name) VALUES ($1,$2,'A'),($3,$4,'B'),($5,$6,'Foreign')",
-        [LOCATION_A, TENANT_A, LOCATION_B, TENANT_A, LOCATION_FOREIGN, TENANT_B],
+        [
+          LOCATION_A,
+          TENANT_A,
+          LOCATION_B,
+          TENANT_A,
+          LOCATION_FOREIGN,
+          TENANT_B,
+        ],
       );
       await client.query(
         "INSERT INTO cookie_identity.memberships (tenant_id,identity_id) VALUES ($1,$2),($3,$2)",
@@ -92,9 +99,18 @@ test(
       await client.query(
         "INSERT INTO cookie_identity.role_assignments (tenant_id,id,identity_id,role_id,location_id) VALUES ($1,$2,$3,$4,$5),($1,$6,$3,$7,$8),($9,$10,$3,$11,$12)",
         [
-          TENANT_A, ASSIGNMENT_ADMIN_A, ACTOR, ROLE_ADMIN_A, LOCATION_A,
-          ASSIGNMENT_STAFF_A, ROLE_STAFF_A, LOCATION_B,
-          TENANT_B, ASSIGNMENT_ADMIN_B, ROLE_ADMIN_B, LOCATION_FOREIGN,
+          TENANT_A,
+          ASSIGNMENT_ADMIN_A,
+          ACTOR,
+          ROLE_ADMIN_A,
+          LOCATION_A,
+          ASSIGNMENT_STAFF_A,
+          ROLE_STAFF_A,
+          LOCATION_B,
+          TENANT_B,
+          ASSIGNMENT_ADMIN_B,
+          ROLE_ADMIN_B,
+          LOCATION_FOREIGN,
         ],
       );
 
@@ -103,14 +119,22 @@ test(
       assert.equal(snapshot.membership?.assignments.length, 2);
       assert.deepEqual(
         evaluateAuthorization(
-          { actor: actorA, resource: booking(TENANT_A, LOCATION_A), permission: "booking.edit" },
+          {
+            actor: actorA,
+            resource: booking(TENANT_A, LOCATION_A),
+            permission: "booking.edit",
+          },
           snapshot,
         ),
         { allowed: true, reason: "granted" },
       );
       assert.equal(
         evaluateAuthorization(
-          { actor: actorA, resource: booking(TENANT_A, LOCATION_B), permission: "booking.edit" },
+          {
+            actor: actorA,
+            resource: booking(TENANT_A, LOCATION_B),
+            permission: "booking.edit",
+          },
           snapshot,
         ).allowed,
         false,
@@ -118,7 +142,11 @@ test(
       );
       assert.equal(
         evaluateAuthorization(
-          { actor: actorA, resource: booking(TENANT_B, LOCATION_FOREIGN), permission: "booking.edit" },
+          {
+            actor: actorA,
+            resource: booking(TENANT_B, LOCATION_FOREIGN),
+            permission: "booking.edit",
+          },
           snapshot,
         ).allowed,
         false,
@@ -142,7 +170,11 @@ test(
       assert.equal(foreignSnapshot.roles.length, 1);
       assert.equal(
         evaluateAuthorization(
-          { actor: actorB, resource: booking(TENANT_B, LOCATION_FOREIGN), permission: "booking.read" },
+          {
+            actor: actorB,
+            resource: booking(TENANT_B, LOCATION_FOREIGN),
+            permission: "booking.read",
+          },
           foreignSnapshot,
         ).allowed,
         true,
@@ -150,7 +182,11 @@ test(
       );
       assert.equal(
         evaluateAuthorization(
-          { actor: actorB, resource: booking(TENANT_A, LOCATION_A), permission: "booking.read" },
+          {
+            actor: actorB,
+            resource: booking(TENANT_A, LOCATION_A),
+            permission: "booking.read",
+          },
           foreignSnapshot,
         ).allowed,
         false,
@@ -200,7 +236,11 @@ test(
       );
       assert.deepEqual(audited.rows, [
         { allowed: true, reason: "granted", permission: "booking.edit" },
-        { allowed: false, reason: "permission-denied", permission: "booking.edit" },
+        {
+          allowed: false,
+          reason: "permission-denied",
+          permission: "booking.edit",
+        },
       ]);
 
       await client.query(
