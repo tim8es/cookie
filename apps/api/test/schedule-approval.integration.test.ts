@@ -331,16 +331,13 @@ test(
 
       // A request with a shorter target than the booked occupied interval
       // is accepted into the queue but can NEVER be applied at review.
-      const unsafe = await requestPublishedShiftEditInternal(
-        pool,
-        {
-          ...requested,
-          startAt: "2027-05-10T10:45:00Z",
-          endAt: "2027-05-10T12:00:00Z",
-          expectedPublishedRevision: 1,
-          idempotencyKey: "unsafe-shorter-shift",
-        },
-      );
+      const unsafe = await requestPublishedShiftEditInternal(pool, {
+        ...requested,
+        startAt: "2027-05-10T10:45:00Z",
+        endAt: "2027-05-10T12:00:00Z",
+        expectedPublishedRevision: 1,
+        idempotencyKey: "unsafe-shorter-shift",
+      });
       await assert.rejects(
         reviewScheduleEditRequestInternal(
           pool,
@@ -462,15 +459,12 @@ test(
 
       // Revoke the manager's role AFTER filing a valid request and BEFORE
       // owner review: status must stay pending, and no shift write occurs.
-      const revokedRequest = await requestPublishedShiftEditInternal(
-        pool,
-        {
-          ...requested,
-          expectedPublishedRevision: 2,
-          startAt: "2027-05-10T10:50:00Z",
-          idempotencyKey: "revoked-employee-request",
-        },
-      );
+      const revokedRequest = await requestPublishedShiftEditInternal(pool, {
+        ...requested,
+        expectedPublishedRevision: 2,
+        startAt: "2027-05-10T10:50:00Z",
+        idempotencyKey: "revoked-employee-request",
+      });
       await pool.query(
         `UPDATE cookie_identity.role_assignments SET active=false
           WHERE tenant_id=$1::uuid AND identity_id=$2::uuid`,
