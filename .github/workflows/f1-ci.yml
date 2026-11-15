@@ -41,6 +41,22 @@ jobs:
           node-version: "26"
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
+      - name: Generate shadcn-svelte registry components (temporary setup step)
+        if: ${{ github.head_ref == 'feature/frontend-ui-system-20261115' }}
+        run: |
+          pnpm --filter @cookie/web add -D tailwindcss@4.1.17 @tailwindcss/vite@4.1.17
+          pnpm dlx shadcn-svelte@1.7.2 init --cwd apps/web --base-color neutral --css src/ui-theme.css --components-alias '$lib/components' --lib-alias '$lib' --utils-alias '$lib/utils' --hooks-alias '$lib/hooks' --ui-alias '$lib/components/ui' --skip-preflight
+          pnpm dlx shadcn-svelte@1.7.2 add --cwd apps/web --yes --skip-preflight button card input badge separator label dialog
+          tar -czf /tmp/cookie-ui-kit.tgz apps/web/src/lib/components apps/web/src/lib/utils.ts apps/web/src/ui-theme.css apps/web/components.json apps/web/package.json pnpm-lock.yaml
+          cp /tmp/cookie-ui-kit.tgz cookie-ui-kit.tgz
+      - name: Upload generated kit for curated commit
+        if: ${{ github.head_ref == 'feature/frontend-ui-system-20261115' && always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cookie-generated-ui-kit
+          path: cookie-ui-kit.tgz
+          if-no-files-found: warn
+          retention-days: 1
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
