@@ -56,6 +56,12 @@ export type ProtectedResource =
       readonly clientIdentityId?: string;
     }
   | {
+      readonly kind: "schedule";
+      readonly tenantId: string;
+      readonly locationId: string;
+      readonly staffProfileId: string;
+    }
+  | {
       readonly kind: "customer";
       readonly tenantId: string;
       readonly locationId: string;
@@ -121,7 +127,7 @@ function relationAllows(
     // A staff role cannot elevate a list-level organization query into CRM access.
     if (resource.kind === "organization") return false;
     if (!assignment.staffProfileId) return false;
-    if (resource.kind === "booking") {
+    if (resource.kind === "booking" || resource.kind === "schedule") {
       return resource.staffProfileId === assignment.staffProfileId;
     }
     if (resource.kind === "customer") {
