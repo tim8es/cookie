@@ -45,12 +45,15 @@ Navigation is non-linear: services, staff, schedule, locations and calendar are 
 
 ## Folder ownership / layering
 
-- `src/App.svelte`: thin UI state/orchestration across owner and public flows (no backend rules).
+- `src/App.svelte`: shared UI state/orchestration across owner and public flows (no backend rules), with versioned slot-request guard against stale responses.
 - `src/lib/navigation.ts`: typed, shared screen navigation metadata.
 - `src/lib/ui/Sidebar.svelte`: owner navigation with accessible onboarding progress.
 - `src/lib/ui/Topbar.svelte`: demo-mode ribbon, workspace controls and preview states.
 - `src/lib/ui/BookingSummary.svelte`: reusable client-side display of *catalog base price*, never Quote.
+- `src/lib/ui/BookingForm.svelte`: controlled public form (callbacks receive the newly selected value, avoiding event/binding order races).
 - `src/lib/ui/BookingDetail.svelte`: booking drawer with keyboard Escape, initial focus, Tab loop and focus restoration.
+- `src/lib/ui/CalendarView.svelte`: standalone day/week calendar, date navigation and keyboard-selectable booking details.
+- `src/lib/calendar.ts`: pure presentation selector for date-based and deterministic chronological ordering.
 - `src/styles.css`: global design tokens, responsive design and component classes.
 - `src/lib/model.ts`: **frontend view models only**, not official wire types.
 - `src/lib/api.ts`: typed port and adapter selection. Production adapter deliberately fails closed until review.
@@ -60,6 +63,7 @@ Navigation is non-linear: services, staff, schedule, locations and calendar are 
 - `src/lib/api.test.ts`: fail-closed API mode regression.
 - `src/lib/dates.test.ts`: timezone-independent calendar day/week boundaries.
 - `src/lib/navigation.test.ts`: shared owner/public navigation inventory.
+- `src/lib/calendar.test.ts`: date filtering, stable ordering and no mutation of booking snapshots.
 
 No imports of backend internals, domain booking rules, kernel code, database packages or shared contracts. The same booking screen is intended for public web, iframe and Mini App shells per ADR-0005, but embed messaging, origin checks and Telegram auth are **not implemented** and must not be claimed complete.
 

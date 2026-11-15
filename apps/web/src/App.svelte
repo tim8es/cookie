@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { createCookieUiApi } from "./lib/api";
-  import { localDay, longDate, mondayOf, money, offsetDay, shortDate, upcomingWeekday } from "./lib/dates";
+  import { localDay, longDate, money, upcomingWeekday } from "./lib/dates";
   import { UiFailure } from "./lib/model";
   import type { BookingView, DemoSnapshot, SlotView, ViewState } from "./lib/model";
   import type { Screen } from "./lib/navigation";
   import Sidebar from "./lib/ui/Sidebar.svelte";
   import Topbar from "./lib/ui/Topbar.svelte";
-  import BookingDetail from "./lib/ui/BookingDetail.svelte";
-  import BookingSummary from "./lib/ui/BookingSummary.svelte";
+  import CalendarView from "./lib/ui/CalendarView.svelte";
+  import BookingForm from "./lib/ui/BookingForm.svelte";
   import "./styles.css";
 
   const api = createCookieUiApi();
@@ -51,17 +51,13 @@
   let createdBooking: BookingView | null = null;
   let calendarDate = localDay(new Date());
   let calendarMode: "day" | "week" = "week";
-  let selectedBookingId = "";
 
   $: org = data.organization;
   $: stepCount = Number(!!org) + Number(data.services.length > 0) +
     Number(data.staff.length > 0) + Number(data.schedules.length > 0) +
     Number(data.bookings.length > 0);
-  $: weekDates = Array.from({ length: 7 }, (_, index) => offsetDay(mondayOf(calendarDate), index));
   $: dayBookings = data.bookings.filter(item => item.date === calendarDate);
   $: bookingStaffOptions = data.staff.filter(item => !bookingService || item.serviceIds.includes(bookingService));
-  $: chosenBooking = data.bookings.find(item => item.id === selectedBookingId);
-  $: chosenService = data.services.find(item => item.id === bookingService);
   $: canBook = Boolean(bookingService && bookingStaff && bookingLocation && bookingDate && bookingTime && clientAlias.trim());
   $: currentOnboardingStep = !org ? "organization" : !data.services.length ? "services" :
     !data.staff.length ? "staff" : !data.schedules.length ? "schedule" :
@@ -109,11 +105,16 @@
   function goto(next: Screen): void {
     screen = next;
     error = "";
-    selectedBookingId = "";
     createdBooking = null;
     if (next === "booking") {
-      const current = data.schedules.find(item => item.staffId === bookingStaff) ?? data.schedules[0];
+      const current = data.schedules.find(item =>
+        data.staff.some(staff => staff.id === item.staffId && staff.serviceIds.includes(bookingService))
+      ) ?? data.schedules[0];
       if (current) {
+        const assignedStaff = data.staff.find(item => item.id === current.staffId);
+        if (assignedStaff && !assignedStaff.serviceIds.includes(bookingService)) {
+          bookingService = assignedStaff.serviceIds[0] ?? "";
+        }
         bookingStaff = current.staffId;
         bookingLocation = current.locationId;
         bookingDate = upcomingWeekday(localDay(new Date()), current.weekdays);
@@ -121,32 +122,41 @@
       void loadSlots();
     }
   }
+  let slotRequestVersion = 0;
   async function loadSlots(): Promise<void> {
+    const version = ++slotRequestVersion;
     bookingTime = "";
     slotSuggestions = [];
+    busySlots = false;
     if (!bookingStaff || !bookingLocation || !bookingDate) return;
     busySlots = true;
+    const staffId = bookingStaff;
+    const locationId = bookingLocation;
+    const date = bookingDate;
     try {
-      slotSuggestions = await api.getSlotSuggestions(bookingStaff, bookingLocation, bookingDate);
+      const suggested = await api.getSlotSuggestions(staffId, locationId, date);
+      if (version === slotRequestVersion) slotSuggestions = suggested;
     } catch (reason) {
-      error = describe(reason);
+      if (version === slotRequestVersion) error = describe(reason);
     } finally {
-      busySlots = false;
+      if (version === slotRequestVersion) busySlots = false;
     }
   }
   function toggleWeekday(day: number): void {
     scheduleDays = scheduleDays.includes(day) ? scheduleDays.filter(value => value !== day) : [...scheduleDays, day];
   }
-  function syncStaffSelection(): void {
-    if (!bookingStaffOptions.some(staff => staff.id === bookingStaff)) {
-      bookingStaff = bookingStaffOptions[0]?.id ?? "";
+  function syncStaffSelection(serviceId: string): void {
+    // Read the new option value directly rather than relying on bind timing.
+    bookingService = serviceId;
+    const eligible = data.staff.filter(staff => staff.serviceIds.includes(serviceId));
+    if (!eligible.some(staff => staff.id === bookingStaff)) {
+      bookingStaff = eligible[0]?.id ?? "";
     }
     void loadSlots();
   }
   function getService(id: string): string { return data.services.find(item => item.id === id)?.name ?? "Неизвестная услуга"; }
   function getStaff(id: string): string { return data.staff.find(item => item.id === id)?.displayName ?? "Неизвестный мастер"; }
   function getLocation(id: string): string { return data.locations.find(item => item.id === id)?.name ?? "Филиал"; }
-  function bookingFor(day: string): BookingView[] { return data.bookings.filter(item => item.date === day); }
   async function createOrganization(): Promise<void> {
     await transact(() => api.createOrganization(organizationName), "services", "Тестовая организация создана в браузерной сессии.");
   }
@@ -298,21 +308,15 @@
           <button class="btn btn-primary btn-wide" type="submit">Добавить демо-филиал →</button>
         </form></div>
       {:else if screen === "calendar"}
-        <div class="section-head"><div><span class="eyebrow">РАСПИСАНИЕ ВИЗИТОВ</span><h1>Календарь записей</h1><p>Только тестовые записи. Без доступа к реальным клиентам.</p></div><button class="btn btn-primary" onclick={() => goto("booking")}>+ Новая запись</button></div>
-        <section class="card calendar-card"><div class="calendar-toolbar"><div class="calendar-move"><button type="button" aria-label="Предыдущий период" onclick={() => calendarDate = offsetDay(calendarDate, calendarMode === "week" ? -7 : -1)}>‹</button><button type="button" onclick={() => calendarDate = localDay(new Date())}>Сегодня</button><button type="button" aria-label="Следующий период" onclick={() => calendarDate = offsetDay(calendarDate, calendarMode === "week" ? 7 : 1)}>›</button></div><h2>{calendarMode === "day" ? longDate(calendarDate) : `${shortDate(weekDates[0] ?? calendarDate)} — ${shortDate(weekDates[6] ?? calendarDate)}`}</h2><div class="segmented"><button class:active={calendarMode === "day"} onclick={() => calendarMode = "day"}>День</button><button class:active={calendarMode === "week"} onclick={() => calendarMode = "week"}>Неделя</button></div></div>
-          {#if calendarMode === "week"}<div class="week-grid">{#each weekDates as day}<div class="week-column"><button type="button" class="week-heading" class:today={day === localDay(new Date())} onclick={() => { calendarDate = day; calendarMode = "day"; }}><small>{new Intl.DateTimeFormat("ru-RU", {weekday:"short"}).format(new Date(day + "T12:00:00"))}</small><strong>{day.slice(-2)}</strong></button><div class="week-body">{#if bookingFor(day).length === 0}<div class="no-bookings">—</div>{:else}{#each bookingFor(day) as booking}<button class="calendar-event" onclick={() => selectedBookingId = booking.id}><span>{booking.time}</span><strong>{getService(booking.serviceId)}</strong><small>{getStaff(booking.staffId)}</small></button>{/each}{/if}</div></div>{/each}</div>
-          {:else}<div class="day-timeline">{#if dayBookings.length === 0}<div class="empty-mini"><span>▦</span><strong>На этот день записей нет</strong><p>Выберите другой день или создайте тестовую запись.</p><button class="btn btn-secondary" onclick={() => goto("booking")}>Создать запись</button></div>{:else}
-            {#each [...dayBookings].sort((a,b) => a.time.localeCompare(b.time)) as booking}<button class="timeline-entry" onclick={() => selectedBookingId = booking.id}><strong class="timeline-time">{booking.time}</strong><div class="timeline-detail"><strong>{getService(booking.serviceId)}</strong><span>{getStaff(booking.staffId)} · {getLocation(booking.locationId)}</span></div><span class="status-pill">Демо</span><span aria-hidden="true">→</span></button>{/each}{/if}</div>{/if}
-        </section>
-        {#if chosenBooking}
-          <BookingDetail
-            booking={chosenBooking}
-            serviceName={getService}
-            staffName={getStaff}
-            locationName={getLocation}
-            onClose={() => selectedBookingId = ""}
-          />
-        {/if}
+        <CalendarView
+          bookings={data.bookings}
+          bind:calendarDate
+          bind:calendarMode
+          serviceName={getService}
+          staffName={getStaff}
+          locationName={getLocation}
+          onCreateBooking={() => goto("booking")}
+        />
       {:else if screen === "booking"}
         <div class="booking-head"><div><span class="eyebrow">КЛИЕНТСКАЯ ВИТРИНА · ПРЕДПРОСМОТР</span><h1>Записаться на услугу</h1><p>{org.name} · демонстрационная форма без реального бронирования</p></div><span class="public-chip">PUBLIC UI / DEMO</span></div>
         {#if createdBooking}
@@ -321,28 +325,27 @@
             <div class="button-row"><button class="btn btn-primary" onclick={() => { calendarDate = createdBooking!.date; goto("calendar"); }}>Посмотреть в календаре →</button><button class="btn btn-secondary" onclick={() => goto("booking")}>Ещё одна демо-запись</button></div>
           </section>
         {:else}
-          <div class="booking-layout"><form class="card booking-form" onsubmit={(event) => { event.preventDefault(); void submitBooking(); }}><div class="card-title"><div><span class="eyebrow">ШАГИ БРОНИРОВАНИЯ</span><h2>Выберите время для визита</h2></div><span class="small-icon">✳</span></div>
-            <label class="field">01 · Услуга<select bind:value={bookingService} onchange={syncStaffSelection} required><option value="" disabled>Выберите услугу</option>{#each data.services as service}<option value={service.id}>{service.name} · {service.durationMinutes} мин</option>{/each}</select></label>
-            <div class="form-pair"><label class="field">02 · Филиал<select bind:value={bookingLocation} onchange={() => void loadSlots()} required>{#each data.locations as location}<option value={location.id}>{location.name}</option>{/each}</select></label>
-            <label class="field">03 · Мастер<select bind:value={bookingStaff} onchange={() => void loadSlots()} required><option value="" disabled>Выберите мастера</option>{#each bookingStaffOptions as member}<option value={member.id}>{member.displayName}</option>{/each}</select></label></div>
-            <label class="field">04 · Дата<input type="date" min={localDay(new Date())} bind:value={bookingDate} onchange={() => void loadSlots()} required /></label>
-            <div class="field"><span class="field-caption">05 · Время <small>(синтетические слоты)</small></span>
-              {#if busySlots}<div class="inline-note" role="status">Загружаем демонстрационные слоты…</div>
-              {:else if slotSuggestions.length === 0}<div class="empty-slots" role="status">Нет демонстрационных слотов. Сначала задайте график мастера либо выберите рабочий день.</div>
-              {:else}<div class="slot-grid">{#each slotSuggestions as slot}<button type="button" class:selected={bookingTime === slot.time} aria-pressed={bookingTime === slot.time} onclick={() => bookingTime = slot.time}>{slot.time}</button>{/each}</div>{/if}
-            </div>
-            <label class="field">06 · Псевдоним тестового клиента<input bind:value={clientAlias} maxlength="80" required placeholder="Тестовый клиент" /></label>
-            <div class="inline-note">Не вводите реальные имена, телефоны или другие персональные данные. В реальном продукте идентификацию выполнит backend.</div>
-            <button class="btn btn-primary btn-wide" type="submit" disabled={!canBook || busySlots}>Создать тестовую запись →</button>
-          </form>
-          <BookingSummary
-            service={chosenService}
-            staffId={bookingStaff}
+          <BookingForm
+            {data}
+            staffOptions={bookingStaffOptions}
+            {bookingService}
+            {bookingStaff}
+            {bookingLocation}
             {bookingDate}
             {bookingTime}
+            {clientAlias}
+            {busySlots}
+            {slotSuggestions}
+            {canBook}
             staffName={getStaff}
+            onServiceChange={syncStaffSelection}
+            onLocationChange={(value) => { bookingLocation = value; void loadSlots(); }}
+            onStaffChange={(value) => { bookingStaff = value; void loadSlots(); }}
+            onDateChange={(value) => { bookingDate = value; void loadSlots(); }}
+            onTimeChange={(value) => bookingTime = value}
+            onAliasChange={(value) => clientAlias = value}
+            onSubmit={() => void submitBooking()}
           />
-        </div>
           {#if data.services.length === 0 || data.staff.length === 0 || data.schedules.length === 0}<div class="setup-shortcut"><span>Для полного сценария сначала создайте услугу, мастера и график.</span><button class="btn btn-secondary" onclick={() => goto(currentOnboardingStep === "services" ? "services" : currentOnboardingStep === "staff" ? "staff" : "schedule")}>Продолжить настройку →</button></div>{/if}
         {/if}
       {/if}
