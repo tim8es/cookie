@@ -45,6 +45,12 @@ test(
         sql + "\nSELECT 1;\n",
       );
       await assert.rejects(runMigrations(pool, tempDir), /checksum mismatch/);
+
+      await writeFile(join(tempDir, "0001_duplicate.sql"), "SELECT 1;\n");
+      await assert.rejects(
+        runMigrations(pool, tempDir),
+        /Duplicate migration sequence number: 0001/,
+      );
     } finally {
       if (tempDir) await rm(tempDir, { recursive: true, force: true });
       await pool.end();
