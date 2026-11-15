@@ -588,8 +588,12 @@ h2 { color: #172820; letter-spacing: -.5px; }
   .summary-price > strong { font-size: 24px; }
 }
 @media (max-width: 420px) {
+  .topbar { flex-wrap: wrap; gap: 8px; }
+  .topbar-title { flex: 1 1 100%; min-width: 0; }
+  .topbar-actions { flex: 1 1 100%; min-width: 0; justify-content: space-between; }
+  .preview-control { min-width: 0; }
+  .topbar .preview-control select { min-width: 0; width: 107px; }
   .topbar button.btn-top[data-slot=button] { min-height: 35px; padding: 7px 9px; font-size: 11px; }
-  .preview-control select { min-width: 96px; }
   .booking-form { padding: 19px 16px; }
   .booking-form-header { gap: 10px; }
   .booking-form-symbol { width: 36px; height: 36px; }
