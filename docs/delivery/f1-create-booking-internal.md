@@ -6,7 +6,7 @@ booking product, or pilot authorization. Design references:
 
 ## Implemented
 
-- Migration `0006_booking_idempotency.sql` stores a successful command
+- Migration `0007_booking_idempotency.sql` stores a successful command
   receipt by tenant, verified actor identity, operation and SHA-256 key digest.
   It stores a hash of the normalized request and the exact committed response.
   The raw idempotency key and any customer contact/PII are **not persisted**.
