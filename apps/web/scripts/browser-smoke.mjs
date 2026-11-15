@@ -252,8 +252,12 @@ async function keyboard(cdp, key, virtualCode, modifiers = 0) {
 
 async function scenario(cdp, origin, width, height) {
   const name = width + "x" + height;
+  // Exercise true CSS viewport widths. Chrome's mobile=true mode on this
+  // runner falls back to ~800 CSS pixels despite a smaller width override.
+  // Responsive coverage intentionally tests 320/375 CSS px, not touch UX.
   await cdp.send("Emulation.setDeviceMetricsOverride", {
-    width, height, deviceScaleFactor: 1, mobile: width < 600,
+    width, height, deviceScaleFactor: 1, mobile: false,
+    screenWidth: width, screenHeight: height,
   });
   await cdp.send("Page.navigate", { url: origin + "?browser-smoke=" + name });
   await requireDom(cdp, name + " onboarding", "document.querySelector('.welcome-form')");
