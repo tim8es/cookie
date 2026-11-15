@@ -125,6 +125,8 @@ export async function editPublishedShiftInternal(
   pool: Pool,
   input: InternalEditPublishedShift,
   assertMayEdit: AssertMayEditPublishedShift,
+  /** Trusted composition: caller owns BEGIN/COMMIT/ROLLBACK and release. */
+  transactionClient?: PoolClient,
 ): Promise<EditedPublishedShiftReceipt> {
   if (
     !input ||
@@ -162,10 +164,11 @@ export async function editPublishedShiftInternal(
       endAt,
     ]),
   );
-  const client = await pool.connect();
+  const client = transactionClient ?? (await pool.connect());
+  const ownsTransaction = transactionClient === undefined;
   let active = false;
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
     active = true;
 
     // Reference is read before lock ONLY to find the stored staff. Always
@@ -229,7 +232,7 @@ export async function editPublishedShiftInternal(
       if (oldReceipt.rows[0].request_sha256 !== requestHash) {
         reject("PUBLISHED_SHIFT_KEY_REUSED");
       }
-      await client.query("COMMIT");
+      if (ownsTransaction) await client.query("COMMIT");
       active = false;
       return oldReceipt.rows[0].result;
     }
@@ -452,13 +455,15 @@ export async function editPublishedShiftInternal(
         JSON.stringify(receipt),
       ],
     );
-    await client.query("COMMIT");
+    if (ownsTransaction) await client.query("COMMIT");
     active = false;
     return receipt;
   } catch (error) {
-    if (active) await client.query("ROLLBACK").catch(() => undefined);
+    if (active && ownsTransaction) {
+      await client.query("ROLLBACK").catch(() => undefined);
+    }
     throw error;
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
