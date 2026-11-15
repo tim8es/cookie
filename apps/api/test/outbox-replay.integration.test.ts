@@ -6,7 +6,11 @@ import test from "node:test";
 import { Pool } from "pg";
 
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
-import { claimOutbox, enqueueOutbox, failOutbox } from "../../../packages/platform-db/src/outbox.js";
+import {
+  claimOutbox,
+  enqueueOutbox,
+  failOutbox,
+} from "../../../packages/platform-db/src/outbox.js";
 import { replayDeadOutbox } from "../../../packages/platform-db/src/replay.js";
 import type { TrustedActor } from "../../../packages/platform-identity/src/authorization.js";
 
@@ -63,7 +67,15 @@ test(
            (tenant_id,id,identity_id,role_id,location_id)
          VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,NULL),
                 ($1::uuid,$5::uuid,$6::uuid,$7::uuid,NULL)`,
-        [tenantA, ownerAssignment, owner, ownerRole, adminAssignment, admin, fakeOwnerRole],
+        [
+          tenantA,
+          ownerAssignment,
+          owner,
+          ownerRole,
+          adminAssignment,
+          admin,
+          fakeOwnerRole,
+        ],
       );
 
       const producer = await pool.connect();
@@ -98,14 +110,23 @@ test(
       }
 
       async function exhaust(): Promise<void> {
-        const claims = await claimOutbox(pool, { batchSize: 1, topic: "test.synthetic" });
+        const claims = await claimOutbox(pool, {
+          batchSize: 1,
+          topic: "test.synthetic",
+        });
         assert.equal(claims.length, 1);
         assert.equal(claims[0]?.id, deadId);
-        assert.equal(await failOutbox(pool, claims[0]!, "SYNTHETIC_FAILURE", 0), true);
+        assert.equal(
+          await failOutbox(pool, claims[0]!, "SYNTHETIC_FAILURE", 0),
+          true,
+        );
       }
 
       await exhaust();
-      assert.deepEqual(await claimOutbox(pool, { topic: "test.synthetic" }), []);
+      assert.deepEqual(
+        await claimOutbox(pool, { topic: "test.synthetic" }),
+        [],
+      );
 
       await assert.rejects(
         replayDeadOutbox(pool, {
@@ -178,10 +199,22 @@ test(
            ORDER BY replay_number`,
         [deadId],
       );
-      assert.deepEqual(audit.rows.map((item) => item.replay_number), [1, 2, 3]);
-      assert.equal(audit.rows.every((item) => item.previous_attempts === 1), true);
-      assert.equal(audit.rows.every((item) => item.actor_identity_id === owner), true);
-      assert.equal(audit.rows.every((item) => item.event_id === deadId), true);
+      assert.deepEqual(
+        audit.rows.map((item) => item.replay_number),
+        [1, 2, 3],
+      );
+      assert.equal(
+        audit.rows.every((item) => item.previous_attempts === 1),
+        true,
+      );
+      assert.equal(
+        audit.rows.every((item) => item.actor_identity_id === owner),
+        true,
+      );
+      assert.equal(
+        audit.rows.every((item) => item.event_id === deadId),
+        true,
+      );
 
       const unmodified = await pool.query<{
         id: string;
@@ -194,14 +227,24 @@ test(
         [[foreignId, nonTestId]],
       );
       assert.equal(unmodified.rows.length, 2);
-      assert.equal(unmodified.rows.every((r) => r.status === "pending"), true);
-      assert.equal(unmodified.rows.every((r) => r.manual_replay_count === 0), true);
+      assert.equal(
+        unmodified.rows.every((r) => r.status === "pending"),
+        true,
+      );
+      assert.equal(
+        unmodified.rows.every((r) => r.manual_replay_count === 0),
+        true,
+      );
 
       row = await pool.query(
         "SELECT status, attempts, manual_replay_count FROM cookie_jobs.outbox_events WHERE id=$1::uuid",
         [deadId],
       );
-      assert.deepEqual(row.rows[0], { status: "dead", attempts: 1, manual_replay_count: 3 });
+      assert.deepEqual(row.rows[0], {
+        status: "dead",
+        attempts: 1,
+        manual_replay_count: 3,
+      });
     } finally {
       try {
         await pool.query(
