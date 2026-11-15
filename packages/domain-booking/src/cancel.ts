@@ -100,7 +100,7 @@ function sha256(text: string): string {
 
 /**
  * F1 **business-side** cancellation only. Client self-service is impossible
- * until a trusted Customer↔Identity relation exists. This shares the Staff
+ * until a trusted CustomerâIdentity relation exists. This shares the Staff
  * row lock used by CreateBooking so cancelling and rebooking do not race.
  *
  * One transaction commits: state change, mutation audit, notification Outbox
