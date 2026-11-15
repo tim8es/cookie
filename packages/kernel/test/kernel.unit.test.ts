@@ -24,26 +24,45 @@ test("providers start first, capabilities resolve only for declared consumers, s
   const calls: string[] = [];
   const service = { execute: () => "ok" };
   const provider = moduleWith(
-    { id: "provider", version: "1.0.0", provides: [{ name: "work.run", version: "1.2.3" }] },
+    {
+      id: "provider",
+      version: "1.0.0",
+      provides: [{ name: "work.run", version: "1.2.3" }],
+    },
     {
       register: (context) => context.provide("work.run", service),
-      start: () => { calls.push("provider:start"); },
-      stop: () => { calls.push("provider:stop"); },
+      start: () => {
+        calls.push("provider:start");
+      },
+      stop: () => {
+        calls.push("provider:stop");
+      },
     },
   );
   const consumer = moduleWith(
-    { id: "consumer", version: "1.0.0", requires: [{ name: "work.run", range: "^1.2.0" }] },
+    {
+      id: "consumer",
+      version: "1.0.0",
+      requires: [{ name: "work.run", range: "^1.2.0" }],
+    },
     {
       start: (context) => {
         calls.push("consumer:start");
-        assert.strictEqual(context.resolve<typeof service>("work.run"), service);
-        assert.equal(context.resolve<typeof service>("work.run").execute(), "ok");
-        assert.throws(
-          () => context.resolve("unlisted.port"),
-          { code: "UNDECLARED_REQUIREMENT" },
+        assert.strictEqual(
+          context.resolve<typeof service>("work.run"),
+          service,
         );
+        assert.equal(
+          context.resolve<typeof service>("work.run").execute(),
+          "ok",
+        );
+        assert.throws(() => context.resolve("unlisted.port"), {
+          code: "UNDECLARED_REQUIREMENT",
+        });
       },
-      stop: () => { calls.push("consumer:stop"); },
+      stop: () => {
+        calls.push("consumer:stop");
+      },
     },
   );
   const kernel = createKernel([consumer, provider]);
@@ -109,13 +128,14 @@ test("enforces capability versions and rejects unsupported manifests", () => {
     { code: "INVALID_MANIFEST" },
   );
   assert.throws(
-    () => createKernel([
-      moduleWith({
-        id: "other",
-        version: "1.0.0",
-        requires: [{ name: "ledger.check", range: ">=1.0.0" }],
-      }),
-    ]),
+    () =>
+      createKernel([
+        moduleWith({
+          id: "other",
+          version: "1.0.0",
+          requires: [{ name: "ledger.check", range: ">=1.0.0" }],
+        }),
+      ]),
     { code: "INVALID_MANIFEST" },
   );
   const compatible = moduleWith({
@@ -153,25 +173,30 @@ test("optional module can be disabled without affecting required host", async ()
   const host = moduleWith({ id: "host", version: "1.0.0" });
   const optional = moduleWith(
     { id: "extension", version: "1.0.0", optional: true },
-    { register: () => { throw new Error("should not register"); } },
+    {
+      register: () => {
+        throw new Error("should not register");
+      },
+    },
   );
   const kernel = createKernel([host, optional], {
     disabledModuleIds: ["extension"],
   });
   await kernel.start();
-  assert.deepEqual(kernel.snapshot().map((item) => [item.id, item.status]), [
-    ["extension", "disabled"],
-    ["host", "running"],
-  ]);
+  assert.deepEqual(
+    kernel.snapshot().map((item) => [item.id, item.status]),
+    [
+      ["extension", "disabled"],
+      ["host", "running"],
+    ],
+  );
   await kernel.stop();
-  assert.throws(
-    () => createKernel([host], { disabledModuleIds: ["host"] }),
-    { code: "REQUIRED_MODULE" },
-  );
-  assert.throws(
-    () => createKernel([host], { disabledModuleIds: ["absent"] }),
-    { code: "UNKNOWN_MODULE" },
-  );
+  assert.throws(() => createKernel([host], { disabledModuleIds: ["host"] }), {
+    code: "REQUIRED_MODULE",
+  });
+  assert.throws(() => createKernel([host], { disabledModuleIds: ["absent"] }), {
+    code: "UNKNOWN_MODULE",
+  });
 });
 
 test("failure of optional extension is isolated, but consumers cannot use its failed capability", async () => {
@@ -185,13 +210,21 @@ test("failure of optional extension is isolated, but consumers cannot use its fa
     },
     {
       register: (context) => context.provide("extension.port", { test: true }),
-      start: () => { throw new Error("offline"); },
+      start: () => {
+        throw new Error("offline");
+      },
     },
   );
   const kernel = createKernel([host, optional]);
   await kernel.start();
-  assert.equal(kernel.snapshot().find((m) => m.id === "extension")?.status, "failed");
-  assert.equal(kernel.snapshot().find((m) => m.id === "host")?.status, "running");
+  assert.equal(
+    kernel.snapshot().find((m) => m.id === "extension")?.status,
+    "failed",
+  );
+  assert.equal(
+    kernel.snapshot().find((m) => m.id === "host")?.status,
+    "running",
+  );
   await kernel.stop();
 
   const consumer = moduleWith({
@@ -203,17 +236,28 @@ test("failure of optional extension is isolated, but consumers cannot use its fa
   await assert.rejects(() => dependentKernel.start(), {
     code: "UNAVAILABLE_PROVIDER",
   });
-  assert.equal(dependentKernel.snapshot().find((m) => m.id === "host")?.status, "registered");
+  assert.equal(
+    dependentKernel.snapshot().find((m) => m.id === "host")?.status,
+    "registered",
+  );
 });
 
 test("required module startup failure stops previously started modules", async () => {
   const calls: string[] = [];
   const provider = moduleWith(
-    { id: "provider", version: "1.0.0", provides: [{ name: "p.test", version: "1.0.0" }] },
+    {
+      id: "provider",
+      version: "1.0.0",
+      provides: [{ name: "p.test", version: "1.0.0" }],
+    },
     {
       register: (context) => context.provide("p.test", { ok: true }),
-      start: () => { calls.push("start"); },
-      stop: () => { calls.push("stop"); },
+      start: () => {
+        calls.push("start");
+      },
+      stop: () => {
+        calls.push("stop");
+      },
     },
   );
   const consumer = moduleWith(
@@ -222,13 +266,23 @@ test("required module startup failure stops previously started modules", async (
       version: "1.0.0",
       requires: [{ name: "p.test", range: "*" }],
     },
-    { start: () => { throw new KernelError("START_FAILURE", "synthetic"); } },
+    {
+      start: () => {
+        throw new KernelError("START_FAILURE", "synthetic");
+      },
+    },
   );
   const kernel = createKernel([consumer, provider]);
   await assert.rejects(() => kernel.start(), { code: "START_FAILURE" });
   assert.deepEqual(calls, ["start", "stop"]);
-  assert.equal(kernel.snapshot().find((m) => m.id === "consumer")?.status, "failed");
-  assert.equal(kernel.snapshot().find((m) => m.id === "provider")?.status, "stopped");
+  assert.equal(
+    kernel.snapshot().find((m) => m.id === "consumer")?.status,
+    "failed",
+  );
+  assert.equal(
+    kernel.snapshot().find((m) => m.id === "provider")?.status,
+    "stopped",
+  );
   await assert.rejects(() => kernel.start(), { code: "INVALID_LIFECYCLE" });
 });
 
@@ -254,11 +308,20 @@ test("stops all started modules even when one stop throws", async () => {
   const calls: string[] = [];
   const a = moduleWith(
     { id: "a", version: "1.0.0" },
-    { stop: () => { calls.push("a"); } },
+    {
+      stop: () => {
+        calls.push("a");
+      },
+    },
   );
   const b = moduleWith(
     { id: "b", version: "1.0.0" },
-    { stop: () => { calls.push("b"); throw new Error("stop failed"); } },
+    {
+      stop: () => {
+        calls.push("b");
+        throw new Error("stop failed");
+      },
+    },
   );
   const kernel = createKernel([a, b]);
   await kernel.start();
