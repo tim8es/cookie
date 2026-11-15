@@ -8,7 +8,6 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TRANSITION_ID = /^[1-9][0-9]{0,18}$/;
 const MAX_BIGINT = 9223372036854775807n;
-const MAX_RENEWED_LEASE_MS = 15 * 60 * 1000;
 
 interface DeliveryRow extends QueryResultRow {
   status: string;
