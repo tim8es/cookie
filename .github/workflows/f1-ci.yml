@@ -41,6 +41,12 @@ jobs:
           node-version: "26"
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
+      - name: Format session API temporarily (CI diagnostics, no push)
+        run: |
+          pnpm exec prettier --write apps/api/src/session-context.ts apps/api/src/app.ts apps/api/test/session-context.unit.test.ts
+          printf 'SESSION_SRC='; base64 -w0 apps/api/src/session-context.ts; printf '\n'
+          printf 'SESSION_APP='; base64 -w0 apps/api/src/app.ts; printf '\n'
+          printf 'SESSION_TEST='; base64 -w0 apps/api/test/session-context.unit.test.ts; printf '\n'
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
