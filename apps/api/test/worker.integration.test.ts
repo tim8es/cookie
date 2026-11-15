@@ -82,11 +82,12 @@ test(
       assert.equal(after.pending, baseline.pending);
       assert.equal(after.delivered, baseline.delivered + 1);
       assert.equal(after.oldestDueSeconds >= 0, true);
-      await assert.rejects(
-        runTrustedPostgresOutboxWorker(pool, async () => undefined, {
-          signal: controller.signal,
-          leaseMs: 0,
-        }),
+      assert.throws(
+        () =>
+          runTrustedPostgresOutboxWorker(pool, async () => undefined, {
+            signal: controller.signal,
+            leaseMs: 0,
+          }),
         /Invalid outbox lease duration/,
       );
     } finally {
