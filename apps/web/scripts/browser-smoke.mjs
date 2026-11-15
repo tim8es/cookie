@@ -236,10 +236,17 @@ async function captureEvidence(cdp, name, stage) {
 
 async function checkWidth(cdp, screen) {
   const metrics = await evaluate(cdp, "({width:innerWidth, doc:document.documentElement.scrollWidth, body:document.body.scrollWidth})");
-  assert.ok(
-    metrics.doc <= metrics.width + 1 && metrics.body <= metrics.width + 1,
-    screen + ": document overflow " + JSON.stringify(metrics),
-  );
+  if (metrics.doc > metrics.width + 1 || metrics.body > metrics.width + 1) {
+    const containers = await evaluate(cdp, `(() => {
+      return [".app-shell", ".sidebar", ".nav-links", ".main-area", ".content",
+        ".welcome-grid", ".workspace-grid", ".booking-layout"].map((name) => {
+        const element = document.querySelector(name);
+        return {name, width: element?.clientWidth, scrollWidth: element?.scrollWidth,
+          right: Math.round(element?.getBoundingClientRect().right ?? 0)};
+      });
+    })()`);
+    assert.fail(screen + ": document overflow " + JSON.stringify({metrics, containers}));
+  }
 }
 
 async function keyboard(cdp, key, virtualCode, modifiers = 0) {

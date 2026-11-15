@@ -252,13 +252,13 @@ p { line-height: 1.55; }
   .welcome-copy h1 { font-size: 60px; }
 }
 @media (max-width: 950px) {
-  .app-shell { grid-template-columns: 1fr; }
-  .sidebar { position: static; height: auto; display: block; padding: 10px 16px; }
+  .app-shell { grid-template-columns: minmax(0, 1fr); }
+  .sidebar { position: static; height: auto; display: block; padding: 10px 16px; min-width: 0; }
   .brand { padding: 8px 6px 12px; }
   .brand strong { font-size: 20px; }
   .brand-mark { font-size: 25px; }
   .sidebar-heading, .sidebar-bottom { display: none; }
-  .nav-links { display: flex; flex-direction: row; overflow-x: auto; padding-bottom: 3px; scrollbar-width: thin; }
+  .nav-links { display: flex; flex-direction: row; overflow-x: auto; min-width: 0; max-width: 100%; padding-bottom: 3px; scrollbar-width: thin; }
   .nav-links button { flex-shrink: 0; font-size: 12px; min-height: 40px; padding: 9px 12px; gap: 6px; }
   .nav-glyph { font-size: 17px; }
   .topbar { height: 65px; }
