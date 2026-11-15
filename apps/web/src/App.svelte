@@ -9,14 +9,14 @@
   import Topbar from "./lib/ui/Topbar.svelte";
   import CalendarView from "./lib/ui/CalendarView.svelte";
   import BookingForm from "./lib/ui/BookingForm.svelte";
+  import ServiceForm from "./lib/ui/ServiceForm.svelte";
+  import StaffForm from "./lib/ui/StaffForm.svelte";
+  import ScheduleForm from "./lib/ui/ScheduleForm.svelte";
+  import LocationForm from "./lib/ui/LocationForm.svelte";
+  import { weekdays } from "./lib/weekdays";
   import "./styles.css";
 
   const api = createCookieUiApi();
-  const weekdays = [
-    { number: 1, name: "Пн" }, { number: 2, name: "Вт" }, { number: 3, name: "Ср" },
-    { number: 4, name: "Чт" }, { number: 5, name: "Пт" }, { number: 6, name: "Сб" },
-    { number: 0, name: "Вс" },
-  ];
   const blank: DemoSnapshot = { organization: null, locations: [], services: [], staff: [], schedules: [], bookings: [] };
 
   let screen: Screen = "home";
@@ -264,11 +264,15 @@
             <div class="list-items">{#each data.services as service}<div class="entity-row"><span class="service-tile">✳</span><div class="entity-text"><strong>{service.name}</strong><small>{service.durationMinutes} мин · единая длительность</small></div><strong class="price-label">{money(service.basePriceRub)}</strong></div>{/each}</div>
           {/if}
         </section>
-        <form class="card" onsubmit={(event) => { event.preventDefault(); void createService(); }}><span class="eyebrow">ДОБАВИТЬ УСЛУГУ</span><h2>Новая услуга</h2><p class="muted">Базовая цена без скидок и надбавок. Никаких вычислений стоимости в браузере.</p>
-          <label class="field">Название<input bind:value={serviceName} required maxlength="100" /></label>
-          <div class="form-pair"><label class="field">Длительность, мин<input type="number" bind:value={serviceDuration} min="1" step="5" required /></label><label class="field">Базовая цена, ₽<input type="number" bind:value={servicePrice} min="0" step="1" required /></label></div>
-          <button class="btn btn-primary btn-wide" type="submit">Добавить демо-услугу <span aria-hidden="true">→</span></button>
-        </form></div>
+        <ServiceForm
+            {serviceName}
+            {serviceDuration}
+            {servicePrice}
+            onNameChange={(value) => serviceName = value}
+            onDurationChange={(value) => serviceDuration = value}
+            onPriceChange={(value) => servicePrice = value}
+            onSubmit={() => void createService()}
+          /></div>
       {:else if screen === "staff"}
         <div class="section-head"><div><span class="eyebrow">ВАША КОМАНДА</span><h1>Мастера</h1><p>Профили и услуги мастеров. Доступы и права здесь не назначаются.</p></div><span class="counter-pill">{data.staff.length} специалистов</span></div>
         <div class="workspace-grid"><section class="card"><span class="eyebrow">КОМАНДА</span><h2>Специалисты салона</h2>
@@ -276,12 +280,17 @@
             <div class="list-items">{#each data.staff as member}<div class="entity-row"><span class="staff-avatar">{member.displayName.slice(0, 1)}</span><div class="entity-text"><strong>{member.displayName}</strong><small>{member.positionTitle} · {member.serviceIds.map(getService).join(", ")}</small></div><span class="status-pill">Демо</span></div>{/each}</div>
           {/if}
         </section>
-        <form class="card" onsubmit={(event) => { event.preventDefault(); void createStaff(); }}><span class="eyebrow">ДОБАВИТЬ МАСТЕРА</span><h2>Новый специалист</h2>
-          <label class="field">Псевдоним мастера<input bind:value={staffName} required maxlength="80" placeholder="Алекс Демо" /></label>
-          <label class="field">Название на витрине<input bind:value={staffTitle} maxlength="80" placeholder="Стилист" /></label>
-          <label class="field">Услуга<select bind:value={staffService} required><option value="" disabled>Выберите услугу</option>{#each data.services as service}<option value={service.id}>{service.name}</option>{/each}</select></label>
-          {#if data.services.length === 0}<p class="inline-note">Сначала добавьте хотя бы одну услугу.</p><button type="button" class="btn btn-secondary btn-wide" onclick={() => goto("services")}>К услугам →</button>{:else}<button type="submit" class="btn btn-primary btn-wide">Добавить демо-мастера <span aria-hidden="true">→</span></button>{/if}
-        </form></div>
+        <StaffForm
+            services={data.services}
+            {staffName}
+            {staffTitle}
+            {staffService}
+            onNameChange={(value) => staffName = value}
+            onTitleChange={(value) => staffTitle = value}
+            onServiceChange={(value) => staffService = value}
+            onOpenServices={() => goto("services")}
+            onSubmit={() => void createStaff()}
+          /></div>
       {:else if screen === "schedule"}
         <div class="section-head"><div><span class="eyebrow">РАБОЧЕЕ ВРЕМЯ</span><h1>Расписание</h1><p>Настройка шаблона рабочих дней для тестового мастера и филиала.</p></div></div>
         <div class="workspace-grid"><section class="card"><span class="eyebrow">ТЕКУЩИЕ ГРАФИКИ</span><h2>Рабочие недели</h2>
@@ -290,23 +299,34 @@
           {/if}
           <div class="inline-note">Изменения расписания не пересчитывают существующие записи. В production конфликты, права и занятость проверяет сервер.</div>
         </section>
-        <form class="card" onsubmit={(event) => { event.preventDefault(); void saveSchedule(); }}><span class="eyebrow">НАСТРОИТЬ НЕДЕЛЮ</span><h2>График мастера</h2>
-          <label class="field">Мастер<select bind:value={scheduleStaff} required><option value="" disabled>Выберите мастера</option>{#each data.staff as member}<option value={member.id}>{member.displayName}</option>{/each}</select></label>
-          <label class="field">Филиал<select bind:value={scheduleLocation} required>{#each data.locations as location}<option value={location.id}>{location.name}</option>{/each}</select></label>
-          <div class="field"><span class="field-caption">Рабочие дни</span><div class="weekday-select">{#each weekdays as day}<button type="button" class:selected={scheduleDays.includes(day.number)} onclick={() => toggleWeekday(day.number)} aria-pressed={scheduleDays.includes(day.number)}>{day.name}</button>{/each}</div></div>
-          <div class="form-pair"><label class="field">Начало<input type="time" bind:value={scheduleStart} required /></label><label class="field">Окончание<input type="time" bind:value={scheduleEnd} required /></label></div>
-          {#if data.staff.length === 0}<button class="btn btn-secondary btn-wide" type="button" onclick={() => goto("staff")}>Сначала добавьте мастера →</button>{:else}<button class="btn btn-primary btn-wide" type="submit" disabled={scheduleDays.length === 0}>Сохранить демо-график <span aria-hidden="true">→</span></button>{/if}
-        </form></div>
+        <ScheduleForm
+            staff={data.staff}
+            locations={data.locations}
+            {scheduleStaff}
+            {scheduleLocation}
+            {scheduleDays}
+            {scheduleStart}
+            {scheduleEnd}
+            onStaffChange={(value) => scheduleStaff = value}
+            onLocationChange={(value) => scheduleLocation = value}
+            onToggleWeekday={toggleWeekday}
+            onStartChange={(value) => scheduleStart = value}
+            onEndChange={(value) => scheduleEnd = value}
+            onOpenStaff={() => goto("staff")}
+            onSubmit={() => void saveSchedule()}
+          /></div>
       {:else if screen === "locations"}
         <div class="section-head"><div><span class="eyebrow">СТРУКТУРА САЛОНА</span><h1>Филиалы</h1><p>Синтетические адреса для демонстрации переключения локаций.</p></div></div>
         <div class="workspace-grid"><section class="card"><span class="eyebrow">ЛОКАЦИИ</span><h2>Филиалы организации</h2>
           <div class="list-items">{#each data.locations as location}<div class="entity-row"><span class="service-tile">⌂</span><div class="entity-text"><strong>{location.name}</strong><small>{location.address}</small></div><span class="status-pill">Демо</span></div>{/each}</div>
         </section>
-        <form class="card" onsubmit={(event) => { event.preventDefault(); void createLocation(); }}><span class="eyebrow">НОВЫЙ ФИЛИАЛ</span><h2>Добавить локацию</h2>
-          <label class="field">Название<input bind:value={locationName} maxlength="80" required /></label>
-          <label class="field">Демонстрационный адрес<input bind:value={locationAddress} maxlength="120" /></label>
-          <button class="btn btn-primary btn-wide" type="submit">Добавить демо-филиал →</button>
-        </form></div>
+        <LocationForm
+            {locationName}
+            {locationAddress}
+            onNameChange={(value) => locationName = value}
+            onAddressChange={(value) => locationAddress = value}
+            onSubmit={() => void createLocation()}
+          /></div>
       {:else if screen === "calendar"}
         <CalendarView
           bookings={data.bookings}

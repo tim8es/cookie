@@ -37,7 +37,7 @@ This shows the "API not connected" error; it **does not** send requests to backe
 5. Use Online booking: service → location → staff → date → fixture time → synthetic client alias → submit.
 6. Open Calendar; choose day or week, click the booking card.
 
-Navigation is non-linear: services, staff, schedule, locations and calendar are also available from the menu. The dashboard guides the initial steps.
+Navigation is non-linear: services, staff, schedule, locations and calendar are also available from the menu. The dashboard guides the initial steps. Owner forms use controlled values and callbacks; their submission still goes through the same frontend-only mock adapter.
 
 **Persistence:** browser `sessionStorage` only (key `cookie.frontend-demo.v1`). Refresh within the same tab retains demo data. Closing the tab or selecting "Сбросить демо-данные" clears them. No real personal data, logins, phone numbers, emails, payments, network writes or reservations.
 
@@ -51,6 +51,11 @@ Navigation is non-linear: services, staff, schedule, locations and calendar are 
 - `src/lib/ui/Topbar.svelte`: demo-mode ribbon, workspace controls and preview states.
 - `src/lib/ui/BookingSummary.svelte`: reusable client-side display of *catalog base price*, never Quote.
 - `src/lib/ui/BookingForm.svelte`: controlled public form (callbacks receive the newly selected value, avoiding event/binding order races).
+- `src/lib/ui/ServiceForm.svelte`: owner service/catalog input, without pricing calculations.
+- `src/lib/ui/StaffForm.svelte`: owner staff-profile input and service assignment selector, without access-policy logic.
+- `src/lib/ui/ScheduleForm.svelte`: owner weekday/time template input, without availability enforcement.
+- `src/lib/ui/LocationForm.svelte`: synthetic branch name/address input.
+- `src/lib/weekdays.ts`: shared UI weekday names and JavaScript day-number convention.
 - `src/lib/ui/BookingDetail.svelte`: booking drawer with keyboard Escape, initial focus, Tab loop and focus restoration.
 - `src/lib/ui/CalendarView.svelte`: standalone day/week calendar, date navigation and keyboard-selectable booking details.
 - `src/lib/calendar.ts`: pure presentation selector for date-based and deterministic chronological ordering.
@@ -64,6 +69,7 @@ Navigation is non-linear: services, staff, schedule, locations and calendar are 
 - `src/lib/dates.test.ts`: timezone-independent calendar day/week boundaries.
 - `src/lib/navigation.test.ts`: shared owner/public navigation inventory.
 - `src/lib/calendar.test.ts`: date filtering, stable ordering and no mutation of booking snapshots.
+- `src/lib/weekdays.test.ts`: weekday numbering and unique selectors.
 
 No imports of backend internals, domain booking rules, kernel code, database packages or shared contracts. The same booking screen is intended for public web, iframe and Mini App shells per ADR-0005, but embed messaging, origin checks and Telegram auth are **not implemented** and must not be claimed complete.
 
