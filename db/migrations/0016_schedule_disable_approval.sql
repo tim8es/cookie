@@ -1,6 +1,6 @@
 -- F1 INTERNAL: approval requests for disabling future published shifts.
 -- Policy mode/revision shared with schedule_edit_policies (0014).
--- Strictly additive; migrations 0001..0014 stay immutable.
+-- Strictly additive; migrations 0001..0015 stay immutable.
 CREATE TABLE cookie_scheduling.schedule_disable_requests (
   tenant_id uuid NOT NULL,
   id uuid NOT NULL,

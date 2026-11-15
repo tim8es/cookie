@@ -55,14 +55,14 @@ the original committed decision, including after shift deactivation.
 
 ### Persisted contract
 
-Additive migration `0015_schedule_disable_approval.sql` adds
+Additive migration `0016_schedule_disable_approval.sql` adds
 `schedule_disable_requests`: tenant/requester/hash-scoped idempotency,
 authoritative shift/staff/location, expected published revision +
 absolute UTC interval, policy revision, pending/applied/rejected
 state, verified reviewer ID, hashed decision key, terminal timestamp
 and applied receipt. No unstructured reasons or PII are stored. All
-migrations 0001–0014 remain byte-for-byte unchanged. Schema and
-synthetic backup/restore smoke validate **15** migrations.
+migrations 0001–0015 remain byte-for-byte unchanged. Schema and
+synthetic backup/restore smoke validate **16** migrations.
 
 ### Synthetic integration
 
