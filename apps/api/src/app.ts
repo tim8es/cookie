@@ -4,6 +4,7 @@ import {
   SERVICE_NAME,
   type HealthResponse,
 } from "../../../packages/contracts/src/index.js";
+import { registerProtectedSessionContext, type ProtectedSessionDependencies } from "./session-context.js";
 
 /** Only a health probe is exposed until Identity/Booking are built in later PRs. */
 export interface DatabaseProbe {
@@ -12,7 +13,7 @@ export interface DatabaseProbe {
 
 export function createApp(
   database: DatabaseProbe,
-  options: { readonly logger?: boolean } = {},
+  options: { readonly logger?: boolean; readonly sessionRoutes?: ProtectedSessionDependencies } = {},
 ): FastifyInstance {
   const app = Fastify({
     logger: options.logger ?? false,
@@ -38,6 +39,9 @@ export function createApp(
       }
     },
   );
+
+  // No session verifier is installed in the normal API bootstrap: fail closed.
+  if (options.sessionRoutes) registerProtectedSessionContext(app, options.sessionRoutes);
 
   app.setNotFoundHandler((_request, reply) =>
     reply.code(404).send({ error: "not-found" }),
