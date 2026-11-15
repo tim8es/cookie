@@ -14,7 +14,9 @@ const IDENTITY = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const route = "/v1/organizations/" + TENANT_A + "/session-context";
 const readDatabase = { query: async () => ({ rows: [] }) };
 
-function validSession(overrides: Partial<VerifiedSession> = {}): VerifiedSession {
+function validSession(
+  overrides: Partial<VerifiedSession> = {},
+): VerifiedSession {
   return {
     identityId: IDENTITY,
     tenantId: TENANT_A,
@@ -75,8 +77,10 @@ test("invalid, expired and failed verifier sessions fail closed without leaking 
       verifier: {
         verifyBearerToken: async (token) => {
           if (token === "broken") throw new Error("sensitive signing key");
-          if (token === "expired") return validSession({ expiresAtUnixSeconds: 1 });
-          if (token === "invalid-claim") return validSession({ tenantId: "bogus" });
+          if (token === "expired")
+            return validSession({ expiresAtUnixSeconds: 1 });
+          if (token === "invalid-claim")
+            return validSession({ tenantId: "bogus" });
           return null;
         },
       },
@@ -100,7 +104,9 @@ test("tenant is selected from the verified session, not a request URL or arbitra
   const app = createApp(readDatabase, {
     sessionRoutes: dependencies({
       policy: {
-        assertPermission: async () => { policyCalls++; },
+        assertPermission: async () => {
+          policyCalls++;
+        },
       },
     }),
   });
@@ -118,7 +124,11 @@ test("tenant is selected from the verified session, not a request URL or arbitra
 });
 
 test("successful request uses generated correlation and permission-checked identity", async (t) => {
-  const seen: Array<{ actor: { identityId: string; tenantId: string; correlationId: string }; resource: { kind: string; tenantId: string }; permission: string }> = [];
+  const seen: Array<{
+    actor: { identityId: string; tenantId: string; correlationId: string };
+    resource: { kind: string; tenantId: string };
+    permission: string;
+  }> = [];
   const app = createApp(readDatabase, {
     sessionRoutes: dependencies({
       policy: {
@@ -155,14 +165,18 @@ test("policy denial is 403, storage failure is 503 with no sensitive details", a
   const denied = createApp(readDatabase, {
     sessionRoutes: dependencies({
       policy: {
-        assertPermission: async () => { throw new AuthorizationDeniedError(); },
+        assertPermission: async () => {
+          throw new AuthorizationDeniedError();
+        },
       },
     }),
   });
   const failed = createApp(readDatabase, {
     sessionRoutes: dependencies({
       policy: {
-        assertPermission: async () => { throw new Error("password=secret"); },
+        assertPermission: async () => {
+          throw new Error("password=secret");
+        },
       },
     }),
   });
