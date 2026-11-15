@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"apps/**/*.ts\" \"packages/**/*.ts\" --max-warnings=0",
     "format": "prettier --write \"apps/**/*.ts\" \"packages/**/*.ts\"",
-    "format:check": "prettier --write apps/api/test/catalog-scheduling.integration.test.ts && echo \"COOKIE_FMT_BASE64:$(base64 -w0 apps/api/test/catalog-scheduling.integration.test.ts)\" && exit 1",
+    "format:check": "prettier --check \"apps/**/*.ts\" \"packages/**/*.ts\"",
     "test": "tsx --test apps/api/test/*.unit.test.ts packages/contracts/test/*.unit.test.ts packages/kernel/test/*.unit.test.ts packages/platform-identity/test/*.unit.test.ts packages/domain-scheduling/test/*.unit.test.ts",
     "test:integration": "tsx --test apps/api/test/*.integration.test.ts",
     "db:migrate": "tsx packages/platform-db/src/cli.ts",
