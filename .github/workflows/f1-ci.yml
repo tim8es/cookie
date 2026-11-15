@@ -53,6 +53,8 @@ jobs:
         run: pnpm test
       - name: PostgreSQL migration integration
         run: pnpm test:integration
+      - name: Synthetic PostgreSQL 16 backup and restore smoke
+        run: bash scripts/ci-restore-smoke.sh
       - name: Build API and migration CLI
         run: pnpm build
       - name: Check and build Svelte static app
