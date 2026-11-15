@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   authorizeSensitive,
+  requireSensitiveAuthorization,
   evaluateAuthorization,
   type Membership,
   type OrganizationRole,
@@ -401,5 +402,17 @@ test("sensitive preflight audits decisions without logging customer details", as
       }),
     /audit storage offline/,
     "audit failure must reject before command execution",
+  );
+});
+
+test("command guard rejects denied decisions rather than returning a false value", async () => {
+  const audit = { append: async () => undefined };
+  await assert.rejects(
+    () => requireSensitiveAuthorization(
+      { actor: alice, resource: bookingA, permission: "booking.delete" },
+      snapshot(null, []),
+      audit,
+    ),
+    { code: "ACCESS_DENIED" },
   );
 });
