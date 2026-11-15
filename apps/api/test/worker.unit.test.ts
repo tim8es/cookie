@@ -49,15 +49,15 @@ test("supervisor polls, accumulates sanitized counters and stops on abort", asyn
 
 test("aborting while a handler is in flight waits for it without claiming again", async () => {
   const controller = new AbortController();
-  let complete: (() => void) | undefined;
+  const completion: { resolve?: () => void } = {};
+  const entry: { resolve?: () => void } = {};
   let calls = 0;
-  let started: (() => void) | undefined;
-  const inFlight = new Promise<void>((resolve) => { complete = resolve; });
-  const entered = new Promise<void>((resolve) => { started = resolve; });
+  const inFlight = new Promise<void>((resolve) => { completion.resolve = resolve; });
+  const entered = new Promise<void>((resolve) => { entry.resolve = resolve; });
   const resultPromise = superviseOutboxWorker(
     async () => {
       calls++;
-      started?.();
+      entry.resolve?.();
       await inFlight;
       return { claimed: 1, delivered: 1, failed: 0, stale: 0 };
     },
@@ -66,7 +66,7 @@ test("aborting while a handler is in flight waits for it without claiming again"
   await entered;
   controller.abort();
   assert.equal(calls, 1);
-  complete?.();
+  completion.resolve?.();
   assert.deepEqual(await resultPromise, {
     claimed: 1,
     delivered: 1,
