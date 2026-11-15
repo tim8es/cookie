@@ -69,3 +69,5 @@ jobs:
         run: |
           pnpm --filter @cookie/web check
           pnpm --filter @cookie/web build
+      - name: Synthetic browser onboarding and booking smoke
+        run: node apps/web/scripts/browser-smoke.mjs

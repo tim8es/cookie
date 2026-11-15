@@ -95,6 +95,32 @@ Repo-wide `pnpm lint`, `pnpm format:check` and GitHub F1 quality gate remain app
 
 **Important:** GitHub CI does not replace physical device or browser visual QA. Do not close the mobile UX portion of Issue #13 solely from typecheck/CI.
 
+## Automated Chromium browser smoke (CI)
+
+The repository F1 workflow runs `node apps/web/scripts/browser-smoke.mjs`
+**after** `pnpm --filter @cookie/web build`, using a headless Chrome/Chromium
+binary already installed on the GitHub Ubuntu runner. Node.js 26 provides the
+native WebSocket client for Chrome DevTools; no Playwright, extra npm packages
+or remote browser provider are required.
+
+To execute locally, run `pnpm build:web`, then
+`node apps/web/scripts/browser-smoke.mjs`; install Chrome/Chromium if absent,
+or set `COOKIE_BROWSER_BINARY` to its executable path.
+
+The smoke test serves `dist/` on a random **loopback-only** port, drives an
+isolated browser session, and checks 1280×800, 375×812 and 320×568 viewports:
+synthetic salon → service → staff → weekly schedule → slot → demo booking →
+week/day calendar → booking drawer and Escape focus restoration → reload
+persistence → error/forbidden previews → reset. It fails if the whole document
+overflows the viewport; the calendar's intentionally scrollable internal week
+grid is allowed.
+
+This is a real Chromium DOM/keyboard test on synthetic browser-local data,
+**not** production backend E2E, cross-browser coverage, touch-device
+verification, pixel-level visual QA, payment testing or authorization testing.
+The browser only accesses a locally served frontend. No external network,
+customer records or booking-provider calls are required.
+
 ## Required reviewed APIs (#22/#23/#26)
 
 These are **integration needs**, not proposed HTTP endpoint names or wire schemas:
