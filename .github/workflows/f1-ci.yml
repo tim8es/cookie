@@ -41,12 +41,6 @@ jobs:
           node-version: "26"
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
-      - name: Temporary Outbox health Prettier diagnostic (no push)
-        run: |
-          pnpm exec prettier --write packages/platform-db/src/outbox-health.ts apps/api/test/outbox-health.unit.test.ts apps/api/test/outbox-health.integration.test.ts
-          printf 'HEALTH_SRC_B64='; base64 -w0 packages/platform-db/src/outbox-health.ts; printf '\n'
-          printf 'HEALTH_UNIT_B64='; base64 -w0 apps/api/test/outbox-health.unit.test.ts; printf '\n'
-          printf 'HEALTH_INTEG_B64='; base64 -w0 apps/api/test/outbox-health.integration.test.ts; printf '\n'
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
