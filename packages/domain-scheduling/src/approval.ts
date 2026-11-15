@@ -456,15 +456,6 @@ export async function requestPublishedShiftEditInternal(
     ) {
       fail("SCHEDULE_APPROVAL_REQUEST_CONFLICT");
     }
-    const audit = await client.query(
-      `SELECT 1 FROM cookie_scheduling.shift_publish_audit
-         WHERE tenant_id=$1::uuid AND shift_id=$2::uuid
-       UNION ALL
-       SELECT 1 FROM cookie_scheduling.shift_disable_audit
-         WHERE tenant_id=$1::uuid AND shift_id=$2::uuid
-       LIMIT 1`,
-      [tenantId, shift.id],
-    );
     // Require published provenance without historical deactivation.
     const verifiedPublication = await client.query(
       `SELECT 1 FROM cookie_scheduling.shift_publish_audit
@@ -476,7 +467,7 @@ export async function requestPublishedShiftEditInternal(
          WHERE tenant_id=$1::uuid AND shift_id=$2::uuid LIMIT 1`,
       [tenantId, shift.id],
     );
-    if (!audit.rowCount || !verifiedPublication.rowCount || disabled.rowCount) {
+    if (!verifiedPublication.rowCount || disabled.rowCount) {
       fail("SCHEDULE_APPROVAL_REQUEST_STALE");
     }
 
