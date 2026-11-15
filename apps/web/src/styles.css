@@ -656,3 +656,28 @@ h2 { color: #172820; letter-spacing: -.5px; }
   .public-header button.public-back[data-slot=button] { padding: 0 10px; font-size: 11px; }
   .public-content .booking-form { padding: 20px 16px; }
 }
+
+/* Polished onboarding action, using the shared UI Button component. */
+.welcome-form button.welcome-submit[data-slot=button] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 48px;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 720;
+  background: #1c664f;
+  color: #fff;
+  box-shadow: 0 2px 5px rgba(17, 95, 58, .11);
+}
+.welcome-form button.welcome-submit[data-slot=button]:hover:not(:disabled) {
+  background: #14533d;
+}
+.welcome-form input[data-slot=input] {
+  height: 46px;
+  box-shadow: none;
+  background: #fff;
+}

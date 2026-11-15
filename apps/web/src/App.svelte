@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { ArrowRight, Building2 } from "@lucide/svelte";
+  import { Button } from "./lib/components/ui/button/index.js";
+  import { Input } from "./lib/components/ui/input/index.js";
   import { createCookieUiApi } from "./lib/api";
   import { localDay, longDate, money, upcomingWeekday } from "./lib/dates";
   import { UiFailure } from "./lib/model";
@@ -236,12 +239,27 @@
       {:else if screen === "home"}
         {#if !org}
           <div class="welcome-grid">
-            <div class="welcome-copy"><span class="eyebrow">WELCOME TO COOKIE <span class="decor-line"></span></span><h1>Ваш салон.<br /><em>Ваш ритм.</em></h1><p>Простое пространство, где команда, услуги и записи работают вместе. Начните с тестового салона — без регистрации и реальных клиентов.</p><div class="welcome-metrics"><div><strong>5 шагов</strong><span>до первой записи</span></div><div><strong>0 ₽</strong><span>демо без платежей</span></div></div></div>
+            <div class="welcome-copy"><span class="eyebrow">НАЧАЛО РАБОТЫ <span class="decor-line"></span></span><h1>Ваш салон.<br /><em>Ваш ритм.</em></h1><p>Простое пространство, где команда, услуги и записи работают вместе. Начните с тестового салона — без регистрации и реальных клиентов.</p><div class="welcome-metrics"><div><strong>5 шагов</strong><span>до первой записи</span></div><div><strong>0 ₽</strong><span>демо без платежей</span></div></div></div>
             <form class="welcome-form card" onsubmit={(event) => { event.preventDefault(); void createOrganization(); }}>
-              <div class="form-icon">✳</div><span class="eyebrow">ШАГ 01 / 05</span><h2>Создайте тестовый салон</h2><p class="muted">Это не настоящая регистрация: данные останутся в текущей вкладке браузера.</p>
-              <label class="field">Название салона<input bind:value={organizationName} required maxlength="80" placeholder="Студия Cookie (тест)" /></label>
-              <div class="inline-note">Основной филиал будет добавлен автоматически как демонстрационный.</div>
-              <button class="btn btn-primary btn-wide" type="submit">Создать тестовое пространство <span aria-hidden="true">→</span></button>
+              <div class="form-icon" aria-hidden="true"><Building2 size={22} strokeWidth={1.9} /></div>
+              <span class="eyebrow">ШАГ 01 / 05</span>
+              <h2>Создайте тестовый салон</h2>
+              <p class="muted">Попробуйте рабочее пространство на демонстрационных данных без регистрации.</p>
+              <label class="field">
+                Название салона
+                <Input
+                  value={organizationName}
+                  oninput={(event) => organizationName = event.currentTarget.value}
+                  required
+                  maxlength={80}
+                  placeholder="Студия Cookie (тест)"
+                />
+              </label>
+              <div class="inline-note">Основной филиал создаётся автоматически как демонстрационный.</div>
+              <Button class="welcome-submit" size="lg" type="submit">
+                Создать тестовое пространство
+                <ArrowRight size={17} aria-hidden="true" />
+              </Button>
               <div class="form-foot">Без email, пароля и персональных данных</div>
             </form>
           </div>
@@ -346,7 +364,7 @@
           onCreateBooking={() => goto("booking")}
         />
       {:else if screen === "booking"}
-        <div class="booking-head"><div><span class="eyebrow">КЛИЕНТСКАЯ ВИТРИНА · ПРЕДПРОСМОТР</span><h1>Записаться на услугу</h1><p>{org.name} · демонстрационная форма без реального бронирования</p></div><span class="public-chip">Предпросмотр · демо</span></div>
+        <div class="booking-head"><div><span class="eyebrow">ОНЛАЙН-ЗАПИСЬ</span><h1>Записаться на услугу</h1><p>{org.name} · демонстрационная форма без реального бронирования</p></div></div>
         {#if createdBooking}
           <section class="card success-screen"><div class="success-symbol">✓</div><span class="eyebrow">ЗАПИСЬ СОЗДАНА ЛОКАЛЬНО</span><h2>Готово! Это демо-запись.</h2><p>Запись сохранена только в браузерной сессии. Она <strong>не подтверждена backend</strong> и не резервирует время у мастера.</p>
             <div class="success-receipt"><div><span>Услуга</span><strong>{getService(createdBooking.serviceId)}</strong></div><div><span>Дата и время</span><strong>{longDate(createdBooking.date)}, {createdBooking.time}</strong></div><div><span>Мастер</span><strong>{getStaff(createdBooking.staffId)}</strong></div><div><span>Демо-ID</span><strong class="mono">{createdBooking.id.slice(0, 8)}</strong></div></div>
