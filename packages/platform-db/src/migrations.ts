@@ -36,6 +36,16 @@ export async function runMigrations(
     throw new Error("Migration file names must match NNNN_name.sql");
   }
 
+  const ordinals = new Set<string>();
+  for (const filename of sqlFiles) {
+    const ordinal = filename.slice(0, 4);
+    if (ordinals.has(ordinal)) {
+      throw new Error("Duplicate migration sequence number: " + ordinal);
+    }
+    ordinals.add(ordinal);
+  }
+
+
   const migrations: Migration[] = await Promise.all(
     sqlFiles.map(async (filename) => {
       const sql = await readFile(join(directory, filename), "utf8");
