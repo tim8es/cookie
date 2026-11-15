@@ -496,16 +496,8 @@ test(
         [tenant, service],
       );
       const [moved, sameKeyRetry] = await Promise.all([
-        rescheduleBookingInternal(
-          pool,
-          moveCommand,
-          allowSyntheticReschedule,
-        ),
-        rescheduleBookingInternal(
-          pool,
-          moveCommand,
-          allowSyntheticReschedule,
-        ),
+        rescheduleBookingInternal(pool, moveCommand, allowSyntheticReschedule),
+        rescheduleBookingInternal(pool, moveCommand, allowSyntheticReschedule),
       ]);
       assert.deepEqual(sameKeyRetry, moved);
       assert.deepEqual(moved, {
