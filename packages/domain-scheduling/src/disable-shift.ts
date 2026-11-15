@@ -268,13 +268,7 @@ export async function disableShiftInternal(
          (tenant_id,id,shift_id,actor_identity_id,correlation_id,
           previous_active,next_active)
        VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,true,false)`,
-      [
-        tenantId,
-        randomUUID(),
-        shift.id,
-        actorId,
-        input.actor.correlationId,
-      ],
+      [tenantId, randomUUID(), shift.id, actorId, input.actor.correlationId],
     );
     await enqueueOutbox(client, {
       tenantId,
