@@ -269,6 +269,7 @@ async function scenario(cdp, origin, width, height) {
   });
   await cdp.send("Page.navigate", { url: origin + "?browser-smoke=" + name });
   await requireDom(cdp, name + " onboarding", "document.querySelector('.welcome-form')");
+  await requireDom(cdp, name + " standalone welcome header", "document.querySelector('.onboarding-header') && !document.querySelector('.sidebar')");
   const dimensions = await evaluate(cdp, "({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio })");
   assert.equal(dimensions.width, width, name + ": Chromium mobile emulation used wrong CSS viewport");
   assert.equal(dimensions.height, height, name + ": Chromium emulation used wrong viewport height");

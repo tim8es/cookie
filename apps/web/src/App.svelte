@@ -11,6 +11,7 @@
   import Sidebar from "./lib/ui/Sidebar.svelte";
   import Topbar from "./lib/ui/Topbar.svelte";
   import PublicHeader from "./lib/ui/PublicHeader.svelte";
+  import OnboardingHeader from "./lib/ui/OnboardingHeader.svelte";
   import CalendarView from "./lib/ui/CalendarView.svelte";
   import BookingForm from "./lib/ui/BookingForm.svelte";
   import ServiceForm from "./lib/ui/ServiceForm.svelte";
@@ -214,14 +215,16 @@
   <meta name="description" content="Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными." />
 </svelte:head>
 
-<div class="app-shell" class:public-shell={screen === "booking"}>
-  {#if screen !== "booking"}
+<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org}>
+  {#if screen !== "booking" && !(screen === "home" && !org)}
     <Sidebar {screen} {stepCount} onNavigate={goto} />
   {/if}
 
   <div class="main-area">
     {#if screen === "booking"}
       <PublicHeader onBack={() => goto("home")} />
+    {:else if screen === "home" && !org}
+      <OnboardingHeader />
     {:else}
       <Topbar {screen} bind:preview canCreateBooking={!!org} onNavigate={goto} />
     {/if}

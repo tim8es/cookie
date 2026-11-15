@@ -409,3 +409,60 @@ h1,h2,h3 { color: #28222e; letter-spacing: -.035em; }
 @media(prefers-reduced-motion: reduce) {
   *,*::before,*::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* The first-run studio is a separate experience; menu/QA chrome belongs to the owner. */
+.app-shell.onboarding-shell { grid-template-columns: minmax(0, 1fr); }
+.onboarding-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  background: #fff; height: 73px; padding: 0 clamp(22px, 3.6vw, 52px);
+  border-bottom: 1px solid #eee8ef;
+}
+.onboarding-brand { display: inline-flex; align-items: center; gap: 11px; font-size: 25px; font-weight: 820; letter-spacing: -.07em; color: #382640; }
+.onboarding-brand-dot { color: #795c85; }
+.onboarding-header-meta { display: inline-flex; align-items: center; gap: 9px; color: #78677e; font-size: 11px; font-weight: 600; }
+.onboarding-header-pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #98b36d; }
+.onboarding-shell .content:has(.atelier-welcome) { width: 100%; max-width: 1510px; padding: 35px clamp(20px, 4vw, 56px) 16px; }
+.onboarding-shell .atelier-welcome { grid-template-columns: minmax(0,1.06fr) minmax(340px,.94fr); }
+.onboarding-shell .atelier-welcome .welcome-copy { min-height: 618px; }
+.onboarding-shell .atelier-welcome .welcome-form { padding: clamp(34px, 5vw, 76px); }
+.onboarding-shell .footer { padding-top: 19px; }
+
+/* Workspace numbers are a single typographic ledger, not four generic cards. */
+.stat-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 0; margin-bottom: 23px; background: #fff;
+  border: 1px solid #ede7ee; border-radius: 13px;
+  overflow: hidden;
+}
+.stat-card {
+  border: 0; border-radius: 0; box-shadow: none;
+  border-right: 1px solid #eee8ef; min-height: 140px;
+  padding: 24px 26px; background: transparent;
+}
+.stat-card:last-child { border-right: 0; }
+.stat-card > span:first-child { color: #877a8c; font-size: 12px; }
+.stat-card > strong { font-size: clamp(33px, 3.5vw, 42px); color: #3b2b43; margin-top: 8px; }
+.stat-symbol { display: none; }
+@media(max-width:800px) {
+  .onboarding-shell .atelier-welcome { grid-template-columns: minmax(0,1fr); }
+  .onboarding-shell .atelier-welcome .welcome-copy { min-height: 345px; }
+  .onboarding-shell .atelier-welcome .welcome-form { padding: 35px; }
+}
+@media(max-width:680px) {
+  .onboarding-header { height: 63px; padding: 0 18px; }
+  .onboarding-brand { font-size: 22px; }
+  .onboarding-brand .brand-seal { width: 33px; height: 33px; }
+  .onboarding-header-meta { font-size: 10px; }
+  .onboarding-shell .content:has(.atelier-welcome) { padding: 15px 12px 13px; }
+  .onboarding-shell .atelier-welcome .welcome-copy { min-height: 290px; padding: 68px 25px 26px; }
+  .onboarding-shell .atelier-welcome .welcome-form { padding: 27px 25px; }
+  .onboarding-shell .welcome-illustration { opacity: .45; right: -20%; top: 19%; }
+  .stat-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .stat-card:nth-child(2) { border-right: 0; }
+  .stat-card:nth-child(-n+2) { border-bottom: 1px solid #eee8ef; }
+  .stat-card { min-height: 125px; padding: 20px; }
+}
+@media(max-width:400px) {
+  .onboarding-header-meta { max-width: 130px; text-align: right; }
+  .onboarding-shell .atelier-welcome .welcome-form { padding: 24px 20px; }
+}

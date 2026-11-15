@@ -17,7 +17,7 @@
 
 ## Core patterns
 
-1. **Owner workspace:** compact purple tool rail on desktop; horizontally scrollable navigation on narrow screens; functional active page signal. No bogus analytics or business claims.
+1. **First run:** independent two-page studio cover + native form, without the owner sidebar or QA topbar. **Owner workspace:** compact purple tool rail on desktop; horizontally scrollable navigation on narrow screens; functional active page signal. A unified metric ledger replaces four equal marketing-style cards. No bogus analytics or business claims.
 2. **Client appointment:** separate header and one controlled three-stage form. A single dark editorial introduction offers context. The companion appointment pass is the signature material.
 3. **Ticket / summary:** selected service and duration, staff, date, time, and **catalog base price only**. Always state that backend must confirm final price and slot.
 4. **Mobile:** one main column, a reduced introduction, natural field order and no document-level horizontal scroll at CSS widths 375 and 320 pixels.
