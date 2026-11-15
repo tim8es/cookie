@@ -69,9 +69,16 @@ export interface SlotView {
   time: string;
   label: string;
 }
-export type UiFailureCode = "NOT_CONNECTED" | "SLOT_CONFLICT" | "NOT_FOUND" | "INVALID_DEMO_INPUT";
+export type UiFailureCode =
+  | "NOT_CONNECTED"
+  | "SLOT_CONFLICT"
+  | "NOT_FOUND"
+  | "INVALID_DEMO_INPUT";
 export class UiFailure extends Error {
-  constructor(public readonly code: UiFailureCode, message: string) {
+  constructor(
+    public readonly code: UiFailureCode,
+    message: string,
+  ) {
     super(message);
     this.name = "UiFailure";
   }
@@ -81,10 +88,22 @@ export interface CookieUiPort {
   getSnapshot(): Promise<DemoSnapshot>;
   createOrganization(name: string): Promise<Organization>;
   addLocation(name: string, address: string): Promise<Location>;
-  addService(name: string, durationMinutes: number, basePriceRub: number): Promise<Service>;
-  addStaff(displayName: string, positionTitle: string, serviceIds: string[]): Promise<StaffMember>;
+  addService(
+    name: string,
+    durationMinutes: number,
+    basePriceRub: number,
+  ): Promise<Service>;
+  addStaff(
+    displayName: string,
+    positionTitle: string,
+    serviceIds: string[],
+  ): Promise<StaffMember>;
   saveSchedule(schedule: WorkSchedule): Promise<WorkSchedule>;
-  getSlotSuggestions(staffId: string, locationId: string, date: string): Promise<SlotView[]>;
+  getSlotSuggestions(
+    staffId: string,
+    locationId: string,
+    date: string,
+  ): Promise<SlotView[]>;
   createBooking(draft: CreateBookingDraft): Promise<BookingView>;
   resetDemo(): Promise<void>;
 }

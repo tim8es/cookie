@@ -27,11 +27,22 @@ export function upcomingWeekday(from: string, weekdays: number[]): string {
   return from;
 }
 export function longDate(day: string): string {
-  return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", weekday: "long" }).format(parseDay(day));
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "long",
+    weekday: "long",
+  }).format(parseDay(day));
 }
 export function shortDate(day: string): string {
-  return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" }).format(parseDay(day));
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "short",
+  }).format(parseDay(day));
 }
 export function money(rubles: number): string {
-  return new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(rubles);
+  return new Intl.NumberFormat("ru-RU", {
+    style: "currency",
+    currency: "RUB",
+    maximumFractionDigits: 0,
+  }).format(rubles);
 }
