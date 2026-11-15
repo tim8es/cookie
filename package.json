@@ -14,7 +14,7 @@
     "lint": "eslint \"apps/**/*.ts\" \"packages/**/*.ts\" --max-warnings=0",
     "format": "prettier --write \"apps/**/*.ts\" \"packages/**/*.ts\"",
     "format:check": "prettier --check \"apps/**/*.ts\" \"packages/**/*.ts\"",
-    "test": "tsx --test apps/api/test/*.unit.test.ts packages/contracts/test/*.unit.test.ts packages/kernel/test/*.unit.test.ts",
+    "test": "tsx --test apps/api/test/*.unit.test.ts packages/contracts/test/*.unit.test.ts packages/kernel/test/*.unit.test.ts packages/platform-identity/test/*.unit.test.ts",
     "test:integration": "tsx --test apps/api/test/*.integration.test.ts",
     "db:migrate": "tsx packages/platform-db/src/cli.ts",
     "start:api": "node dist/apps/api/src/main.js",
