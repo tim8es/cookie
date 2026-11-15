@@ -71,6 +71,9 @@ export interface AuthorizationRequest {
   readonly ownerProtected?: boolean;
 }
 
+/** Non-delegable actions remain protected even if a caller omits ownerProtected. */
+const SYSTEM_OWNER_ONLY_PERMISSIONS = new Set(["organization.transfer-owner"]);
+
 export interface PolicySnapshot {
   readonly ownerIdentityId: string;
   readonly membership: Membership | null;
@@ -162,7 +165,8 @@ export function evaluateAuthorization(
     roles.set(role.id, role);
   }
 
-  if (request.ownerProtected && actor.identityId !== ownerIdentityId) {
+  const ownerProtected = request.ownerProtected || SYSTEM_OWNER_ONLY_PERMISSIONS.has(permission);
+  if (ownerProtected && actor.identityId !== ownerIdentityId) {
     return deny("owner-required");
   }
 
@@ -180,7 +184,7 @@ export function evaluateAuthorization(
       if (actor.identityId !== ownerIdentityId) continue;
     }
     if (
-      request.ownerProtected &&
+      ownerProtected &&
       (role.baseType !== "owner" || assignment.scope.kind !== "organization")
     ) {
       continue;
@@ -191,7 +195,7 @@ export function evaluateAuthorization(
     }
     return { allowed: true, reason: "granted" };
   }
-  return deny(request.ownerProtected ? "owner-required" : "permission-denied");
+  return deny(ownerProtected ? "owner-required" : "permission-denied");
 }
 
 /** Minimal audit port: persistence/transaction semantics belong to #19. */
