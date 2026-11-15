@@ -142,7 +142,7 @@ test(
       assert.equal(await acknowledgeOutbox(pool, recovered[0]!), false);
 
       // Clear remaining leased events so isolated retry cases are deterministic.
-      await pool.query("DELETE FROM cookie_jobs.outbox_events WHERE status <> 'delivered'");
+      await pool.query("DELETE FROM cookie_jobs.outbox_events WHERE tenant_id = ANY($1::uuid[]) AND status <> 'delivered'", [[tenantA, tenantB]]);
 
       const p = await pool.connect();
       let retryId = "";
