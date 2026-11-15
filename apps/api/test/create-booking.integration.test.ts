@@ -10,6 +10,9 @@ import {
   createBookingInternal,
   type InternalCreateBooking,
 } from "../../../packages/domain-booking/src/create.js";
+import {
+  rescheduleBookingInternal,
+} from "../../../packages/domain-booking/src/reschedule.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 
 test(
@@ -74,7 +77,7 @@ test(
       await pool.query(
         `INSERT INTO cookie_identity.roles
            (tenant_id,id,base_type,display_name,permissions)
-         VALUES($1,$2,'owner','Synthetic owner',ARRAY['booking.create','booking.cancel'])`,
+         VALUES($1,$2,'owner','Synthetic owner',ARRAY['booking.create','booking.cancel','booking.reschedule'])`,
         [tenant, role],
       );
       await pool.query(
@@ -407,11 +410,181 @@ test(
         receipts: "4",
         events: "4",
       });
+
+      // The second Booking remains Cancelled; a time-only reschedule never
+      // changes state, price, service, staff or branch.
+      const moveCommand = {
+        actor,
+        bookingId: first.bookingId,
+        idempotencyKey: "move-original-booking",
+        newStartAt: "2027-04-12T16:00:00Z",
+      };
+      let movePolicies = 0;
+      const allowSyntheticReschedule = async (
+        _client: unknown,
+        booking: { readonly oldStartAt: string },
+      ): Promise<void> => {
+        movePolicies++;
+        assert.equal(booking.oldStartAt, first.startAt);
+      };
+      await assert.rejects(
+        rescheduleBookingInternal(pool, moveCommand, async () => {
+          throw new Error("Synthetic reschedule deadline denied");
+        }),
+        { code: "RESCHEDULE_POLICY_DENIED" },
+      );
+      await assert.rejects(
+        rescheduleBookingInternal(
+          pool,
+          {
+            ...moveCommand,
+            idempotencyKey: "reschedule-in-break",
+            newStartAt: "2027-04-12T12:05:00Z",
+          },
+          allowSyntheticReschedule,
+        ),
+        { code: "RESCHEDULE_NOT_AVAILABLE" },
+      );
+      await assert.rejects(
+        rescheduleBookingInternal(
+          pool,
+          {
+            ...moveCommand,
+            idempotencyKey: "reschedule-overlap-other-booking",
+            newStartAt: "2027-04-12T14:05:00Z",
+          },
+          allowSyntheticReschedule,
+        ),
+        { code: "RESCHEDULE_NOT_AVAILABLE" },
+      );
+      await assert.rejects(
+        rescheduleBookingInternal(
+          pool,
+          { ...moveCommand, actor: { ...actor, identityId: outsider } },
+          allowSyntheticReschedule,
+        ),
+        { code: "ACCESS_DENIED" },
+      );
+      await assert.rejects(
+        rescheduleBookingInternal(
+          pool,
+          {
+            ...moveCommand,
+            bookingId: secondBooking.bookingId,
+            idempotencyKey: "reschedule-cancelled",
+          },
+          async () => undefined,
+        ),
+        { code: "BOOKING_NOT_CONFIRMED" },
+      );
+
+      const beforeMove = await pool.query<{
+        status: string;
+        start_at: Date;
+        price_kopecks_snapshot: string;
+      }>(
+        `SELECT status, start_at, price_kopecks_snapshot::text
+         FROM cookie_booking.bookings WHERE tenant_id=$1 AND id=$2`,
+        [tenant, first.bookingId],
+      );
+      assert.equal(beforeMove.rows[0]?.status, "Confirmed");
+      assert.equal(beforeMove.rows[0]?.start_at.toISOString(), first.startAt);
+      assert.equal(beforeMove.rows[0]?.price_kopecks_snapshot, "150000");
+
+      // Changing current Catalog price/duration never rewrites the original
+      // Confirmed booking's duration, buffer, promotion or price snapshots.
+      await pool.query(
+        "UPDATE cookie_catalog.services SET duration_minutes=75 WHERE tenant_id=$1 AND id=$2",
+        [tenant, service],
+      );
+      const [moved, sameKeyRetry] = await Promise.all([
+        rescheduleBookingInternal(
+          pool,
+          moveCommand,
+          allowSyntheticReschedule,
+        ),
+        rescheduleBookingInternal(
+          pool,
+          moveCommand,
+          allowSyntheticReschedule,
+        ),
+      ]);
+      assert.deepEqual(sameKeyRetry, moved);
+      assert.deepEqual(moved, {
+        bookingId: first.bookingId,
+        status: "Confirmed",
+        previousStartAt: "2027-04-12T10:00:00.000Z",
+        startAt: "2027-04-12T16:00:00.000Z",
+        endAt: "2027-04-12T17:00:00.000Z",
+        occupiedUntil: "2027-04-12T17:10:00.000Z",
+        priceKopecks: "150000",
+      });
+      assert.equal(
+        movePolicies,
+        3,
+        "two rejected availability attempts and one successful reschedule",
+      );
+      await assert.rejects(
+        rescheduleBookingInternal(
+          pool,
+          { ...moveCommand, newStartAt: "2027-04-12T09:00:00Z" },
+          allowSyntheticReschedule,
+        ),
+        { code: "IDEMPOTENCY_KEY_REUSED" },
+      );
+      const finalMove = await pool.query<{
+        staff_id: string;
+        location_id: string;
+        service_id: string;
+        start_at: Date;
+        end_at: Date;
+        occupied_until: Date;
+        price_kopecks_snapshot: string;
+        service_duration_minutes_snapshot: number;
+      }>(
+        `SELECT staff_id::text, location_id::text, service_id::text,
+          start_at, end_at, occupied_until,
+          price_kopecks_snapshot::text, service_duration_minutes_snapshot
+         FROM cookie_booking.bookings WHERE tenant_id=$1 AND id=$2`,
+        [tenant, first.bookingId],
+      );
+      assert.equal(finalMove.rows[0]?.staff_id, staff);
+      assert.equal(finalMove.rows[0]?.location_id, locationA);
+      assert.equal(finalMove.rows[0]?.service_id, service);
+      assert.equal(finalMove.rows[0]?.start_at.toISOString(), moved.startAt);
+      assert.equal(finalMove.rows[0]?.end_at.toISOString(), moved.endAt);
+      assert.equal(
+        finalMove.rows[0]?.occupied_until.toISOString(),
+        moved.occupiedUntil,
+      );
+      assert.equal(finalMove.rows[0]?.service_duration_minutes_snapshot, 60);
+      assert.equal(finalMove.rows[0]?.price_kopecks_snapshot, "150000");
+
+      const moveLedger = await pool.query<{
+        receipts: string;
+        outbox_events: string;
+        audit_rows: string;
+      }>(
+        `SELECT
+           (SELECT count(*)::text FROM cookie_booking.command_receipts
+             WHERE tenant_id=$1 AND operation='booking.reschedule') AS receipts,
+           (SELECT count(*)::text FROM cookie_jobs.outbox_events
+             WHERE tenant_id=$1 AND topic='booking.rescheduled') AS outbox_events,
+           (SELECT count(*)::text FROM cookie_booking.time_change_audit
+             WHERE tenant_id=$1) AS audit_rows`,
+        [tenant],
+      );
+      assert.deepEqual(moveLedger.rows[0], {
+        receipts: "1",
+        outbox_events: "1",
+        audit_rows: "1",
+      });
     } finally {
       // Synthetic-only cleanup after committed concurrency fixtures.
       const scopedTables = [
         "cookie_booking.command_receipts",
         "cookie_booking.booking_state_audit",
+        "cookie_booking.time_change_audit",
         "cookie_jobs.outbox_events",
         "cookie_booking.bookings",
         "cookie_identity.authorization_audit",
