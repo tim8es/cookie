@@ -119,11 +119,17 @@ test(
       const claimed = [...firstClaim, ...secondClaim];
       assert.equal(claimed.length, 8);
       assert.equal(new Set(claimed.map((job) => job.id)).size, 8);
-      assert.equal(claimed.every((job) => job.attempts === 1), true);
+      assert.equal(
+        claimed.every((job) => job.attempts === 1),
+        true,
+      );
       const selected = claimed.find((job) => job.id === firstId);
       assert.ok(selected, "committed event must become claimable");
       assert.equal(
-        await acknowledgeOutbox(pool, { ...selected, leaseToken: randomUUID() }),
+        await acknowledgeOutbox(pool, {
+          ...selected,
+          leaseToken: randomUUID(),
+        }),
         false,
       );
 
@@ -132,7 +138,10 @@ test(
         "UPDATE cookie_jobs.outbox_events SET lease_until = clock_timestamp() - interval '1 second' WHERE id = $1::uuid",
         [selected.id],
       );
-      const recovered = await claimOutbox(pool, { batchSize: 1, leaseMs: 60_000 });
+      const recovered = await claimOutbox(pool, {
+        batchSize: 1,
+        leaseMs: 60_000,
+      });
       assert.equal(recovered.length, 1);
       assert.equal(recovered[0]?.id, selected.id);
       assert.equal(recovered[0]?.attempts, 2);
@@ -142,7 +151,10 @@ test(
       assert.equal(await acknowledgeOutbox(pool, recovered[0]!), false);
 
       // Clear remaining leased events so isolated retry cases are deterministic.
-      await pool.query("DELETE FROM cookie_jobs.outbox_events WHERE tenant_id = ANY($1::uuid[]) AND status <> 'delivered'", [[tenantA, tenantB]]);
+      await pool.query(
+        "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id = ANY($1::uuid[]) AND status <> 'delivered'",
+        [[tenantA, tenantB]],
+      );
 
       const p = await pool.connect();
       let retryId = "";
@@ -160,11 +172,17 @@ test(
       }
       const firstRetry = await claimOutbox(pool, { batchSize: 1 });
       assert.equal(firstRetry[0]?.id, retryId);
-      assert.equal(await failOutbox(pool, firstRetry[0]!, "DELIVERY_FAILED", 0), true);
+      assert.equal(
+        await failOutbox(pool, firstRetry[0]!, "DELIVERY_FAILED", 0),
+        true,
+      );
       const secondRetry = await claimOutbox(pool, { batchSize: 1 });
       assert.equal(secondRetry[0]?.id, retryId);
       assert.equal(secondRetry[0]?.attempts, 2);
-      assert.equal(await failOutbox(pool, secondRetry[0]!, "DELIVERY_FAILED", 0), true);
+      assert.equal(
+        await failOutbox(pool, secondRetry[0]!, "DELIVERY_FAILED", 0),
+        true,
+      );
       const dead = await pool.query<{ status: string; attempts: number }>(
         "SELECT status, attempts FROM cookie_jobs.outbox_events WHERE id=$1::uuid",
         [retryId],
@@ -221,10 +239,17 @@ test(
       }
       const failure = await runOutboxBatch(
         pool,
-        async () => { throw new Error("fake external token=never-store"); },
+        async () => {
+          throw new Error("fake external token=never-store");
+        },
         { batchSize: 1 },
       );
-      assert.deepEqual(failure, { claimed: 1, delivered: 0, failed: 1, stale: 0 });
+      assert.deepEqual(failure, {
+        claimed: 1,
+        delivered: 0,
+        failed: 1,
+        stale: 0,
+      });
       const persisted = await pool.query<{
         status: string;
         last_failure_code: string;
@@ -243,14 +268,30 @@ test(
       const received: string[] = [];
       const success = await runOutboxBatch(
         pool,
-        async (event) => { received.push(event.id); },
+        async (event) => {
+          received.push(event.id);
+        },
         { batchSize: 1 },
       );
-      assert.deepEqual(success, { claimed: 1, delivered: 1, failed: 0, stale: 0 });
+      assert.deepEqual(success, {
+        claimed: 1,
+        delivered: 1,
+        failed: 0,
+        stale: 0,
+      });
       assert.deepEqual(received, [runnerId]);
-      assert.equal(retryDelayMs(1, () => 0), 750);
-      assert.equal(retryDelayMs(1, () => 0.5), 1_000);
-      assert.equal(retryDelayMs(12, () => 0), 45_000);
+      assert.equal(
+        retryDelayMs(1, () => 0),
+        750,
+      );
+      assert.equal(
+        retryDelayMs(1, () => 0.5),
+        1_000,
+      );
+      assert.equal(
+        retryDelayMs(12, () => 0),
+        45_000,
+      );
 
       const final = await pool.query<{ delivered: string; dead: string }>(
         `SELECT
@@ -271,7 +312,10 @@ test(
           "DELETE FROM cookie_tenancy.organizations WHERE id = ANY($1::uuid[])",
           [[tenantA, tenantB]],
         );
-        await pool.query("DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [owner]);
+        await pool.query(
+          "DELETE FROM cookie_identity.identities WHERE id=$1::uuid",
+          [owner],
+        );
       } finally {
         await pool.end();
       }
