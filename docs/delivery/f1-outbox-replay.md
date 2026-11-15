@@ -18,7 +18,7 @@ The event `id` and original `(tenant_id,dedupe_key)` remain unchanged through a 
 
 ## Separately runnable synthetic-only worker
 
-The normal Fastify API does **not** start this worker. For local synthetic PostgreSQL only:
+The normal Fastify API does **not** start this worker. The synthetic-only command uses the pinned development TypeScript runner; **this is not a deployable compiled production bundle**. The current pnpm workspace does not package the compiled `dist` output with runtime node_modules, which remains a future release-engineering task. For local synthetic PostgreSQL only:
 
 ```sh
 export COOKIE_SYNTHETIC_WORKER=enabled
