@@ -1,0 +1,12 @@
+# Build and runtime
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.cache/
+.tmp/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store

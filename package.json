@@ -1,0 +1,37 @@
+{
+  "name": "cookie",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.24.0",
+  "engines": {
+    "node": ">=26 <27"
+  },
+  "scripts": {
+    "dev:api": "tsx watch apps/api/src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint \"apps/**/*.ts\" \"packages/**/*.ts\" --max-warnings=0",
+    "format": "prettier --write \"apps/**/*.ts\" \"packages/**/*.ts\"",
+    "format:check": "prettier --check \"apps/**/*.ts\" \"packages/**/*.ts\"",
+    "test": "tsx --test apps/api/test/*.unit.test.ts packages/contracts/test/*.unit.test.ts",
+    "test:integration": "tsx --test apps/api/test/*.integration.test.ts",
+    "db:migrate": "tsx packages/platform-db/src/cli.ts",
+    "start:api": "node dist/apps/api/src/main.js",
+    "dev:web": "pnpm --filter @cookie/web dev",
+    "build:web": "pnpm --filter @cookie/web build",
+    "typecheck:web": "pnpm --filter @cookie/web check",
+    "check:boundaries": "node scripts/check-boundaries.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.1",
+    "@types/node": "26.6.6",
+    "@types/pg": "8.15.5",
+    "eslint": "9.39.1",
+    "globals": "16.5.0",
+    "prettier": "3.6.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.46.2"
+  }
+}
