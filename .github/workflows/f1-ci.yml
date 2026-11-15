@@ -41,6 +41,12 @@ jobs:
           node-version: "26"
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
+      - name: Format new worker sources in ephemeral CI for diagnostics (no push)
+        run: |
+          pnpm exec prettier --write packages/platform-db/src/worker.ts apps/api/test/worker.unit.test.ts apps/api/test/worker.integration.test.ts
+          printf 'WORKER_SOURCE='; base64 -w0 packages/platform-db/src/worker.ts; printf '\n'
+          printf 'WORKER_UNIT='; base64 -w0 apps/api/test/worker.unit.test.ts; printf '\n'
+          printf 'WORKER_INTEGRATION='; base64 -w0 apps/api/test/worker.integration.test.ts; printf '\n'
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
