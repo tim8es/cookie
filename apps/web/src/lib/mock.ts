@@ -84,7 +84,8 @@ export class MockCookieApi implements CookieUiPort {
 
   private requireOrganization(): Organization {
     if (!this.snapshot.organization) {
-      throw new UiFailure("NOT_FOUND", "Сначала создайте тестовую организацию.");
+      const message = "Сначала создайте тестовую организацию.";
+      throw new UiFailure("NOT_FOUND", message);
     }
     return this.snapshot.organization;
   }
@@ -138,7 +139,8 @@ export class MockCookieApi implements CookieUiPort {
     basePriceRub: number,
   ): Promise<Service> {
     const org = this.requireOrganization();
-    const validDuration = Number.isFinite(durationMinutes) && durationMinutes > 0;
+    const positiveDuration = durationMinutes > 0;
+    const validDuration = positiveDuration && Number.isFinite(durationMinutes);
     const validPrice = Number.isFinite(basePriceRub) && basePriceRub >= 0;
     if (!name.trim() || !validDuration || !validPrice) {
       throw invalid("Проверьте название, длительность и базовую цену.");
@@ -162,7 +164,8 @@ export class MockCookieApi implements CookieUiPort {
   ): Promise<StaffMember> {
     const org = this.requireOrganization();
     const knownServices = this.snapshot.services.map((service) => service.id);
-    const hasInvalidService = serviceIds.some((id) => !knownServices.includes(id));
+    const isUnknown = (id: string): boolean => !knownServices.includes(id);
+    const hasInvalidService = serviceIds.some(isUnknown);
     if (!displayName.trim() || serviceIds.length === 0 || hasInvalidService) {
       throw invalid("Укажите имя и хотя бы одну существующую услугу.");
     }
