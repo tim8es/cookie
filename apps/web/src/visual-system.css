@@ -268,7 +268,7 @@ h1,h2,h3 { color: #28222e; letter-spacing: -.035em; }
 .ticket-top p { color: #d4c4d9; font-size: 11px; line-height: 1.55; margin: 0; }
 .ticket-stitch { position: relative; height: 1px; border-top: 1px dashed #c9b8ce; background: #eee8f1; }
 .ticket-stitch:before,.ticket-stitch:after { content: ""; position: absolute; top: -12px; width: 24px; height: 24px; background: #f7f6f8; border-radius: 50%; z-index: 1; }
-.ticket-stitch:before { left: -12px; } .ticket-stitch:after { right: -12px; }
+.ticket-stitch:before { left: 0; } .ticket-stitch:after { right: 0; }
 .ticket-body { padding: 24px 28px 24px; border-radius: 0 0 14px 14px; overflow: hidden; }
 .ticket-service > span { display: block; color: #856f8c; font-size: 11px; margin-bottom: 8px; }
 .ticket-service > strong { display: block; color: #3d2d46; font-size: 19px; line-height: 1.28; letter-spacing: -.03em; overflow-wrap: anywhere; }
