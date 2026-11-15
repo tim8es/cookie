@@ -30,6 +30,8 @@ export interface OutboxLease {
 export interface OutboxClaimOptions {
   readonly batchSize?: number;
   readonly leaseMs?: number;
+  /** Optional exact topic filter for synthetic-only worker isolation. */
+  readonly topic?: string;
 }
 
 interface InsertedRow extends QueryResultRow {
@@ -185,9 +187,11 @@ export async function claimOutbox(
 ): Promise<readonly OutboxLease[]> {
   const batchSize = options.batchSize ?? 10;
   const leaseMs = options.leaseMs ?? 30_000;
+  const topic = options.topic ?? null;
   if (
     !integerInRange(batchSize, 1, 100) ||
-    !integerInRange(leaseMs, 1, 600_000)
+    !integerInRange(leaseMs, 1, 600_000) ||
+    (topic !== null && (!TOPIC_PATTERN.test(topic) || topic.length > 128))
   ) {
     throw new Error("Invalid outbox claim limits");
   }
@@ -196,13 +200,16 @@ export async function claimOutbox(
        SET status = 'dead', lease_token = NULL, lease_until = NULL,
            last_failure_code = 'LEASE_EXHAUSTED'
      WHERE status = 'leased' AND lease_until <= clock_timestamp()
-       AND attempts >= max_attempts`,
+       AND attempts >= max_attempts
+       AND ($1::text IS NULL OR topic = $1)`,
+    [topic],
   );
 
   const rows = await pool.query<LeaseRow>(
     `WITH chosen AS (
         SELECT id FROM cookie_jobs.outbox_events
         WHERE attempts < max_attempts
+          AND ($3::text IS NULL OR topic = $3)
           AND ((status = 'pending' AND available_at <= clock_timestamp())
             OR (status = 'leased' AND lease_until <= clock_timestamp()))
         ORDER BY CASE WHEN status = 'leased' THEN lease_until ELSE available_at END,
@@ -219,7 +226,7 @@ export async function claimOutbox(
       RETURNING event.id::text AS id, event.tenant_id::text AS tenant_id,
                 event.topic, event.payload, event.attempts,
                 event.lease_token::text AS lease_token`,
-    [batchSize, leaseMs],
+    [batchSize, leaseMs, topic],
   );
   return rows.rows.map((row) => ({
     id: row.id,
