@@ -18,19 +18,26 @@ export interface DemoStorage {
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
 }
+
 const STORAGE_KEY = "cookie.frontend-demo.v1";
-const empty = (): DemoSnapshot => ({
-  organization: null,
-  locations: [],
-  services: [],
-  staff: [],
-  schedules: [],
-  bookings: [],
-});
-const makeId = () =>
-  globalThis.crypto?.randomUUID?.() ??
-  `demo-${Math.random().toString(36).slice(2)}`;
 const DEMO_SUGGESTIONS = ["10:00", "12:00", "15:00"];
+
+function empty(): DemoSnapshot {
+  return {
+    organization: null,
+    locations: [],
+    services: [],
+    staff: [],
+    schedules: [],
+    bookings: [],
+  };
+}
+
+function makeId(): string {
+  const nativeId = globalThis.crypto?.randomUUID?.();
+  if (nativeId) return nativeId;
+  return `demo-${Math.random().toString(36).slice(2)}`;
+}
 
 function storageFromBrowser(): DemoStorage | undefined {
   try {
@@ -38,6 +45,14 @@ function storageFromBrowser(): DemoStorage | undefined {
   } catch {
     return undefined;
   }
+}
+
+function invalid(message: string): UiFailure {
+  return new UiFailure("INVALID_DEMO_INPUT", message);
+}
+
+function hasId(items: { id: string }[], id: string): boolean {
+  return items.some((item) => item.id === id);
 }
 
 /**
@@ -53,7 +68,11 @@ export class MockCookieApi implements CookieUiPort {
   ) {
     try {
       const cached = storage?.getItem(STORAGE_KEY);
-      this.snapshot = cached ? (JSON.parse(cached) as DemoSnapshot) : empty();
+      if (cached) {
+        this.snapshot = JSON.parse(cached) as DemoSnapshot;
+      } else {
+        this.snapshot = empty();
+      }
     } catch {
       this.snapshot = empty();
     }
@@ -64,8 +83,9 @@ export class MockCookieApi implements CookieUiPort {
   }
 
   private requireOrganization(): Organization {
-    if (!this.snapshot.organization)
+    if (!this.snapshot.organization) {
       throw new UiFailure("NOT_FOUND", "Сначала создайте тестовую организацию.");
+    }
     return this.snapshot.organization;
   }
 
@@ -74,16 +94,12 @@ export class MockCookieApi implements CookieUiPort {
   }
 
   async createOrganization(name: string): Promise<Organization> {
-    if (!name.trim())
-      throw new UiFailure(
-        "INVALID_DEMO_INPUT",
-        "Введите название тестового салона.",
-      );
-    if (this.snapshot.organization)
-      throw new UiFailure(
-        "INVALID_DEMO_INPUT",
-        "Демо-организация уже существует.",
-      );
+    if (!name.trim()) {
+      throw invalid("Введите название тестового салона.");
+    }
+    if (this.snapshot.organization) {
+      throw invalid("Демо-организация уже существует.");
+    }
     const org: Organization = {
       id: makeId(),
       name: name.trim(),
@@ -102,8 +118,9 @@ export class MockCookieApi implements CookieUiPort {
 
   async addLocation(name: string, address: string): Promise<Location> {
     const org = this.requireOrganization();
-    if (!name.trim())
-      throw new UiFailure("INVALID_DEMO_INPUT", "Укажите название филиала.");
+    if (!name.trim()) {
+      throw invalid("Укажите название филиала.");
+    }
     const location = {
       id: makeId(),
       organizationId: org.id,
@@ -121,17 +138,10 @@ export class MockCookieApi implements CookieUiPort {
     basePriceRub: number,
   ): Promise<Service> {
     const org = this.requireOrganization();
-    if (
-      !name.trim() ||
-      !Number.isFinite(durationMinutes) ||
-      durationMinutes <= 0 ||
-      !Number.isFinite(basePriceRub) ||
-      basePriceRub < 0
-    ) {
-      throw new UiFailure(
-        "INVALID_DEMO_INPUT",
-        "Проверьте название, длительность и базовую цену.",
-      );
+    const validDuration = Number.isFinite(durationMinutes) && durationMinutes > 0;
+    const validPrice = Number.isFinite(basePriceRub) && basePriceRub >= 0;
+    if (!name.trim() || !validDuration || !validPrice) {
+      throw invalid("Проверьте название, длительность и базовую цену.");
     }
     const service = {
       id: makeId(),
@@ -151,17 +161,10 @@ export class MockCookieApi implements CookieUiPort {
     serviceIds: string[],
   ): Promise<StaffMember> {
     const org = this.requireOrganization();
-    if (
-      !displayName.trim() ||
-      serviceIds.length === 0 ||
-      serviceIds.some(
-        (id) => !this.snapshot.services.some((service) => service.id === id),
-      )
-    ) {
-      throw new UiFailure(
-        "INVALID_DEMO_INPUT",
-        "Укажите имя и хотя бы одну существующую услугу.",
-      );
+    const knownServices = this.snapshot.services.map((service) => service.id);
+    const hasInvalidService = serviceIds.some((id) => !knownServices.includes(id));
+    if (!displayName.trim() || serviceIds.length === 0 || hasInvalidService) {
+      throw invalid("Укажите имя и хотя бы одну существующую услугу.");
     }
     const staff: StaffMember = {
       id: makeId(),
@@ -177,24 +180,22 @@ export class MockCookieApi implements CookieUiPort {
 
   async saveSchedule(schedule: WorkSchedule): Promise<WorkSchedule> {
     this.requireOrganization();
+    const existsStaff = hasId(this.snapshot.staff, schedule.staffId);
+    const existsLocation = hasId(this.snapshot.locations, schedule.locationId);
+    const validHours = schedule.startsAt < schedule.endsAt;
     if (
-      !this.snapshot.staff.some((item) => item.id === schedule.staffId) ||
-      !this.snapshot.locations.some((item) => item.id === schedule.locationId) ||
+      !existsStaff ||
+      !existsLocation ||
       schedule.weekdays.length === 0 ||
-      schedule.startsAt >= schedule.endsAt
+      !validHours
     ) {
-      throw new UiFailure(
-        "INVALID_DEMO_INPUT",
-        "Выберите мастера, филиал и корректные часы работы.",
-      );
+      throw invalid("Выберите мастера, филиал и корректные часы работы.");
     }
-    this.snapshot.schedules = this.snapshot.schedules.filter(
-      (item) =>
-        !(
-          item.staffId === schedule.staffId &&
-          item.locationId === schedule.locationId
-        ),
-    );
+    this.snapshot.schedules = this.snapshot.schedules.filter((item) => {
+      const sameStaff = item.staffId === schedule.staffId;
+      const sameLocation = item.locationId === schedule.locationId;
+      return !(sameStaff && sameLocation);
+    });
     this.snapshot.schedules.push({
       ...schedule,
       weekdays: [...schedule.weekdays],
@@ -208,40 +209,43 @@ export class MockCookieApi implements CookieUiPort {
     locationId: string,
     date: string,
   ): Promise<SlotView[]> {
-    const schedule = this.snapshot.schedules.find(
-      (item) => item.staffId === staffId && item.locationId === locationId,
-    );
-    if (!schedule || !schedule.weekdays.includes(parseDay(date).getDay()))
-      return [];
+    const schedule = this.snapshot.schedules.find((item) => {
+      return item.staffId === staffId && item.locationId === locationId;
+    });
+    if (!schedule) return [];
+    const activeWeekday = schedule.weekdays.includes(parseDay(date).getDay());
+    if (!activeWeekday) return [];
     // Fixed fixture suggestions, with no real capacity/booking calculations.
-    return DEMO_SUGGESTIONS.filter(
-      (time) => time >= schedule.startsAt && time < schedule.endsAt,
-    ).map((time) => ({ time, label: `${time} · демо-слот` }));
+    const withinHours = (time: string): boolean => {
+      return time >= schedule.startsAt && time < schedule.endsAt;
+    };
+    const slots = DEMO_SUGGESTIONS.filter(withinHours);
+    return slots.map((time) => ({ time, label: `${time} · демо-слот` }));
   }
 
   async createBooking(draft: CreateBookingDraft): Promise<BookingView> {
     const org = this.requireOrganization();
+    const existsService = hasId(this.snapshot.services, draft.serviceId);
+    const existsStaff = hasId(this.snapshot.staff, draft.staffId);
+    const existsLocation = hasId(this.snapshot.locations, draft.locationId);
     if (
-      !this.snapshot.services.some((item) => item.id === draft.serviceId) ||
-      !this.snapshot.staff.some((item) => item.id === draft.staffId) ||
-      !this.snapshot.locations.some((item) => item.id === draft.locationId) ||
+      !existsService ||
+      !existsStaff ||
+      !existsLocation ||
       !draft.clientAlias.trim()
     ) {
-      throw new UiFailure(
-        "INVALID_DEMO_INPUT",
-        "Заполните обязательные поля демонстрационной записи.",
-      );
+      throw invalid("Заполните обязательные поля демонстрационной записи.");
     }
-    // A deliberately scripted collision to demonstrate conflict UI, NOT scheduling policy.
-    if (
-      this.snapshot.bookings.some(
-        (item) =>
-          item.staffId === draft.staffId &&
-          item.date === draft.date &&
-          item.time === draft.time &&
-          item.status === "demo-confirmed",
-      )
-    ) {
+    // A scripted collision illustrates conflict UI, NOT scheduling policy.
+    const collision = this.snapshot.bookings.some((item) => {
+      return (
+        item.staffId === draft.staffId &&
+        item.date === draft.date &&
+        item.time === draft.time &&
+        item.status === "demo-confirmed"
+      );
+    });
+    if (collision) {
       throw new UiFailure(
         "SLOT_CONFLICT",
         "Демо-конфликт: время уже выбрано в этой сессии.",
