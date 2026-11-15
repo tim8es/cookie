@@ -45,7 +45,6 @@ export async function runMigrations(
     ordinals.add(ordinal);
   }
 
-
   const migrations: Migration[] = await Promise.all(
     sqlFiles.map(async (filename) => {
       const sql = await readFile(join(directory, filename), "utf8");
