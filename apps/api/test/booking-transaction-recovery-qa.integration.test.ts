@@ -49,8 +49,14 @@ async function countTenantState(
   return row;
 }
 
-type FaultTable = "cookie_jobs.outbox_events" | "cookie_booking.command_receipts";
-type FaultOperation = "booking.confirmed" | "booking.cancelled" | "booking.create" | "booking.cancel";
+type FaultTable =
+  | "cookie_jobs.outbox_events"
+  | "cookie_booking.command_receipts";
+type FaultOperation =
+  | "booking.confirmed"
+  | "booking.cancelled"
+  | "booking.create"
+  | "booking.cancel";
 
 /**
  * Test-only PostgreSQL failure injector. Its trigger returns an exception
@@ -222,7 +228,10 @@ test(
 
       // Failure AFTER the Booking INSERT, at Outbox INSERT.
       activeFault = await installSyntheticWriteFault(
-        pool, tenant, "cookie_jobs.outbox_events", "booking.confirmed",
+        pool,
+        tenant,
+        "cookie_jobs.outbox_events",
+        "booking.confirmed",
       );
       try {
         await assert.rejects(
@@ -241,7 +250,10 @@ test(
 
       // Failure AFTER Booking + Outbox INSERT, at receipt INSERT.
       activeFault = await installSyntheticWriteFault(
-        pool, tenant, "cookie_booking.command_receipts", "booking.create",
+        pool,
+        tenant,
+        "cookie_booking.command_receipts",
+        "booking.create",
       );
       try {
         await assert.rejects(
@@ -260,13 +272,17 @@ test(
 
       // The ORIGINAL idempotency key must still be usable after a rollback.
       const created = await createBookingInternal(
-        pool, createCommand, allowEntitlement,
+        pool,
+        createCommand,
+        allowEntitlement,
       );
       assert.equal(created.status, "Confirmed");
       assert.equal(created.priceKopecks, "125000");
       assert.deepEqual(
         await createBookingInternal(pool, createCommand, async () => {
-          throw new Error("entitlement must not be rechecked on committed replay");
+          throw new Error(
+            "entitlement must not be rechecked on committed replay",
+          );
         }),
         created,
       );
@@ -290,7 +306,10 @@ test(
 
       // Failure AFTER status mutation + cancellation audit, at Outbox INSERT.
       activeFault = await installSyntheticWriteFault(
-        pool, tenant, "cookie_jobs.outbox_events", "booking.cancelled",
+        pool,
+        tenant,
+        "cookie_jobs.outbox_events",
+        "booking.cancelled",
       );
       try {
         await assert.rejects(
@@ -309,7 +328,10 @@ test(
 
       // Failure AFTER status mutation + audit + Outbox, at receipt INSERT.
       activeFault = await installSyntheticWriteFault(
-        pool, tenant, "cookie_booking.command_receipts", "booking.cancel",
+        pool,
+        tenant,
+        "cookie_booking.command_receipts",
+        "booking.cancel",
       );
       try {
         await assert.rejects(
@@ -327,12 +349,16 @@ test(
       );
 
       const cancelled = await cancelBookingInternal(
-        pool, cancelCommand, allowCancel,
+        pool,
+        cancelCommand,
+        allowCancel,
       );
       assert.equal(cancelled.status, "CancelledByBusiness");
       assert.deepEqual(
         await cancelBookingInternal(pool, cancelCommand, async () => {
-          throw new Error("cancel policy must not run on committed same-key retry");
+          throw new Error(
+            "cancel policy must not run on committed same-key retry",
+          );
         }),
         cancelled,
       );
@@ -381,15 +407,17 @@ test(
       ];
       try {
         for (const table of tables) {
-          await pool.query(
-            `DELETE FROM ${table} WHERE tenant_id=$1::uuid`, [tenant],
-          ).catch(() => undefined);
+          await pool
+            .query(`DELETE FROM ${table} WHERE tenant_id=$1::uuid`, [tenant])
+            .catch(() => undefined);
         }
         await pool.query(
-          "DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid", [tenant],
+          "DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid",
+          [tenant],
         );
         await pool.query(
-          "DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [owner],
+          "DELETE FROM cookie_identity.identities WHERE id=$1::uuid",
+          [owner],
         );
       } finally {
         await pool.end();
