@@ -363,7 +363,10 @@ test(
           allow,
         ),
       ]);
-      assert.equal(race.filter((item) => item.status === "fulfilled").length, 1);
+      assert.equal(
+        race.filter((item) => item.status === "fulfilled").length,
+        1,
+      );
       const rejected = race.find((item) => item.status === "rejected");
       assert.equal(
         rejected?.status === "rejected"
