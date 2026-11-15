@@ -5,6 +5,7 @@ import test from "node:test";
 
 import { Pool } from "pg";
 
+import { cancelBookingInternal } from "../../../packages/domain-booking/src/cancel.js";
 import {
   createBookingInternal,
   type InternalCreateBooking,
@@ -73,7 +74,7 @@ test(
       await pool.query(
         `INSERT INTO cookie_identity.roles
            (tenant_id,id,base_type,display_name,permissions)
-         VALUES($1,$2,'owner','Synthetic owner',ARRAY['booking.create'])`,
+         VALUES($1,$2,'owner','Synthetic owner',ARRAY['booking.create','booking.cancel'])`,
         [tenant, role],
       );
       await pool.query(
@@ -267,10 +268,150 @@ test(
         receipts: "2",
         events: "2",
       });
+
+      // Business cancellation is an internal command with a REQUIRED trusted
+      // policy callback. Never infer customer self-service permissions.
+      const cancelCommand = {
+        actor,
+        bookingId: secondBooking.bookingId,
+        idempotencyKey: "cancel-confirmed-once",
+      };
+      await assert.rejects(
+        cancelBookingInternal(pool, cancelCommand, async () => {
+          throw new Error("Synthetic cancellation cutoff denied");
+        }),
+        { code: "CANCELLATION_POLICY_DENIED" },
+      );
+      const stillConfirmed = await pool.query<{ status: string }>(
+        "SELECT status FROM cookie_booking.bookings WHERE tenant_id=$1 AND id=$2",
+        [tenant, secondBooking.bookingId],
+      );
+      assert.equal(stillConfirmed.rows[0]?.status, "Confirmed");
+
+      await assert.rejects(
+        cancelBookingInternal(
+          pool,
+          { ...cancelCommand, actor: { ...actor, identityId: outsider } },
+          async () => undefined,
+        ),
+        { code: "ACCESS_DENIED" },
+      );
+      await assert.rejects(
+        cancelBookingInternal(
+          pool,
+          { ...cancelCommand, actor: { ...actor, tenantId: randomUUID() } },
+          async () => undefined,
+        ),
+        { code: "BOOKING_NOT_FOUND" },
+      );
+
+      let cancellationPolicies = 0;
+      const allowSyntheticCancellation = async (
+        _client: unknown,
+        booking: { readonly startAt: string },
+      ): Promise<void> => {
+        cancellationPolicies++;
+        assert.equal(booking.startAt, "2027-04-12T14:00:00.000Z");
+      };
+      const [cancelled, retry] = await Promise.all([
+        cancelBookingInternal(pool, cancelCommand, allowSyntheticCancellation),
+        cancelBookingInternal(pool, cancelCommand, allowSyntheticCancellation),
+      ]);
+      assert.deepEqual(retry, cancelled);
+      assert.equal(cancelled.status, "CancelledByBusiness");
+      assert.equal(cancelled.bookingId, secondBooking.bookingId);
+      assert.equal(cancellationPolicies, 1);
+      assert.ok(Number.isFinite(new Date(cancelled.cancelledAt).getTime()));
+
+      await assert.rejects(
+        cancelBookingInternal(
+          pool,
+          {
+            ...cancelCommand,
+            bookingId: first.bookingId,
+          },
+          allowSyntheticCancellation,
+        ),
+        { code: "IDEMPOTENCY_KEY_REUSED" },
+      );
+      await assert.rejects(
+        cancelBookingInternal(
+          pool,
+          {
+            ...cancelCommand,
+            idempotencyKey: "different-key-same-booking",
+          },
+          allowSyntheticCancellation,
+        ),
+        { code: "BOOKING_NOT_CONFIRMED" },
+      );
+
+      const auditAndEvent = await pool.query<{
+        status: string;
+        audit_count: string;
+        cancelled_event_count: string;
+        receipt_count: string;
+      }>(
+        `SELECT
+          (SELECT status FROM cookie_booking.bookings WHERE tenant_id=$1 AND id=$2)
+            AS status,
+          (SELECT count(*)::text FROM cookie_booking.booking_state_audit
+            WHERE tenant_id=$1 AND booking_id=$2) AS audit_count,
+          (SELECT count(*)::text FROM cookie_jobs.outbox_events
+            WHERE tenant_id=$1 AND topic='booking.cancelled') AS cancelled_event_count,
+          (SELECT count(*)::text FROM cookie_booking.command_receipts
+            WHERE tenant_id=$1 AND operation='booking.cancel') AS receipt_count`,
+        [tenant, secondBooking.bookingId],
+      );
+      assert.deepEqual(auditAndEvent.rows[0], {
+        status: "CancelledByBusiness",
+        audit_count: "1",
+        cancelled_event_count: "1",
+        receipt_count: "1",
+      });
+
+      // The staff slot is actually released by the exclusion constraint.
+      const rebooked = await createBookingInternal(
+        pool,
+        {
+          ...command,
+          startAt: "2027-04-12T14:00:00Z",
+          idempotencyKey: "new-create-after-cancel",
+        },
+        allowSyntheticEntitlement,
+      );
+      assert.notEqual(rebooked.bookingId, secondBooking.bookingId);
+      assert.equal(rebooked.status, "Confirmed");
+      assert.equal(rebooked.priceKopecks, secondBooking.priceKopecks);
+
+      const afterCancellation = await pool.query<{
+        confirmed: string;
+        cancelled: string;
+        receipts: string;
+        events: string;
+      }>(
+        `SELECT
+          (SELECT count(*)::text FROM cookie_booking.bookings
+             WHERE tenant_id=$1 AND status='Confirmed') AS confirmed,
+          (SELECT count(*)::text FROM cookie_booking.bookings
+             WHERE tenant_id=$1 AND status='CancelledByBusiness') AS cancelled,
+          (SELECT count(*)::text FROM cookie_booking.command_receipts
+             WHERE tenant_id=$1) AS receipts,
+          (SELECT count(*)::text FROM cookie_jobs.outbox_events
+             WHERE tenant_id=$1) AS events`,
+        [tenant],
+      );
+      assert.deepEqual(afterCancellation.rows[0], {
+        confirmed: "2",
+        cancelled: "1",
+        receipts: "4",
+        events: "4",
+      });
     } finally {
       // Synthetic-only cleanup after committed concurrency fixtures.
       const scopedTables = [
         "cookie_booking.command_receipts",
+        "cookie_booking.booking_state_audit",
         "cookie_jobs.outbox_events",
         "cookie_booking.bookings",
         "cookie_identity.authorization_audit",
