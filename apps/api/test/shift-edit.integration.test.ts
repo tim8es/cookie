@@ -460,7 +460,7 @@ test(
               WHERE tenant_id=$1::uuid AND shift_id=$3::uuid) AS receipts,
            (SELECT count(*)::text FROM cookie_jobs.outbox_events
               WHERE tenant_id=$1::uuid AND topic='schedule.shift.edited'
-                AND payload->>'shiftId'=$3) AS events`,
+                AND payload->>'shiftId'=$3::text) AS events`,
         [tenant, confirmed.bookingId, draft.shiftId],
       );
       assert.deepEqual(integrity.rows[0], {
