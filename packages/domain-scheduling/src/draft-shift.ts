@@ -539,7 +539,14 @@ export async function editShiftDraftInternal(
              draft_revision=$5
         WHERE tenant_id=$1::uuid AND id=$2::uuid
           AND NOT active AND draft_revision=$6`,
-      [tenantId, shift.id, startAt, endAt, nextRevision, input.expectedRevision],
+      [
+        tenantId,
+        shift.id,
+        startAt,
+        endAt,
+        nextRevision,
+        input.expectedRevision,
+      ],
     );
     if (updated.rowCount !== 1) fail("DRAFT_STALE_REVISION");
 
