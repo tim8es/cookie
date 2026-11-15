@@ -93,7 +93,7 @@
       initializing = false;
     }
   }
-  async function transact(work: () => Promise<unknown>, next?: Screen, message = "Демо-данные изменены только в этой вкладке."): Promise<void> {
+  async function transact(work: () => Promise<unknown>, next: Screen | undefined, message = "Демо-данные изменены только в этой вкладке."): Promise<void> {
     busy = true;
     error = "";
     notice = "";
