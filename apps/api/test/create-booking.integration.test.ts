@@ -138,7 +138,11 @@ test(
       assert.equal(first.endAt, "2027-04-12T11:00:00.000Z");
       assert.equal(first.occupiedUntil, "2027-04-12T11:10:00.000Z");
       assert.equal(first.priceKopecks, "150000");
-      assert.equal(entitlementChecks, 1, "a replay must not create another booking");
+      assert.equal(
+        entitlementChecks,
+        1,
+        "a replay must not create another booking",
+      );
 
       const counts = await pool.query<{
         bookings: string;
@@ -291,9 +295,10 @@ test(
         .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1", [tenant])
         .catch(() => undefined);
       await pool
-        .query("DELETE FROM cookie_identity.identities WHERE id=ANY($1::uuid[])", [
-          [owner, outsider],
-        ])
+        .query(
+          "DELETE FROM cookie_identity.identities WHERE id=ANY($1::uuid[])",
+          [[owner, outsider]],
+        )
         .catch(() => undefined);
       await pool.end();
     }
