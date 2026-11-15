@@ -93,6 +93,8 @@ export async function disableShiftInternal(
   pool: Pool,
   input: InternalDisableShift,
   assertMayDisable: AssertMayDisableShift,
+  /** Trusted composition only; caller controls the shared transaction. */
+  transactionClient?: PoolClient,
 ): Promise<DisabledShiftReceipt> {
   if (
     !input ||
@@ -115,11 +117,12 @@ export async function disableShiftInternal(
   const actorId = input.actor.identityId;
   const keyHash = hash(input.idempotencyKey);
   const requestHash = hash(JSON.stringify([input.shiftId]));
-  const client = await pool.connect();
+  const client = transactionClient ?? (await pool.connect());
+  const ownsTransaction = transactionClient === undefined;
   let active = false;
 
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
     active = true;
 
     const lookup = await client.query<ShiftRow>(
@@ -183,7 +186,7 @@ export async function disableShiftInternal(
       if (previous.rows[0].request_sha256 !== requestHash) {
         reject("SHIFT_KEY_REUSED");
       }
-      await client.query("COMMIT");
+      if (ownsTransaction) await client.query("COMMIT");
       active = false;
       return previous.rows[0].result;
     }
@@ -295,13 +298,15 @@ export async function disableShiftInternal(
       ],
     );
 
-    await client.query("COMMIT");
+    if (ownsTransaction) await client.query("COMMIT");
     active = false;
     return receipt;
   } catch (error) {
-    if (active) await client.query("ROLLBACK").catch(() => undefined);
+    if (active && ownsTransaction) {
+      await client.query("ROLLBACK").catch(() => undefined);
+    }
     throw error;
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
