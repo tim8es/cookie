@@ -4,7 +4,10 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 
 export default defineConfig({
-  plugins: [tailwindcss(), svelte({ preprocess: vitePreprocess({ script: true }) })],
+  plugins: [
+    tailwindcss(),
+    svelte({ preprocess: vitePreprocess({ script: true }) }),
+  ],
   resolve: {
     alias: { $lib: path.resolve(import.meta.dirname, "src/lib") },
   },
