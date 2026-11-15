@@ -175,6 +175,7 @@ export async function superviseOutboxWorker(
 
 export interface PostgresWorkerOptions extends OutboxWorkerOptions {
   readonly leaseMs?: OutboxClaimOptions["leaseMs"];
+  readonly topic?: OutboxClaimOptions["topic"];
 }
 
 /**
@@ -192,7 +193,7 @@ export function runTrustedPostgresOutboxWorker(
     throw new Error("Invalid outbox lease duration");
   }
   return superviseOutboxWorker(
-    () => runOutboxBatch(pool, handler, { batchSize: 1, leaseMs }),
+    () => runOutboxBatch(pool, handler, { batchSize: 1, leaseMs, topic: options.topic }),
     options,
   );
 }
