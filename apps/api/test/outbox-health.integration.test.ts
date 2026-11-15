@@ -85,7 +85,6 @@ test(
       assert.deepEqual(pending.findings, [
         { code: "DUE_BACKLOG", severity: "warning" },
       ]);
-      if (pending.status === "unavailable") throw Error("health unavailable");
       assert.equal(pending.metrics.pending, baseline.pending + 2);
       assert.equal(pending.metrics.due, baseline.due + 1);
 
@@ -101,7 +100,6 @@ test(
       assert.deepEqual(dead.findings, [
         { code: "DEAD_LETTERS", severity: "warning" },
       ]);
-      if (dead.status === "unavailable") throw Error("health unavailable");
       assert.equal(dead.metrics.dead, baseline.dead + 1);
       assert.equal(dead.metrics.due, baseline.due);
       assert.equal(dead.metrics.pending, baseline.pending + 1);
@@ -112,10 +110,12 @@ test(
       );
       assert.equal(stored.rows[0]?.status, "pending");
       assert.equal(
-        (await pool.query(
-          "SELECT count(*)::text AS count FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid",
-          [tenantId],
-        )).rows[0]?.count,
+        (
+          await pool.query(
+            "SELECT count(*)::text AS count FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid",
+            [tenantId],
+          )
+        ).rows[0]?.count,
         "2",
       );
     } finally {
