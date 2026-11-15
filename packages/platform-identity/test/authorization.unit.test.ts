@@ -63,7 +63,11 @@ function snapshot(
 
 test("denies missing membership, malformed trusted context and foreign-tenant resources", () => {
   const admin = role("admin", "admin", ["booking.read"]);
-  const assignment = { roleId: "admin", active: true, scope: { kind: "organization" } } as const;
+  const assignment = {
+    roleId: "admin",
+    active: true,
+    scope: { kind: "organization" },
+  } as const;
   const policy = snapshot(membership([assignment]), [admin]);
 
   assert.deepEqual(
@@ -102,7 +106,11 @@ test("multiple scoped roles combine only within the same branch", () => {
   const staff = role("staff", "staff", ["booking.read"]);
   const policy = snapshot(
     membership([
-      { roleId: "admin", active: true, scope: { kind: "locations", locationIds: ["branch-a"] } },
+      {
+        roleId: "admin",
+        active: true,
+        scope: { kind: "locations", locationIds: ["branch-a"] },
+      },
       {
         roleId: "staff",
         active: true,
@@ -120,7 +128,11 @@ test("multiple scoped roles combine only within the same branch", () => {
     ).allowed,
     true,
   );
-  const bookingB = { ...bookingA, locationId: "branch-b", staffProfileId: "staff-a" };
+  const bookingB = {
+    ...bookingA,
+    locationId: "branch-b",
+    staffProfileId: "staff-a",
+  };
   assert.equal(
     evaluateAuthorization(
       { actor: alice, resource: bookingB, permission: "booking.read" },
@@ -150,9 +162,14 @@ test("multiple scoped roles combine only within the same branch", () => {
 });
 
 test("display names and inactive roles/assignments never confer permissions", () => {
-  const admin = { ...role("admin", "staff", ["booking.read"]), displayName: "Owner" };
+  const admin = {
+    ...role("admin", "staff", ["booking.read"]),
+    displayName: "Owner",
+  };
   const policy = snapshot(
-    membership([{ roleId: "admin", active: false, scope: { kind: "organization" } }]),
+    membership([
+      { roleId: "admin", active: false, scope: { kind: "organization" } },
+    ]),
     [admin],
   );
   assert.equal(
@@ -171,7 +188,11 @@ test("display names and inactive roles/assignments never confer permissions", ()
   );
   assert.equal(
     evaluateAuthorization(
-      { actor: alice, resource: { ...bookingA, staffProfileId: "another-staff" }, permission: "booking.read" },
+      {
+        actor: alice,
+        resource: { ...bookingA, staffProfileId: "another-staff" },
+        permission: "booking.read",
+      },
       activePolicy,
     ).allowed,
     false,
@@ -259,7 +280,10 @@ test("staff access is limited to own booking-linked customers and explicitly gra
 });
 
 test("client identity never gains another customer's bookings or CRM", () => {
-  const client = role("client", "client", ["booking.read", "customer.basic.read"]);
+  const client = role("client", "client", [
+    "booking.read",
+    "customer.basic.read",
+  ]);
   const policy = snapshot(
     membership(
       [{ roleId: "client", active: true, scope: { kind: "organization" } }],
@@ -306,7 +330,9 @@ test("client identity never gains another customer's bookings or CRM", () => {
 
 test("owner-protected operations cannot be delegated by admin or renamed roles", () => {
   const customAdmin = role("admin", "admin", ["organization.transfer-owner"]);
-  const fakeOwner = role("fake-owner", "owner", ["organization.transfer-owner"]);
+  const fakeOwner = role("fake-owner", "owner", [
+    "organization.transfer-owner",
+  ]);
   const assignments = [
     { roleId: "admin", active: true, scope: { kind: "organization" } },
     { roleId: "fake-owner", active: true, scope: { kind: "organization" } },
@@ -322,7 +348,11 @@ test("owner-protected operations cannot be delegated by admin or renamed roles",
     allowed: false,
     reason: "owner-required",
   });
-  assert.equal(evaluateAuthorization({ ...request, ownerProtected: false }, policy).allowed, false);
+  assert.equal(
+    evaluateAuthorization({ ...request, ownerProtected: false }, policy)
+      .allowed,
+    false,
+  );
 
   const ownerPolicy = snapshot(
     membership(
@@ -343,7 +373,9 @@ test("owner-protected operations cannot be delegated by admin or renamed roles",
 test("duplicate role configuration and revoked membership fail closed", () => {
   const admin = role("admin", "admin", ["booking.read"]);
   const policy = snapshot(
-    membership([{ roleId: "admin", active: true, scope: { kind: "organization" } }]),
+    membership([
+      { roleId: "admin", active: true, scope: { kind: "organization" } },
+    ]),
     [admin, { ...admin }],
   );
   assert.deepEqual(
@@ -355,7 +387,12 @@ test("duplicate role configuration and revoked membership fail closed", () => {
   );
 
   const revoked = snapshot(
-    { ...membership([{ roleId: "admin", active: true, scope: { kind: "organization" } }]), active: false },
+    {
+      ...membership([
+        { roleId: "admin", active: true, scope: { kind: "organization" } },
+      ]),
+      active: false,
+    },
     [admin],
   );
   assert.equal(
@@ -369,13 +406,23 @@ test("duplicate role configuration and revoked membership fail closed", () => {
 
 test("sensitive preflight audits decisions without logging customer details", async () => {
   const records: unknown[] = [];
-  const audit = { append: async (event: unknown) => { records.push(event); } };
+  const audit = {
+    append: async (event: unknown) => {
+      records.push(event);
+    },
+  };
   const admin = role("admin", "admin", ["booking.edit"]);
   const policy = snapshot(
-    membership([{ roleId: "admin", active: true, scope: { kind: "organization" } }]),
+    membership([
+      { roleId: "admin", active: true, scope: { kind: "organization" } },
+    ]),
     [admin],
   );
-  const request = { actor: alice, resource: bookingA, permission: "booking.edit" };
+  const request = {
+    actor: alice,
+    resource: bookingA,
+    permission: "booking.edit",
+  };
   const allowed = await authorizeSensitive(request, policy, audit);
   assert.equal(allowed.allowed, true);
   const denied = await authorizeSensitive(
@@ -398,7 +445,9 @@ test("sensitive preflight audits decisions without logging customer details", as
   await assert.rejects(
     () =>
       authorizeSensitive(request, policy, {
-        append: async () => { throw new Error("audit storage offline"); },
+        append: async () => {
+          throw new Error("audit storage offline");
+        },
       }),
     /audit storage offline/,
     "audit failure must reject before command execution",
@@ -408,11 +457,12 @@ test("sensitive preflight audits decisions without logging customer details", as
 test("command guard rejects denied decisions rather than returning a false value", async () => {
   const audit = { append: async () => undefined };
   await assert.rejects(
-    () => requireSensitiveAuthorization(
-      { actor: alice, resource: bookingA, permission: "booking.delete" },
-      snapshot(null, []),
-      audit,
-    ),
+    () =>
+      requireSensitiveAuthorization(
+        { actor: alice, resource: bookingA, permission: "booking.delete" },
+        snapshot(null, []),
+        audit,
+      ),
     { code: "ACCESS_DENIED" },
   );
 });
