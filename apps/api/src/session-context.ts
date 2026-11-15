@@ -44,7 +44,7 @@ const UUID_RE =
 function bearerToken(header: string | undefined): string | null {
   if (!header) return null;
   // RFC6750-compatible token alphabet; refuse multiple credentials.
-  return /^Bearer ([a-zA-Z0-9._~+\/-]{1,4096}=*)$/i.exec(header)?.[1] ?? null;
+  return new RegExp("^Bearer ([a-zA-Z0-9._~+/-]{1,4096}=*)$", "i").exec(header)?.[1] ?? null;
 }
 
 /**
