@@ -133,7 +133,8 @@ test("outbox health validates every threshold pair, never installs defaults", ()
     );
   }
   assert.throws(
-    () => validateOutboxHealthPolicy(undefined as unknown as OutboxHealthPolicy),
+    () =>
+      validateOutboxHealthPolicy(undefined as unknown as OutboxHealthPolicy),
     /policy required/,
   );
 });
@@ -169,7 +170,10 @@ test("database outage is classified unavailable with no leaked SQL, connection s
     status: "unavailable",
     findings: [{ code: "METRICS_UNAVAILABLE", severity: "critical" }],
   });
-  assert.doesNotMatch(JSON.stringify(result), /private tenant|internal_user|secret/);
+  assert.doesNotMatch(
+    JSON.stringify(result),
+    /private tenant|internal_user|secret/,
+  );
 });
 
 test("invalid operator policy is never mislabeled as a database outage", async () => {
