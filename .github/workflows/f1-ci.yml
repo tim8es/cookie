@@ -41,32 +41,17 @@ jobs:
           node-version: "26"
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
-      - name: Generate shadcn-svelte registry components (temporary setup step)
+      - name: One-time Prettier for imported UI source
         if: ${{ github.head_ref == 'feature/frontend-ui-system-20261115' }}
         run: |
           git fetch origin feature/frontend-ui-system-20261115
           git switch -C feature/frontend-ui-system-20261115 FETCH_HEAD
-          pnpm --filter @cookie/web add -D tailwindcss@4.1.17 @tailwindcss/vite@4.1.17
-          touch apps/web/src/ui-theme.css
-          pnpm dlx shadcn-svelte@1.7.2 init --preset a2r6bw --cwd apps/web --base-color neutral --css src/ui-theme.css --components-alias '$lib/components' --lib-alias '$lib' --utils-alias '$lib/utils' --hooks-alias '$lib/hooks' --ui-alias '$lib/components/ui' --skip-preflight
-          node -e "const fs=require('node:fs'); const p='apps/web/components.json'; const cfg=JSON.parse(fs.readFileSync(p)); cfg.iconLibrary='lucide'; fs.writeFileSync(p,JSON.stringify(cfg,null,2));"
-          pnpm dlx shadcn-svelte@1.7.2 add --cwd apps/web --yes --skip-preflight button card input badge separator label dialog
-          pnpm --filter @cookie/web add cn @lucide/svelte
-          tar -czf /tmp/cookie-ui-kit.tgz apps/web/src/lib/components apps/web/src/lib/utils.ts apps/web/src/ui-theme.css apps/web/components.json apps/web/package.json pnpm-lock.yaml
-          cp /tmp/cookie-ui-kit.tgz cookie-ui-kit.tgz
+          pnpm exec prettier --write 'apps/web/src/lib/components/ui/**/*.ts' apps/web/src/lib/utils.ts
           git config user.name 'cookie-ui-bot'
           git config user.email 'cookie-ui-bot@users.noreply.github.com'
-          git add apps/web/src/lib/components apps/web/src/lib/utils.ts apps/web/src/ui-theme.css apps/web/components.json apps/web/package.json pnpm-lock.yaml
-          git commit -m 'chore(web): vendor versioned shadcn-svelte components and lock dependencies'
+          git add apps/web/src/lib/components/ui apps/web/src/lib/utils.ts
+          git commit -m 'style(web): format generated shadcn-svelte TypeScript' || true
           git push origin HEAD:feature/frontend-ui-system-20261115
-      - name: Upload generated kit for curated commit
-        if: ${{ github.head_ref == 'feature/frontend-ui-system-20261115' && always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: cookie-generated-ui-kit
-          path: cookie-ui-kit.tgz
-          if-no-files-found: warn
-          retention-days: 1
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
