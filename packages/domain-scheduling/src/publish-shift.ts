@@ -114,6 +114,8 @@ export async function publishShiftInternal(
   pool: Pool,
   input: InternalPublishShift,
   assertMayPublish: AssertMayPublishShift,
+  /** For trusted internal approval composition; caller manages SQL transaction. */
+  transactionClient?: PoolClient,
 ): Promise<PublishedShiftReceipt> {
   validate(input);
   if (typeof assertMayPublish !== "function") {
@@ -123,10 +125,11 @@ export async function publishShiftInternal(
   const actorId = input.actor.identityId;
   const keyHash = digest(input.idempotencyKey);
   const requestHash = digest(JSON.stringify([input.shiftId]));
-  const client = await pool.connect();
+  const client = transactionClient ?? (await pool.connect());
+  const ownsTransaction = transactionClient === undefined;
   let active = false;
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
     active = true;
 
     // Never let a request supply or override the authoritative staff/branch.
@@ -188,7 +191,7 @@ export async function publishShiftInternal(
     const previous = old.rows[0];
     if (previous) {
       if (previous.request_sha256 !== requestHash) reject("SHIFT_KEY_REUSED");
-      await client.query("COMMIT");
+      if (ownsTransaction) await client.query("COMMIT");
       active = false;
       return previous.result;
     }
@@ -329,13 +332,15 @@ export async function publishShiftInternal(
       ],
     );
 
-    await client.query("COMMIT");
+    if (ownsTransaction) await client.query("COMMIT");
     active = false;
     return receipt;
   } catch (error) {
-    if (active) await client.query("ROLLBACK").catch(() => undefined);
+    if (active && ownsTransaction) {
+      await client.query("ROLLBACK").catch(() => undefined);
+    }
     throw error;
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
