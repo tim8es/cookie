@@ -252,6 +252,15 @@ test(
       if (faultCleanup) await faultCleanup().catch(() => undefined);
       try {
         if (initial) {
+          // Each journal transition now owns one delivery row.
+          await poolA.query(
+            `DELETE FROM cookie_jobs.outbox_alert_delivery
+              WHERE transition_id IN (
+                SELECT id FROM cookie_jobs.outbox_alert_transitions
+                WHERE revision > $1::bigint
+              )`,
+            [initial.revision],
+          );
           await poolA.query(
             `DELETE FROM cookie_jobs.outbox_alert_transitions
                WHERE revision > $1::bigint`,
