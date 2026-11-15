@@ -77,7 +77,7 @@ pg_tool pg_restore -h 127.0.0.1 -U cookie_ci -d cookie_ci_restore_smoke \
 result="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
   -h 127.0.0.1 -U cookie_ci -d cookie_ci_restore_smoke -c "
     SELECT CASE WHEN
-      (SELECT count(*) FROM public.cookie_schema_migrations) = 4
+      (SELECT count(*) FROM public.cookie_schema_migrations) = 5
       AND EXISTS (
         SELECT 1 FROM cookie_jobs.outbox_events AS event
         JOIN cookie_tenancy.organizations AS org ON org.id = event.tenant_id
@@ -86,6 +86,9 @@ result="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
           AND event.payload = '{\"synthetic\":true}'::jsonb
           AND org.display_name = 'Synthetic restore smoke'
       )
+      AND to_regclass('cookie_customers.customers') IS NOT NULL
+      AND to_regclass('cookie_booking.bookings') IS NOT NULL
+      AND EXISTS (SELECT 1 FROM pg_constraint WHERE conname='confirmed_staff_no_overlap' AND contype='x')
       AND to_regclass('cookie_catalog.services') IS NOT NULL
       AND to_regclass('cookie_staff.staff_profiles') IS NOT NULL
       AND to_regclass('cookie_staff.location_assignments') IS NOT NULL
