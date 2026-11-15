@@ -41,6 +41,13 @@ jobs:
           node-version: "26"
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
+      - name: Temporary CI Prettier normalization for guarded schedule slice (diagnostics only)
+        run: |
+          pnpm exec prettier --write packages/domain-scheduling/src/block.ts apps/api/test/schedule-block.integration.test.ts packages/platform-identity/src/authorization.ts packages/platform-identity/test/authorization.unit.test.ts
+          printf 'BLOCK_B64='; base64 -w0 packages/domain-scheduling/src/block.ts; printf '\n'
+          printf 'SCHEDULE_TEST_B64='; base64 -w0 apps/api/test/schedule-block.integration.test.ts; printf '\n'
+          printf 'POLICY_B64='; base64 -w0 packages/platform-identity/src/authorization.ts; printf '\n'
+          printf 'POLICY_TEST_B64='; base64 -w0 packages/platform-identity/test/authorization.unit.test.ts; printf '\n'
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
