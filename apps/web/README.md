@@ -119,7 +119,14 @@ The CI browser test also captures **18 Chromium screenshots** (six UI milestones
 at each of the three viewports) and a `manifest.json` in
 `apps/web/artifacts/visual-smoke/`. The workflow attaches these to the
 `cookie-frontend-visual-smoke` Actions artifact for **seven days**, even if a
-later stage fails. Screenshots use only synthetic names/data. The test also
+later stage fails. Screenshots use only synthetic names/data. The test also asserts **exact CSS layout widths** (`innerWidth ===
+1280/375/320`) and no document-level horizontal overflow; its screenshot
+clip is constrained to the real viewport (unlike Chromium's default
+`captureBeyondViewport` capture, which may include off-screen scrollable
+children). This is narrow-viewport responsive testing, **not** native
+touch-device emulation.
+
+The test also
 asserts that all visible interactive controls have a label, dialog Tab and
 Shift+Tab wrap correctly, Escape returns focus, and the page makes **no
 external HTTP(S) requests** in mock mode. These are scoped automated checks,

@@ -208,6 +208,7 @@ async function captureEvidence(cdp, name, stage) {
     innerWidth: innerWidth,
     innerHeight: innerHeight,
     fullHeight: document.documentElement.scrollHeight,
+    scrollY: window.scrollY,
   })`);
   // Explicit clip prevents Chromium from expanding a mobile screenshot to
   // include horizontally scrollable child navigation beyond the viewport.
@@ -220,7 +221,7 @@ async function captureEvidence(cdp, name, stage) {
     fromSurface: true,
     clip: {
       x: 0,
-      y: 0,
+      y: stage === "05-detail" ? geometry.scrollY : 0,
       width: geometry.innerWidth,
       height: captureHeight,
       scale: 1,

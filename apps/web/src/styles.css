@@ -258,7 +258,10 @@ p { line-height: 1.55; }
   .brand strong { font-size: 20px; }
   .brand-mark { font-size: 25px; }
   .sidebar-heading, .sidebar-bottom { display: none; }
-  .nav-links { display: flex; flex-direction: row; overflow-x: auto; min-width: 0; max-width: 100%; padding-bottom: 3px; scrollbar-width: thin; }
+  .nav-links { display: flex; flex-direction: row; overflow-x: auto; min-width: 0; max-width: 100%; padding-bottom: 3px; scrollbar-width: thin; scrollbar-color: #426b57 transparent; }
+  .nav-links::-webkit-scrollbar { height: 4px; }
+  .nav-links::-webkit-scrollbar-track { background: transparent; }
+  .nav-links::-webkit-scrollbar-thumb { background: #426b57; border-radius: 5px; }
   .nav-links button { flex-shrink: 0; font-size: 12px; min-height: 40px; padding: 9px 12px; gap: 6px; }
   .nav-glyph { font-size: 17px; }
   .topbar { height: 65px; }
