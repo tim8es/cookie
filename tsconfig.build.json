@@ -11,6 +11,7 @@
   "include": [
     "apps/api/src/**/*.ts",
     "packages/contracts/src/**/*.ts",
+    "packages/kernel/src/**/*.ts",
     "packages/platform-db/src/**/*.ts",
     "scripts/**/*.ts"
   ],
