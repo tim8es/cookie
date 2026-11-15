@@ -1,8 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ArrowRight, Building2 } from "@lucide/svelte";
-  import { Button } from "./lib/components/ui/button/index.js";
-  import { Input } from "./lib/components/ui/input/index.js";
   import { createCookieUiApi } from "./lib/api";
   import { localDay, longDate, money, upcomingWeekday } from "./lib/dates";
   import { UiFailure } from "./lib/model";
@@ -12,6 +9,8 @@
   import Topbar from "./lib/ui/Topbar.svelte";
   import PublicHeader from "./lib/ui/PublicHeader.svelte";
   import OnboardingHeader from "./lib/ui/OnboardingHeader.svelte";
+  import OnboardingScreen from "./lib/ui/OnboardingScreen.svelte";
+  import OwnerOverview from "./lib/ui/OwnerOverview.svelte";
   import CalendarView from "./lib/ui/CalendarView.svelte";
   import BookingForm from "./lib/ui/BookingForm.svelte";
   import ServiceForm from "./lib/ui/ServiceForm.svelte";
@@ -242,67 +241,22 @@
         <section class="state-card" role="status"><span class="state-illustration">◇</span><h2>Демо: ничего не найдено</h2><p>Здесь будет сообщение о пустом списке, доступном действии и способе вернуться назад.</p><button class="btn btn-secondary" onclick={() => preview = "normal"}>Показать данные</button></section>
       {:else if screen === "home"}
         {#if !org}
-          <div class="welcome-grid atelier-welcome">
-            <div class="welcome-copy">
-              <div class="welcome-introline">
-                <span class="welcome-brand">COOKIE / STUDIO</span>
-                <span class="welcome-edition">Практика красивого сервиса</span>
-              </div>
-              <div class="welcome-illustration" aria-hidden="true">
-                <span class="welcome-arc one"></span>
-                <span class="welcome-arc two"></span>
-                <span class="welcome-arc three"></span>
-                <span class="welcome-illustration-core"></span>
-              </div>
-              <h1>Красивый сервис<br /><span>начинается здесь.</span></h1>
-              <p>Записи, специалисты и расписание — в одном понятном пространстве. Попробуйте Cookie с демонстрационными данными.</p>
-              <div class="welcome-caption">
-                <span class="welcome-caption-line" aria-hidden="true"></span>
-                <span>Один салон. Сотни деталей. Один спокойный процесс.</span>
-              </div>
-            </div>
-            <form class="welcome-form card" onsubmit={(event) => { event.preventDefault(); void createOrganization(); }}>
-              <div class="welcome-form-top">
-                <span>Ваше пространство</span>
-                <span class="welcome-form-step">01 / 05</span>
-              </div>
-              <h2>Начнём с названия.</h2>
-              <p class="muted">Создайте тестовую студию — без регистрации и без реальных клиентских данных.</p>
-              <label class="field">
-                Как называется салон?
-                <Input
-                  value={organizationName}
-                  oninput={(event) => organizationName = event.currentTarget.value}
-                  required
-                  maxlength={80}
-                  placeholder="Студия Cookie (тест)"
-                />
-              </label>
-              <div class="welcome-form-help">Филиал для демо создадим автоматически. Следом добавим услуги и мастеров.</div>
-              <Button class="welcome-submit" size="lg" type="submit">
-                Создать тестовый салон
-                <ArrowRight size={18} aria-hidden="true" />
-              </Button>
-              <p class="form-foot">Данные остаются в этой вкладке браузера</p>
-            </form>
-          </div>
+          <OnboardingScreen
+            {organizationName}
+            onOrganizationNameChange={(value) => organizationName = value}
+            onCreateOrganization={() => void createOrganization()}
+          />
         {:else}
-          <div class="section-head dashboard-welcome"><div><p class="dashboard-kicker">Cookie / рабочее пространство</p><h1>Хорошего дня!</h1><p><strong>{org.name}</strong> · здесь начинается порядок в записи</p></div><button class="btn btn-secondary" onclick={() => goto("booking")}>Открыть запись ↗</button></div>
-          <div class="stat-grid">
-            <div class="stat-card"><span>Услуги</span><strong>{data.services.length.toString().padStart(2, "0")}</strong><small>в каталоге</small><span class="stat-symbol" aria-hidden="true">01</span></div>
-            <div class="stat-card"><span>Мастера</span><strong>{data.staff.length.toString().padStart(2, "0")}</strong><small>в команде</small><span class="stat-symbol" aria-hidden="true">02</span></div>
-            <div class="stat-card"><span>Демо-записи</span><strong>{data.bookings.length.toString().padStart(2, "0")}</strong><small>в этой вкладке</small><span class="stat-symbol" aria-hidden="true">03</span></div>
-            <div class="stat-card"><span>Филиалы</span><strong>{data.locations.length.toString().padStart(2, "0")}</strong><small>тестовые точки</small><span class="stat-symbol" aria-hidden="true">04</span></div>
-          </div>
-          <div class="dashboard-grid"><section class="card dashboard-onboarding"><div class="card-title"><div><span class="eyebrow">БЫСТРЫЙ СТАРТ</span><h2>Подготовьте салон к первой записи</h2></div><span class="round-progress">{stepCount}/5</span></div><div class="checklist">
-            {#each [{key:"organization",text:"Создать салон",screen:"home"},{key:"services",text:"Добавить услугу и цену",screen:"services"},{key:"staff",text:"Добавить мастера",screen:"staff"},{key:"schedule",text:"Настроить график",screen:"schedule"},{key:"booking",text:"Создать тестовую запись",screen:"booking"}] as step, index}
-              <button class="check-row" onclick={() => goto(step.screen as Screen)}><span class:done={index < stepCount} class="check-indicator">{index < stepCount ? "✓" : index + 1}</span><span>{step.text}</span><span class="check-arrow">→</span></button>
-            {/each}</div></section>
-            <section class="card today-card"><div class="card-title"><div><span class="eyebrow">ЗАПИСИ</span><h2>Ближайший день</h2></div><span class="small-icon">◷</span></div><p class="muted">{longDate(calendarDate)}</p>
-              {#if dayBookings.length === 0}<div class="empty-mini"><span>▦</span><strong>Пока записей нет</strong><p>Создайте первую демо-запись, чтобы увидеть её в календаре.</p></div>{:else}
-                {#each dayBookings.slice(0, 3) as booking}<div class="mini-booking"><strong>{booking.time}</strong><div>{getService(booking.serviceId)}<small>{getStaff(booking.staffId)}</small></div></div>{/each}
-              {/if}<button class="text-link" onclick={() => goto("calendar")}>Открыть календарь →</button>
-            </section></div>
+          <OwnerOverview
+            organizationName={org.name}
+            {data}
+            {stepCount}
+            {calendarDate}
+            {dayBookings}
+            getService={getService}
+            getStaff={getStaff}
+            onNavigate={goto}
+          />
         {/if}
       {:else if !org}
         <section class="state-card"><span class="state-illustration">✳</span><h2>Сначала создайте тестовый салон</h2><p>После этого откроются услуги, команда, графики и календарь.</p><button class="btn btn-primary" onclick={() => goto("home")}>К созданию салона →</button></section>

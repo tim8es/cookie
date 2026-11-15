@@ -43,27 +43,35 @@ Navigation is non-linear: services, staff, schedule, locations and calendar are 
 
 **Synthetic slot semantics:** 10:00, 12:00 and 15:00 are fixture suggestions filtered to demo weekday/hour settings; they are **not calculated availability**. The fake adapter can demonstrate a same-slot collision in its own session. A scenario selector also previews loading/error/empty/forbidden and forced slot conflict UI. This does not enforce a real booking rule or role permission. All confirmed-looking records are explicitly labeled **демо**, never real backend Confirmed.
 
-## Component system (SaaS workspace refresh)
+## Design system and component ownership
 
-The interface uses the pinned **shadcn-svelte** source components in
-`src/lib/components/ui/` with **Bits UI** for accessible behavior,
-Tailwind CSS v4 and **Lucide icons**. The UI code lives in this repository:
-avoid copying uncontrolled one-off card/button/dialog implementations.
-Vite consumes `src/ui-theme.css` for the component palette; existing
-`src/styles.css` provides the responsive Cookie application layout.
+The agreed visual direction is **Studio Appointment Journal**. Product
+principles live in [DESIGN.md](./DESIGN.md); day-to-day modification and
+agent instructions live in [UI_GUIDE.md](./UI_GUIDE.md).
 
-The owner navigation, topbar, public booking controls, and visit summary
-use reusable Button/Card/Input/Badge/Separator components. The native
-service/location/staff select fields deliberately remain native selects,
-which have predictable keyboard and mobile platform interaction; replacing
-them with a custom select must have a concrete accessibility benefit.
-The synthetic adapter and API fail-closed behavior are unchanged.
+**Change the tokens first:** `src/styles/tokens.css` is the canonical
+source for brand colors, editorial typography, surfaces, and radii.
+`src/visual-system.css` imports independent styles for the workspace,
+booking flow, onboarding, responsive layouts, first-run shell and dashboard.
+The older `src/styles.css` is a compatibility baseline for screens not yet
+migrated; new UI work should **not** append styles to that file.
 
-The component registry lives in `apps/web/components.json`. To add
-a component, use the pinned shadcn-svelte CLI, review generated source
-and package changes, then verify the **frozen** lockfile in CI. Prefer
-the existing shadcn components and design tokens to novel one-off
-widgets. Component source is versioned and reviewable.
+**Change the screen only:** `src/lib/ui/OnboardingScreen.svelte`,
+`OwnerOverview.svelte`, `BookingForm.svelte`, `BookingSummary.svelte`,
+`CalendarView.svelte` and the owner forms contain screen presentation.
+`App.svelte` orchestrates state and synthetic adapter actions, avoiding
+another monolithic screen template.
+
+The versioned `shadcn-svelte` components in `src/lib/components/ui/`
+provide accessible Button/Card/Input/Badge/Dialog/Label/Separator primitives,
+using Bits UI, Tailwind v4 and Lucide. Keep native service/staff/location
+selects unless there is a clear reason to replace them. A new component
+should use existing tokens and typed props/callbacks rather than importing
+the API from a presentation file.
+
+Before requesting design approval run `pnpm check:ui`,
+`pnpm --filter @cookie/web check`, `pnpm --filter @cookie/web build` and
+the 21-screenshot Chromium browser smoke across desktop and mobile.
 
 ## Folder ownership / layering
 

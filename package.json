@@ -23,7 +23,8 @@
     "dev:web": "pnpm --filter @cookie/web dev",
     "build:web": "pnpm --filter @cookie/web build",
     "typecheck:web": "pnpm --filter @cookie/web check",
-    "check:boundaries": "node scripts/check-boundaries.mjs"
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check:ui": "node apps/web/scripts/check-ui-structure.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",

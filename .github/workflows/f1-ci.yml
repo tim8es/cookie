@@ -47,6 +47,8 @@ jobs:
         run: pnpm format:check
       - name: Check kernel and contract module boundaries
         run: pnpm check:boundaries
+      - name: Check frontend UI module boundaries
+        run: pnpm check:ui
       - name: Typecheck API and shared contracts
         run: pnpm typecheck
       - name: Unit tests

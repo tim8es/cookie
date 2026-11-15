@@ -1,0 +1,39 @@
+/* Workspace numbers are a single typographic ledger, not four generic cards. */
+.stat-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 0; margin-bottom: 23px; background: var(--cookie-surface);
+  border: 1px solid #ede7ee; border-radius: var(--cookie-radius-panel);
+  overflow: hidden;
+}
+.stat-card {
+  border: 0; border-radius: 0; box-shadow: none;
+  border-right: 1px solid #eee8ef; min-height: 140px;
+  padding: 24px 26px; background: transparent;
+}
+.stat-card:last-child { border-right: 0; }
+.stat-card > span:first-child { color: #877a8c; font-size: 12px; }
+.stat-card > strong { font-size: clamp(33px, 3.5vw, 42px); color: #3b2b43; margin-top: 8px; }
+.stat-symbol { display: none; }
+@media(max-width:800px) {
+  .onboarding-shell .atelier-welcome { grid-template-columns: minmax(0,1fr); }
+  .onboarding-shell .atelier-welcome .welcome-copy { min-height: 345px; }
+  .onboarding-shell .atelier-welcome .welcome-form { padding: 35px; }
+}
+@media(max-width:680px) {
+  .onboarding-header { height: 63px; padding: 0 18px; }
+  .onboarding-brand { font-size: 22px; }
+  .onboarding-brand .brand-seal { width: 33px; height: 33px; }
+  .onboarding-header-meta { font-size: 10px; }
+  .onboarding-shell .content:has(.atelier-welcome) { padding: 15px 12px 13px; }
+  .onboarding-shell .atelier-welcome .welcome-copy { min-height: 290px; padding: 68px 25px 26px; }
+  .onboarding-shell .atelier-welcome .welcome-form { padding: 27px 25px; }
+  .onboarding-shell .welcome-illustration { opacity: .45; right: -20%; top: 19%; }
+  .stat-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .stat-card:nth-child(2) { border-right: 0; }
+  .stat-card:nth-child(-n+2) { border-bottom: 1px solid #eee8ef; }
+  .stat-card { min-height: 125px; padding: 20px; }
+}
+@media(max-width:400px) {
+  .onboarding-header-meta { max-width: 130px; text-align: right; }
+  .onboarding-shell .atelier-welcome .welcome-form { padding: 24px 20px; }
+}
