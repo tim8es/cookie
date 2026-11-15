@@ -193,7 +193,12 @@ export function runTrustedPostgresOutboxWorker(
     throw new Error("Invalid outbox lease duration");
   }
   return superviseOutboxWorker(
-    () => runOutboxBatch(pool, handler, { batchSize: 1, leaseMs, topic: options.topic }),
+    () =>
+      runOutboxBatch(pool, handler, {
+        batchSize: 1,
+        leaseMs,
+        topic: options.topic,
+      }),
     options,
   );
 }
