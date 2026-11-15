@@ -218,10 +218,7 @@ test(
           WHERE transition_id=$1::bigint`,
         [crashed.transitionId],
       );
-      assert.deepEqual(
-        await claimOutboxAlertDeliveries(poolB),
-        [],
-      );
+      assert.deepEqual(await claimOutboxAlertDeliveries(poolB), []);
       const status = await poolB.query<{
         status: string;
         attempts: number;
@@ -254,10 +251,7 @@ test(
         { status: "dead", count: "2" },
         { status: "delivered", count: "2" },
       ]);
-      assert.equal(
-        await acknowledgeOutboxAlertDelivery(poolA, crashed),
-        false,
-      );
+      assert.equal(await acknowledgeOutboxAlertDelivery(poolA, crashed), false);
     } finally {
       try {
         if (created.length) {
@@ -298,10 +292,7 @@ test("alert delivery validates untrusted lease metadata and limits before SQL", 
       /Invalid Outbox alert claim limits/,
     );
   }
-  const lease: Pick<
-    OutboxAlertDeliveryLease,
-    "transitionId" | "leaseToken"
-  > = {
+  const lease: Pick<OutboxAlertDeliveryLease, "transitionId" | "leaseToken"> = {
     transitionId: "1",
     leaseToken: randomUUID(),
   };
