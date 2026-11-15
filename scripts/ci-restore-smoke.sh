@@ -11,7 +11,7 @@ fi
 temp_dir="$(mktemp -d)"
 restore_created=false
 pg_tool() {
-  docker run --rm --network host \
+  docker run --rm -i --network host \
     -e PGPASSWORD=cookie_ci \
     -v "$temp_dir:/backup" \
     postgres:16-alpine "$@"
@@ -52,6 +52,17 @@ VALUES (
 )
 ON CONFLICT (tenant_id, dedupe_key) DO NOTHING;
 SQL
+
+# Fail before dumping if Docker did not forward the SQL heredoc or seed failed.
+source_count="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
+  -h 127.0.0.1 -U cookie_ci -d cookie_ci -c "
+    SELECT count(*) FROM cookie_jobs.outbox_events
+    WHERE id = 'e3333333-3333-4333-8333-333333333333';
+  ")"
+if [[ "$source_count" != "1" ]]; then
+  echo "Synthetic source event was not inserted; refusing to create a misleading backup" >&2
+  exit 1
+fi
 
 # Use the same PostgreSQL major version on both sides. No dump is uploaded.
 pg_tool pg_dump -h 127.0.0.1 -U cookie_ci -d cookie_ci \
