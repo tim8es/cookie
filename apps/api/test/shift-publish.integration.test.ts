@@ -239,7 +239,10 @@ test(
         ),
         { code: "SHIFT_ALREADY_ACTIVE" },
       );
-      const confirmed = await create("confirmed-after-publish", "2027-04-12T13:00:00Z");
+      const confirmed = await create(
+        "confirmed-after-publish",
+        "2027-04-12T13:00:00Z",
+      );
       assert.equal(confirmed.status, "Confirmed");
 
       // Published A shift now blocks a different-location overlapping draft.
