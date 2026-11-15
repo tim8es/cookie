@@ -15,7 +15,10 @@
 - **At-least-once, not exactly-once:** if a worker crashes after a provider accepted an event but before `ack`, the lease expires and the event may be sent again. Each eventual provider adapter needs a stable provider idempotency key (prefer event ID), dedupe where supported, an explicit retry/timeout policy and observability.
 - No external network call while holding the domain DB transaction. Booking state remains committed even if a notification provider fails. A delayed notification must never roll back or duplicate an authoritative Booking.
 - `payload` may contain sensitive fields in future designs, so real content format, retention, encryption, least-privilege DB roles, redaction and RF PII/legal requirements remain **blocked before real pilot**. Tests use synthetic IDs and no genuine contacts.
-- Missing: durable worker service orchestration, operational monitoring/alarming, provider-specific errors and message consent, replay/admin authorization, backup/restore dry run, retention/legal audit, performance tests and real notification adapter.
+- Missing: durable worker service orchestration, operational monitoring/alarming, provider-specific errors and message consent, replay/admin authorization, production backup/restore drill, retention/legal audit, performance tests and real notification adapter.
 
 ## Validation
 The PostgreSQL integration test checks same-transaction rollback/commit, same-tenant deduplication and mismatch refusal, cross-tenant dedupe independence, simultaneous claims without duplicate leases, lease expiry/fencing, retry to dead, crash at exhausted last attempt and injected worker failure followed by retry/success. Migration history remains checksum validated. Passing CI proves the **internal code slice**, not successful delivery to Telegram/SMS or readiness for production.
+
+## F1 synthetic restore smoke (separate follow-up PR)
+`scripts/ci-restore-smoke.sh` verifies PostgreSQL 16 logical dump and restore into an isolated second database, including restored migration history, an Organization/outbox event and the event dedupe unique index. It is gated on the exact CI synthetic database address. Any recorded CI PASS is **only** this bounded test, not an operational production backup/restore guarantee; offsite encrypted backups, failure drills and RPO/RTO remain future pre-pilot gates.
