@@ -5,9 +5,7 @@ import test from "node:test";
 
 import { Pool } from "pg";
 
-import {
-  reconcileOutboxAlertsDurably,
-} from "../../../packages/platform-db/src/outbox-alert-persistence.js";
+import { reconcileOutboxAlertsDurably } from "../../../packages/platform-db/src/outbox-alert-persistence.js";
 import type { OutboxHealthPolicy } from "../../../packages/platform-db/src/outbox-health.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import {
@@ -49,7 +47,11 @@ test(
       );
       initial = initialResult.rows[0];
       assert.ok(initial);
-      assert.deepEqual(initial.active, {}, "isolated CI starts with empty monitor");
+      assert.deepEqual(
+        initial.active,
+        {},
+        "isolated CI starts with empty monitor",
+      );
 
       const before = await readOutboxQueueMetrics(poolA);
       const ignore = Number.MAX_SAFE_INTEGER - 100;
@@ -162,9 +164,7 @@ test(
                ON cookie_jobs.outbox_alert_transitions`,
           );
         } finally {
-          await poolA.query(
-            `DROP FUNCTION IF EXISTS public.${functionName}()`,
-          );
+          await poolA.query(`DROP FUNCTION IF EXISTS public.${functionName}()`);
         }
       };
       await assert.rejects(
@@ -196,14 +196,20 @@ test(
         2,
         "first healthy retry after rollback must commit two transitions once",
       );
-      assert.deepEqual(changed.flatMap((entry) => entry.transitions), [
-        { kind: "resolved", code: "DUE_BACKLOG", previousSeverity: "warning" },
-        { kind: "raised", code: "DEAD_LETTERS", severity: "warning" },
-      ]);
+      assert.deepEqual(
+        changed.flatMap((entry) => entry.transitions),
+        [
+          {
+            kind: "resolved",
+            code: "DUE_BACKLOG",
+            previousSeverity: "warning",
+          },
+          { kind: "raised", code: "DEAD_LETTERS", severity: "warning" },
+        ],
+      );
       assert.equal(
         changed.every(
-          (entry) =>
-            entry.revision === (BigInt(firstRevision) + 1n).toString(),
+          (entry) => entry.revision === (BigInt(firstRevision) + 1n).toString(),
         ),
         true,
       );
