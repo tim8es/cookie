@@ -77,7 +77,7 @@ pg_tool pg_restore -h 127.0.0.1 -U cookie_ci -d cookie_ci_restore_smoke \
 result="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
   -h 127.0.0.1 -U cookie_ci -d cookie_ci_restore_smoke -c "
     SELECT CASE WHEN
-      (SELECT count(*) FROM public.cookie_schema_migrations) = 10
+      (SELECT count(*) FROM public.cookie_schema_migrations) = 11
       AND EXISTS (
         SELECT 1 FROM cookie_jobs.outbox_events AS event
         JOIN cookie_tenancy.organizations AS org ON org.id = event.tenant_id
@@ -98,6 +98,8 @@ result="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
       AND to_regclass('cookie_scheduling.blocked_windows') IS NOT NULL
       AND to_regclass('cookie_scheduling.shift_disable_receipts') IS NOT NULL
       AND to_regclass('cookie_scheduling.shift_disable_audit') IS NOT NULL
+      AND to_regclass('cookie_scheduling.shift_publish_receipts') IS NOT NULL
+      AND to_regclass('cookie_scheduling.shift_publish_audit') IS NOT NULL
       AND EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema='cookie_tenancy' AND table_name='locations'
