@@ -44,6 +44,8 @@ jobs:
       - name: Generate shadcn-svelte registry components (temporary setup step)
         if: ${{ github.head_ref == 'feature/frontend-ui-system-20261115' }}
         run: |
+          git fetch origin feature/frontend-ui-system-20261115
+          git switch -C feature/frontend-ui-system-20261115 FETCH_HEAD
           pnpm --filter @cookie/web add -D tailwindcss@4.1.17 @tailwindcss/vite@4.1.17
           touch apps/web/src/ui-theme.css
           pnpm dlx shadcn-svelte@1.7.2 init --preset a2r6bw --cwd apps/web --base-color neutral --css src/ui-theme.css --components-alias '$lib/components' --lib-alias '$lib' --utils-alias '$lib/utils' --hooks-alias '$lib/hooks' --ui-alias '$lib/components/ui' --skip-preflight
