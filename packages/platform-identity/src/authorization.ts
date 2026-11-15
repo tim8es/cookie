@@ -118,6 +118,8 @@ function relationAllows(
     );
   }
   if (role.baseType === "staff") {
+    // A staff role cannot elevate a list-level organization query into CRM access.
+    if (resource.kind === "organization") return false;
     if (!assignment.staffProfileId) return false;
     if (resource.kind === "booking") {
       return resource.staffProfileId === assignment.staffProfileId;
