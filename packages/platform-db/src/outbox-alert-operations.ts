@@ -70,7 +70,7 @@ function validateReplay(
     typeof request.operator.correlationId !== "string" ||
     request.operator.correlationId.length < 1 ||
     request.operator.correlationId.length > 128 ||
-    /[\u0000-\u001f\u007f]/.test(request.operator.correlationId) ||
+    Array.from(request.operator.correlationId).some((character) => { const code = character.charCodeAt(0); return code <= 31 || code === 127; }) ||
     !validTransitionId(request.transitionId) ||
     typeof request.idempotencyKey !== "string" ||
     request.idempotencyKey.length < 1 ||
