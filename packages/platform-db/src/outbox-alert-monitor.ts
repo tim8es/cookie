@@ -111,8 +111,8 @@ export function reconcileOutboxAlerts(
   const next: Partial<Record<OutboxHealthCode, OutboxHealthSeverity>> = {
     ...previous.active,
   };
-  const current = new Map(
-    snapshot.findings.map((finding) => [finding.code, finding.severity]),
+  const current = new Map<OutboxHealthCode, OutboxHealthSeverity>(
+    snapshot.findings.map((finding) => [finding.code, finding.severity] as const),
   );
   const transitions: OutboxAlertTransition[] = [];
 
