@@ -41,6 +41,11 @@ jobs:
           node-version: "26"
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
+      - name: Temporary alert delivery Prettier capture (diagnostics only)
+        run: |
+          pnpm exec prettier --write packages/platform-db/src/outbox-alert-delivery.ts apps/api/test/outbox-alert-delivery.integration.test.ts
+          printf 'ALERT_DELIVERY_SRC_B64='; base64 -w0 packages/platform-db/src/outbox-alert-delivery.ts; printf '\n'
+          printf 'ALERT_DELIVERY_TEST_B64='; base64 -w0 apps/api/test/outbox-alert-delivery.integration.test.ts; printf '\n'
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
