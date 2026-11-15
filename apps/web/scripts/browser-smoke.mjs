@@ -1,9 +1,9 @@
 // Browser-driven synthetic UX regression. Zero additional npm packages.
-// Only connect to a locally served Vite preview and loopback Chrome DevTools.
+// Serve the compiled Vite bundle using local Node HTTP; connect to loopback Chrome DevTools.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { get as httpGet } from "node:http";
+import { createReadStream, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { createServer as createHttpServer, get as httpGet } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -11,8 +11,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as pause } from "node:timers/promises";
 
 const webDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const rootDir = resolve(webDir, "../..");
-const previewBin = join(webDir, "node_modules/vite/bin/vite.js");
+const distDir = join(webDir, "dist");
 const browserCandidates = [
   process.env.COOKIE_BROWSER_BINARY,
   "google-chrome",
@@ -40,6 +39,32 @@ function freePort() {
       server.close(() => (port ? resolvePort(port) : reject(new Error("No local port"))));
     });
   });
+}
+
+function staticResponse(request, response) {
+  const url = new URL(request.url || "/", "http://127.0.0.1");
+  const pathname = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+  // Only compiled Vite assets. Reject traversal and unexpected paths.
+  if (!/^[a-zA-Z0-9._/-]+$/.test(pathname) || pathname.split("/").includes("..")) {
+    response.writeHead(403).end();
+    return;
+  }
+  const filePath = join(distDir, pathname);
+  if (!existsSync(filePath)) {
+    response.writeHead(404).end();
+    return;
+  }
+  const contentType = pathname.endsWith(".js")
+    ? "text/javascript; charset=utf-8"
+    : pathname.endsWith(".css")
+      ? "text/css; charset=utf-8"
+      : "text/html; charset=utf-8";
+  response.writeHead(200, {
+    "Content-Type": contentType,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+  });
+  createReadStream(filePath).pipe(response);
 }
 
 async function poll(description, condition, timeoutMs = 12000) {
@@ -221,25 +246,22 @@ async function scenario(cdp, origin, width, height) {
 }
 
 async function main() {
-  assert.ok(existsSync(join(webDir, "dist/index.html")), "Run pnpm build:web before smoke");
-  const previewPort = await freePort();
+  assert.ok(existsSync(join(distDir, "index.html")), "Run pnpm build:web before smoke");
+  const staticServer = createHttpServer(staticResponse);
+  const previewPort = await new Promise((resolvePort, reject) => {
+    staticServer.once("error", reject);
+    staticServer.listen(0, "127.0.0.1", () => {
+      const address = staticServer.address();
+      resolvePort(address.port);
+    });
+  });
   const chromePort = await freePort();
   const browserDataDir = mkdtempSync(join(tmpdir(), "cookie-browser-smoke-"));
-  const previewLogs = [];
   const chromeLogs = [];
-  let preview;
   let chrome;
   let cdp;
 
   try {
-    preview = spawn(process.execPath, [
-      previewBin, "preview", "--host", "127.0.0.1",
-      "--port", String(previewPort), "--strictPort",
-    ], { cwd: rootDir, stdio: ["pipe", "pipe", "pipe"] });
-    // Vite's interactive CLI may shut down on stdin EOF. Keep the pipe open.
-    // Closing it here makes startup look successful but leaves no HTTP server.
-    preview.stdout.on("data", (chunk) => previewLogs.push(String(chunk).slice(0, 1500)));
-    preview.stderr.on("data", (chunk) => previewLogs.push(String(chunk).slice(0, 1500)));
     const origin = "http://127.0.0.1:" + previewPort + "/";
     await waitForHttp(origin);
 
@@ -274,18 +296,13 @@ async function main() {
         console.error("BROWSER DIAGNOSTICS", JSON.stringify(diagnostics));
       } catch { /* Best effort after browser crash/navigation. */ }
     }
-    console.error("PREVIEW PROCESS", JSON.stringify({
-      pid: preview?.pid,
-      exitCode: preview?.exitCode,
-      signalCode: preview?.signalCode,
-    }));
-    console.error("PREVIEW LOGS", previewLogs.join("").slice(-2200));
+    console.error("STATIC SERVER", JSON.stringify({ port: previewPort, listening: staticServer.listening }));
     console.error("CHROME LOGS", chromeLogs.join("").slice(-2200));
     throw error;
   } finally {
     if (cdp) cdp.close();
     if (chrome && !chrome.killed) chrome.kill("SIGTERM");
-    if (preview && !preview.killed) preview.kill("SIGTERM");
+    if (staticServer.listening) staticServer.close();
     await pause(300);
     rmSync(browserDataDir, { recursive: true, force: true });
   }

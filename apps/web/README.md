@@ -107,7 +107,7 @@ To execute locally, run `pnpm build:web`, then
 `node apps/web/scripts/browser-smoke.mjs`; install Chrome/Chromium if absent,
 or set `COOKIE_BROWSER_BINARY` to its executable path.
 
-The smoke test serves `dist/` on a random **loopback-only** port, drives an
+The smoke test serves the Vite-built `dist/` with a minimal Node HTTP server on a random **loopback-only** port, drives an
 isolated browser session, and checks 1280×800, 375×812 and 320×568 viewports:
 synthetic salon → service → staff → weekly schedule → slot → demo booking →
 week/day calendar → booking drawer and Escape focus restoration → reload
