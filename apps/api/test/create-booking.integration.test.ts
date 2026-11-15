@@ -9,6 +9,10 @@ import {
   createBookingInternal,
   type InternalCreateBooking,
 } from "../../../packages/domain-booking/src/create.js";
+import {
+  cancelBookingInternal,
+  rescheduleBookingInternal,
+} from "../../../packages/domain-booking/src/mutations.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 
 test(
@@ -73,7 +77,7 @@ test(
       await pool.query(
         `INSERT INTO cookie_identity.roles
            (tenant_id,id,base_type,display_name,permissions)
-         VALUES($1,$2,'owner','Synthetic owner',ARRAY['booking.create'])`,
+         VALUES($1,$2,'owner','Synthetic owner',ARRAY['booking.create','booking.edit'])`,
         [tenant, role],
       );
       await pool.query(
@@ -267,10 +271,207 @@ test(
         receipts: "2",
         events: "2",
       });
+
+      // Time-only rescheduling retains the original price, service and buffer
+      // snapshots even after Catalog changes. The original slot is committed
+      // unchanged whenever policy, availability or outbox fails.
+      const mutationTarget = {
+        actor,
+        bookingId: first.bookingId,
+        idempotencyKey: "reschedule-1",
+        newStartAt: "2027-04-12T16:00:00Z",
+      };
+      let policyChecks = 0;
+      const syntheticPolicy = async (): Promise<void> => {
+        policyChecks++;
+      };
+      await assert.rejects(
+        rescheduleBookingInternal(
+          pool,
+          { ...mutationTarget, idempotencyKey: "policy-denied" },
+          async () => {
+            throw new Error("RESCHEDULE_DEADLINE");
+          },
+        ),
+        /RESCHEDULE_DEADLINE/,
+      );
+      await assert.rejects(
+        rescheduleBookingInternal(
+          pool,
+          {
+            ...mutationTarget,
+            idempotencyKey: "occupied-branch",
+            newStartAt: "2027-04-12T14:05:00Z",
+          },
+          syntheticPolicy,
+        ),
+        { code: "BOOKING_NOT_AVAILABLE" },
+      );
+      await assert.rejects(
+        rescheduleBookingInternal(
+          pool,
+          {
+            ...mutationTarget,
+            idempotencyKey: "break-window",
+            newStartAt: "2027-04-12T12:05:00Z",
+          },
+          syntheticPolicy,
+        ),
+        { code: "BOOKING_NOT_AVAILABLE" },
+      );
+      await assert.rejects(
+        rescheduleBookingInternal(
+          pool,
+          {
+            ...mutationTarget,
+            actor: { ...actor, identityId: outsider },
+            idempotencyKey: "foreign-role",
+          },
+          syntheticPolicy,
+        ),
+        { code: "ACCESS_DENIED" },
+      );
+      const before = await pool.query<{
+        start_at: Date;
+        price_kopecks_snapshot: string;
+      }>(
+        `SELECT start_at, price_kopecks_snapshot::text FROM cookie_booking.bookings
+         WHERE tenant_id=$1 AND id=$2`,
+        [tenant, first.bookingId],
+      );
+      assert.equal(before.rows[0]?.start_at.toISOString(), first.startAt);
+      assert.equal(before.rows[0]?.price_kopecks_snapshot, "150000");
+
+      const moved = await rescheduleBookingInternal(
+        pool,
+        mutationTarget,
+        syntheticPolicy,
+      );
+      assert.deepEqual(moved, {
+        bookingId: first.bookingId,
+        status: "Confirmed",
+        previousStartAt: first.startAt,
+        startAt: "2027-04-12T16:00:00.000Z",
+        endAt: "2027-04-12T17:00:00.000Z",
+        occupiedUntil: "2027-04-12T17:10:00.000Z",
+        priceKopecks: "150000",
+      });
+      const policyCountAfterMove = policyChecks;
+      assert.deepEqual(
+        await rescheduleBookingInternal(pool, mutationTarget, syntheticPolicy),
+        moved,
+      );
+      assert.equal(policyChecks, policyCountAfterMove);
+      await assert.rejects(
+        rescheduleBookingInternal(
+          pool,
+          { ...mutationTarget, newStartAt: "2027-04-12T13:00:00Z" },
+          syntheticPolicy,
+        ),
+        { code: "IDEMPOTENCY_KEY_REUSED" },
+      );
+
+      // Cancellation must be fail-closed on promo restoration failure.
+      const cancelInput = {
+        actor,
+        bookingId: first.bookingId,
+        idempotencyKey: "cancel-1",
+      };
+      await assert.rejects(
+        cancelBookingInternal(
+          pool,
+          cancelInput,
+          syntheticPolicy,
+          async () => {
+            throw new Error("PROMO_RESTORE_FAILED");
+          },
+        ),
+        /PROMO_RESTORE_FAILED/,
+      );
+      const afterFailedCancel = await pool.query<{ status: string }>(
+        "SELECT status FROM cookie_booking.bookings WHERE tenant_id=$1 AND id=$2",
+        [tenant, first.bookingId],
+      );
+      assert.equal(afterFailedCancel.rows[0]?.status, "Confirmed");
+
+      let restorations = 0;
+      const restoreSyntheticNoPromo = async (): Promise<void> => {
+        restorations++;
+      };
+      const cancelled = await cancelBookingInternal(
+        pool,
+        cancelInput,
+        syntheticPolicy,
+        restoreSyntheticNoPromo,
+      );
+      assert.equal(cancelled.bookingId, first.bookingId);
+      assert.equal(cancelled.status, "CancelledByBusiness");
+      assert.ok(Number.isFinite(Date.parse(cancelled.cancelledAt)));
+      assert.deepEqual(
+        await cancelBookingInternal(
+          pool,
+          cancelInput,
+          syntheticPolicy,
+          restoreSyntheticNoPromo,
+        ),
+        cancelled,
+      );
+      assert.equal(restorations, 1, "same key must not restore promo twice");
+      await assert.rejects(
+        cancelBookingInternal(
+          pool,
+          { ...cancelInput, idempotencyKey: "different-cancel" },
+          syntheticPolicy,
+          restoreSyntheticNoPromo,
+        ),
+        { code: "BOOKING_NOT_CONFIRMED" },
+      );
+      await assert.rejects(
+        rescheduleBookingInternal(
+          pool,
+          { ...mutationTarget, idempotencyKey: "move-cancelled" },
+          syntheticPolicy,
+        ),
+        { code: "BOOKING_NOT_CONFIRMED" },
+      );
+
+      // Cancellation releases the occupied interval for a new Confirmed booking.
+      const replaced = await createBookingInternal(
+        pool,
+        {
+          ...command,
+          startAt: "2027-04-12T16:00:00Z",
+          idempotencyKey: "rebook-after-cancel",
+        },
+        allowSyntheticEntitlement,
+      );
+      assert.notEqual(replaced.bookingId, first.bookingId);
+      assert.equal(replaced.priceKopecks, "159900");
+
+      const mutationCounts = await pool.query<{
+        bookings: string;
+        receipts: string;
+        events: string;
+        audit: string;
+      }>(
+        `SELECT
+          (SELECT count(*) FROM cookie_booking.bookings WHERE tenant_id=$1)::text AS bookings,
+          (SELECT count(*) FROM cookie_booking.command_receipts WHERE tenant_id=$1)::text AS receipts,
+          (SELECT count(*) FROM cookie_jobs.outbox_events WHERE tenant_id=$1)::text AS events,
+          (SELECT count(*) FROM cookie_booking.mutation_audit WHERE tenant_id=$1)::text AS audit`,
+        [tenant],
+      );
+      assert.deepEqual(mutationCounts.rows[0], {
+        bookings: "3",
+        receipts: "5",
+        events: "5",
+        audit: "2",
+      });
     } finally {
       // Synthetic-only cleanup after committed concurrency fixtures.
       const scopedTables = [
         "cookie_booking.command_receipts",
+        "cookie_booking.mutation_audit",
         "cookie_jobs.outbox_events",
         "cookie_booking.bookings",
         "cookie_identity.authorization_audit",
