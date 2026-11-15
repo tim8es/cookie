@@ -466,3 +466,29 @@ test("command guard rejects denied decisions rather than returning a false value
     { code: "ACCESS_DENIED" },
   );
 });
+
+test("staff cannot elevate an organization-level resource into a broad query", () => {
+  const staff = role("staff", "staff", ["booking.read"]);
+  const policy = snapshot(
+    membership([
+      {
+        roleId: "staff",
+        active: true,
+        staffProfileId: "staff-a",
+        scope: { kind: "organization" },
+      },
+    ]),
+    [staff],
+  );
+  assert.equal(
+    evaluateAuthorization(
+      {
+        actor: alice,
+        resource: { kind: "organization", tenantId: "salon-a" },
+        permission: "booking.read",
+      },
+      policy,
+    ).allowed,
+    false,
+  );
+});
