@@ -492,3 +492,61 @@ test("staff cannot elevate an organization-level resource into a broad query", (
     false,
   );
 });
+
+test("schedule resource respects tenant, location scope and verified staff relation", () => {
+  const schedule: ProtectedResource = {
+    kind: "schedule",
+    tenantId: "salon-a",
+    locationId: "branch-a",
+    staffProfileId: "staff-a",
+  };
+  const staffPolicy = snapshot(
+    membership([
+      {
+        roleId: "staff",
+        active: true,
+        staffProfileId: "staff-a",
+        scope: { kind: "locations", locationIds: ["branch-a"] },
+      },
+    ]),
+    [role("staff", "staff", ["schedule.manage"])],
+  );
+  assert.equal(
+    evaluateAuthorization(
+      { actor: alice, resource: schedule, permission: "schedule.manage" },
+      staffPolicy,
+    ).allowed,
+    true,
+  );
+  for (const resource of [
+    { ...schedule, staffProfileId: "staff-b" },
+    { ...schedule, locationId: "branch-b" },
+    { ...schedule, tenantId: "salon-b" },
+  ]) {
+    assert.equal(
+      evaluateAuthorization(
+        { actor: alice, resource, permission: "schedule.manage" },
+        staffPolicy,
+      ).allowed,
+      false,
+    );
+  }
+  const unlinked = snapshot(
+    membership([
+      {
+        roleId: "staff",
+        active: true,
+        scope: { kind: "organization" },
+      },
+    ]),
+    [role("staff", "staff", ["schedule.manage"])],
+  );
+  assert.equal(
+    evaluateAuthorization(
+      { actor: alice, resource: schedule, permission: "schedule.manage" },
+      unlinked,
+    ).allowed,
+    false,
+    "a role named staff does not prove the StaffProfile relationship",
+  );
+});
