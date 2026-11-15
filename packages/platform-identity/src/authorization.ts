@@ -165,7 +165,8 @@ export function evaluateAuthorization(
     roles.set(role.id, role);
   }
 
-  const ownerProtected = request.ownerProtected || SYSTEM_OWNER_ONLY_PERMISSIONS.has(permission);
+  const ownerProtected =
+    request.ownerProtected || SYSTEM_OWNER_ONLY_PERMISSIONS.has(permission);
   if (ownerProtected && actor.identityId !== ownerIdentityId) {
     return deny("owner-required");
   }
