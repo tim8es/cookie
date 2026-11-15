@@ -76,11 +76,7 @@ function parseMinute(value: string): string {
  * Derive a stable internal UUID from a scoped cryptographic digest without
  * storing or logging the caller's raw idempotency key.
  */
-function stableBlockId(
-  tenantId: string,
-  actorId: string,
-  key: string,
-): string {
+function stableBlockId(tenantId: string, actorId: string, key: string): string {
   const bytes = createHash("sha256")
     .update(JSON.stringify([tenantId, actorId, "schedule.block.add", key]))
     .digest();
