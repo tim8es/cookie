@@ -47,11 +47,7 @@ const codes = new Set([
 ]);
 
 function parseSavedState(active: unknown): OutboxAlertState {
-  if (
-    active === null ||
-    typeof active !== "object" ||
-    Array.isArray(active)
-  ) {
+  if (active === null || typeof active !== "object" || Array.isArray(active)) {
     throw new Error("Invalid durable Outbox alert state");
   }
   const entries = Object.entries(active);
