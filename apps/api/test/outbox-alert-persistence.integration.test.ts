@@ -252,6 +252,16 @@ test(
       if (faultCleanup) await faultCleanup().catch(() => undefined);
       try {
         if (initial) {
+          // Migration 0016 attaches delivery rows to every journal transition.
+          // Clear synthetic delivery receipts before deleting their parent.
+          await poolA.query(
+            `DELETE FROM cookie_jobs.outbox_alert_delivery
+              WHERE transition_id IN (
+                SELECT id FROM cookie_jobs.outbox_alert_transitions
+                WHERE revision > $1::bigint
+              )`,
+            [initial.revision],
+          );
           await poolA.query(
             `DELETE FROM cookie_jobs.outbox_alert_transitions
                WHERE revision > $1::bigint`,
