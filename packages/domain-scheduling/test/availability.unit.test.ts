@@ -27,7 +27,10 @@ test("F1 slots include service duration and post-service occupancy separately", 
   const slots = listAvailableSlots(empty);
   assert.equal(slots[0]?.startAt, at("10:00").replace(":00Z", ":00.000Z"));
   assert.equal(slots[0]?.endAt, at("11:00").replace(":00Z", ":00.000Z"));
-  assert.equal(slots[0]?.occupiedUntil, at("11:10").replace(":00Z", ":00.000Z"));
+  assert.equal(
+    slots[0]?.occupiedUntil,
+    at("11:10").replace(":00Z", ":00.000Z"),
+  );
   assert.equal(slots.at(-1)?.startAt, "2026-11-15T11:50:00.000Z");
   assert.equal(slots.length, 23);
 });
@@ -47,7 +50,10 @@ test("global staff occupancy blocks a second location even when client visit end
     ],
   };
   assert.equal(evaluateAvailableStart(request, at("11:05")), null);
-  assert.equal(evaluateAvailableStart(request, at("11:10"))?.startAt, "2026-11-15T11:10:00.000Z");
+  assert.equal(
+    evaluateAvailableStart(request, at("11:10"))?.startAt,
+    "2026-11-15T11:10:00.000Z",
+  );
 });
 
 test("same-time non-overlapping booking is allowed at occupiedUntil boundary", () => {
@@ -76,13 +82,20 @@ test("breaks and exceptions forbid any service or buffer overlap", () => {
   assert.equal(evaluateAvailableStart(request, at("11:15")), null);
   assert.ok(evaluateAvailableStart(request, at("11:20")) === null);
   assert.ok(evaluateAvailableStart(request, at("12:30")) === null);
-  const shorter = { ...request, serviceDurationMinutes: 15, postServiceBufferMinutes: 0 };
+  const shorter = {
+    ...request,
+    serviceDurationMinutes: 15,
+    postServiceBufferMinutes: 0,
+  };
   assert.ok(evaluateAvailableStart(shorter, at("11:15")));
   assert.equal(evaluateAvailableStart(shorter, at("11:50")), null);
 });
 
 test("shift end must accommodate buffer, not just the visible visit", () => {
-  const request = { ...empty, shifts: [{ startAt: at("10:00"), endAt: at("11:00") }] };
+  const request = {
+    ...empty,
+    shifts: [{ startAt: at("10:00"), endAt: at("11:00") }],
+  };
   assert.equal(listAvailableSlots(request).length, 0);
   assert.ok(
     evaluateAvailableStart(
@@ -189,24 +202,55 @@ test("unexpected tenant or staff busy intervals fail closed", () => {
     startAt: at("10:00"),
     occupiedUntil: at("11:00"),
   };
-  assert.throws(() => listAvailableSlots({ ...empty, occupied: [occupancy] }), RangeError);
   assert.throws(
-    () => listAvailableSlots({ ...empty, occupied: [{ ...occupancy, organizationId: "org-a", staffId: "other-staff" }] }),
+    () => listAvailableSlots({ ...empty, occupied: [occupancy] }),
+    RangeError,
+  );
+  assert.throws(
+    () =>
+      listAvailableSlots({
+        ...empty,
+        occupied: [
+          { ...occupancy, organizationId: "org-a", staffId: "other-staff" },
+        ],
+      }),
     RangeError,
   );
 });
 
 test("malformed dates, timezone, ranges and duration are rejected", () => {
-  assert.throws(() => listAvailableSlots({ ...empty, timeZone: "Invalid/TimeZone" }), RangeError);
-  assert.throws(() => listAvailableSlots({ ...empty, localDate: "2026-02-30" }), RangeError);
-  assert.throws(() => listAvailableSlots({ ...empty, serviceDurationMinutes: 0 }), RangeError);
-  assert.throws(() => listAvailableSlots({ ...empty, postServiceBufferMinutes: -1 }), RangeError);
-  assert.throws(() => listAvailableSlots({ ...empty, stepMinutes: 0 }), RangeError);
   assert.throws(
-    () => listAvailableSlots({ ...empty, breaks: [{ startAt: at("12:00"), endAt: at("11:00") }] }),
+    () => listAvailableSlots({ ...empty, timeZone: "Invalid/TimeZone" }),
     RangeError,
   );
-  assert.throws(() => evaluateAvailableStart(empty, "2026-11-15T10:00:00+00:00"), RangeError);
+  assert.throws(
+    () => listAvailableSlots({ ...empty, localDate: "2026-02-30" }),
+    RangeError,
+  );
+  assert.throws(
+    () => listAvailableSlots({ ...empty, serviceDurationMinutes: 0 }),
+    RangeError,
+  );
+  assert.throws(
+    () => listAvailableSlots({ ...empty, postServiceBufferMinutes: -1 }),
+    RangeError,
+  );
+  assert.throws(
+    () => listAvailableSlots({ ...empty, stepMinutes: 0 }),
+    RangeError,
+  );
+  assert.throws(
+    () =>
+      listAvailableSlots({
+        ...empty,
+        breaks: [{ startAt: at("12:00"), endAt: at("11:00") }],
+      }),
+    RangeError,
+  );
+  assert.throws(
+    () => evaluateAvailableStart(empty, "2026-11-15T10:00:00+00:00"),
+    RangeError,
+  );
 });
 
 test("empty working hours return no slots, not invented availability", () => {
