@@ -111,6 +111,7 @@ export async function claimOutboxAlertDeliveries(
           SET status='leased',
               attempts=delivery.attempts + 1,
               lease_token=gen_random_uuid(),
+              lease_started_at=clock_timestamp(),
               lease_until=clock_timestamp() + ($2::integer * interval '1 millisecond')
          FROM chosen
         WHERE delivery.transition_id=chosen.transition_id

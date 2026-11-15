@@ -77,7 +77,7 @@ pg_tool pg_restore -h 127.0.0.1 -U cookie_ci -d cookie_ci_restore_smoke \
 result="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
   -h 127.0.0.1 -U cookie_ci -d cookie_ci_restore_smoke -c "
     SELECT CASE WHEN
-      (SELECT count(*) FROM public.cookie_schema_migrations) = 18
+      (SELECT count(*) FROM public.cookie_schema_migrations) = 19
       AND EXISTS (
         SELECT 1 FROM cookie_jobs.outbox_events AS event
         JOIN cookie_tenancy.organizations AS org ON org.id = event.tenant_id
@@ -107,6 +107,14 @@ result="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
       AND to_regclass('cookie_jobs.outbox_alert_state') IS NOT NULL
       AND to_regclass('cookie_jobs.outbox_alert_transitions') IS NOT NULL
       AND to_regclass('cookie_jobs.outbox_alert_delivery') IS NOT NULL
+      AND to_regclass('cookie_jobs.outbox_alert_replay_audit') IS NOT NULL
+      AND to_regclass('cookie_jobs.outbox_alert_replay_receipts') IS NOT NULL
+      AND EXISTS (SELECT 1 FROM information_schema.columns
+        WHERE table_schema='cookie_jobs' AND table_name='outbox_alert_delivery'
+          AND column_name='lease_started_at')
+      AND EXISTS (SELECT 1 FROM information_schema.columns
+        WHERE table_schema='cookie_jobs' AND table_name='outbox_alert_delivery'
+          AND column_name='manual_replay_count')
       AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='enqueue_alert_transition_delivery' AND NOT tgisinternal)
       AND to_regclass('cookie_scheduling.schedule_edit_policies') IS NOT NULL
       AND to_regclass('cookie_scheduling.schedule_edit_policy_audit') IS NOT NULL
