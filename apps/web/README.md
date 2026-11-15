@@ -45,13 +45,21 @@ Navigation is non-linear: services, staff, schedule, locations and calendar are 
 
 ## Folder ownership / layering
 
-- `src/App.svelte`: business shell, screens and client flow presentation.
+- `src/App.svelte`: thin UI state/orchestration across owner and public flows (no backend rules).
+- `src/lib/navigation.ts`: typed, shared screen navigation metadata.
+- `src/lib/ui/Sidebar.svelte`: owner navigation with accessible onboarding progress.
+- `src/lib/ui/Topbar.svelte`: demo-mode ribbon, workspace controls and preview states.
+- `src/lib/ui/BookingSummary.svelte`: reusable client-side display of *catalog base price*, never Quote.
+- `src/lib/ui/BookingDetail.svelte`: booking drawer with keyboard Escape, initial focus, Tab loop and focus restoration.
 - `src/styles.css`: global design tokens, responsive design and component classes.
 - `src/lib/model.ts`: **frontend view models only**, not official wire types.
 - `src/lib/api.ts`: typed port and adapter selection. Production adapter deliberately fails closed until review.
 - `src/lib/mock.ts`: strictly synthetic browser-local data adapter.
 - `src/lib/dates.ts`: display-only calendar date/format helpers.
 - `src/lib/mock.test.ts`: mock/onboarding regression smoke tests.
+- `src/lib/api.test.ts`: fail-closed API mode regression.
+- `src/lib/dates.test.ts`: timezone-independent calendar day/week boundaries.
+- `src/lib/navigation.test.ts`: shared owner/public navigation inventory.
 
 No imports of backend internals, domain booking rules, kernel code, database packages or shared contracts. The same booking screen is intended for public web, iframe and Mini App shells per ADR-0005, but embed messaging, origin checks and Telegram auth are **not implemented** and must not be claimed complete.
 
@@ -64,6 +72,18 @@ pnpm build:web
 ```
 
 Repo-wide `pnpm lint`, `pnpm format:check` and GitHub F1 quality gate remain applicable.
+
+
+## Manual UX checks for review (not yet verified on physical devices)
+
+- Desktop 1280×800: create the synthetic salon; add a service and staff; configure workdays; select a suggested slot; submit and verify the record in the day/week calendar.
+- Mobile 375×812 and 320×568: repeat the full flow, including keyboard/date picker and horizontal week scroll. Check no controls are clipped or obstructed.
+- Keyboard: Tab through owner navigation and booking form; open a calendar record with Enter; drawer must focus its close control, cycle focus between dialog buttons and close on Escape, returning focus to the invoking control.
+- Preview selector: empty, error, permission-denied and forced slot conflict are visual fixtures only. Real authorization remains API-enforced.
+- Reload page in same tab to verify synthetic state restoration; use Reset demo to clear it. Opening an independent browser session must not share state.
+- API mode: run with `VITE_COOKIE_DATA_MODE=api`; verify **only** the explicit disconnected error is shown, no fake success or network request.
+
+**Important:** GitHub CI does not replace physical device or browser visual QA. Do not close the mobile UX portion of Issue #13 solely from typecheck/CI.
 
 ## Required reviewed APIs (#22/#23/#26)
 

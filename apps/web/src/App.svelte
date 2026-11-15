@@ -4,19 +4,14 @@
   import { localDay, longDate, mondayOf, money, offsetDay, shortDate, upcomingWeekday } from "./lib/dates";
   import { UiFailure } from "./lib/model";
   import type { BookingView, DemoSnapshot, SlotView, ViewState } from "./lib/model";
+  import type { Screen } from "./lib/navigation";
+  import Sidebar from "./lib/ui/Sidebar.svelte";
+  import Topbar from "./lib/ui/Topbar.svelte";
+  import BookingDetail from "./lib/ui/BookingDetail.svelte";
+  import BookingSummary from "./lib/ui/BookingSummary.svelte";
   import "./styles.css";
 
-  type Screen = "home" | "services" | "staff" | "schedule" | "calendar" | "locations" | "booking";
   const api = createCookieUiApi();
-  const screens: { id: Screen; label: string; glyph: string }[] = [
-    { id: "home", label: "Обзор", glyph: "◫" },
-    { id: "calendar", label: "Календарь", glyph: "▦" },
-    { id: "services", label: "Услуги и цены", glyph: "◈" },
-    { id: "staff", label: "Мастера", glyph: "♧" },
-    { id: "schedule", label: "Расписание", glyph: "◷" },
-    { id: "locations", label: "Филиалы", glyph: "⌂" },
-    { id: "booking", label: "Онлайн-запись", glyph: "↗" },
-  ];
   const weekdays = [
     { number: 1, name: "Пн" }, { number: 2, name: "Вт" }, { number: 3, name: "Ср" },
     { number: 4, name: "Чт" }, { number: 5, name: "Пт" }, { number: 6, name: "Сб" },
@@ -59,7 +54,6 @@
   let selectedBookingId = "";
 
   $: org = data.organization;
-  $: displayTitle = screens.find(item => item.id === screen)?.label ?? "Cookie";
   $: stepCount = Number(!!org) + Number(data.services.length > 0) +
     Number(data.staff.length > 0) + Number(data.schedules.length > 0) +
     Number(data.bookings.length > 0);
@@ -205,40 +199,10 @@
 </svelte:head>
 
 <div class="app-shell">
-  <aside class="sidebar" aria-label="Главная навигация">
-    <div class="brand"><span class="brand-mark">C<span class="brand-petal">✳</span></span><div><strong>cookie<span class="brand-dot">.</span></strong><small>salon workspace</small></div></div>
-    <div class="sidebar-heading">РАБОЧЕЕ ПРОСТРАНСТВО</div>
-    <nav class="nav-links" aria-label="Разделы Cookie">
-      {#each screens as item}
-        <button type="button" class:active={screen === item.id} onclick={() => goto(item.id)} aria-current={screen === item.id ? "page" : undefined}>
-          <span class="nav-glyph" aria-hidden="true">{item.glyph}</span>{item.label}
-          {#if item.id === "booking"}<span class="nav-external">↗</span>{/if}
-        </button>
-      {/each}
-    </nav>
-    <div class="sidebar-bottom">
-      <div class="sidebar-tip"><span class="tip-spark">✳</span><strong>Первый салон за 5 шагов</strong><p>Создайте организацию, услуги, команду, расписание и первую запись.</p><div class="progress-track"><div style:width={`${stepCount * 20}%`}></div></div><small>{stepCount} из 5 шагов</small></div>
-      <div class="workspace-identity"><span class="identity-avatar">T</span><div><strong>Тестовое пространство</strong><small>Не production-аккаунт</small></div></div>
-    </div>
-  </aside>
+  <Sidebar {screen} {stepCount} onNavigate={goto} />
 
   <div class="main-area">
-    <div class="demo-ribbon"><span class="ribbon-pulse"></span><strong>DEMO MODE</strong><span>Данные синтетические · только sessionStorage · нет связи с backend</span></div>
-    <header class="topbar">
-      <div class="topbar-title"><span class="breadcrumb">Workspace <span aria-hidden="true">/</span></span><strong>{displayTitle}</strong></div>
-      <div class="topbar-actions">
-        <label class="preview-control">Проверить состояние
-          <select bind:value={preview} aria-label="Проверить демонстрационное состояние">
-            <option value="normal">Обычное</option>
-            <option value="empty">Пустое</option>
-            <option value="error">Ошибка сети</option>
-            <option value="forbidden">Нет прав</option>
-            <option value="conflict">Конфликт слота</option>
-          </select>
-        </label>
-        <button class="btn btn-primary btn-top" type="button" onclick={() => goto("booking")} disabled={!org}>+ Новая запись</button>
-      </div>
-    </header>
+    <Topbar {screen} bind:preview canCreateBooking={!!org} onNavigate={goto} />
 
     <main class="content">
       {#if error}<div class="alert alert-error" role="alert"><span aria-hidden="true">!</span><div><strong>Операция не выполнена</strong><p>{error}</p></div><button class="alert-close" type="button" onclick={() => error = ""} aria-label="Закрыть ошибку">×</button></div>{/if}
@@ -340,7 +304,15 @@
           {:else}<div class="day-timeline">{#if dayBookings.length === 0}<div class="empty-mini"><span>▦</span><strong>На этот день записей нет</strong><p>Выберите другой день или создайте тестовую запись.</p><button class="btn btn-secondary" onclick={() => goto("booking")}>Создать запись</button></div>{:else}
             {#each [...dayBookings].sort((a,b) => a.time.localeCompare(b.time)) as booking}<button class="timeline-entry" onclick={() => selectedBookingId = booking.id}><strong class="timeline-time">{booking.time}</strong><div class="timeline-detail"><strong>{getService(booking.serviceId)}</strong><span>{getStaff(booking.staffId)} · {getLocation(booking.locationId)}</span></div><span class="status-pill">Демо</span><span aria-hidden="true">→</span></button>{/each}{/if}</div>{/if}
         </section>
-        {#if chosenBooking}<div class="modal-backdrop" role="presentation"><div class="booking-detail card" role="dialog" aria-modal="true" aria-label="Детали демонстрационной записи"><div class="card-title"><div><span class="eyebrow">КАРТОЧКА ЗАПИСИ</span><h2>{getService(chosenBooking.serviceId)}</h2></div><button class="close-button" onclick={() => selectedBookingId = ""} aria-label="Закрыть детали">×</button></div><div class="detail-table"><div><span>Дата</span><strong>{longDate(chosenBooking.date)}</strong></div><div><span>Время</span><strong>{chosenBooking.time}</strong></div><div><span>Мастер</span><strong>{getStaff(chosenBooking.staffId)}</strong></div><div><span>Филиал</span><strong>{getLocation(chosenBooking.locationId)}</strong></div><div><span>Псевдоним</span><strong>{chosenBooking.clientAlias}</strong></div><div><span>Статус</span><strong>Демо-подтверждена</strong></div></div><div class="inline-note">Изменение, перенос и отмена станут доступны только после согласования серверных команд и прав.</div><button class="btn btn-secondary btn-wide" onclick={() => selectedBookingId = ""}>Закрыть</button></div></div>{/if}
+        {#if chosenBooking}
+          <BookingDetail
+            booking={chosenBooking}
+            serviceName={getService}
+            staffName={getStaff}
+            locationName={getLocation}
+            onClose={() => selectedBookingId = ""}
+          />
+        {/if}
       {:else if screen === "booking"}
         <div class="booking-head"><div><span class="eyebrow">КЛИЕНТСКАЯ ВИТРИНА · ПРЕДПРОСМОТР</span><h1>Записаться на услугу</h1><p>{org.name} · демонстрационная форма без реального бронирования</p></div><span class="public-chip">PUBLIC UI / DEMO</span></div>
         {#if createdBooking}
@@ -362,7 +334,15 @@
             <label class="field">06 · Псевдоним тестового клиента<input bind:value={clientAlias} maxlength="80" required placeholder="Тестовый клиент" /></label>
             <div class="inline-note">Не вводите реальные имена, телефоны или другие персональные данные. В реальном продукте идентификацию выполнит backend.</div>
             <button class="btn btn-primary btn-wide" type="submit" disabled={!canBook || busySlots}>Создать тестовую запись →</button>
-          </form><aside class="card booking-summary"><span class="eyebrow">ВАШ ВЫБОР</span><h2>Детали визита</h2><div class="summary-visual">✳</div><div class="summary-line"><span>Услуга</span><strong>{chosenService?.name ?? "Не выбрана"}</strong></div><div class="summary-line"><span>Длительность</span><strong>{chosenService ? `${chosenService.durationMinutes} мин` : "—"}</strong></div><div class="summary-line"><span>Мастер</span><strong>{bookingStaff ? getStaff(bookingStaff) : "Не выбран"}</strong></div><div class="summary-line"><span>Дата</span><strong>{bookingDate ? shortDate(bookingDate) : "—"}</strong></div><div class="summary-line"><span>Время</span><strong>{bookingTime || "—"}</strong></div><div class="summary-total"><span>Базовая цена в каталоге</span><strong>{chosenService ? money(chosenService.basePriceRub) : "—"}</strong></div><p class="summary-disclaimer">Не является Quote или окончательной ценой. В production сумма, права и свободные слоты определяются сервером.</p></aside></div>
+          </form>
+          <BookingSummary
+            service={chosenService}
+            staffId={bookingStaff}
+            {bookingDate}
+            {bookingTime}
+            staffName={getStaff}
+          />
+        </div>
           {#if data.services.length === 0 || data.staff.length === 0 || data.schedules.length === 0}<div class="setup-shortcut"><span>Для полного сценария сначала создайте услугу, мастера и график.</span><button class="btn btn-secondary" onclick={() => goto(currentOnboardingStep === "services" ? "services" : currentOnboardingStep === "staff" ? "staff" : "schedule")}>Продолжить настройку →</button></div>{/if}
         {/if}
       {/if}
