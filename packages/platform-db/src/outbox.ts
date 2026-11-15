@@ -55,14 +55,26 @@ const UUID_PATTERN =
 const TOPIC_PATTERN = /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)+$/;
 const FAILURE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
 
-function integerInRange(value: number, minimum: number, maximum: number): boolean {
+function integerInRange(
+  value: number,
+  minimum: number,
+  maximum: number,
+): boolean {
   return Number.isSafeInteger(value) && value >= minimum && value <= maximum;
 }
 
 /** Canonicalize nested JSON so reordered object keys remain idempotent. */
-function canonical(value: unknown, seen = new Set<object>(), depth = 0): JsonValue {
+function canonical(
+  value: unknown,
+  seen = new Set<object>(),
+  depth = 0,
+): JsonValue {
   if (depth > 32) throw new Error("Outbox payload nesting limit exceeded");
-  if (value === null || typeof value === "string" || typeof value === "boolean") {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
     return value;
   }
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -73,12 +85,19 @@ function canonical(value: unknown, seen = new Set<object>(), depth = 0): JsonVal
   if (Array.isArray(value)) {
     result = value.map((element) => canonical(element, seen, depth + 1));
   } else {
-    if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
+    if (
+      Object.getPrototypeOf(value) !== Object.prototype &&
+      Object.getPrototypeOf(value) !== null
+    ) {
       throw new Error("Outbox payload must contain only plain JSON objects");
     }
     const sorted: Record<string, JsonValue> = {};
     for (const key of Object.keys(value).sort()) {
-      sorted[key] = canonical((value as Record<string, unknown>)[key], seen, depth + 1);
+      sorted[key] = canonical(
+        (value as Record<string, unknown>)[key],
+        seen,
+        depth + 1,
+      );
     }
     result = sorted;
   }
@@ -103,7 +122,8 @@ export async function enqueueOutbox(
     !TOPIC_PATTERN.test(input.topic) ||
     input.topic.length > 128 ||
     !integerInRange(maxAttempts, 1, 25) ||
-    (input.availableAt !== undefined && !Number.isFinite(input.availableAt.getTime()))
+    (input.availableAt !== undefined &&
+      !Number.isFinite(input.availableAt.getTime()))
   ) {
     throw new Error("Invalid outbox event metadata");
   }
@@ -147,7 +167,9 @@ export async function enqueueOutbox(
   const row = existing.rows[0];
   if (!row) throw new Error("Outbox idempotency result not found");
   if (row.fingerprint !== fingerprint) {
-    throw new Error("Outbox idempotency key reused with different event content");
+    throw new Error(
+      "Outbox idempotency key reused with different event content",
+    );
   }
   return { id: row.id, inserted: false };
 }
@@ -163,7 +185,10 @@ export async function claimOutbox(
 ): Promise<readonly OutboxLease[]> {
   const batchSize = options.batchSize ?? 10;
   const leaseMs = options.leaseMs ?? 30_000;
-  if (!integerInRange(batchSize, 1, 100) || !integerInRange(leaseMs, 1, 600_000)) {
+  if (
+    !integerInRange(batchSize, 1, 100) ||
+    !integerInRange(leaseMs, 1, 600_000)
+  ) {
     throw new Error("Invalid outbox claim limits");
   }
   await pool.query(
@@ -229,7 +254,10 @@ export async function failOutbox(
   failureCode: string,
   delayMs: number,
 ): Promise<boolean> {
-  if (!FAILURE_PATTERN.test(failureCode) || !integerInRange(delayMs, 0, 3_600_000)) {
+  if (
+    !FAILURE_PATTERN.test(failureCode) ||
+    !integerInRange(delayMs, 0, 3_600_000)
+  ) {
     throw new Error("Invalid sanitized outbox failure metadata");
   }
   const result = await pool.query<InsertedRow>(
@@ -246,7 +274,8 @@ export async function failOutbox(
 }
 
 export function retryDelayMs(attempt: number, random = Math.random): number {
-  if (!integerInRange(attempt, 1, 25)) throw new Error("Invalid delivery attempt");
+  if (!integerInRange(attempt, 1, 25))
+    throw new Error("Invalid delivery attempt");
   const jitter = random();
   if (!Number.isFinite(jitter) || jitter < 0 || jitter >= 1) {
     throw new Error("Invalid jitter");
@@ -264,7 +293,12 @@ export async function runOutboxBatch(
   pool: Pool,
   handler: (event: OutboxLease) => Promise<void>,
   options: OutboxClaimOptions = {},
-): Promise<{ readonly claimed: number; readonly delivered: number; readonly failed: number; readonly stale: number }> {
+): Promise<{
+  readonly claimed: number;
+  readonly delivered: number;
+  readonly failed: number;
+  readonly stale: number;
+}> {
   const jobs = await claimOutbox(pool, options);
   let delivered = 0;
   let failed = 0;
@@ -276,7 +310,14 @@ export async function runOutboxBatch(
       else stale++;
     } catch {
       // Exception detail might include secrets/PII, never persist it.
-      if (await failOutbox(pool, event, "DELIVERY_FAILED", retryDelayMs(event.attempts))) {
+      if (
+        await failOutbox(
+          pool,
+          event,
+          "DELIVERY_FAILED",
+          retryDelayMs(event.attempts),
+        )
+      ) {
         failed++;
       } else {
         stale++;
