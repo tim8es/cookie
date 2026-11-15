@@ -1,4 +1,9 @@
 <script lang="ts">
+  import {
+    ArrowUpRight, CalendarDays, CalendarCheck2, Clock3, LayoutDashboard,
+    MapPin, Scissors, Store, UsersRound,
+  } from "@lucide/svelte";
+  import { Badge } from "../components/ui/badge/index.js";
   import { screens, type Screen } from "../navigation";
 
   export let screen: Screen;
@@ -8,7 +13,7 @@
 
 <aside class="sidebar" aria-label="Главная навигация">
   <div class="brand">
-    <span class="brand-mark">C<span class="brand-petal">✳</span></span>
+    <span class="brand-icon" aria-hidden="true"><CalendarCheck2 size={20} strokeWidth={2.2} /></span>
     <div>
       <strong>cookie<span class="brand-dot">.</span></strong>
       <small>salon workspace</small>
@@ -24,10 +29,26 @@
         onclick={() => onNavigate(item.id)}
         aria-current={screen === item.id ? "page" : undefined}
       >
-        <span class="nav-glyph" aria-hidden="true">{item.glyph}</span>
-        {item.label}
+        <span class="nav-glyph" aria-hidden="true">
+          {#if item.id === "home"}
+            <LayoutDashboard size={18} strokeWidth={1.8} />
+          {:else if item.id === "calendar"}
+            <CalendarDays size={18} strokeWidth={1.8} />
+          {:else if item.id === "services"}
+            <Scissors size={18} strokeWidth={1.8} />
+          {:else if item.id === "staff"}
+            <UsersRound size={18} strokeWidth={1.8} />
+          {:else if item.id === "schedule"}
+            <Clock3 size={18} strokeWidth={1.8} />
+          {:else if item.id === "locations"}
+            <MapPin size={18} strokeWidth={1.8} />
+          {:else}
+            <ArrowUpRight size={18} strokeWidth={1.8} />
+          {/if}
+        </span>
+        <span>{item.label}</span>
         {#if item.id === "booking"}
-          <span class="nav-external" aria-hidden="true">↗</span>
+          <ArrowUpRight class="nav-external" size={14} aria-hidden="true" />
         {/if}
       </button>
     {/each}
@@ -35,9 +56,12 @@
 
   <div class="sidebar-bottom">
     <div class="sidebar-tip">
-      <span class="tip-spark" aria-hidden="true">✳</span>
-      <strong>Первый салон за 5 шагов</strong>
-      <p>Создайте организацию, услуги, команду, расписание и первую запись.</p>
+      <div class="tip-meta">
+        <span>ПЕРВЫЕ ШАГИ</span>
+        <Badge variant="secondary">{stepCount}/5</Badge>
+      </div>
+      <strong>Настройка салона</strong>
+      <p>Услуги, специалисты, график и первая тестовая запись.</p>
       <div
         class="progress-track"
         role="progressbar"
@@ -48,13 +72,13 @@
       >
         <div style:width={`${stepCount * 20}%`}></div>
       </div>
-      <small>{stepCount} из 5 шагов</small>
+      <small>{stepCount === 5 ? "Демо готово к просмотру" : `Выполнено ${stepCount} из 5`}</small>
     </div>
     <div class="workspace-identity">
-      <span class="identity-avatar" aria-hidden="true">T</span>
+      <span class="identity-avatar" aria-hidden="true"><Store size={17} /></span>
       <div>
         <strong>Тестовое пространство</strong>
-        <small>Не production-аккаунт</small>
+        <small>Без реальных клиентов</small>
       </div>
     </div>
   </div>

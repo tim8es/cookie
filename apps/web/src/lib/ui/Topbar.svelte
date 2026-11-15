@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { ArrowRight, Plus } from "@lucide/svelte";
+  import { Button } from "../components/ui/button/index.js";
+  import { Badge } from "../components/ui/badge/index.js";
   import type { ViewState } from "../model";
   import { screens, type Screen } from "../navigation";
 
@@ -7,19 +10,18 @@
   export let canCreateBooking: boolean;
   export let onNavigate: (next: Screen) => void;
 
-  $: displayTitle =
-    screens.find((item) => item.id === screen)?.label ?? "Cookie";
+  $: displayTitle = screens.find((item) => item.id === screen)?.label ?? "Cookie";
 </script>
 
 <div class="demo-ribbon">
   <span class="ribbon-pulse" aria-hidden="true"></span>
-  <strong>DEMO MODE</strong>
-  <span>Данные синтетические · только sessionStorage · нет связи с backend</span>
+  <strong>Демонстрационный режим</strong>
+  <span>Локальные данные · реальные записи не создаются</span>
 </div>
 
 <header class="topbar">
   <div class="topbar-title">
-    <span class="breadcrumb">Workspace <span aria-hidden="true">/</span></span>
+    <span class="breadcrumb">Cookie <ArrowRight size={12} aria-hidden="true" /></span>
     <strong>{displayTitle}</strong>
   </div>
   <div class="topbar-actions">
@@ -33,13 +35,15 @@
         <option value="conflict">Конфликт слота</option>
       </select>
     </label>
-    <button
-      class="btn btn-primary btn-top"
+    <Badge variant="outline" class="topbar-demo-badge">Demo</Badge>
+    <Button
+      class="btn-top"
+      size="lg"
       type="button"
       onclick={() => onNavigate("booking")}
       disabled={!canCreateBooking}
     >
-      + Новая запись
-    </button>
+      <Plus size={17} strokeWidth={2} aria-hidden="true" /> Новая запись
+    </Button>
   </div>
 </header>

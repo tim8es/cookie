@@ -43,6 +43,28 @@ Navigation is non-linear: services, staff, schedule, locations and calendar are 
 
 **Synthetic slot semantics:** 10:00, 12:00 and 15:00 are fixture suggestions filtered to demo weekday/hour settings; they are **not calculated availability**. The fake adapter can demonstrate a same-slot collision in its own session. A scenario selector also previews loading/error/empty/forbidden and forced slot conflict UI. This does not enforce a real booking rule or role permission. All confirmed-looking records are explicitly labeled **демо**, never real backend Confirmed.
 
+## Component system (SaaS workspace refresh)
+
+The interface uses the pinned **shadcn-svelte** source components in
+`src/lib/components/ui/` with **Bits UI** for accessible behavior,
+Tailwind CSS v4 and **Lucide icons**. The UI code lives in this repository:
+avoid copying uncontrolled one-off card/button/dialog implementations.
+Vite consumes `src/ui-theme.css` for the component palette; existing
+`src/styles.css` provides the responsive Cookie application layout.
+
+The owner navigation, topbar, public booking controls, and visit summary
+use reusable Button/Card/Input/Badge/Separator components. The native
+service/location/staff select fields deliberately remain native selects,
+which have predictable keyboard and mobile platform interaction; replacing
+them with a custom select must have a concrete accessibility benefit.
+The synthetic adapter and API fail-closed behavior are unchanged.
+
+The component registry lives in `apps/web/components.json`. To add
+a component, use the pinned shadcn-svelte CLI, review generated source
+and package changes, then verify the **frozen** lockfile in CI. Prefer
+the existing shadcn components and design tokens to novel one-off
+widgets. Component source is versioned and reviewable.
+
 ## Folder ownership / layering
 
 - `src/App.svelte`: shared UI state/orchestration across owner and public flows (no backend rules), with versioned slot-request guard against stale responses.

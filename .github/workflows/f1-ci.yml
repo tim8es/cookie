@@ -7,7 +7,7 @@ on:
       - feature/f1-bootstrap-20261114
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-and-test:
@@ -41,17 +41,6 @@ jobs:
           node-version: "26"
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
-      - name: One-time Prettier for imported UI source
-        if: ${{ github.head_ref == 'feature/frontend-ui-system-20261115' }}
-        run: |
-          git fetch origin feature/frontend-ui-system-20261115
-          git switch -C feature/frontend-ui-system-20261115 FETCH_HEAD
-          pnpm exec prettier --write 'apps/web/src/lib/components/ui/**/*.ts' apps/web/src/lib/utils.ts
-          git config user.name 'cookie-ui-bot'
-          git config user.email 'cookie-ui-bot@users.noreply.github.com'
-          git add apps/web/src/lib/components/ui apps/web/src/lib/utils.ts
-          git commit -m 'style(web): format generated shadcn-svelte TypeScript' || true
-          git push origin HEAD:feature/frontend-ui-system-20261115
       - name: Lint
         run: pnpm lint
       - name: Check source formatting

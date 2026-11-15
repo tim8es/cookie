@@ -338,7 +338,7 @@
           onCreateBooking={() => goto("booking")}
         />
       {:else if screen === "booking"}
-        <div class="booking-head"><div><span class="eyebrow">КЛИЕНТСКАЯ ВИТРИНА · ПРЕДПРОСМОТР</span><h1>Записаться на услугу</h1><p>{org.name} · демонстрационная форма без реального бронирования</p></div><span class="public-chip">PUBLIC UI / DEMO</span></div>
+        <div class="booking-head"><div><span class="eyebrow">КЛИЕНТСКАЯ ВИТРИНА · ПРЕДПРОСМОТР</span><h1>Записаться на услугу</h1><p>{org.name} · демонстрационная форма без реального бронирования</p></div><span class="public-chip">Предпросмотр · демо</span></div>
         {#if createdBooking}
           <section class="card success-screen"><div class="success-symbol">✓</div><span class="eyebrow">ЗАПИСЬ СОЗДАНА ЛОКАЛЬНО</span><h2>Готово! Это демо-запись.</h2><p>Запись сохранена только в браузерной сессии. Она <strong>не подтверждена backend</strong> и не резервирует время у мастера.</p>
             <div class="success-receipt"><div><span>Услуга</span><strong>{getService(createdBooking.serviceId)}</strong></div><div><span>Дата и время</span><strong>{longDate(createdBooking.date)}, {createdBooking.time}</strong></div><div><span>Мастер</span><strong>{getStaff(createdBooking.staffId)}</strong></div><div><span>Демо-ID</span><strong class="mono">{createdBooking.id.slice(0, 8)}</strong></div></div>
