@@ -175,7 +175,10 @@ test(
         { code: "SCHEDULE_TARGET_UNAVAILABLE" },
       );
       await assert.rejects(
-        addScheduleBlockInternal(pool, { ...base, startAt: "2026-01-01T00:00:00Z" }),
+        addScheduleBlockInternal(pool, {
+          ...base,
+          startAt: "2026-01-01T00:00:00Z",
+        }),
         { code: "INVALID_SCHEDULE_BLOCK" },
       );
       await assert.rejects(
@@ -201,10 +204,10 @@ test(
       assert.deepEqual(repeated, created);
       assert.equal(created.active, true);
       assert.equal(created.kind, "break");
-      assert.deepEqual([created.startAt, created.endAt], [
-        "2027-04-12T14:00:00.000Z",
-        "2027-04-12T15:00:00.000Z",
-      ]);
+      assert.deepEqual(
+        [created.startAt, created.endAt],
+        ["2027-04-12T14:00:00.000Z", "2027-04-12T15:00:00.000Z"],
+      );
       await assert.rejects(
         addScheduleBlockInternal(pool, {
           ...base,
@@ -223,7 +226,10 @@ test(
         booking("book-inside-break", "2027-04-12T14:10:00Z"),
         { code: "BOOKING_NOT_AVAILABLE" },
       );
-      const afterBreak = await booking("book-after-break", "2027-04-12T15:00:00Z");
+      const afterBreak = await booking(
+        "book-after-break",
+        "2027-04-12T15:00:00Z",
+      );
       assert.equal(afterBreak.status, "Confirmed");
 
       // A racing block and booking must not both commit an overlapping time.
@@ -254,9 +260,18 @@ test(
             WHERE tenant_id=$1::uuid AND id=$2::uuid) AS original_start_at`,
         [tenant, first.bookingId],
       );
-      assert.equal(saved.rows[0]?.original_start_at.toISOString(), first.startAt);
-      assert.equal(saved.rows[0]?.confirmed === "2" || saved.rows[0]?.confirmed === "3", true);
-      assert.equal(saved.rows[0]?.blocks === "2" || saved.rows[0]?.blocks === "3", true);
+      assert.equal(
+        saved.rows[0]?.original_start_at.toISOString(),
+        first.startAt,
+      );
+      assert.equal(
+        saved.rows[0]?.confirmed === "2" || saved.rows[0]?.confirmed === "3",
+        true,
+      );
+      assert.equal(
+        saved.rows[0]?.blocks === "2" || saved.rows[0]?.blocks === "3",
+        true,
+      );
     } finally {
       const tables = [
         "cookie_booking.time_change_audit",
@@ -280,7 +295,9 @@ test(
       ];
       try {
         for (const table of tables) {
-          await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1::uuid`, [tenant]);
+          await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1::uuid`, [
+            tenant,
+          ]);
         }
         await pool.query(
           "DELETE FROM cookie_tenancy.organizations WHERE id=ANY($1::uuid[])",
