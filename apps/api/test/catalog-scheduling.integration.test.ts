@@ -48,7 +48,10 @@ test(
       client = await pool.connect();
       await client.query("BEGIN");
 
-      await client.query("INSERT INTO cookie_identity.identities (id) VALUES ($1)", [owner]);
+      await client.query(
+        "INSERT INTO cookie_identity.identities (id) VALUES ($1)",
+        [owner],
+      );
       await client.query(
         `INSERT INTO cookie_tenancy.organizations (id,owner_identity_id,display_name)
          VALUES ($1,$3,'Synthetic A'),($2,$3,'Synthetic B')`,
@@ -61,7 +64,7 @@ test(
                 ($4,$5,'B','UTC')`,
         [tenantA, locA1, locA2, tenantB, locB],
       );
-      const legacyLocation = await client.query<{time_zone: string | null}>(
+      const legacyLocation = await client.query<{ time_zone: string | null }>(
         "SELECT time_zone FROM cookie_tenancy.locations WHERE tenant_id=$1 AND id=$2",
         [tenantA, locA1],
       );
@@ -146,7 +149,10 @@ test(
         [tenantA, staffA, locA1, locA2, serviceA],
       );
 
-      const assignments = await client.query<{ staff_id: string; count: string }>(
+      const assignments = await client.query<{
+        staff_id: string;
+        count: string;
+      }>(
         `SELECT staff_id::text, count(*)::text AS count
            FROM cookie_staff.location_assignments
            WHERE tenant_id=$1 GROUP BY staff_id`,
@@ -241,7 +247,7 @@ test(
         "23503",
       );
 
-      const scoped = await client.query<{count: string}>(
+      const scoped = await client.query<{ count: string }>(
         `SELECT count(*)::text AS count
          FROM cookie_scheduling.shift_windows
          WHERE tenant_id=$1 AND staff_id=$2`,
