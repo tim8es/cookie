@@ -161,7 +161,10 @@ function parseMinute(value: string): string {
   return new Date(ms).toISOString();
 }
 
-function range(start: string, end: string): {
+function range(
+  start: string,
+  end: string,
+): {
   readonly startAt: string;
   readonly endAt: string;
 } {
@@ -581,10 +584,16 @@ export async function reviewScheduleEditRequestInternal(
       fail("SCHEDULE_APPROVAL_REQUEST_NOT_FOUND");
     }
     await requireOwner(client, input.actor);
-    await requireScopedManager(client, input.actor, request.staff_id, request.location_id);
+    await requireScopedManager(
+      client,
+      input.actor,
+      request.staff_id,
+      request.location_id,
+    );
 
     if (request.status !== "pending") {
-      const expectedStatus = input.action === "approve" ? "applied" : "rejected";
+      const expectedStatus =
+        input.action === "approve" ? "applied" : "rejected";
       if (
         request.status !== expectedStatus ||
         request.reviewer_identity_id !== reviewer ||
