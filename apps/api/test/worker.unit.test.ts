@@ -52,8 +52,12 @@ test("aborting while a handler is in flight waits for it without claiming again"
   const completion: { resolve?: () => void } = {};
   const entry: { resolve?: () => void } = {};
   let calls = 0;
-  const inFlight = new Promise<void>((resolve) => { completion.resolve = resolve; });
-  const entered = new Promise<void>((resolve) => { entry.resolve = resolve; });
+  const inFlight = new Promise<void>((resolve) => {
+    completion.resolve = resolve;
+  });
+  const entered = new Promise<void>((resolve) => {
+    entry.resolve = resolve;
+  });
   const resultPromise = superviseOutboxWorker(
     async () => {
       calls++;
@@ -82,7 +86,8 @@ test("transient database poll failure is retried; successful poll resets the cir
   const result = await superviseOutboxWorker(
     async () => {
       calls++;
-      if (calls === 1 || calls === 3) throw new Error("connectionString=secret");
+      if (calls === 1 || calls === 3)
+        throw new Error("connectionString=secret");
       if (calls === 4) controller.abort();
       return empty;
     },
@@ -97,7 +102,8 @@ test("transient database poll failure is retried; successful poll resets the cir
   assert.deepEqual(result, empty);
   assert.equal(calls, 4);
   assert.deepEqual(
-    observations.filter((x) => x.kind === "poll-error")
+    observations
+      .filter((x) => x.kind === "poll-error")
       .map((x) => x.consecutivePollErrors),
     [1, 1],
   );
@@ -139,7 +145,9 @@ test("observability callback failures cannot interrupt at-least-once delivery", 
     },
     {
       signal: controller.signal,
-      observe: () => { throw new Error("telemetry down"); },
+      observe: () => {
+        throw new Error("telemetry down");
+      },
     },
   );
   assert.equal(counts.delivered, 1);
@@ -150,7 +158,10 @@ test("aborted worker does not query database, invalid delays and circuits are re
   controller.abort();
   let calls = 0;
   const result = await superviseOutboxWorker(
-    async () => { calls++; return empty; },
+    async () => {
+      calls++;
+      return empty;
+    },
     { signal: controller.signal },
   );
   assert.deepEqual(result, empty);
