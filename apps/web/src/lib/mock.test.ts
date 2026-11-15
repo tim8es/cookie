@@ -24,6 +24,7 @@ test("onboarding fixture: org → service → staff → schedule → booking vis
   const api = new MockCookieApi(storage);
   const org = await api.createOrganization("Тестовая студия");
   const location = (await api.getSnapshot()).locations[0];
+  if (!location) throw new Error("Synthetic location was not created");
   const service = await api.addService("Стрижка", 45, 1200);
   const staff = await api.addStaff("Мастер Демо", "Стилист", [service.id]);
   const date = "2026-11-16";
@@ -50,7 +51,7 @@ test("onboarding fixture: org → service → staff → schedule → booking vis
 
   assert.equal(booking.status, "demo-confirmed");
   const refreshed = await api.getSnapshot();
-  assert.equal(refreshed.bookings[0].id, booking.id);
+  assert.equal(refreshed.bookings[0]?.id, booking.id);
   const restored = await new MockCookieApi(storage).getSnapshot();
   assert.equal(restored.organization?.id, org.id);
 });
@@ -58,7 +59,8 @@ test("onboarding fixture: org → service → staff → schedule → booking vis
 test("mock shows an explicit conflict instead of silently duplicating a fixture slot", async () => {
   const api = new MockCookieApi(new MemoryStorage());
   await api.createOrganization("Тест");
-  const locationId = (await api.getSnapshot()).locations[0].id;
+  const locationId = (await api.getSnapshot()).locations[0]?.id;
+  if (!locationId) throw new Error("Synthetic location was not created");
   const serviceId = (await api.addService("Услуга", 30, 0)).id;
   const staffId = (await api.addStaff("Мастер", "Мастер", [serviceId])).id;
   const draft = {

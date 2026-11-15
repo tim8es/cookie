@@ -6,7 +6,7 @@ export function localDay(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 export function parseDay(day: string): Date {
-  const [year, month, date] = day.split("-").map(Number);
+  const [year = 1970, month = 1, date = 1] = day.split("-").map(Number);
   return new Date(year, month - 1, date);
 }
 export function offsetDay(day: string, offset: number): string {
