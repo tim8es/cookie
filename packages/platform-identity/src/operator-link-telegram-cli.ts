@@ -18,7 +18,9 @@ if (
 if (!env.DATABASE_URL) throw new Error("DATABASE_URL is required");
 const secretHex = env.COOKIE_TELEGRAM_USER_HMAC_SECRET ?? "";
 if (!/^[0-9a-f]{64}$/i.test(secretHex)) {
-  throw new Error("A 32-byte independent Telegram user HMAC secret is required");
+  throw new Error(
+    "A 32-byte independent Telegram user HMAC secret is required",
+  );
 }
 const verifier = createTelegramMiniAppProofVerifier({
   botToken: env.COOKIE_TELEGRAM_BOT_TOKEN ?? "",
