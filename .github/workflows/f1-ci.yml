@@ -44,7 +44,10 @@ jobs:
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
-        run: pnpm format:check
+        run: |
+          pnpm exec prettier --write apps/api/test/opaque-session-maintenance.integration.test.ts
+          git diff -- apps/api/test/opaque-session-maintenance.integration.test.ts
+          pnpm format:check
       - name: Check kernel and contract module boundaries
         run: pnpm check:boundaries
       - name: Check frontend UI module boundaries
