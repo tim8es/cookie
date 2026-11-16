@@ -225,26 +225,57 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
     let availabilityGets = 0;
     const bookingPostIds = new Set();
     const bookingHttpStatuses = [];
+    const availabilityRequests = new Map();
+    const refreshedAvailabilityBodies = [];
+    const refreshedAvailabilityErrors = [];
     cdp.on("Runtime.exceptionThrown", (event) => {
       runtimeErrors.push(event?.exceptionDetails?.exception?.description ?? event?.exceptionDetails?.text);
     });
     cdp.on("Network.loadingFailed", (event) => {
       networkFailures.push(event?.errorText ?? "unknown request failure");
+      const availability = availabilityRequests.get(event.requestId);
+      if (availability?.afterConflict)
+        refreshedAvailabilityErrors.push(event?.errorText ?? "availability loading failed");
     });
     cdp.on("Network.responseReceived", ({ requestId, response }) => {
       if (bookingPostIds.has(requestId)) bookingHttpStatuses.push(response.status);
+      const availability = availabilityRequests.get(requestId);
+      if (availability) availability.status = response.status;
       if (response?.status >= 400)
         networkFailures.push(response.status + " " + response.url);
     });
+    cdp.on("Network.loadingFinished", ({ requestId }) => {
+      const availability = availabilityRequests.get(requestId);
+      if (!availability?.afterConflict || availability.status !== 200) return;
+      // Read the actual browser HTTP response body, not a new Node-side GET
+      // or a locally reconstructed/stale slot list. loadingFinished ensures
+      // Network.getResponseBody can retrieve this exact request's payload.
+      void cdp.send("Network.getResponseBody", { requestId })
+        .then((result) => {
+          const raw = result.base64Encoded
+            ? Buffer.from(result.body, "base64").toString("utf8")
+            : result.body;
+          refreshedAvailabilityBodies.push({
+            ...availability,
+            body: JSON.parse(raw),
+          });
+        })
+        .catch((error) => refreshedAvailabilityErrors.push(error.message));
+    });
     cdp.on("Network.requestWillBeSent", ({ request, requestId }) => {
       if (!request?.url?.startsWith("http")) return;
-      const host = new URL(request.url).hostname;
-      if (host !== "127.0.0.1") external.push(request.url);
+      const parsed = new URL(request.url);
+      if (parsed.hostname !== "127.0.0.1") external.push(request.url);
       if (request.url.includes(syntheticBearer)) external.push("Synthetic bearer leaked in request URL");
-      if (request.method === "GET" && request.url.includes("/availability")) {
+      if (request.method === "GET" && parsed.pathname.endsWith("/availability")) {
         availabilityGets++;
+        availabilityRequests.set(requestId, {
+          url: request.url,
+          afterConflict: bookingHttpStatuses.includes(409),
+          status: null,
+        });
       }
-      if (request.url.includes("/v1/organizations/") && request.method === "POST") {
+      if (parsed.pathname.includes("/v1/organizations/") && request.method === "POST") {
         bookingPosts++;
         bookingPostIds.add(requestId);
       }
@@ -301,11 +332,45 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
           availabilityGets > availabilityGetsBeforeSubmit,
           "409 must refetch availability over HTTP after the conflicting Booking POST",
         );
-        const stillOffered = await evaluate(cdp, `(() => {
-          const refreshed = [...document.querySelectorAll(".booking-attempt-slot-options button")];
-          return refreshed.some((button) => button.textContent?.trim() === ${JSON.stringify(slotTime)});
-        })()`);
-        assert.equal(stillOffered, false, "409 must remove the newly booked slot from refreshed choices");
+        const refreshed = await poll("CDP body of post-409 backend availability", () =>
+          refreshedAvailabilityBodies.find((entry) => entry.afterConflict), 10000);
+        assert.deepEqual(
+          refreshedAvailabilityErrors,
+          [],
+          "A post-409 availability HTTP body must be readable from CDP",
+        );
+        const initial = [...availabilityRequests.values()].find((entry) => !entry.afterConflict);
+        assert.ok(initial, "Expected an initial backend availability request");
+        const originalUrl = new URL(initial.url);
+        const refreshedUrl = new URL(refreshed.url);
+        assert.equal(refreshed.status, 200, "Post-409 availability must return HTTP 200");
+        assert.equal(refreshedUrl.pathname, originalUrl.pathname, "Refresh must use the same tenant and Location");
+        for (const key of ["serviceId", "staffId", "date"]) {
+          assert.equal(
+            refreshedUrl.searchParams.get(key),
+            originalUrl.searchParams.get(key),
+            "Refresh must preserve the original " + key,
+          );
+        }
+        assert.ok(
+          Array.isArray(refreshed.body?.slots),
+          "CDP response body must contain actual backend slots",
+        );
+        const serverTimes = refreshed.body.slots.map((slot) => {
+          assert.match(slot.startAt, /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$/);
+          return slot.startAt.slice(11, 16);
+        });
+        const displayedTimes = await evaluate(cdp, `[...document.querySelectorAll(".booking-attempt-slot-options button")].map((button) => button.textContent?.trim())`);
+        assert.deepEqual(
+          displayedTimes,
+          serverTimes,
+          "Every visible 409 alternative must equal the fresh browser-received backend slots",
+        );
+        assert.equal(
+          serverTimes.includes(slotTime),
+          false,
+          "Fresh backend availability must exclude the newly committed staff slot",
+        );
       }
       assert.equal(bookingPosts, 1, "One POST only; no implicit retry or duplicate");
       assert.deepEqual(
