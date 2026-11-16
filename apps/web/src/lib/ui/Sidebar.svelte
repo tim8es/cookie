@@ -1,10 +1,16 @@
 <script lang="ts">
-  import { ArrowUpRight, CalendarDays, Check, Clock3, LayoutDashboard, MapPin, Scissors, UsersRound } from "@lucide/svelte";
+  import { ArrowUpRight, CalendarDays, Check, Clock3, LayoutDashboard, MapPin, Menu, Scissors, UsersRound } from "@lucide/svelte";
   import { screens, type Screen } from "../navigation";
 
   export let screen: Screen;
   export let stepCount: number;
   export let onNavigate: (next: Screen) => void;
+
+  let moreOpen = false;
+  function navigate(next: Screen): void {
+    moreOpen = false;
+    onNavigate(next);
+  }
 </script>
 
 <aside class="sidebar" aria-label="Главная навигация">
@@ -20,7 +26,7 @@
   <nav class="nav-links" aria-label="Разделы Cookie">
     {#each screens as item (item.id)}
       <button type="button" class:active={screen === item.id}
-        onclick={() => onNavigate(item.id)}
+        onclick={() => navigate(item.id)}
         aria-current={screen === item.id ? "page" : undefined}>
         <span class="nav-glyph" aria-hidden="true">
           {#if item.id === "home"}
@@ -43,6 +49,29 @@
       </button>
     {/each}
   </nav>
+
+  <nav class="mobile-nav" aria-label="Основные разделы">
+    <button type="button" class:active={screen === "home"} aria-current={screen === "home" ? "page" : undefined} onclick={() => navigate("home")}>
+      <LayoutDashboard size={20} aria-hidden="true"/><span>Обзор</span>
+    </button>
+    <button type="button" class:active={screen === "calendar"} aria-current={screen === "calendar" ? "page" : undefined} onclick={() => navigate("calendar")}>
+      <CalendarDays size={20} aria-hidden="true"/><span>Календарь</span>
+    </button>
+    <button type="button" class:active={screen === "booking"} aria-current={screen === "booking" ? "page" : undefined} onclick={() => navigate("booking")}>
+      <ArrowUpRight size={20} aria-hidden="true"/><span>Запись</span>
+    </button>
+    <button type="button" class:active={moreOpen || ["services", "staff", "schedule", "locations"].includes(screen)}
+      aria-expanded={moreOpen} aria-controls="mobile-more-panel" onclick={() => moreOpen = !moreOpen}>
+      <Menu size={20} aria-hidden="true"/><span>Ещё</span>
+    </button>
+  </nav>
+  {#if moreOpen}
+    <nav class="mobile-more-panel" id="mobile-more-panel" aria-label="Дополнительные разделы">
+      {#each screens.filter((item) => ["services", "staff", "schedule", "locations"].includes(item.id)) as item (item.id)}
+        <button type="button" aria-current={screen === item.id ? "page" : undefined} onclick={() => navigate(item.id)}>{item.label}</button>
+      {/each}
+    </nav>
+  {/if}
 
   <div class="sidebar-bottom">
     <div class="sidebar-tip">

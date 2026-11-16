@@ -153,3 +153,25 @@
 .footer { color: #9a8e9e; padding-top: 27px; }
 .footer button { color: #74637b; }
 
+
+/* The salon owns the public identity; Cookie is a quiet platform credit. */
+.public-brand { min-width: 0; flex: 1 1 auto; }
+.public-brand-type { min-width: 0; }
+.public-brand strong.salon-name {
+  display: block; max-width: min(48vw, 480px); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; letter-spacing: -.035em; font-size: 20px;
+}
+.public-brand small { font-size: 12px; }
+.powered-by { color: #7f6c85; }
+.booking-steps { white-space: normal; text-align: right; max-width: 132px; line-height: 1.4; }
+.booking-checkout-summary {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 0 0 16px; color: var(--cookie-ink);
+}
+.booking-checkout-summary span { color: #685870; font-size: 13px; }
+.booking-checkout-summary strong { font-size: 20px; white-space: nowrap; font-weight: 760; }
+.ticket-location-address, .confirmation-address {
+  display: block; font-size: 11px; font-weight: 450; margin-top: 4px;
+  line-height: 1.45; overflow-wrap: anywhere; color: #776681;
+}
+.confirmation-address { color: #84778a; }

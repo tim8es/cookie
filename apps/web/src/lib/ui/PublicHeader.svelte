@@ -16,7 +16,7 @@
   </div>
   <div class="public-header-actions">
     <span class="preview-stamp">Демо · <span class="powered-by">на платформе Cookie</span></span>
-    <Button type="button" variant="outline" class="public-back" onclick={onBack}>
+    <Button type="button" variant="outline" class="public-back" aria-label="Вернуться в демонстрационный кабинет" onclick={onBack}>
       <ArrowLeft size={16} aria-hidden="true" />
       <span>В кабинет</span>
     </Button>
