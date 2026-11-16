@@ -598,6 +598,53 @@ async function scenario(cdp, origin, width, height) {
   await captureEvidence(cdp, name, "17-themed-confirmation");
   await click(cdp, ".public-demo-back");
   await requireDom(cdp, name + " returned to demo workspace", "document.querySelector('.section-head h1')?.textContent !== 'Оформление'");
+
+  // Regression: clay background is lighter, so the editorial secondary copy
+  // must still achieve WCAG AA normal-text contrast in actual computed styles.
+  await click(cdp, ".nav-links button:nth-child(7)");
+  await requireDom(cdp, name + " appearance editor reopened", "document.querySelector('.section-head h1')?.textContent === 'Оформление'");
+  await click(cdp, ".appearance-presets button:nth-child(4)");
+  await submitValidForm(cdp, ".appearance-editor form");
+  await requireDom(cdp, name + " clay theme stored", "JSON.parse(sessionStorage.getItem('cookie.frontend-demo.v1')).appearance?.theme === 'clay'");
+  await click(cdp, ".appearance-open");
+  await requireDom(cdp, name + " clay theme rendered on booking", "!!document.querySelector('.public-shell.salonThemeClay .booking-hero')");
+  const clayContrast = await evaluate(cdp, `(() => {
+    const toRgb = (value) => value.match(/[\\d.]+/g).slice(0, 3).map(Number);
+    const luminance = (rgb) => {
+      const channels = rgb.map((value) => {
+        const v = value / 255;
+        return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      });
+      return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+    };
+    const ratio = (fg, bg) => {
+      const a = luminance(toRgb(fg));
+      const b = luminance(toRgb(bg));
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    };
+    return [
+      [".booking-hero-studio > span", ".booking-hero"],
+      [".ticket-topline", ".ticket-top"],
+      [".ticket-top p", ".ticket-top"],
+    ].map(([foreground, background]) => ({
+      foreground, background,
+      contrast: ratio(
+        getComputedStyle(document.querySelector(foreground)).color,
+        getComputedStyle(document.querySelector(background)).backgroundColor,
+      ),
+    }));
+  })()`);
+  for (const target of clayContrast) {
+    assert.ok(
+      target.contrast >= 4.5,
+      name + ": clay theme " + target.foreground + " must meet 4.5:1, got " +
+        target.contrast.toFixed(2) + ":1",
+    );
+  }
+  await checkWidth(cdp, name + " clay contrast booking");
+  await captureEvidence(cdp, name, "22-clay-contrast");
+  await click(cdp, ".public-demo-back");
+  await requireDom(cdp, name + " clay return to workspace", "document.querySelector('.section-head h1')?.textContent !== 'Оформление'");
   // Owner forms remain screen-local and never call the actual booking API.
   await click(cdp, ".nav-links button:nth-child(6)");
   await requireDom(cdp, name + " locations", "document.querySelector('.section-head h1')?.textContent === 'Филиалы'");
@@ -694,11 +741,11 @@ async function main() {
       backend: "not connected",
       chromium: "headless",
       viewports: ["1280x800", "375x812", "320x568"],
-      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "appearance-preview", "themed-booking", "themed-confirmation", "unavailable-booking", "sunday-unavailable", "next-day-recovery", "slot-lookup-error", "retry-restored", "error-preview", "forbidden-preview"],
+      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "appearance-preview", "themed-booking", "themed-confirmation", "unavailable-booking", "sunday-unavailable", "next-day-recovery", "slot-lookup-error", "retry-restored", "error-preview", "forbidden-preview", "clay-contrast"],
       checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "simulated embedded safe-area CSS", "no external requests", "zero uncaught page exceptions"],
       externalRequests: externalUrls.length,
     }, null, 2) + "\n");
-    console.log("PASS evidence: 21 captures per viewport and manifest; external requests =", externalUrls.length);
+    console.log("PASS evidence: 22 captures per viewport and manifest; external requests =", externalUrls.length);
   } catch (error) {
     if (cdp) {
       try {
