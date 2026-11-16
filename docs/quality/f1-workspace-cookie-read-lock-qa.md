@@ -43,3 +43,7 @@ Only a QA documentation evidence update follows the proven test-code SHA above; 
 ## Latest-main read-first serialization check (2026-11-16)
 
 Independent source test passed full [F1 CI #43929951225](https://github.com/tim8es/cookie/actions/runs/43929951225) on the previous main-based QA head `4ce719cca97c1b0d946c49fa7dd3228f06f12586`. The base is now explicitly refreshed to `main` commit `3833803c554c4e4cd5593e215ed7bb12c494ea77`, after unrelated Booking/CI and role-security merges. The test's authentic SQLSTATE 55P03 revoke-waits-for-protected-read oracle, positive authorized GET and post-COMMIT 401 assertions remain byte-for-byte unchanged. Require a **new exact-head, latest-main full F1 CI success** before merge. This test covers Cookie bearer and Telegram link row authority, **not** the contested RoleAssignment/Role snapshot linearization policy #175; no production/real PII/provider.
+
+## Finalized base refresh after `main` advanced (2026-11-16)
+
+Independent test source and its PostgreSQL `55P03` revoke/lock assertions remain unchanged. The PR base has advanced again to `main` `59225edc69e190a9e189322e01f1eab0dfac64f5` (includes latest booking/auth QA and CI work). This note requests a fresh exact-head F1 CI on the combined branch before integration. Earlier green source runs remain historical only. This does not change the unresolved RoleAssignment-read freshness policy #175 or authorize production.
