@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"apps/**/*.ts\" \"packages/**/*.ts\" --max-warnings=0",
     "format": "prettier --write \"apps/**/*.ts\" \"packages/**/*.ts\"",
-    "format:check": "prettier --check \"apps/**/*.ts\" \"packages/**/*.ts\"",
+    "format:check": "prettier --check \"apps/**/*.ts\" \"packages/**/*.ts\" || (prettier --write \"apps/**/*.ts\" \"packages/**/*.ts\" && git diff -- apps/api/src/catalog-http.ts apps/api/test/owner-catalog.integration.test.ts apps/api/test/telegram-owner-auth.integration.test.ts apps/web/src/lib/services-api.test.ts apps/web/src/lib/services-api.ts packages/domain-catalog/src/services.ts packages/platform-identity/src/operator-link-telegram-cli.ts && exit 1)",
     "test": "tsx --test apps/api/test/*.unit.test.ts packages/contracts/test/*.unit.test.ts packages/kernel/test/*.unit.test.ts packages/platform-identity/test/*.unit.test.ts packages/domain-scheduling/test/*.unit.test.ts",
     "test:integration": "tsx --test --test-concurrency=1 apps/api/test/*.integration.test.ts",
     "db:migrate": "tsx packages/platform-db/src/cli.ts",
