@@ -9,7 +9,10 @@ export interface VerifiedOwnerSession {
   readonly expiresAtUnixSeconds: number;
 }
 
-export type OwnerAuthFailureReason = "unauthorized" | "unavailable" | "invalid-response";
+export type OwnerAuthFailureReason =
+  | "unauthorized"
+  | "unavailable"
+  | "invalid-response";
 export class OwnerAuthFailure extends Error {
   constructor(public readonly reason: OwnerAuthFailureReason) {
     super("Owner authentication failed: " + reason);
@@ -17,7 +20,8 @@ export class OwnerAuthFailure extends Error {
   }
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const COOKIE_BEARER = /^cs_[A-Za-z0-9_-]{43}$/;
 
 type TelegramWindow = Window & {
