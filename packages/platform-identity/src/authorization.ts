@@ -39,6 +39,13 @@ export interface TrustedActor {
   readonly identityId: string;
   readonly tenantId: string;
   readonly correlationId: string;
+  /**
+   * SHA-256 of a server-verified opaque Cookie bearer. Derived ONLY inside
+   * the trusted HTTP adapter, never accepted from body, query or headers as
+   * an actor field. Never log/serialize this credential-derived value.
+   * Internal service actors and legacy synthetic test verifiers may omit it.
+   */
+  readonly opaqueSessionTokenSha256?: string;
 }
 
 /** Relations must be loaded from authoritative tenant-scoped storage. */

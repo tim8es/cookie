@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
@@ -41,6 +41,9 @@ export interface ProtectedSessionDependencies {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Cookie's high-entropy PostgreSQL bearer format. Other opt-in verifier
+// formats still require their own reviewed transactional revocation contract.
+const OPAQUE_COOKIE_BEARER = /^cs_[A-Za-z0-9_-]{43}$/;
 
 function bearerToken(header: string | undefined): string | null {
   if (!header) return null;
@@ -91,6 +94,13 @@ export async function verifyTenantActor(
       identityId: session.identityId,
       tenantId: session.tenantId,
       correlationId: randomUUID(),
+      ...(OPAQUE_COOKIE_BEARER.test(token)
+        ? {
+            opaqueSessionTokenSha256: createHash("sha256")
+              .update(token, "utf8")
+              .digest("hex"),
+          }
+        : {}),
     },
   };
 }
@@ -145,8 +155,16 @@ export function postgresTenantPolicyGuard(pool: Pool): TenantPolicyGuard {
   return {
     async assertPermission(actor, resource, permission) {
       const client = await pool.connect();
+      let active = false;
       try {
+        await client.query("BEGIN");
+        active = true;
         await requireTenantPermission(client, actor, resource, permission);
+        await client.query("COMMIT");
+        active = false;
+      } catch (error) {
+        if (active) await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
       } finally {
         client.release();
       }

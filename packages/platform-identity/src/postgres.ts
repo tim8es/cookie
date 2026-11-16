@@ -2,6 +2,7 @@ import type { PoolClient, QueryResultRow } from "pg";
 
 import {
   requireSensitiveAuthorization,
+  AuthorizationDeniedError,
   type AuthorizationRequest,
   type Membership,
   type OrganizationRole,
@@ -178,6 +179,78 @@ async function lockPolicyRows(
   );
 }
 
+
+interface OpaqueSessionLinkRow extends QueryResultRow {
+  telegram_link_id: string | null;
+}
+
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+/**
+ * Transaction-scoped Cookie AuthN guard. Caller MUST hold a real PostgreSQL
+ * transaction until the protected Booking command or read completes.
+ *
+ * A preliminary unlocked lookup discovers the optional Telegram link. It
+ * conveys NO authority. Lock the link first (unlink updates link -> session
+ * through its trigger), then lock and revalidate the EXACT bearer session.
+ * Both SHARE locks survive until transaction COMMIT/ROLLBACK, so neither a
+ * direct bearer revoke nor Telegram unlink can commit before the command.
+ *
+ * Internal actors and explicitly synthetic non-Cookie verifier ports have
+ * no Cookie credential; their separate trusted AuthN contract is unchanged.
+ */
+export async function assertActiveOpaqueSession(
+  client: PoolClient,
+  actor: TrustedActor,
+): Promise<void> {
+  const digest = actor.opaqueSessionTokenSha256;
+  if (digest === undefined) return;
+  if (
+    !SHA256_HEX.test(digest) ||
+    !UUID_RE.test(actor.tenantId) ||
+    !UUID_RE.test(actor.identityId)
+  ) {
+    throw new AuthorizationDeniedError();
+  }
+  const params = [digest, actor.tenantId, actor.identityId];
+  const identified = await client.query<OpaqueSessionLinkRow>(
+    `SELECT telegram_link_id::text AS telegram_link_id
+       FROM cookie_identity.opaque_sessions
+      WHERE token_sha256=decode($1::text,'hex')
+        AND tenant_id=$2::uuid AND identity_id=$3::uuid`,
+    params,
+  );
+  const candidate = identified.rows[0];
+  if (!candidate) throw new AuthorizationDeniedError();
+
+  if (candidate.telegram_link_id !== null) {
+    const linked = await client.query(
+      `SELECT id FROM cookie_identity.telegram_identity_links
+        WHERE tenant_id=$2::uuid AND identity_id=$3::uuid
+          AND id=$4::uuid AND revoked_at IS NULL
+          AND proof_verified_at IS NOT NULL
+          AND consent_confirmed_at IS NOT NULL
+        FOR SHARE`,
+      [...params, candidate.telegram_link_id],
+    );
+    if (linked.rowCount !== 1) throw new AuthorizationDeniedError();
+  }
+
+  // This second statement is the authoritative, locked check. Under READ
+  // COMMITTED it re-evaluates all predicates after any concurrent revoke.
+  // Matching link ID protects against a changed/rebound session after lookup.
+  const current = await client.query(
+    `SELECT token_sha256 FROM cookie_identity.opaque_sessions
+      WHERE token_sha256=decode($1::text,'hex')
+        AND tenant_id=$2::uuid AND identity_id=$3::uuid
+        AND revoked_at IS NULL AND expires_at > clock_timestamp()
+        AND telegram_link_id IS NOT DISTINCT FROM $4::uuid
+      FOR SHARE`,
+    [...params, candidate.telegram_link_id],
+  );
+  if (current.rowCount !== 1) throw new AuthorizationDeniedError();
+}
+
 /** Only safe preflight metadata is stored, never tokens, contacts or payload. */
 export class PostgresPolicyAudit implements PolicyAuditPort {
   constructor(private readonly client: PoolClient) {}
@@ -214,6 +287,7 @@ export async function requireTenantPermission(
   permission: string,
 ): Promise<void> {
   const request: AuthorizationRequest = { actor, resource, permission };
+  await assertActiveOpaqueSession(client, actor);
   await lockPolicyRows(client, actor);
   const snapshot = await loadPolicySnapshot(client, actor);
   await requireSensitiveAuthorization(

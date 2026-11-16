@@ -19,3 +19,36 @@ Fastify injection unit tests cover default route absence, forged headers, malfor
 - Customer/StaffProfile resource relationships and fine-grained field-level DTOs remain pending. PostgreSQL RLS, service DB role privilege hardening, end-to-end security/PII and RF legal assessment remain explicit pre-pilot requirements.
 
 Current implementation is intentionally smaller than Issue #18 acceptance; leave the issue open.
+
+## F1 #165 — transactional revocation guard (synthetic Cookie bearer)
+
+**Status: F1 engineering proposal awaiting independent review / exact-head CI.**
+The verified `cs_` bearer is SHA-256 digested inside the trusted HTTP
+AuthN adapter after its verifier succeeds. The raw bearer and its digest
+must never be logged, exposed or accepted as user-supplied actor fields.
+Trusted non-Cookie synthetic bearer adapters remain covered by their own
+separate test-only AuthN contract; they cannot be promoted to production
+without equivalent transactional revocation protection.
+
+Protected Booking Create/Cancel/Reschedule commands call
+`requireTenantPermission` **inside the same transaction** as the mutation,
+receipt and Outbox. For a Cookie bearer that guard first performs an
+unlocked discovery of the optional Telegram link (not authoritative), then
+obtains a SHARE lock on the active, verified/consented link, **before**
+obtaining a SHARE lock on the exact non-revoked and unexpired opaque session.
+The fixed link→session lock order matches the unlink trigger's UPDATE
+order and avoids lock inversion. Under PostgreSQL READ COMMITTED, the final
+session check is re-evaluated after any concurrent revoke; all obtained locks
+are held until Booking COMMIT/ROLLBACK. The policy guard then acquires its
+existing organization/membership/assignment/role locks. A successful
+revoke-first COMMIT denies the transaction before any Booking write or
+receipt. In the command-first order, revoke must wait for commit.
+
+The same check is used by protected workspace-context reads; the concrete
+Postgres session-context policy adapter now holds a transaction around its
+lock/policy checks. Read endpoints that already call `requireTenantPermission`
+within transactions inherit this protection.
+
+No live public Cookie auth, Telegram provider delivery, production routes,
+real identities/PII, payments or production deployment are enabled. A
+separate approved AuthN/Customer ownership/security review is mandatory.

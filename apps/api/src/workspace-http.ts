@@ -7,6 +7,7 @@ import {
   type TrustedActor,
 } from "../../../packages/platform-identity/src/authorization.js";
 import {
+  assertActiveOpaqueSession,
   loadPolicySnapshot,
   requireTenantPermission,
 } from "../../../packages/platform-identity/src/postgres.js";
@@ -124,6 +125,9 @@ export function registerSyntheticWorkspaceReads(
       if (!actor) return reply;
       try {
         const result = await readTransaction(pool, async (client) => {
+          // Authenticated Cookie bearer and Telegram link must stay valid
+          // for this entire protected workspace read transaction.
+          await assertActiveOpaqueSession(client, actor);
           // PoolClient is a single PostgreSQL connection: issue reads
           // sequentially to avoid overlapping queries on one client.
           const org = await client.query<{ display_name: string }>(
