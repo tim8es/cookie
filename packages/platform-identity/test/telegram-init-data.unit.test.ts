@@ -87,10 +87,15 @@ test("modern optional signature is not a bearer credential or identity claim", (
     telegramUserId: "279058397",
     authDateUnixSeconds: NOW,
   });
-  assert.equal(verifier().verify(withSignature.replace("q%2Bspace", "other")), null);
+  assert.equal(
+    verifier().verify(withSignature.replace("q%2Bspace", "other")),
+    null,
+  );
   // The third-party signature is NOT authenticated or exposed by this method.
   assert.deepEqual(
-    verifier().verify(withSignature.replace("synthetic-ed25519-metadata", "not-verified")),
+    verifier().verify(
+      withSignature.replace("synthetic-ed25519-metadata", "not-verified"),
+    ),
     verifier().verify(withSignature),
   );
 });
@@ -100,7 +105,14 @@ test("auth_date has bounded age and rejects future and invalid timestamps", () =
   assert.equal(verifier(NOW + 601).verify(VALID), null);
   assert.ok(verifier(NOW - 30).verify(VALID));
   assert.equal(verifier(NOW - 31).verify(VALID), null);
-  for (const auth_date of ["0", "-1", "1.25", "1e10", "NaN", "90071992547409999"]) {
+  for (const auth_date of [
+    "0",
+    "-1",
+    "1.25",
+    "1e10",
+    "NaN",
+    "90071992547409999",
+  ]) {
     assert.equal(verifier().verify(signed({ auth_date, user: USER })), null);
   }
   assert.equal(
@@ -135,7 +147,9 @@ test("malformed form data, duplicate decoded keys and oversized input are denied
     VALID + "&user=OTHER",
     VALID + "&signature=a&signature=b",
     VALID + "&ignored=" + "x".repeat(9_000),
-    VALID + "&" + Array.from({ length: 33 }, (_, i) => `extra_${i}=a`).join("&"),
+    VALID +
+      "&" +
+      Array.from({ length: 33 }, (_, i) => `extra_${i}=a`).join("&"),
   ]) {
     assert.equal(verifier().verify(raw), null, String(raw).slice(0, 80));
   }
@@ -157,9 +171,18 @@ test("even signed user field must be a JSON object with a safe positive ID", () 
     '{"id":true}',
     '{"id":{}}',
   ]) {
-    assert.equal(verifier().verify(signed({ user, auth_date: String(NOW) })), null, user);
+    assert.equal(
+      verifier().verify(signed({ user, auth_date: String(NOW) })),
+      null,
+      user,
+    );
   }
-  assert.equal(verifier().verify(signed({ auth_date: String(NOW), query_id: "chat-only" })), null);
+  assert.equal(
+    verifier().verify(
+      signed({ auth_date: String(NOW), query_id: "chat-only" }),
+    ),
+    null,
+  );
   const raw = signed({
     user: '{"id":999,"username":"not-an-identity","is_premium":true}',
     auth_date: String(NOW),
