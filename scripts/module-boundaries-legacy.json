@@ -1,7 +1,4 @@
 {
-  "apps/api/src/app.ts": [
-    "../../../packages/contracts/src/index.js"
-  ],
   "apps/api/src/booking-http-mutations.ts": [
     "../../../packages/domain-booking/src/cancel.js",
     "../../../packages/domain-booking/src/reschedule.js",
