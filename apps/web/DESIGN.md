@@ -31,3 +31,12 @@ No production sign-in, live client data, payments, backend availability, discoun
 ## Visual verification
 
 The repository F1 workflow saves Chromium screenshots at 1280×800, 375×812, and 320×568. It covers the onboarding, public booking, local confirmation, week/day calendar, details dialog, **the four owner editor forms, and restored owner workspace**. Manual device review remains necessary.
+
+## UX iteration 2026-11-16 (design review, pending owner acceptance)
+
+- Salon name is primary on the public page; Cookie becomes a small platform credit.
+- Booking has an honest single-form description (no static fake step progress), base-price preview and branch/address in the receipt.
+- Mobile owner shell uses a four-destination bottom navigation with a secondary-section sheet.
+- Existing synthetic bookings can be viewed on a day-by-staff/time grid on desktop; narrow screens keep a readable list. This **does not** compute available slots.
+- `?surface=telegram-preview` provides a presentation-only compact shell. It is not a functional Telegram Mini App.
+- Physical-device, screen-reader, real API/Telegram and visual owner approval are still required.

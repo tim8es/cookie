@@ -27,6 +27,8 @@
   import "./visual-system.css";
 
   const api = createCookieUiApi();
+  // Presentation-only Telegram-sized preview; no Telegram API, initData or auth.
+  const telegramPreview = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "telegram-preview";
   const blank: DemoSnapshot = { organization: null, locations: [], services: [], staff: [], schedules: [], bookings: [] };
 
   let screen: Screen = "home";
@@ -219,14 +221,14 @@
   <meta name="description" content="Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными." />
 </svelte:head>
 
-<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org}>
+<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org} class:telegramPreview={telegramPreview && screen === "booking"}>
   {#if screen !== "booking" && !(screen === "home" && !org)}
     <Sidebar {screen} {stepCount} onNavigate={goto} />
   {/if}
 
   <div class="main-area">
     {#if screen === "booking"}
-      <PublicHeader organizationName={org?.name ?? "Тестовый салон"} onBack={() => goto("home")} />
+      <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} onBack={() => goto("home")} />
     {:else if screen === "home" && !org}
       <OnboardingHeader />
     {:else}

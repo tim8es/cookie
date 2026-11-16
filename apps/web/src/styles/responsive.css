@@ -168,3 +168,21 @@
   .ticket-location-address { font-size: 12px; }
   .confirmation-address { font-size: 12px; }
 }
+
+/* F2 design preview only: shared Booking UI within a compact Telegram-like shell.
+   This does not validate initData, register BackButton or call Telegram APIs. */
+.telegramPreview.public-shell { background: var(--cookie-surface); }
+.telegramPreview .content.public-content { max-width: 760px; padding: 12px 12px 28px; }
+.telegramPreview .public-header { height: 56px; padding: 0 14px; }
+.telegramPreview .public-demo-notice { padding: 8px 14px; line-height: 1.45; }
+.telegramPreview .public-content .booking-head.booking-hero {
+  min-height: 0; padding: 21px; margin-bottom: 12px;
+}
+.telegramPreview .public-content .booking-hero h1 { font-size: 31px; margin: 10px 0; }
+.telegramPreview .booking-hero-studio, .telegramPreview .booking-steps { display: none; }
+.telegramPreview .public-content .booking-layout { grid-template-columns: minmax(0,1fr); gap: 12px; }
+.telegramPreview .public-content .booking-summary[data-slot=card] { position: static; }
+@media (max-width: 680px) {
+  .telegramPreview .public-brand strong.salon-name { max-width: 47vw; }
+  .telegramPreview .content.public-content { padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+}
