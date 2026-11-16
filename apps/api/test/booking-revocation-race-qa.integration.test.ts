@@ -397,10 +397,9 @@ test(
             .catch(() => undefined);
         }
         await pool
-          .query(
-            "DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid",
-            [tenant],
-          )
+          .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid", [
+            tenant,
+          ])
           .catch(() => undefined);
         await pool
           .query("DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [
