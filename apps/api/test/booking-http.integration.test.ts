@@ -168,7 +168,12 @@ test(
       assert.equal(workspace.statusCode, 200);
       assert.equal(workspace.json().organization.organizationId, tenant);
       assert.deepEqual(
-        workspace.json().locations.map((location: { locationId: string }) => location.locationId).sort(),
+        workspace
+          .json()
+          .locations.map(
+            (location: { locationId: string }) => location.locationId,
+          )
+          .sort(),
         [locationA, locationB].sort(),
       );
       const scopedWorkspace = await app.inject({
@@ -177,7 +182,14 @@ test(
         headers: { authorization: "Bearer synthetic-admin" },
       });
       assert.equal(scopedWorkspace.statusCode, 200);
-      assert.deepEqual(scopedWorkspace.json().locations.map((location: { locationId: string }) => location.locationId), [locationA]);
+      assert.deepEqual(
+        scopedWorkspace
+          .json()
+          .locations.map(
+            (location: { locationId: string }) => location.locationId,
+          ),
+        [locationA],
+      );
       const noWorkspace = await app.inject({
         method: "GET",
         url: `${base}/workspace-context`,
@@ -194,7 +206,10 @@ test(
       assert.equal(schedule.json().staffId, staff);
       assert.equal(schedule.json().timeZone, "UTC");
       assert.equal(schedule.json().shifts.length, 1);
-      assert.deepEqual(schedule.json().blocked.map((row: { kind: string }) => row.kind), ["break"]);
+      assert.deepEqual(
+        schedule.json().blocked.map((row: { kind: string }) => row.kind),
+        ["break"],
+      );
       const scopedSchedule = await app.inject({
         method: "GET",
         url: scheduleUrl,
