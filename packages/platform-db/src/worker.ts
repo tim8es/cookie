@@ -1,6 +1,10 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 
 import {
+  acknowledgeOutbox,
+  claimOutbox,
+  failOutbox,
+  retryDelayMs,
   runOutboxBatch,
   type OutboxClaimOptions,
   type OutboxLease,
@@ -143,7 +147,12 @@ export async function superviseOutboxWorker(
         totals: { ...totals },
         consecutivePollErrors,
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof AbandonedOutboxLeaseError) {
+        // A timed-out external handler may still be running. Do not claim
+        // another event in this process or mistake timeout for a DB outage.
+        throw new Error("Outbox supervisor stopped after abandoned lease");
+      }
       // Never expose PostgreSQL error strings, credentials or event payloads.
       consecutivePollErrors++;
       safeObserve(options.observe, {
@@ -176,29 +185,212 @@ export async function superviseOutboxWorker(
 export interface PostgresWorkerOptions extends OutboxWorkerOptions {
   readonly leaseMs?: OutboxClaimOptions["leaseMs"];
   readonly topic?: OutboxClaimOptions["topic"];
+  /**
+   * Opt-in handler deadline. Must leave >100ms of lease time for ACK/fail.
+   * On timeout, leave the lease untouched and stop the worker permanently.
+   */
+  readonly handlerTimeoutMs?: number;
+}
+
+class AbandonedOutboxLeaseError extends Error {}
+
+type HandlerOutcome = "completed" | "failed" | "timed-out";
+
+async function runBoundedOutboxBatch(
+  pool: Pool,
+  handler: (event: OutboxLease, signal: AbortSignal) => Promise<void>,
+  options: PostgresWorkerOptions,
+  leaseMs: number,
+  timeoutMs: number,
+): Promise<OutboxBatchResult> {
+  const leases = await claimOutbox(pool, {
+    batchSize: 1,
+    leaseMs,
+    topic: options.topic,
+  });
+  const lease = leases[0];
+  if (!lease) return { claimed: 0, delivered: 0, failed: 0, stale: 0 };
+
+  // A stop arriving during the claim must not initiate new external work.
+  // The current lease can be recovered by a new worker after expiry.
+  if (options.signal.aborted) throw new AbandonedOutboxLeaseError();
+
+  // The original claim's PostgreSQL lease clock can expire BEFORE the claim
+  // result reaches this process. Re-check the authoritative DB state under
+  // the SAME fencing token, and restart a bounded lease window only if it
+  // is still unexpired. No handler may run on a stale/reclaimed token.
+  // This UPDATE is atomic with competing claims and uses PostgreSQL time,
+  // never the client's wall clock. A refusal leaves the lease untouched.
+  const renewed = await pool.query(
+    `UPDATE cookie_jobs.outbox_events
+        SET lease_until=clock_timestamp()
+          + ($3::integer * interval '1 millisecond')
+      WHERE id=$1::uuid AND lease_token=$2::uuid AND status='leased'
+        AND lease_until > clock_timestamp()
+      RETURNING id`,
+    [lease.id, lease.leaseToken, leaseMs],
+  );
+  if (renewed.rowCount !== 1 || options.signal.aborted) {
+    throw new AbandonedOutboxLeaseError();
+  }
+
+  // Linearize the start of a handler with ownership of the current lease.
+  // A free-standing second recheck would repeat the response/dispatch race:
+  // hold a PostgreSQL row lock until the synchronous handler invocation.
+  // NEVER await the external handler while this transaction is open.
+  const handlerController = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let work: Promise<HandlerOutcome> | undefined;
+  let timeout: Promise<HandlerOutcome> | undefined;
+  let handlerStarted = false;
+  let client: PoolClient;
+  try {
+    client = await pool.connect();
+  } catch {
+    // An already-claimed lease with an unknown dispatch authority must not
+    // be returned to a polling loop (including incomplete Pool adapters).
+    throw new AbandonedOutboxLeaseError();
+  }
+  let transactionOpen = false;
+  try {
+    await client.query("BEGIN");
+    transactionOpen = true;
+    await client.query("SET LOCAL lock_timeout = '1000ms'");
+    const authority = await client.query(
+      `WITH owned AS (
+         SELECT id FROM cookie_jobs.outbox_events
+          WHERE id=$1::uuid AND lease_token=$2::uuid AND status='leased'
+            AND lease_until > clock_timestamp()
+          FOR UPDATE SKIP LOCKED
+       )
+       UPDATE cookie_jobs.outbox_events AS event
+          SET lease_until=clock_timestamp()
+            + ($3::integer * interval '1 millisecond')
+         FROM owned
+        WHERE event.id=owned.id
+        RETURNING event.id`,
+      [lease.id, lease.leaseToken, leaseMs],
+    );
+    if (authority.rowCount !== 1 || options.signal.aborted) {
+      throw new AbandonedOutboxLeaseError();
+    }
+
+    timeout = new Promise<HandlerOutcome>((resolve) => {
+      timer = setTimeout(() => {
+        handlerController.abort();
+        resolve("timed-out");
+      }, timeoutMs);
+    });
+
+    // Invoke synchronously WHILE PostgreSQL still owns the row lock.
+    // Promise.resolve().then(handler) would defer invocation until AFTER
+    // COMMIT and reopen the race with a second worker.
+    try {
+      handlerStarted = true;
+      work = Promise.resolve(handler(lease, handlerController.signal)).then(
+        (): HandlerOutcome => "completed",
+        (): HandlerOutcome => "failed",
+      );
+    } catch {
+      work = Promise.resolve<HandlerOutcome>("failed");
+    }
+    await client.query("COMMIT");
+    transactionOpen = false;
+  } catch {
+    if (transactionOpen) {
+      await client.query("ROLLBACK").catch(() => undefined);
+    }
+    if (timer) clearTimeout(timer);
+    if (handlerStarted) {
+      // The handler may already have issued an irreversible effect.
+      handlerController.abort();
+    }
+    // A claimed event with no verified start authority must never be
+    // retried by this supervisor, even if BEGIN/COMMIT failed.
+    throw new AbandonedOutboxLeaseError();
+  } finally {
+    client.release();
+  }
+
+  if (!work || !timeout) throw new AbandonedOutboxLeaseError();
+  let outcome: HandlerOutcome;
+  try {
+    outcome = await Promise.race([work, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+  if (outcome === "timed-out") {
+    // An uncooperative handler may still perform an external effect.
+    // NEVER ack/fail its lease, nor run another handler in this process.
+    throw new AbandonedOutboxLeaseError();
+  }
+
+  if (outcome === "completed") {
+    const acknowledged = await acknowledgeOutbox(pool, lease);
+    return {
+      claimed: 1,
+      delivered: acknowledged ? 1 : 0,
+      failed: 0,
+      stale: acknowledged ? 0 : 1,
+    };
+  }
+  const failed = await failOutbox(
+    pool,
+    lease,
+    "DELIVERY_FAILED",
+    retryDelayMs(lease.attempts),
+  );
+  return {
+    claimed: 1,
+    delivered: 0,
+    failed: failed ? 1 : 0,
+    stale: failed ? 0 : 1,
+  };
 }
 
 /**
- * Opt-in worker adapter. Exactly one lease per batch until a real lease
- * renewal/handler-timeout contract exists: no processing behind a long batch.
- * The handler must be idempotent and finish before the lease expires.
+ * Opt-in single-event worker adapter. With handlerTimeoutMs, a deadline
+ * aborts the handler, leaves the leased event unacknowledged and terminates
+ * the supervisor. Lease expiry plus fencing permits a separate worker to
+ * recover safely. External providers must still dedupe by stable event ID.
+ *
+ * Omitting handlerTimeoutMs retains the legacy one-pass adapter behavior
+ * for existing callers; new worker processes should always configure it.
  */
 export function runTrustedPostgresOutboxWorker(
   pool: Pool,
-  handler: (event: OutboxLease) => Promise<void>,
+  handler: (event: OutboxLease, signal: AbortSignal) => Promise<void>,
   options: PostgresWorkerOptions,
 ): Promise<Readonly<OutboxBatchResult>> {
   const leaseMs = options.leaseMs ?? 30_000;
   if (!Number.isSafeInteger(leaseMs) || leaseMs < 1 || leaseMs > 600_000) {
     throw new Error("Invalid outbox lease duration");
   }
+  const handlerTimeoutMs = options.handlerTimeoutMs;
+  if (
+    handlerTimeoutMs !== undefined &&
+    (!Number.isSafeInteger(handlerTimeoutMs) ||
+      handlerTimeoutMs < 10 ||
+      handlerTimeoutMs > 599_000 ||
+      handlerTimeoutMs + 100 >= leaseMs)
+  ) {
+    throw new Error("Invalid outbox handler timeout");
+  }
   return superviseOutboxWorker(
     () =>
-      runOutboxBatch(pool, handler, {
-        batchSize: 1,
-        leaseMs,
-        topic: options.topic,
-      }),
+      handlerTimeoutMs === undefined
+        ? runOutboxBatch(pool, (event) => handler(event, options.signal), {
+            batchSize: 1,
+            leaseMs,
+            topic: options.topic,
+          })
+        : runBoundedOutboxBatch(
+            pool,
+            handler,
+            options,
+            leaseMs,
+            handlerTimeoutMs,
+          ),
     options,
   );
 }

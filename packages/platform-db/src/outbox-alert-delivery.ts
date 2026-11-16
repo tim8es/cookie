@@ -83,13 +83,25 @@ export async function claimOutboxAlertDeliveries(
     throw new Error("Invalid Outbox alert claim limits");
   }
 
-  // Exhausted leased work must not be claimed forever after lease expiry.
+  // Best-effort cleanup must not wait for an unrelated expired row
+  // currently locked by another transaction. A later claim will sweep it.
+  // Restrict each maintenance cycle to 25 rows before claiming ready alerts:
+  // even large crash backlogs should not dominate an unrelated delivery.
   await pool.query(
-    `UPDATE cookie_jobs.outbox_alert_delivery
+    `WITH expired AS (
+       SELECT transition_id
+         FROM cookie_jobs.outbox_alert_delivery
+        WHERE status='leased' AND lease_until <= clock_timestamp()
+          AND attempts >= max_attempts
+        ORDER BY lease_until, transition_id
+        LIMIT 25
+        FOR UPDATE SKIP LOCKED
+     )
+     UPDATE cookie_jobs.outbox_alert_delivery AS delivery
         SET status='dead', lease_token=NULL, lease_until=NULL,
             last_failure_code='LEASE_EXHAUSTED'
-      WHERE status='leased' AND lease_until <= clock_timestamp()
-        AND attempts >= max_attempts`,
+       FROM expired
+      WHERE delivery.transition_id=expired.transition_id`,
   );
 
   const selected = await pool.query<ClaimRow>(
