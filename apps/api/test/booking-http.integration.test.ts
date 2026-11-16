@@ -65,6 +65,7 @@ test(
           entitlementChecks++;
         },
       },
+      syntheticWorkspaceReads: { pool, verifier },
       syntheticBookingMutations: {
         pool,
         verifier,
@@ -98,8 +99,8 @@ test(
       await pool.query(
         `INSERT INTO cookie_identity.roles
            (tenant_id,id,base_type,display_name,permissions)
-         VALUES ($1,$2,'owner','Owner',ARRAY['booking.create','booking.read','booking.cancel','booking.reschedule']),
-                ($1,$3,'admin','Scoped admin',ARRAY['booking.create','booking.read'])`,
+         VALUES ($1,$2,'owner','Owner',ARRAY['booking.create','booking.read','booking.cancel','booking.reschedule','schedule.read']),
+                ($1,$3,'admin','Scoped admin',ARRAY['booking.create','booking.read','schedule.read'])`,
         [tenant, role, adminRole],
       );
       await pool.query(
@@ -151,6 +152,62 @@ test(
                 ($1,$5,$3,$6,'2027-04-12T09:00:00Z','2027-04-12T18:00:00Z',true)`,
         [tenant, randomUUID(), staff, locationA, randomUUID(), locationB],
       );
+
+      await pool.query(
+        `INSERT INTO cookie_scheduling.blocked_windows
+          (tenant_id,id,staff_id,location_id,kind,start_at,end_at,active)
+         VALUES ($1,$2,$3,$4,'break','2027-04-12T12:00:00Z','2027-04-12T13:00:00Z',true)`,
+        [tenant, randomUUID(), staff, locationA],
+      );
+
+      const workspace = await app.inject({
+        method: "GET",
+        url: `${base}/workspace-context`,
+        headers: ownerHeader,
+      });
+      assert.equal(workspace.statusCode, 200);
+      assert.equal(workspace.json().organization.organizationId, tenant);
+      assert.deepEqual(
+        workspace.json().locations.map((location: { locationId: string }) => location.locationId).sort(),
+        [locationA, locationB].sort(),
+      );
+      const scopedWorkspace = await app.inject({
+        method: "GET",
+        url: `${base}/workspace-context`,
+        headers: { authorization: "Bearer synthetic-admin" },
+      });
+      assert.equal(scopedWorkspace.statusCode, 200);
+      assert.deepEqual(scopedWorkspace.json().locations.map((location: { locationId: string }) => location.locationId), [locationA]);
+      const noWorkspace = await app.inject({
+        method: "GET",
+        url: `${base}/workspace-context`,
+        headers: { authorization: "Bearer synthetic-outsider" },
+      });
+      assert.equal(noWorkspace.statusCode, 403);
+      const scheduleUrl = `${base}/locations/${locationA}/staff/${staff}/schedule?from=2027-04-12T00:00:00Z&to=2027-04-13T00:00:00Z`;
+      const schedule = await app.inject({
+        method: "GET",
+        url: scheduleUrl,
+        headers: ownerHeader,
+      });
+      assert.equal(schedule.statusCode, 200);
+      assert.equal(schedule.json().staffId, staff);
+      assert.equal(schedule.json().timeZone, "UTC");
+      assert.equal(schedule.json().shifts.length, 1);
+      assert.deepEqual(schedule.json().blocked.map((row: { kind: string }) => row.kind), ["break"]);
+      const scopedSchedule = await app.inject({
+        method: "GET",
+        url: scheduleUrl,
+        headers: { authorization: "Bearer synthetic-admin" },
+      });
+      assert.equal(scopedSchedule.statusCode, 200);
+      const foreignSchedule = await app.inject({
+        method: "GET",
+        url: `${base}/locations/${locationB}/staff/${staff}/schedule?from=2027-04-12T00:00:00Z&to=2027-04-13T00:00:00Z`,
+        headers: { authorization: "Bearer synthetic-admin" },
+      });
+      assert.equal(foreignSchedule.statusCode, 403);
+      assert.equal(foreignSchedule.json().error.code, "ACCESS_DENIED");
 
       const catalog = await app.inject({
         method: "GET",
@@ -477,6 +534,7 @@ test(
         "cookie_jobs.outbox_events",
         "cookie_booking.bookings",
         "cookie_identity.authorization_audit",
+        "cookie_scheduling.blocked_windows",
         "cookie_scheduling.shift_windows",
         "cookie_staff.service_assignments",
         "cookie_staff.location_assignments",
