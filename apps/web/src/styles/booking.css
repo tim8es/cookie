@@ -5,22 +5,30 @@
   padding: 0 clamp(20px,5vw,72px);
 }
 .public-brand { gap: 12px; }
-.public-brand .brand-seal { height: 38px; width: 38px; }
-.public-brand strong { color: #30263a; font-size: 23px; letter-spacing: -.075em; }
-.public-brand strong span { color: #785587; }
+.public-header .salon-monogram {
+  display: grid; place-items: center; flex: 0 0 38px; width: 38px; height: 38px;
+  border-radius: 10px; background: #ede5ef; color: #4a3153;
+  font-family: var(--cookie-font-editorial); font-size: 22px; font-weight: 700;
+}
+.public-brand strong { color: #30263a; font-size: 23px; letter-spacing: -.035em; }
 .public-brand small { color: #918396; font-size: 10px; margin-top: 3px; }
 .public-header-actions { gap: 19px; }
-.preview-stamp { color: #806f86; font-size: 12px; }
-.public-header button.public-back[data-slot=button] {
-  color: #4d3954; background: var(--cookie-surface); border-color: #e6dfe8;
-  font-size: 12px; font-weight: 700; height: 38px;
-}
-.public-header button.public-back[data-slot=button]:hover { background: #f4eff5; }
+.public-service-label { color: #74687a; font-size: 12px; }
 .public-demo-notice {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 4px clamp(20px,5vw,72px);
   background: #f0ebf2; color: #75687a; border-bottom: 1px solid #e9e0ed;
-  font-size: 11px; min-height: 31px;
+  font-size: 11px; min-height: 40px;
 }
-.public-demo-notice svg { color: #755983; }
+.public-demo-notice svg { color: #755983; flex-shrink: 0; }
+.public-demo-copy { flex: 1 1 170px; line-height: 1.45; }
+.public-demo-back {
+  display: inline-flex; align-items: center; justify-content: flex-start; gap: 6px;
+  min-height: 44px; padding: 8px 0; border: 0; background: transparent;
+  font: inherit; font-size: 12px; font-weight: 650; color: #5c4265; cursor: pointer;
+}
+.public-demo-back:hover { color: #38233f; text-decoration: underline; }
+.public-demo-back:focus-visible { outline: 3px solid #8e6b99; outline-offset: 2px; border-radius: 4px; }
 .content.public-content { max-width: 1190px; padding: 28px 24px 10px; }
 .public-content .booking-head.booking-hero {
   position: relative; isolation: isolate; overflow: hidden;
@@ -48,11 +56,6 @@
   width: 193px; flex: 0 0 193px; border-left: 1px solid #7a667e;
   padding: 2px 0 0 26px; color: white; min-width: 0;
 }
-.hero-mark { position: relative; width: 54px; height: 54px; margin: 0 0 auto; }
-.hero-mark i { position: absolute; top: 3px; left: 22px; width: 12px; height: 21px; background: #dcf0ac; border-radius: 100% 100% 25% 25%; transform-origin: 6px 24px; }
-.hero-mark i:nth-child(2) { transform: rotate(90deg); }
-.hero-mark i:nth-child(3) { transform: rotate(180deg); }
-.hero-mark i:nth-child(4) { transform: rotate(270deg); }
 .booking-hero-studio > span { color: #c4b7c8; font-size: 11px; margin-bottom: 6px; }
 .booking-hero-studio strong { color: var(--cookie-surface); font-size: 15px; line-height: 1.4; font-weight: 700; overflow-wrap: anywhere; }
 .booking-hero-studio small { margin-top: 6px; color: #cbbbce; font-size: 10px; }
@@ -152,6 +155,13 @@
 .ticket-fineprint p { color: #837087; font-size: 10px; line-height: 1.55; margin: 0; }
 .footer { color: #9a8e9e; padding-top: 27px; }
 .footer button { color: #74637b; }
+.public-attribution {
+  display: flex; justify-content: center; align-items: center;
+  margin-top: 35px; padding: 18px 0 25px;
+  border-top: 1px solid var(--cookie-border); color: #877e8c;
+  font-size: 11px; line-height: 1.5; letter-spacing: .005em;
+}
+.public-attribution strong { color: #64556c; font-weight: 700; }
 
 
 /* The salon owns the public identity; Cookie is a quiet platform credit. */
