@@ -184,6 +184,7 @@ interface OpaqueSessionLinkRow extends QueryResultRow {
 }
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
+const SESSION_LABEL = /^[a-zA-Z0-9._:/-]{1,128}$/;
 
 /**
  * Transaction-scoped Cookie AuthN guard. Caller MUST hold a real PostgreSQL
@@ -202,21 +203,34 @@ export async function assertActiveOpaqueSession(
   client: PoolClient,
   actor: TrustedActor,
 ): Promise<void> {
-  const digest = actor.opaqueSessionTokenSha256;
-  if (digest === undefined) return;
+  const authority = actor.opaqueSessionAuthority;
+  if (authority === undefined) return;
   if (
-    !SHA256_HEX.test(digest) ||
+    !authority ||
+    typeof authority.tokenSha256 !== "string" ||
+    typeof authority.issuer !== "string" ||
+    typeof authority.audience !== "string" ||
+    !SHA256_HEX.test(authority.tokenSha256) ||
+    !SESSION_LABEL.test(authority.issuer) ||
+    !SESSION_LABEL.test(authority.audience) ||
     !UUID_RE.test(actor.tenantId) ||
     !UUID_RE.test(actor.identityId)
   ) {
     throw new AuthorizationDeniedError();
   }
-  const params = [digest, actor.tenantId, actor.identityId];
+  const params = [
+    authority.tokenSha256,
+    actor.tenantId,
+    actor.identityId,
+    authority.issuer,
+    authority.audience,
+  ];
   const identified = await client.query<OpaqueSessionLinkRow>(
     `SELECT telegram_link_id::text AS telegram_link_id
        FROM cookie_identity.opaque_sessions
       WHERE token_sha256=decode($1::text,'hex')
-        AND tenant_id=$2::uuid AND identity_id=$3::uuid`,
+        AND tenant_id=$2::uuid AND identity_id=$3::uuid
+        AND issuer=$4::text AND audience=$5::text`,
     params,
   );
   const candidate = identified.rows[0];
@@ -242,8 +256,9 @@ export async function assertActiveOpaqueSession(
     `SELECT token_sha256 FROM cookie_identity.opaque_sessions
       WHERE token_sha256=decode($1::text,'hex')
         AND tenant_id=$2::uuid AND identity_id=$3::uuid
+        AND issuer=$4::text AND audience=$5::text
         AND revoked_at IS NULL AND expires_at > clock_timestamp()
-        AND telegram_link_id IS NOT DISTINCT FROM $4::uuid
+        AND telegram_link_id IS NOT DISTINCT FROM $6::uuid
       FOR SHARE`,
     [...params, candidate.telegram_link_id],
   );

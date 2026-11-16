@@ -5,6 +5,7 @@ import type { Pool } from "pg";
 
 import {
   AuthorizationDeniedError,
+  type OpaqueSessionAuthority,
   type ProtectedResource,
   type TrustedActor,
 } from "../../../packages/platform-identity/src/authorization.js";
@@ -20,6 +21,7 @@ export interface VerifiedSession {
   readonly identityId: string;
   readonly tenantId: string;
   readonly expiresAtUnixSeconds: number;
+  readonly opaqueSessionAuthority?: OpaqueSessionAuthority;
 }
 
 export interface BearerSessionVerifier {
@@ -44,6 +46,8 @@ const UUID_RE =
 // Cookie's high-entropy PostgreSQL bearer format. Other opt-in verifier
 // formats still require their own reviewed transactional revocation contract.
 const OPAQUE_COOKIE_BEARER = /^cs_[A-Za-z0-9_-]{43}$/;
+const SESSION_LABEL = /^[a-zA-Z0-9._:/-]{1,128}$/;
+const SESSION_HASH = /^[0-9a-f]{64}$/;
 
 function bearerToken(header: string | undefined): string | null {
   if (!header) return null;
@@ -86,6 +90,27 @@ export async function verifyTenantActor(
   ) {
     return { status: 401, error: "unauthorized" };
   }
+  const authority = session.opaqueSessionAuthority;
+  // A Cookie-format bearer MUST carry authenticated issuer/audience from
+  // the actual PostgreSQL provider; a token-shaped string alone is not proof.
+  if (OPAQUE_COOKIE_BEARER.test(token) && authority === undefined) {
+    return { status: 401, error: "unauthorized" };
+  }
+  if (
+    authority !== undefined &&
+    (!authority ||
+      !OPAQUE_COOKIE_BEARER.test(token) ||
+      typeof authority.tokenSha256 !== "string" ||
+      typeof authority.issuer !== "string" ||
+      typeof authority.audience !== "string" ||
+      !SESSION_HASH.test(authority.tokenSha256) ||
+      !SESSION_LABEL.test(authority.issuer) ||
+      !SESSION_LABEL.test(authority.audience) ||
+      authority.tokenSha256 !==
+        createHash("sha256").update(token, "utf8").digest("hex"))
+  ) {
+    return { status: 401, error: "unauthorized" };
+  }
   if (pathTenantId !== session.tenantId) {
     return { status: 403, error: "forbidden" };
   }
@@ -94,13 +119,7 @@ export async function verifyTenantActor(
       identityId: session.identityId,
       tenantId: session.tenantId,
       correlationId: randomUUID(),
-      ...(OPAQUE_COOKIE_BEARER.test(token)
-        ? {
-            opaqueSessionTokenSha256: createHash("sha256")
-              .update(token, "utf8")
-              .digest("hex"),
-          }
-        : {}),
+      ...(authority ? { opaqueSessionAuthority: { ...authority } } : {}),
     },
   };
 }

@@ -34,18 +34,20 @@ export interface Membership {
   readonly assignments: readonly RoleAssignment[];
 }
 
+/** Only the trusted PostgreSQL bearer verifier can supply this provenance. */
+export interface OpaqueSessionAuthority {
+  readonly tokenSha256: string;
+  readonly issuer: string;
+  readonly audience: string;
+}
+
 /** Construct ONLY after server-side session/identity verification. */
 export interface TrustedActor {
   readonly identityId: string;
   readonly tenantId: string;
   readonly correlationId: string;
-  /**
-   * SHA-256 of a server-verified opaque Cookie bearer. Derived ONLY inside
-   * the trusted HTTP adapter, never accepted from body, query or headers as
-   * an actor field. Never log/serialize this credential-derived value.
-   * Internal service actors and legacy synthetic test verifiers may omit it.
-   */
-  readonly opaqueSessionTokenSha256?: string;
+  /** Do not serialize, log or accept this as a client-supplied actor claim. */
+  readonly opaqueSessionAuthority?: OpaqueSessionAuthority;
 }
 
 /** Relations must be loaded from authoritative tenant-scoped storage. */

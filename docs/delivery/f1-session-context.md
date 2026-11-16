@@ -22,10 +22,12 @@ Current implementation is intentionally smaller than Issue #18 acceptance; leave
 
 ## F1 #165 — transactional revocation guard (synthetic Cookie bearer)
 
-**Status: F1 engineering proposal awaiting independent review / exact-head CI.**
-The verified `cs_` bearer is SHA-256 digested inside the trusted HTTP
-AuthN adapter after its verifier succeeds. The raw bearer and its digest
-must never be logged, exposed or accepted as user-supplied actor fields.
+**Status: F1 engineering proposal awaiting independent security review.**
+The PostgreSQL verifier returns issuer, audience and its server-derived
+SHA-256 digest of the exact verified `cs_` bearer. The HTTP adapter checks
+that provenance and independently confirms the digest matches the bearer;
+a Cookie-format bearer without provenance is rejected. The raw bearer and
+its digest must never be logged, exposed or accepted from client actor fields.
 Trusted non-Cookie synthetic bearer adapters remain covered by their own
 separate test-only AuthN contract; they cannot be promoted to production
 without equivalent transactional revocation protection.
@@ -35,7 +37,8 @@ Protected Booking Create/Cancel/Reschedule commands call
 receipt and Outbox. For a Cookie bearer that guard first performs an
 unlocked discovery of the optional Telegram link (not authoritative), then
 obtains a SHARE lock on the active, verified/consented link, **before**
-obtaining a SHARE lock on the exact non-revoked and unexpired opaque session.
+obtaining a SHARE lock on the exact non-revoked and unexpired opaque session
+matching the server-verified issuer and audience (not only its token hash).
 The guard first acquires the established organization → membership →
 assignment → role locks, then the fixed Telegram link → session locks.
 This also matches the membership-disable trigger's membership → session

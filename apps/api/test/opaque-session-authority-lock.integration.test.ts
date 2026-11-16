@@ -30,11 +30,18 @@ test(
     const expiredToken = "cs_" + randomBytes(32).toString("base64url");
     const expiredHash = createHash("sha256").update(expiredToken).digest();
     const actorVerifier = {
-      async verifyBearerToken() {
+      async verifyBearerToken(value: string) {
         return {
           tenantId,
           identityId,
           expiresAtUnixSeconds: Math.floor(Date.now() / 1_000) + 600,
+          opaqueSessionAuthority: {
+            tokenSha256: createHash("sha256")
+              .update(value)
+              .digest("hex"),
+            issuer: "cookie-qa",
+            audience: "booking-qa",
+          },
         };
       },
     };
@@ -101,7 +108,7 @@ test(
       );
       assert.ok(verified.actor);
       assert.equal(
-        verified.actor.opaqueSessionTokenSha256,
+        verified.actor.opaqueSessionAuthority?.tokenSha256,
         tokenHash.toString("hex"),
       );
       const actor = verified.actor;
@@ -109,6 +116,29 @@ test(
       const guarding = await pool.connect();
       const revoking = await pool.connect();
       try {
+        for (const override of [
+          { issuer: "wrong-issuer" },
+          { audience: "wrong-audience" },
+        ]) {
+          await guarding.query("BEGIN");
+          await assert.rejects(
+            requireTenantPermission(
+              guarding,
+              {
+                ...actor,
+                opaqueSessionAuthority: {
+                  ...actor.opaqueSessionAuthority!,
+                  ...override,
+                },
+              },
+              resource,
+              "booking.create",
+            ),
+            AuthorizationDeniedError,
+          );
+          await guarding.query("ROLLBACK");
+        }
+
         await guarding.query("BEGIN");
         await requireTenantPermission(
           guarding,
