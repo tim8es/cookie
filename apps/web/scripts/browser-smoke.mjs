@@ -298,6 +298,32 @@ async function checkEmbeddedClientInsets(cdp, screen) {
   assert.ok(metrics.contentLeft >= 18 && metrics.contentRight >= 20,
     screen + ": Telegram horizontal insets ignored");
   await checkWidth(cdp, screen + " embedded safe-area");
+  // Also verify Telegram insets in the optional, presentation-only Mini App shell.
+  const previewInsets = await evaluate(cdp, `(() => {
+    const shell = document.querySelector(".public-shell");
+    const insets = {
+      "--tg-content-safe-area-inset-top": "32px",
+      "--tg-content-safe-area-inset-bottom": "24px",
+      "--tg-content-safe-area-inset-left": "18px",
+      "--tg-content-safe-area-inset-right": "20px",
+    };
+    shell.classList.add("telegramPreview");
+    for (const [name, value] of Object.entries(insets)) shell.style.setProperty(name, value);
+    const header = getComputedStyle(document.querySelector(".public-header"));
+    const content = getComputedStyle(document.querySelector(".content.public-content"));
+    const result = {
+      top: parseFloat(header.paddingTop),
+      bottom: parseFloat(content.paddingBottom),
+      left: parseFloat(content.paddingLeft),
+      right: parseFloat(content.paddingRight),
+    };
+    for (const name of Object.keys(insets)) shell.style.removeProperty(name);
+    shell.classList.remove("telegramPreview");
+    return result;
+  })()`);
+  assert.ok(previewInsets.top >= 32 && previewInsets.bottom >= 24, screen + ": Telegram preview vertical safe areas");
+  assert.ok(previewInsets.left >= 18 && previewInsets.right >= 20, screen + ": Telegram preview horizontal safe areas");
+  await checkWidth(cdp, screen + " embedded preview safe-area");
 }
 
 async function keyboard(cdp, key, virtualCode, modifiers = 0) {
@@ -354,6 +380,15 @@ async function scenario(cdp, origin, width, height) {
   await checkLabeledControls(cdp, name + " booking");
   if (width <= 375) await checkEmbeddedClientInsets(cdp, name);
   await requireDom(cdp, name + " modular public hero", "document.querySelector('section.booking-hero .booking-hero-studio strong')?.textContent.includes('Студия Smoke')");
+  await requireDom(cdp, name + " primary salon header", "document.querySelector('.public-header .salon-name')?.textContent.includes('Студия Smoke')");
+  await requireDom(cdp, name + " location with address in booking receipt", "document.querySelector('.booking-summary .ticket-location-address')?.textContent.includes('Демонстрационный адрес')");
+  if (width <= 680) {
+    await requireDom(cdp, name + " expandable mobile receipt", "document.querySelector('.booking-summary-toggle[aria-expanded=false]')");
+    await click(cdp, ".booking-summary-toggle");
+    await requireDom(cdp, name + " expanded mobile receipt", "document.querySelector('.booking-summary-toggle[aria-expanded=true]')");
+    await click(cdp, ".booking-summary-toggle");
+  }
+  await requireDom(cdp, name + " upfront base price", "document.querySelector('.booking-checkout-summary strong')?.textContent.includes('₽')");
   await captureEvidence(cdp, name, "02-booking");
   await click(cdp, ".booking-form .slot-grid button");
   await requireDom(cdp, name + " selected slot", "document.querySelector('.booking-form .slot-grid button[aria-pressed=true]')");
@@ -363,6 +398,7 @@ async function scenario(cdp, origin, width, height) {
   await captureEvidence(cdp, name, "03-confirmation");
 
   await click(cdp, ".success-screen .btn-primary");
+  if (width <= 900) await click(cdp, ".segmented button:nth-child(2)");
   await requireDom(cdp, name + " calendar event", "document.querySelector('.calendar-event')");
   await requireDom(cdp, name + " shared calendar card", "document.querySelector('.calendar-surface[data-slot=card]')");
   if (width <= 980) {
@@ -391,10 +427,17 @@ async function scenario(cdp, origin, width, height) {
 
   await click(cdp, ".segmented button:first-child");
   await requireDom(cdp, name + " calendar day", "document.querySelector('.day-timeline .timeline-entry')");
+  await requireDom(cdp, name + " staff-time day board", "document.querySelector('.calendar-day-board .resource-visit')");
 
   await captureEvidence(cdp, name, "06-calendar-day");
   await cdp.send("Page.reload", { ignoreCache: true });
-  await requireDom(cdp, name + " restored synthetic booking", "document.querySelectorAll('.stat-card')[2]?.querySelector('strong')?.textContent === '01'");
+  await requireDom(cdp, name + " restored synthetic booking", "(() => { const saved = sessionStorage.getItem('cookie.frontend-demo.v1'); return !!saved && JSON.parse(saved).bookings?.length === 1; })()");
+  if (width <= 680) {
+    await requireDom(cdp, name + " mobile navigation", "document.querySelector('.mobile-nav button:nth-child(4)') && getComputedStyle(document.querySelector('.mobile-nav')).display === 'grid'");
+    await click(cdp, ".mobile-nav button:nth-child(4)");
+    await requireDom(cdp, name + " secondary mobile navigation", "document.querySelector('.mobile-more-panel button')");
+    await click(cdp, ".mobile-nav button:nth-child(4)");
+  }
   await checkWidth(cdp, name + " restored home");
   await checkLabeledControls(cdp, name + " workspace");
   await captureEvidence(cdp, name, "07-workspace");

@@ -28,6 +28,8 @@
   import "./visual-system.css";
 
   const api = createCookieUiApi();
+  // Presentation-only Telegram-sized preview; no Telegram API, initData or auth.
+  const telegramPreview = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "telegram-preview";
   const blank: DemoSnapshot = { organization: null, locations: [], services: [], staff: [], schedules: [], bookings: [] };
 
   let screen: Screen = "home";
@@ -62,7 +64,7 @@
   let slotSuggestions: SlotView[] = [];
   let createdBooking: BookingView | null = null;
   let calendarDate = localDay(new Date());
-  let calendarMode: "day" | "week" = "week";
+  let calendarMode: "day" | "week" = typeof window !== "undefined" && window.innerWidth <= 900 ? "day" : "week";
 
   $: org = data.organization;
   $: stepCount = Number(!!org) + Number(data.services.length > 0) +
@@ -227,14 +229,14 @@
   <meta name="description" content={api.mode === "api" ? "Cookie: тестовое подключение Backend API пока недоступно." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
-<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org}>
+<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org} class:telegramPreview={telegramPreview && screen === "booking"}>
   {#if screen !== "booking" && !(screen === "home" && !org)}
     <Sidebar {screen} {stepCount} onNavigate={goto} />
   {/if}
 
   <div class="main-area">
     {#if screen === "booking"}
-      <PublicHeader onBack={() => goto("home")} />
+      <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} onBack={() => goto("home")} />
     {:else if screen === "home" && !org}
       <OnboardingHeader apiMode={apiDisconnected} />
     {:else}
@@ -318,6 +320,8 @@
       {:else if screen === "calendar"}
         <CalendarView
           bookings={data.bookings}
+          services={data.services}
+          staff={data.staff}
           bind:calendarDate
           bind:calendarMode
           serviceName={getService}
@@ -326,16 +330,17 @@
           onCreateBooking={() => goto("booking")}
         />
       {:else if screen === "booking"}
-        <PublicBookingHero organizationName={org.name} />
         {#if createdBooking}
           <BookingConfirmation
             booking={createdBooking}
+            location={data.locations.find((item) => item.id === createdBooking?.locationId)}
             serviceName={getService}
             staffName={getStaff}
             onOpenCalendar={() => { calendarDate = createdBooking!.date; goto("calendar"); }}
             onCreateAnother={() => goto("booking")}
           />
         {:else}
+          <PublicBookingHero organizationName={org.name} />
           <BookingForm
             {data}
             staffOptions={bookingStaffOptions}
