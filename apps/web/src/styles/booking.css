@@ -56,7 +56,7 @@
   width: 193px; flex: 0 0 193px; border-left: 1px solid #7a667e;
   padding: 2px 0 0 26px; color: white; min-width: 0;
 }
-.booking-hero-studio > span { color: #c4b7c8; font-size: 11px; margin-bottom: 6px; }
+.booking-hero-studio > span { color: var(--salon-hero-overline, #c4b7c8); font-size: 11px; margin-bottom: 6px; }
 .booking-hero-studio strong { color: var(--cookie-surface); font-size: 15px; line-height: 1.4; font-weight: 700; overflow-wrap: anywhere; }
 .booking-hero-studio small { margin-top: 6px; color: #cbbbce; font-size: 10px; }
 .public-content .booking-layout { grid-template-columns: minmax(0, 1.42fr) minmax(310px, .82fr); gap: 22px; align-items: start; }
@@ -157,13 +157,13 @@
   border-radius: var(--cookie-radius-surface) 14px 0 0; background: var(--cookie-ticket);
   padding: 23px 28px 22px;
 }
-.ticket-topline { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 11px; color: #ddd2e1; }
+.ticket-topline { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 11px; color: var(--salon-ticket-overline, #ddd2e1); }
 .ticket-demo { font-size: 9px; letter-spacing: .08em; border: 1px solid #a18ba6; padding: 4px 8px; border-radius: 99px; color: #f1ebf2; }
 .ticket-top h2 {
   color: var(--cookie-surface); font-weight: 400; font-family: var(--cookie-font-editorial);
   line-height: 1.13; font-size: 27px; letter-spacing: -.045em; margin: 18px 0 8px;
 }
-.ticket-top p { color: #d4c4d9; font-size: 11px; line-height: 1.55; margin: 0; }
+.ticket-top p { color: var(--salon-ticket-description, #d4c4d9); font-size: 11px; line-height: 1.55; margin: 0; }
 .ticket-stitch { position: relative; height: 1px; border-top: 1px dashed #c9b8ce; background: #eee8f1; }
 .ticket-stitch:before,.ticket-stitch:after { content: ""; position: absolute; top: -12px; width: 24px; height: 24px; background: var(--cookie-paper); border-radius: 50%; z-index: 1; }
 .ticket-stitch:before { left: 0; } .ticket-stitch:after { right: 0; }
@@ -276,6 +276,10 @@
   --salon-action-hover: #553025;
   --salon-monogram-bg: #f4e9e2;
   --salon-monogram-ink: #784736;
+  /* Clay is lighter than the other dark themes: raise secondary text contrast. */
+  --salon-hero-overline: #e5dad9;
+  --salon-ticket-overline: #e9dfe0;
+  --salon-ticket-description: #e9dfe0;
 }
 .public-shell .public-content .booking-head.booking-hero { background: var(--salon-hero); }
 .public-shell .public-content .booking-hero h1 em { color: var(--salon-accent); }
