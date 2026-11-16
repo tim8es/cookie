@@ -11,7 +11,7 @@ import type {
   WorkSchedule,
 } from "./model";
 import { UiFailure } from "./model";
-import { parseDay } from "./dates";
+import { localDay, parseDay } from "./dates";
 
 export interface DemoStorage {
   getItem(key: string): string | null;
@@ -264,6 +264,59 @@ export class MockCookieApi implements CookieUiPort {
     this.snapshot.bookings.push(booking);
     this.persist();
     return booking;
+  }
+
+  async cancelBooking(id: string): Promise<BookingView> {
+    this.requireOrganization();
+    const booking = this.snapshot.bookings.find((item) => item.id === id);
+    if (!booking) throw new UiFailure("NOT_FOUND", "Демо-запись не найдена.");
+    if (booking.status !== "demo-cancelled") {
+      booking.status = "demo-cancelled";
+      this.persist();
+    }
+    return structuredClone(booking);
+  }
+
+  async rescheduleBooking(
+    id: string,
+    date: string,
+    time: string,
+  ): Promise<BookingView> {
+    this.requireOrganization();
+    const booking = this.snapshot.bookings.find((item) => item.id === id);
+    if (!booking) throw new UiFailure("NOT_FOUND", "Демо-запись не найдена.");
+    if (booking.status !== "demo-confirmed") {
+      throw invalid("Отменённую демо-запись нельзя перенести.");
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || localDay(parseDay(date)) !== date) {
+      throw invalid("Укажите корректную дату для переноса.");
+    }
+    const choices = await this.getSlotSuggestions(
+      booking.staffId,
+      booking.locationId,
+      date,
+    );
+    if (!choices.some((item) => item.time === time)) {
+      throw invalid("Выберите время из настроенных демонстрационных интервалов.");
+    }
+    const occupied = this.snapshot.bookings.some(
+      (item) =>
+        item.id !== id &&
+        item.status === "demo-confirmed" &&
+        item.staffId === booking.staffId &&
+        item.date === date &&
+        item.time === time,
+    );
+    if (occupied) {
+      throw new UiFailure(
+        "SLOT_CONFLICT",
+        "Демо-конфликт: время уже занято другой записью в этой вкладке.",
+      );
+    }
+    booking.date = date;
+    booking.time = time;
+    this.persist();
+    return structuredClone(booking);
   }
 
   async resetDemo(): Promise<void> {
