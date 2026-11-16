@@ -184,6 +184,7 @@ interface OpaqueSessionLinkRow extends QueryResultRow {
 }
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
+const SESSION_LABEL = /^[a-zA-Z0-9._:/-]{1,128}$/;
 
 /**
  * Transaction-scoped Cookie AuthN guard. Caller MUST hold a real PostgreSQL
@@ -204,19 +205,37 @@ export async function assertActiveOpaqueSession(
 ): Promise<void> {
   const digest = actor.opaqueSessionTokenSha256;
   if (digest === undefined) return;
+  const issuer = actor.opaqueSessionIssuer;
+  const audience = actor.opaqueSessionAudience;
   if (
+    typeof digest !== "string" ||
     !SHA256_HEX.test(digest) ||
+    (issuer === undefined) !== (audience === undefined) ||
+    (issuer !== undefined &&
+      (typeof issuer !== "string" || !SESSION_LABEL.test(issuer))) ||
+    (audience !== undefined &&
+      (typeof audience !== "string" || !SESSION_LABEL.test(audience))) ||
     !UUID_RE.test(actor.tenantId) ||
     !UUID_RE.test(actor.identityId)
   ) {
     throw new AuthorizationDeniedError();
   }
-  const params = [digest, actor.tenantId, actor.identityId];
+  // Real PostgreSQL-issued sessions carry both values. A legacy synthetic
+  // verifier may omit them but is not eligible for public authentication.
+  const params = [
+    digest,
+    actor.tenantId,
+    actor.identityId,
+    issuer ?? null,
+    audience ?? null,
+  ];
   const identified = await client.query<OpaqueSessionLinkRow>(
     `SELECT telegram_link_id::text AS telegram_link_id
        FROM cookie_identity.opaque_sessions
       WHERE token_sha256=decode($1::text,'hex')
-        AND tenant_id=$2::uuid AND identity_id=$3::uuid`,
+        AND tenant_id=$2::uuid AND identity_id=$3::uuid
+        AND ($4::text IS NULL OR issuer=$4::text)
+        AND ($5::text IS NULL OR audience=$5::text)`,
     params,
   );
   const candidate = identified.rows[0];
@@ -243,7 +262,9 @@ export async function assertActiveOpaqueSession(
       WHERE token_sha256=decode($1::text,'hex')
         AND tenant_id=$2::uuid AND identity_id=$3::uuid
         AND revoked_at IS NULL AND expires_at > clock_timestamp()
-        AND telegram_link_id IS NOT DISTINCT FROM $4::uuid
+        AND telegram_link_id IS NOT DISTINCT FROM $6::uuid
+        AND ($4::text IS NULL OR issuer=$4::text)
+        AND ($5::text IS NULL OR audience=$5::text)
       FOR SHARE`,
     [...params, candidate.telegram_link_id],
   );
