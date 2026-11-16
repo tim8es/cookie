@@ -51,6 +51,11 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
+      # Temporary read-only Prettier diagnostic for one new test file.
+      - name: Capture formatted branding test (temporary)
+        run: |
+          pnpm exec prettier --write apps/web/src/lib/branding-config.test.ts
+          echo "BRAND_TEST_FORMAT_B64=$(base64 -w0 apps/web/src/lib/branding-config.test.ts)"
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
