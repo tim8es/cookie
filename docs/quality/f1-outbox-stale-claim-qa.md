@@ -35,3 +35,16 @@ The QA PR targets the feature branch of #143 (stacked QA-only diff). Its first h
 ### First CI attempt
 
 - [GitHub Actions #43894035951](https://github.com/tim8es/cookie/actions/runs/43894035951) on QA commit `2783b522cbc969aefb0a56fcb20edac9ca348207`: **FAIL — Prettier formatting only**. The PostgreSQL regression never executed. This is not RED security evidence. The QA branch must remove any temporary formatter diagnostic workflow changes before review/merge.
+
+## Verified red integration regression
+
+**Confirmed defect — High / [Issue #150](https://github.com/tim8es/cookie/issues/150).**
+
+- Real PostgreSQL 16 [Actions run #43895489776](https://github.com/tim8es/cookie/actions/runs/43895489776), exact source SHA `b98e2d3ed325143359c7058bae6ed3156724d3c4` (QA branch based on PR #143 head).
+- **PASS:** lint, read-only Prettier check, module boundaries, TypeScript and unit checks preceding integration; Prettier verified test source unchanged.
+- **FAIL:** `apps/api/test/worker-stale-claim-qa.integration.test.ts:132` in real-PG integration: `AssertionError: 1 !== 0` (`handlerStarts` actual **1**, expected **0**). A timed-out/expired lease can still be dispatched.
+- Reproducer uses committed claim, independent DB-clock expiry, delayed result callback; no sleep or real provider.
+- **Expected red** until backend/worker fixes source; the CI failure is deliberate evidence of an invariant violation, not approval to skip or weaken the test.
+- A temporary QA-only formatter-diagnostic step was used to learn the exact Prettier diff; it was **removed together with its temporary QA push trigger before the final PR diff**. CI on the final cleanup commit must not be presumed PASS or RED without a matching run.
+
+The test must stay red for the vulnerable source and become green on a fixed source. The feature PR #143's older full CI PASS does not cover this newly added regression.
