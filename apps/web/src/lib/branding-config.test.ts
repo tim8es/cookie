@@ -9,20 +9,40 @@ import {
 } from "./branding-config";
 
 test("exactly four branded presets include light and dark modes", () => {
-  assert.deepEqual(brandPresets.map((preset) => preset.id), [
-    "atelier", "forest", "ocean", "clay",
-  ]);
+  assert.deepEqual(
+    brandPresets.map((preset) => preset.id),
+    ["atelier", "forest", "ocean", "clay"],
+  );
   assert.equal(new Set(brandPresets.map((preset) => preset.id)).size, 4);
-  assert.deepEqual(new Set(brandPresets.map((preset) => preset.mode)), new Set(["light", "dark"]));
+  assert.deepEqual(
+    new Set(brandPresets.map((preset) => preset.mode)),
+    new Set(["light", "dark"]),
+  );
   for (const preset of brandPresets) {
     const settings = createBrandConfig(preset.id);
     assert.equal(validateBrandConfig(settings).presetId, preset.id);
-    assert.ok(brandContrast(settings.primaryColor, settings.accentColor) >= 4.5);
+    assert.ok(
+      brandContrast(settings.primaryColor, settings.accentColor) >= 4.5,
+    );
     const tokens = compileBrandTokens(settings);
-    assert.ok(brandContrast(tokens["--salon-hero"], tokens["--salon-hero-ink"]) >= 4.5);
-    assert.ok(brandContrast(tokens["--salon-page-background"], tokens["--salon-page-ink"]) >= 4.5);
-    assert.ok(brandContrast(tokens["--salon-accent"], tokens["--salon-accent-ink"]) >= 4.5);
-    assert.ok(!Object.values(tokens).some((value) => /url\s*\(|data:|javascript:/i.test(value)));
+    assert.ok(
+      brandContrast(tokens["--salon-hero"]!, tokens["--salon-hero-ink"]!) >= 4.5,
+    );
+    assert.ok(
+      brandContrast(
+        tokens["--salon-page-background"]!,
+        tokens["--salon-page-ink"]!,
+      ) >= 4.5,
+    );
+    assert.ok(
+      brandContrast(tokens["--salon-accent"]!, tokens["--salon-accent-ink"]!) >=
+        4.5,
+    );
+    assert.ok(
+      !Object.values(tokens).some((value) =>
+        /url\s*\(|data:|javascript:/i.test(value),
+      ),
+    );
   }
 });
 
@@ -44,7 +64,7 @@ test("owner's bounded choices compile to safe predictable token values", () => {
   assert.equal(tokens["--salon-button-radius"], "999px");
   assert.equal(tokens["--salon-accent-width"], "2px");
   assert.equal(tokens["--salon-color-scheme"], "light");
-  assert.match(tokens["--salon-font-heading"], /system-ui/);
+  assert.match(tokens["--salon-font-heading"]!, /system-ui/);
   assert.equal(Object.keys(tokens).length, 11);
   assert.ok(!Object.values(tokens).includes(safe.logoAssetId ?? ""));
 });
@@ -68,7 +88,7 @@ test("rejects invalid colors, unsupported styles, untrusted assets and unknown f
     { ...base, logoAssetId: undefined },
   ];
   for (const input of bad) {
-    assert.throws(() => validateBrandConfig(input), undefined, JSON.stringify(input));
+    assert.throws(() => validateBrandConfig(input), Error);
   }
   assert.throws(() => validateBrandConfig(null));
   assert.throws(() => validateBrandConfig({}));
@@ -80,6 +100,8 @@ test("config is versioned and cannot silently accept old or future shapes", () =
   assert.equal(base.version, 1);
   assert.throws(() => validateBrandConfig({ ...base, version: 0 }));
   assert.throws(() => validateBrandConfig({ ...base, version: 3 }));
-  assert.throws(() => validateBrandConfig({ ...base, logoAssetId: null, colorCss: ".body{}" }));
+  assert.throws(() =>
+    validateBrandConfig({ ...base, logoAssetId: null, colorCss: ".body{}" }),
+  );
   assert.deepEqual(validateBrandConfig(base), base);
 });
