@@ -185,6 +185,15 @@ test(
         "reordering a valid Telegram query may not reuse a consumed proof",
       );
 
+      // Simultaneous exchanges of the same verified HMAC must serialize at
+      // the unique DB nonce: exactly one session is minted, never two.
+      const parallelRaw = signedInitData("parallel-launch");
+      const concurrent = await Promise.all([
+        sessions.exchangeTelegramInitData(parallelRaw),
+        sessions.exchangeTelegramInitData(parallelRaw),
+      ]);
+      assert.equal(concurrent.filter(Boolean).length, 1);
+
       assert.equal(await sessions.verifyBearerToken("fake"), null);
       assert.equal(
         await sessions.verifyBearerToken("cs_" + "f".repeat(43)),
