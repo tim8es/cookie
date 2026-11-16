@@ -28,7 +28,9 @@ function contrastRatio(left: string, right: string): number {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
-test("four curated salon appearance presets have distinct IDs and stable contrasts", () => {
+test(
+  "four curated salon appearance presets have distinct IDs and stable contrasts",
+  () => {
   assert.equal(salonThemes.length, 4);
   assert.equal(new Set(salonThemes.map((theme) => theme.id)).size, 4);
   for (const theme of salonThemes) {
@@ -45,10 +47,13 @@ test("four curated salon appearance presets have distinct IDs and stable contras
       theme.id + " editorial accent",
     );
   }
-  assert.equal(isSalonTheme("cookie"), false);
-});
+    assert.equal(isSalonTheme("cookie"), false);
+  },
+);
 
-test("legacy and malformed persisted appearance fails safe to explicit default", () => {
+test(
+  "legacy and malformed persisted appearance fails safe to explicit default",
+  () => {
   assert.deepEqual(normalizeSalonAppearance(undefined), defaultSalonAppearance);
   assert.deepEqual(
     normalizeSalonAppearance({ theme: "not-a-theme", introduction: "" }),
@@ -71,4 +76,5 @@ test("legacy and malformed persisted appearance fails safe to explicit default",
       introduction: defaultSalonAppearance.introduction,
     },
   );
-});
+  },
+);
