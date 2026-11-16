@@ -187,7 +187,7 @@ test(
       const retry = await create(winningKey);
       assert.equal(retry.statusCode, 201);
       assert.deepEqual(retry.json(), receipt);
-      assert.equal(entitlementChecks, 1);
+      assert.equal(entitlementChecks, 2, "both new concurrent attempts are checked; replay is not");
       const differentPayload = await create(winningKey, {
         ...createBody,
         startAt: "2027-04-12T14:00:00Z",
@@ -233,8 +233,8 @@ test(
       });
       assert.equal(adminB.statusCode, 403);
       assert.equal(adminB.json().error.code, "ACCESS_DENIED");
-      const outsider = await create("outsider", createBody, "synthetic-outsider");
-      assert.equal(outsider.statusCode, 403);
+      const outsiderResponse = await create("outsider", createBody, "synthetic-outsider");
+      assert.equal(outsiderResponse.statusCode, 403);
       const foreignTenant = await app.inject({
         method: "GET",
         url: `/v1/organizations/${randomUUID()}/bookings/${receipt.bookingId}`,
