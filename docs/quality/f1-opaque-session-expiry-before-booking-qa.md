@@ -30,15 +30,10 @@ A successful session verification outside a Booking transaction is not by itself
 
 No backend repair by QA; no real users, real Telegram bot, credentials, deployment, payment or commercial pilot. Related #165, #113, #18, #22, #66.
 
-## Integration verification against backend candidate #171
+## Independent backend-comparison evidence (2026-11-16)
 
-2026-11-16: The original independent QA branch remains **RED** when tested
-against #162 alone ([CI #43911762004](https://github.com/tim8es/cookie/actions/runs/43911762004)).
-This PR was retargeted to the already full-green backend [PR #171](https://github.com/tim8es/cookie/pull/171)
-(head `439cb0a27eb59ffe7fcec92bea32b19c3653dfa2`, [CI #43912780705](https://github.com/tim8es/cookie/actions/runs/43912780705)).
-The test implementation and its expected three-case denial assertions are **unchanged** by this retarget.
+- Original QA base #162 is **RED**: [run #43911762004](https://github.com/tim8es/cookie/actions/runs/43911762004).
+- Full-green backend candidate #171 was independently verified with this **unchanged three-case assertion** on QA head `efff7b1aeef9771f34548a60b03f40cdd0156994`: [run #43913539063](https://github.com/tim8es/cookie/actions/runs/43913539063), 101/101 unit, 45/45 real PG and 46/46 web checks.
+- To select one canonical implementation instead of merging overlapping #171 and #173, this QA-only PR is now targeted to [backend PR #173](https://github.com/tim8es/cookie/pull/173), which additionally implements reverse-direction locking and an independent real-PG regression. The three-mode QA assertions and fixture remain unchanged. **Outcome on #173 is unverified until new exact-head CI succeeds.**
 
-A new exact-HEAD F1 CI on the combined merge state is mandatory. Do not
-interpret the earlier RED on the old base as evidence against the new fix, or
-the parent's prior GREEN as proof that this new expiry scenario is already
-covered. No production API or real Telegram provider is enabled.
+All candidate results must stay tied to their exact combined commit/base SHA; a previously green #171 does **not** automatically prove #173. The suite is synthetic-only: no public Booking session provider, real Telegram/PII or production rollout.
