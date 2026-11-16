@@ -21,6 +21,7 @@
   import DemoNotices from "./lib/ui/DemoNotices.svelte";
   import BookingSetupHint from "./lib/ui/BookingSetupHint.svelte";
   import DemoState from "./lib/ui/DemoState.svelte";
+  import ApiDisconnected from "./lib/ui/ApiDisconnected.svelte";
   import CalendarView from "./lib/ui/CalendarView.svelte";
   import BookingForm from "./lib/ui/BookingForm.svelte";
   import "./styles.css";
@@ -34,6 +35,7 @@
   let screen: Screen = "home";
   let data: DemoSnapshot = blank;
   let initializing = true;
+  let apiDisconnected = false;
   let busy = false;
   let busySlots = false;
   let error = "";
@@ -83,6 +85,7 @@
   async function reload(): Promise<void> {
     try {
       data = await api.getSnapshot();
+      apiDisconnected = false;
       if (!staffService) staffService = data.services[0]?.id ?? "";
       if (!scheduleStaff) scheduleStaff = data.staff[0]?.id ?? "";
       if (!scheduleLocation) scheduleLocation = data.locations[0]?.id ?? "";
@@ -90,7 +93,12 @@
       if (!bookingLocation) bookingLocation = data.locations[0]?.id ?? "";
       if (!bookingStaff) bookingStaff = data.staff[0]?.id ?? "";
     } catch (reason) {
-      error = describe(reason);
+      if (api.mode === "api" && reason instanceof UiFailure && reason.code === "NOT_CONNECTED") {
+        apiDisconnected = true;
+        error = "";
+      } else {
+        error = describe(reason);
+      }
     } finally {
       initializing = false;
     }
@@ -217,8 +225,8 @@
 </script>
 
 <svelte:head>
-  <title>{screen === "booking" ? "Cookie — онлайн-запись · демо" : "Cookie — кабинет салона · демо"}</title>
-  <meta name="description" content="Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными." />
+  <title>{apiDisconnected ? "Cookie — API не подключён" : screen === "booking" ? "Cookie — онлайн-запись · демо" : "Cookie — кабинет салона · демо"}</title>
+  <meta name="description" content={api.mode === "api" ? "Cookie: тестовое подключение Backend API пока недоступно." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
 <div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org} class:telegramPreview={telegramPreview && screen === "booking"}>
@@ -230,7 +238,7 @@
     {#if screen === "booking"}
       <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} onBack={() => goto("home")} />
     {:else if screen === "home" && !org}
-      <OnboardingHeader />
+      <OnboardingHeader apiMode={apiDisconnected} />
     {:else}
       <Topbar {screen} bind:preview canCreateBooking={!!org} onNavigate={goto} />
     {/if}
@@ -241,7 +249,9 @@
         onDismissError={() => error = ""}
         onDismissNotice={() => notice = ""}
       />
-      {#if initializing || busy}
+      {#if apiDisconnected}
+        <ApiDisconnected />
+      {:else if initializing || busy}
         <div class="loading-card" role="status"><div class="spinner"></div><span>{initializing ? "Загружаем демо-пространство…" : "Обновляем данные в браузерной сессии…"}</span></div>
       {:else if preview === "error"}
         <DemoState kind="error" onPrimary={() => preview = "normal"} />
@@ -360,7 +370,7 @@
         {/if}
       {/if}
 
-      {#if !initializing}
+      {#if !initializing && api.mode === "mock"}
         <DemoFooter showReset={screen !== "booking"} {busy} onReset={() => void resetDemo()} />
       {/if}
     </main>

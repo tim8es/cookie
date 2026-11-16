@@ -240,3 +240,81 @@
   border-color: #dfe9c9;
 }
 .alert-ok .alert-close { color: #526243; }
+
+
+/* API mode and future verified CreateBooking receipts share the journal tokens.
+ * These are presentation states only: the backend adapter owns validation.
+ */
+.feedback-state h1 {
+  margin: 0 0 12px;
+  font-size: 25px;
+  letter-spacing: -.045em;
+  color: var(--cookie-ink);
+}
+.feedback-state code { overflow-wrap: anywhere; }
+.booking-attempt-status[data-slot=card] {
+  display: block;
+  width: 100%;
+  max-width: 770px;
+  margin: 0 auto 22px;
+  padding: clamp(20px, 5vw, 35px);
+  border: 1px solid var(--cookie-border);
+  border-radius: var(--cookie-radius-surface);
+  background: var(--cookie-surface);
+}
+.booking-attempt-status-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: var(--cookie-brand);
+}
+.booking-attempt-status-heading svg { flex-shrink: 0; }
+.booking-attempt-status-heading h2 {
+  margin: 0;
+  font-size: clamp(19px, 4vw, 26px);
+}
+.booking-attempt-status p {
+  color: var(--muted-foreground);
+  line-height: 1.6;
+  font-size: 13px;
+  margin: 12px 0 18px;
+}
+.booking-attempt-receipt {
+  border-top: 1px solid var(--cookie-border);
+  margin: 20px 0 0;
+  padding: 0;
+}
+.booking-attempt-receipt > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--cookie-border);
+}
+.booking-attempt-receipt dt {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.booking-attempt-receipt dd {
+  text-align: right;
+  margin: 0;
+  min-width: 0;
+  color: var(--cookie-ink);
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.booking-attempt-slot-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-bottom: 15px;
+}
+.booking-attempt-status button[data-slot=button] { min-height: 44px; }
+@media (max-width: 400px) {
+  .booking-attempt-receipt > div { display: block; }
+  .booking-attempt-receipt dd { text-align: left; margin-top: 5px; }
+  .booking-attempt-slot-options button[data-slot=button] { flex: 1 1 72px; }
+}

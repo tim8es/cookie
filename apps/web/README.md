@@ -177,6 +177,37 @@ verification, pixel-level visual QA, payment testing or authorization testing.
 The browser only accesses a locally served frontend. No external network,
 customer records or booking-provider calls are required.
 
+## Single client across web, mobile web and Telegram Mini App
+
+The client booking screen is **one Svelte flow**, not three independently
+maintained products. Web desktop, mobile browser and Telegram WebView use the
+same UI components and the same future Booking API adapter. The desktop and
+320/375px Chromium smoke tests are the current regression baseline; they do
+not establish real iOS, Android or Telegram client compatibility.
+
+- **Browser / mobile browser:** native forms, keyboard navigation, responsive
+  column layout, document overflow checks, and CSS safe-area insets.
+- **Telegram Mini App:** the *same* public booking components adapt to the
+  Telegram bridge's safe-area/content-safe-area CSS variables when available.
+  A synthetic Chromium test sets those variables at 320/375px; there is no
+  Telegram SDK, bot, launch/session exchange or real Mini App runtime in F1.
+- **Trust boundary:** neither a Telegram user object nor raw `initData`
+  is proof of identity inside the browser. Backend must specify and verify
+  launch data/session/auth transport in #66 before any API-mode booking.
+  Browser login must not depend on Telegram. No WebView host may directly
+  calculate price, authorize staff, or mark a booking Confirmed.
+
+The contract-neutral `src/lib/transport.ts` has an explicitly injected
+fetch implementation, classifies generic HTTP failures and never retries
+unsafe requests on its own. Its response remains `unknown` until a reviewed
+OpenAPI/JSON Schema mapper exists. `api.ts` continues to fail closed in API
+mode; mock mode remains network-isolated.
+
+**Acceptance still outstanding:** iOS Safari and Android Chrome physical
+device checks, Telegram iOS/Android/Desktop launch and keyboard/viewport
+behavior, Telegram BackButton/theme integration, verified server-side
+`initData` and per-channel session handling, real Booking API contract tests.
+
 ## Required reviewed APIs (#22/#23/#26)
 
 These are **integration needs**, not proposed HTTP endpoint names or wire schemas:

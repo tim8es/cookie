@@ -1,3 +1,7 @@
+<script lang="ts">
+  export let apiMode = false;
+</script>
+
 <header class="onboarding-header">
   <div class="onboarding-brand">
     <span class="brand-seal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
@@ -5,6 +9,6 @@
   </div>
   <div class="onboarding-header-meta">
     <span class="onboarding-header-pulse" aria-hidden="true"></span>
-    Демо без регистрации
+    {apiMode ? "API не подключён" : "Демо без регистрации"}
   </div>
 </header>
