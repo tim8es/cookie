@@ -6,12 +6,14 @@ import type {
   Location,
   Organization,
   Service,
+  SalonAppearance,
   SlotView,
   StaffMember,
   WorkSchedule,
 } from "./model";
 import { UiFailure } from "./model";
 import { localDay, parseDay } from "./dates";
+import { defaultSalonAppearance, isSalonTheme, normalizeSalonAppearance } from "./appearance";
 
 export interface DemoStorage {
   getItem(key: string): string | null;
@@ -25,6 +27,7 @@ const DEMO_SUGGESTIONS = ["10:00", "12:00", "15:00"];
 function empty(): DemoSnapshot {
   return {
     organization: null,
+    appearance: { ...defaultSalonAppearance },
     locations: [],
     services: [],
     staff: [],
@@ -69,7 +72,12 @@ export class MockCookieApi implements CookieUiPort {
     try {
       const cached = storage?.getItem(STORAGE_KEY);
       if (cached) {
-        this.snapshot = JSON.parse(cached) as DemoSnapshot;
+        const stored = JSON.parse(cached) as DemoSnapshot;
+        this.snapshot = {
+          ...empty(),
+          ...stored,
+          appearance: normalizeSalonAppearance(stored.appearance),
+        };
       } else {
         this.snapshot = empty();
       }
@@ -115,6 +123,22 @@ export class MockCookieApi implements CookieUiPort {
     });
     this.persist();
     return org;
+  }
+
+  async saveAppearance(appearance: SalonAppearance): Promise<SalonAppearance> {
+    this.requireOrganization();
+    const introduction = appearance.introduction.trim();
+    if (
+      !isSalonTheme(appearance.theme) ||
+      introduction.length === 0 ||
+      introduction.length > 120
+    ) {
+      throw invalid("Выберите тему и введите текст приглашения до 120 символов.");
+    }
+    const saved: SalonAppearance = { theme: appearance.theme, introduction };
+    this.snapshot.appearance = saved;
+    this.persist();
+    return structuredClone(saved);
   }
 
   async addLocation(name: string, address: string): Promise<Location> {
