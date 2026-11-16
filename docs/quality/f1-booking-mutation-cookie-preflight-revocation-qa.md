@@ -1,6 +1,6 @@
 # F1 independent QA — Cookie revocation before Cancel/Reschedule HTTP mutation
 
-**State: UNVERIFIED until full exact-head PostgreSQL CI.** Test-only branch based on `main` SHA `82dd319dbfbb7e23ad19513c3cf076486fb672e2`, which already includes merged [#173](https://github.com/tim8es/cookie/pull/173) and [#180](https://github.com/tim8es/cookie/pull/180). No backend production code or migrations modified.
+**State: VERIFIED PASS** for test-code SHA `18704682f33bce61329e3fa095eedeee919e644b`, [full F1 Actions #43924688611](https://github.com/tim8es/cookie/actions/runs/43924688611): 103/103 unit, **59/59 real PostgreSQL 16 integrations**, 46/46 web checks, lint/Prettier/TS, migrations, backup/restore, worker, API/Svelte build and Chromium browser all PASS. Original strict Cancel and Reschedule assertions passed unchanged (385ms). Test-only branch based on `main` SHA `82dd319dbfbb7e23ad19513c3cf076486fb672e2`, which already includes merged [#173](https://github.com/tim8es/cookie/pull/173) and [#180](https://github.com/tim8es/cookie/pull/180). No backend production code or migrations modified.
 
 ## Threat and acceptance
 
@@ -28,3 +28,7 @@ TEST_DATABASE_URL=postgresql://cookie_ci:cookie_ci@127.0.0.1:5432/cookie_ci \
 ```
 
 Mandatory: lint, Prettier, TS, unit, all PostgreSQL migrations and integrations, backup/restore, worker, API/web build and browser smoke on exact PR HEAD. If fixture/format/compilation fails, **do not label a security defect**; correct the test only. Source route is explicitly opt-in and disabled in production `main.ts`; test cannot establish a live exploit. [#113](https://github.com/tim8es/cookie/issues/113), [#165](https://github.com/tim8es/cookie/issues/165), [#144](https://github.com/tim8es/cookie/issues/144) remain release review gates.
+
+## Final evidence note
+
+This **documentation-only** evidence update intentionally leaves the test source unchanged. The test-code head above is green; the final docs-only commit must separately complete exact-head full CI before a final green status is claimed. The first run was stopped at Prettier before PostgreSQL and therefore was **not** security RED; pinned formatting was corrected and the temporary formatting workflow was deleted. The new test deliberately isolates direct Cookie bearer authority and must not be mistaken for a real Telegram-link or public production API test. Keep PR Draft until independent review and latest-main reconciliation.
