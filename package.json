@@ -23,7 +23,7 @@
     "dev:web": "pnpm --filter @cookie/web dev",
     "build:web": "pnpm --filter @cookie/web build",
     "typecheck:web": "pnpm --filter @cookie/web check",
-    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check:boundaries": "node scripts/check-boundaries.mjs && node --test scripts/check-boundaries.test.mjs",
     "check:ui": "node apps/web/scripts/check-ui-structure.mjs"
   },
   "dependencies": {
