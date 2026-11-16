@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -37,7 +37,7 @@ function signedInitData(): string {
 }
 
 test(
-  "revoked opaque bearer or Telegram link must not authorize Booking after preflight",
+  "revoked bearer, expired session or Telegram unlink must not authorize Booking after preflight",
   { skip: !process.env.TEST_DATABASE_URL },
   async () => {
     const pool = new Pool({
@@ -140,7 +140,11 @@ test(
         events: number;
       }> = [];
 
-      for (const kind of ["bearer", "telegram-unlink"] as const) {
+      for (const kind of [
+        "bearer",
+        "session-expiry",
+        "telegram-unlink",
+      ] as const) {
         const issued =
           await sessions.exchangeTelegramInitData(signedInitData());
         assert.ok(
@@ -189,7 +193,9 @@ test(
               startAt:
                 kind === "bearer"
                   ? "2028-12-14T10:00:00Z"
-                  : "2028-12-14T13:00:00Z",
+                  : kind === "session-expiry"
+                    ? "2028-12-14T12:00:00Z"
+                    : "2028-12-14T14:00:00Z",
             },
           });
           try {
@@ -206,6 +212,23 @@ test(
                 await sessions.revokeBearerToken(issued.bearerToken),
                 true,
               );
+            } else if (kind === "session-expiry") {
+              // Synthetic DB-clock boundary: expire the already-verified
+              // bearer before Booking starts, without revoking membership
+              // or role. Preserve the DB lifetime CHECK constraint.
+              const expired = await pool.query(
+                `UPDATE cookie_identity.opaque_sessions
+                    SET issued_at=clock_timestamp()-interval '610 seconds',
+                        expires_at=clock_timestamp()-interval '1 second'
+                  WHERE tenant_id=$1::uuid AND token_sha256=$2::bytea
+                    AND revoked_at IS NULL
+                  RETURNING token_sha256`,
+                [
+                  tenantId,
+                  createHash("sha256").update(issued.bearerToken).digest(),
+                ],
+              );
+              assert.equal(expired.rowCount, 1);
             } else {
               const revoked = await pool.query(
                 "UPDATE cookie_identity.telegram_identity_links SET revoked_at=clock_timestamp() WHERE tenant_id=$1 AND id=$2 AND revoked_at IS NULL",
@@ -216,7 +239,7 @@ test(
             assert.equal(
               await sessions.verifyBearerToken(issued.bearerToken),
               null,
-              "the revocation must be committed before the HTTP command resumes",
+              "revocation or expiry must be committed before the HTTP command resumes",
             );
           } finally {
             release();
@@ -252,6 +275,13 @@ test(
         [
           { kind: "bearer", denied: true, bookings: 0, receipts: 0, events: 0 },
           {
+            kind: "session-expiry",
+            denied: true,
+            bookings: 0,
+            receipts: 0,
+            events: 0,
+          },
+          {
             kind: "telegram-unlink",
             denied: true,
             bookings: 0,
@@ -259,7 +289,7 @@ test(
             events: 0,
           },
         ],
-        "a revoked Cookie bearer/Telegram link must not permit a Booking mutation or its receipt/outbox",
+        "a revoked or expired Cookie session/Telegram link must not permit Booking or receipt/outbox",
       );
     } finally {
       for (const app of apps) await app.close().catch(() => undefined);
