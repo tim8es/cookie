@@ -266,6 +266,40 @@ async function checkWidth(cdp, screen) {
   }
 }
 
+async function checkEmbeddedClientInsets(cdp, screen) {
+  // Simulate CSS variables delivered by an embedded Telegram viewport.
+  // This tests responsive layout only, not Telegram SDK/authentication.
+  const metrics = await evaluate(cdp, `(() => {
+    const shell = document.querySelector(".public-shell");
+    if (!shell) return null;
+    const insets = {
+      "--tg-content-safe-area-inset-top": "32px",
+      "--tg-content-safe-area-inset-bottom": "24px",
+      "--tg-content-safe-area-inset-left": "18px",
+      "--tg-content-safe-area-inset-right": "20px",
+    };
+    for (const [name, value] of Object.entries(insets)) shell.style.setProperty(name, value);
+    const header = document.querySelector(".public-header");
+    const content = document.querySelector(".content.public-content");
+    const headerStyle = getComputedStyle(header);
+    const contentStyle = getComputedStyle(content);
+    const result = {
+      headerTop: parseFloat(headerStyle.paddingTop),
+      contentBottom: parseFloat(contentStyle.paddingBottom),
+      contentLeft: parseFloat(contentStyle.paddingLeft),
+      contentRight: parseFloat(contentStyle.paddingRight),
+    };
+    for (const name of Object.keys(insets)) shell.style.removeProperty(name);
+    return result;
+  })()`);
+  assert.ok(metrics, screen + ": missing embedded public shell");
+  assert.ok(metrics.headerTop >= 32, screen + ": Telegram top content inset ignored");
+  assert.ok(metrics.contentBottom >= 24, screen + ": Telegram bottom inset ignored");
+  assert.ok(metrics.contentLeft >= 18 && metrics.contentRight >= 20,
+    screen + ": Telegram horizontal insets ignored");
+  await checkWidth(cdp, screen + " embedded safe-area");
+}
+
 async function keyboard(cdp, key, virtualCode, modifiers = 0) {
   const params = {
     key, code: key, windowsVirtualKeyCode: virtualCode, nativeVirtualKeyCode: virtualCode, modifiers,
@@ -318,6 +352,7 @@ async function scenario(cdp, origin, width, height) {
   await requireDom(cdp, name + " synthetic slots", "document.querySelector('.booking-form .slot-grid button')");
   await checkWidth(cdp, name + " booking");
   await checkLabeledControls(cdp, name + " booking");
+  if (width <= 375) await checkEmbeddedClientInsets(cdp, name);
   await requireDom(cdp, name + " modular public hero", "document.querySelector('section.booking-hero .booking-hero-studio strong')?.textContent.includes('Студия Smoke')");
   await captureEvidence(cdp, name, "02-booking");
   await click(cdp, ".booking-form .slot-grid button");
@@ -460,7 +495,7 @@ async function main() {
       chromium: "headless",
       viewports: ["1280x800", "375x812", "320x568"],
       captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "error-preview", "forbidden-preview"],
-      checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "no external requests", "zero uncaught page exceptions"],
+      checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "simulated embedded safe-area CSS", "no external requests", "zero uncaught page exceptions"],
       externalRequests: externalUrls.length,
     }, null, 2) + "\n");
     console.log("PASS evidence: 39 PNG screenshots and manifest; external requests =", externalUrls.length);
