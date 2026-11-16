@@ -122,10 +122,13 @@ test("proof exchange must match protected context", async () => {
   const result = await authenticateTelegramOwner("signed-proof", fetcher, NOW);
   assert.equal(result.tenantId, TENANT);
   assert.equal(result.accessToken, TOKEN);
-  assert.deepEqual(calls.map((c) => c.url), [
-    "/v1/auth/telegram/exchange",
-    "/v1/organizations/" + TENANT + "/session-context",
-  ]);
+  assert.deepEqual(
+    calls.map((c) => c.url),
+    [
+      "/v1/auth/telegram/exchange",
+      "/v1/organizations/" + TENANT + "/session-context",
+    ],
+  );
   for (const { init } of calls) {
     assert.equal(init.credentials, "omit");
     assert.equal(init.cache, "no-store");
