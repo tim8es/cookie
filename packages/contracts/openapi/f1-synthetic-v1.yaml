@@ -14,6 +14,66 @@ tags:
   - name: SyntheticBooking
     description: Synthetic staff-assisted operations only, no external availability.
 paths:
+  /v1/organizations/{tenantId}/workspace-context:
+    parameters:
+      - $ref: "#/components/parameters/tenantId"
+    get:
+      tags: [SyntheticBooking]
+      operationId: getSyntheticWorkspaceContext
+      description: |
+        Verified tenant and centrally evaluated location permissions.
+        Returns only branches where the current verified member has
+        booking.create or booking.read, with per-location capability flags.
+        Does not grant staff/customer self-service or return credentials.
+      responses:
+        "200":
+          description: Organization and authorized branch contexts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkspaceContext" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/AccessDenied" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/organizations/{tenantId}/locations/{locationId}/staff/{staffId}/schedule:
+    parameters:
+      - $ref: "#/components/parameters/tenantId"
+      - $ref: "#/components/parameters/locationId"
+      - name: staffId
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/Uuid" }
+    get:
+      tags: [SyntheticBooking]
+      operationId: readSyntheticStaffSchedule
+      description: |
+        Explicit schedule.read staff-and-location scoped permission required.
+        UTC half-open 7-day range. Returns stored active UTC shifts and
+        breaks/exceptions; not recurring local rules or guaranteed free slots.
+        Use /availability for computed bookable slots.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Active staff shifts and blocked windows for this branch.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StaffSchedule" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/AccessDenied" }
+        "404":
+          description: No active staff assignment configured in selected branch.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503": { $ref: "#/components/responses/Unavailable" }
   /v1/organizations/{tenantId}/locations/{locationId}/catalog:
     parameters:
       - $ref: "#/components/parameters/tenantId"
@@ -272,6 +332,62 @@ components:
         startAt: { type: string, format: date-time }
         endAt: { type: string, format: date-time }
         occupiedUntil: { type: string, format: date-time }
+    WorkspaceContext:
+      type: object
+      additionalProperties: false
+      required: [organization, locations]
+      properties:
+        organization:
+          type: object
+          additionalProperties: false
+          required: [organizationId, displayName]
+          properties:
+            organizationId: { $ref: "#/components/schemas/Uuid" }
+            displayName: { type: string }
+        locations:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [locationId, displayName, timeZone, canCreateBooking, canReadBookings]
+            properties:
+              locationId: { $ref: "#/components/schemas/Uuid" }
+              displayName: { type: string }
+              timeZone: { type: [string, "null"] }
+              canCreateBooking: { type: boolean }
+              canReadBookings: { type: boolean }
+    StaffSchedule:
+      type: object
+      additionalProperties: false
+      required: [locationId, staffId, staffName, timeZone, shifts, blocked]
+      properties:
+        locationId: { $ref: "#/components/schemas/Uuid" }
+        staffId: { $ref: "#/components/schemas/Uuid" }
+        staffName: { type: string }
+        timeZone: { type: string }
+        shifts:
+          type: array
+          maxItems: 500
+          items: { $ref: "#/components/schemas/UtcRange" }
+        blocked:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, startAt, endAt]
+            properties:
+              kind: { type: string, enum: [break, exception] }
+              startAt: { type: string, format: date-time }
+              endAt: { type: string, format: date-time }
+    UtcRange:
+      type: object
+      additionalProperties: false
+      required: [startAt, endAt]
+      properties:
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
     CatalogOffer:
       type: object
       additionalProperties: false
@@ -388,6 +504,7 @@ components:
                 - BOOKING_CONFLICT
                 - IDEMPOTENCY_KEY_REUSED
                 - BOOKING_NOT_FOUND
+                - STAFF_NOT_FOUND
                 - BOOKING_NOT_CONFIRMED
                 - CANCELLATION_POLICY_DENIED
                 - RESCHEDULE_POLICY_DENIED
