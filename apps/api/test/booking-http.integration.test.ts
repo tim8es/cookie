@@ -250,6 +250,23 @@ test(
         headers: ownerHeader,
       });
       assert.equal(availability.statusCode, 200);
+      assert.equal(availability.json().priceKopecks, "150000");
+      const unassignedOffer = await app.inject({
+        method: "GET",
+        url: `${base}/locations/${locationA}/availability?serviceId=${randomUUID()}&staffId=${staff}&date=2027-04-12`,
+        headers: ownerHeader,
+      });
+      assert.equal(unassignedOffer.statusCode, 200);
+      assert.deepEqual(unassignedOffer.json(), {
+        slots: [],
+        priceKopecks: null,
+      });
+      const unauthorizedPriceRead = await app.inject({
+        method: "GET",
+        url: slotsUrl,
+        headers: { authorization: "Bearer synthetic-outsider" },
+      });
+      assert.equal(unauthorizedPriceRead.statusCode, 403);
       assert.ok(
         availability
           .json()
@@ -288,6 +305,24 @@ test(
       const retry = await create(winningKey);
       assert.equal(retry.statusCode, 201);
       assert.deepEqual(retry.json(), receipt);
+      // A subsequent service price change is visible in availability, but
+      // does not mutate an already-committed Booking or replayed receipt.
+      await pool.query(
+        "UPDATE cookie_catalog.services SET base_price_kopecks=199900 WHERE tenant_id=$1 AND id=$2",
+        [tenant, service],
+      );
+      const reQuoted = await app.inject({
+        method: "GET",
+        url: slotsUrl,
+        headers: ownerHeader,
+      });
+      assert.equal(reQuoted.statusCode, 200);
+      assert.equal(reQuoted.json().priceKopecks, "199900");
+      assert.deepEqual((await create(winningKey)).json(), receipt);
+      await pool.query(
+        "UPDATE cookie_catalog.services SET base_price_kopecks=150000 WHERE tenant_id=$1 AND id=$2",
+        [tenant, service],
+      );
       assert.equal(
         entitlementChecks,
         2,
