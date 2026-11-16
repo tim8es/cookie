@@ -362,7 +362,6 @@ test(
       assert.equal(quotedAfterBooking.statusCode, 409);
       assert.equal(quotedAfterBooking.json().error.code, "BOOKING_CONFLICT");
 
-
       // Deliberately discard a successful replay's response body, then
       // reconcile by the same key. This is NOT a lost-COMMIT/TCP-reset test.
       const unreadReplay = await fetch(`${loopbackOrigin}${base}/bookings`, {
