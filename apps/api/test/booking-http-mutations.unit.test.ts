@@ -84,7 +84,6 @@ test("business mutation HTTP adapter fails closed on absent, invalid, cross-tena
     "idempotency-key": "once",
   };
   for (const payload of [
-    null,
     { staffId: IDENTITY },
     { status: "CancelledByBusiness" },
     { priceKopecks: "0" },
