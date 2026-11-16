@@ -1,0 +1,30 @@
+name: QA 172 temporary Prettier preview
+on:
+  pull_request:
+    branches:
+      - qa/f1-opaque-session-revoke-before-booking-20261116
+  push:
+    branches:
+      - qa/f1-opaque-session-expiry-before-booking-20261116
+permissions:
+  contents: read
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+        with:
+          version: 10.24.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "26"
+      - run: pnpm install --frozen-lockfile
+      - name: Print exact Prettier-formatted QA test
+        run: |
+          pnpm exec prettier --write apps/api/test/opaque-session-booking-revocation-qa.integration.test.ts
+          echo QA172_B64_BEGIN
+          base64 -w0 apps/api/test/opaque-session-booking-revocation-qa.integration.test.ts
+          echo
+          echo QA172_B64_END
