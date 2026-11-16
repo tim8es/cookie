@@ -229,3 +229,9 @@ Before integrating API: approve OpenAPI/JSON Schema DTOs, auth/session transport
 ## Explicitly outside this PR
 
 Business logic or authoritative availability, pricing resolution, discount handling, access control, payment/trial gating, real notifications, real customer identity, booking mutation/cancellation, iframe or Telegram trusted shells, production readiness, launch deployment and performance benchmarking. Issue #13 device/a11y acceptance and Issues #22/#23/#24/#26 integration acceptance remain open.
+
+## Telegram Mini App — UI preview only
+
+Use `?surface=telegram-preview` on the local demo URL, finish the synthetic salon setup, and open **Онлайн-запись** to inspect a compact Mini App-style booking surface. It reuses the same BookingForm/BookingSummary as public web, without separate business rules.
+
+**Not a Telegram integration:** No SDK calls, native BackButton/MainButton, verified `initData`, theme synchronization, Telegram authentication, bot launch, or real bookings. Those require a separate F2 implementation, platform/WebView and device testing, and the existing security gates. The query parameter must never be treated as an authentication or trusted platform signal.
