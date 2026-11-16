@@ -1,0 +1,26 @@
+name: QA 193 temporary pinned prettier diagnostic
+on:
+  pull_request:
+    branches:
+      - main
+permissions:
+  contents: read
+jobs:
+  format-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Print formatted QA test in base64
+        run: |
+          echo QA193_OUTPUT_START
+          pnpm exec prettier apps/api/test/workspace-cookie-read-lock-qa.integration.test.ts | base64 -w0
+          echo
+          echo QA193_OUTPUT_END
