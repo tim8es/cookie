@@ -21,12 +21,13 @@ export interface SyntheticWorkspaceReadDependencies {
   readonly verifier: BearerSessionVerifier;
 }
 
-const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
-const UTC_INSTANT =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 type TenantParams = { tenantId: string };
-type StaffScheduleParams = TenantParams & { locationId: string; staffId: string };
+type StaffScheduleParams = TenantParams & {
+  locationId: string;
+  staffId: string;
+};
 type IntervalRow = QueryResultRow & { start_at: Date; end_at: Date };
 type BlockedRow = IntervalRow & { kind: "break" | "exception" };
 type LocationRow = QueryResultRow & {
@@ -136,7 +137,9 @@ export function registerSyntheticWorkspaceReads(
           );
           const policy = await loadPolicySnapshot(client, actor);
           if (locationRows.rows.length > 100) {
-            throw new Error("Workspace exceeds bounded synthetic location list");
+            throw new Error(
+              "Workspace exceeds bounded synthetic location list",
+            );
           }
           const locations = locationRows.rows.flatMap((location) => {
             const allowed = (permission: string) =>
