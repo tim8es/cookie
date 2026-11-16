@@ -78,7 +78,7 @@ the API from a presentation file.
 
 Before requesting design approval run `pnpm check:ui`,
 `pnpm --filter @cookie/web check`, `pnpm --filter @cookie/web build` and
-the 39-screenshot Chromium browser smoke across desktop and mobile.
+the 42-screenshot Chromium browser smoke across desktop, mobile and Telegram UI preview.
 
 ## Folder ownership / layering
 
@@ -154,8 +154,8 @@ persistence → error/forbidden previews → reset. It fails if the whole docume
 overflows the viewport; the calendar's intentionally scrollable internal week
 grid is allowed.
 
-The CI browser test also captures **18 Chromium screenshots** (six UI milestones
-at each of the three viewports) and a `manifest.json` in
+The CI browser test also captures **42 Chromium screenshots** (14 UI milestones,
+including a synthetic Telegram-style preview, at each of three viewports) and a `manifest.json` in
 `apps/web/artifacts/visual-smoke/`. The workflow attaches these to the
 `cookie-frontend-visual-smoke` Actions artifact for **seven days**, even if a
 later stage fails. Screenshots use only synthetic names/data. The test also asserts **exact CSS layout widths** (`innerWidth ===
@@ -189,7 +189,8 @@ not establish real iOS, Android or Telegram client compatibility.
   column layout, document overflow checks, and CSS safe-area insets.
 - **Telegram Mini App:** the *same* public booking components adapt to the
   Telegram bridge's safe-area/content-safe-area CSS variables when available.
-  A synthetic Chromium test sets those variables at 320/375px; there is no
+  A synthetic Chromium test sets those variables at 320/375px and checks the shared
+  booking form in `?surface=telegram-preview`; there is no
   Telegram SDK, bot, launch/session exchange or real Mini App runtime in F1.
 - **Trust boundary:** neither a Telegram user object nor raw `initData`
   is proof of identity inside the browser. Backend must specify and verify
