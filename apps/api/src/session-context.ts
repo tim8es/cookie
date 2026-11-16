@@ -44,7 +44,7 @@ const UUID_RE =
 function bearerToken(header: string | undefined): string | null {
   if (!header) return null;
   // RFC6750-compatible token alphabet; refuse multiple credentials.
-  return /^Bearer ([a-zA-Z0-9._~+\x2f-]{1,4096}=*)$/i.exec(header)?.[1] ?? null;
+  return /^*** ?? null;
 }
 
 /** Central fail-closed AuthN gate for opt-in HTTP adapters. */
@@ -53,8 +53,16 @@ export async function verifyTenantActor(
   pathTenantId: string,
   verifier: BearerSessionVerifier,
 ): Promise<
-  | { readonly actor: TrustedActor; readonly status?: never; readonly error?: never }
-  | { readonly actor?: never; readonly status: 401 | 403; readonly error: "unauthorized" | "forbidden" }
+  | {
+      readonly actor: TrustedActor;
+      readonly status?: never;
+      readonly error?: never;
+    }
+  | {
+      readonly actor?: never;
+      readonly status: 401 | 403;
+      readonly error: "unauthorized" | "forbidden";
+    }
 > {
   const token = bearerToken(authorization);
   if (!token) return { status: 401, error: "unauthorized" };
