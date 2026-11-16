@@ -215,6 +215,25 @@ async function runBoundedOutboxBatch(
   // The current lease can be recovered by a new worker after expiry.
   if (options.signal.aborted) throw new AbandonedOutboxLeaseError();
 
+  // The original claim's PostgreSQL lease clock can expire BEFORE the claim
+  // result reaches this process. Re-check the authoritative DB state under
+  // the SAME fencing token, and restart a bounded lease window only if it
+  // is still unexpired. No handler may run on a stale/reclaimed token.
+  // This UPDATE is atomic with competing claims and uses PostgreSQL time,
+  // never the client's wall clock. A refusal leaves the lease untouched.
+  const renewed = await pool.query(
+    `UPDATE cookie_jobs.outbox_events
+        SET lease_until=clock_timestamp()
+          + ($3::integer * interval '1 millisecond')
+      WHERE id=$1::uuid AND lease_token=$2::uuid AND status='leased'
+        AND lease_until > clock_timestamp()
+      RETURNING id`,
+    [lease.id, lease.leaseToken, leaseMs],
+  );
+  if (renewed.rowCount !== 1 || options.signal.aborted) {
+    throw new AbandonedOutboxLeaseError();
+  }
+
   const handlerController = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const work = Promise.resolve()
