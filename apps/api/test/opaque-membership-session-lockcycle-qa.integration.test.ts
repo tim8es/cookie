@@ -167,11 +167,19 @@ test(
           (error: unknown) => ({ ok: false as const, error }),
         );
 
+      const guardPid = (
+        await guarding.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")
+      ).rows[0]?.pid;
+      const revokePid = (
+        await revoking.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")
+      ).rows[0]?.pid;
+      assert.ok(guardPid && revokePid);
+
       let blocked = false;
       for (let attempt = 0; attempt < 100; attempt++) {
         const status = await pool.query<{ blocked: boolean }>(
           "SELECT $1::integer = ANY(pg_blocking_pids($2::integer)) AS blocked",
-          [guarding.processID, revoking.processID],
+          [guardPid, revokePid],
         );
         if (status.rows[0]?.blocked) {
           blocked = true;
@@ -185,6 +193,7 @@ test(
         "Membership disable must wait on the guarded authorization transaction",
       );
 
+      if (!releaseGate) throw new Error("Missing session lock gate");
       releaseGate();
       releaseGate = undefined;
 
@@ -201,7 +210,9 @@ test(
         await revoking.query("ROLLBACK").catch(() => undefined);
       }
 
-      const errorCode = (result: typeof command | typeof revoke): string | null =>
+      const errorCode = (
+        result: typeof command | typeof revoke,
+      ): string | null =>
         result.ok
           ? null
           : String(
@@ -230,9 +241,10 @@ test(
         )
         .catch(() => undefined);
       await pool
-        .query("DELETE FROM cookie_identity.opaque_sessions WHERE tenant_id=$1", [
-          tenantId,
-        ])
+        .query(
+          "DELETE FROM cookie_identity.opaque_sessions WHERE tenant_id=$1",
+          [tenantId],
+        )
         .catch(() => undefined);
       await pool
         .query(
@@ -241,9 +253,10 @@ test(
         )
         .catch(() => undefined);
       await pool
-        .query("DELETE FROM cookie_identity.role_assignments WHERE tenant_id=$1", [
-          tenantId,
-        ])
+        .query(
+          "DELETE FROM cookie_identity.role_assignments WHERE tenant_id=$1",
+          [tenantId],
+        )
         .catch(() => undefined);
       await pool
         .query("DELETE FROM cookie_identity.roles WHERE tenant_id=$1", [
