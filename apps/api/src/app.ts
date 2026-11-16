@@ -13,6 +13,10 @@ import {
   type SyntheticBookingHttpDependencies,
 } from "./booking-http.js";
 import {
+  registerSyntheticWorkspaceReads,
+  type SyntheticWorkspaceReadDependencies,
+} from "./workspace-http.js";
+import {
   registerProtectedSessionContext,
   type ProtectedSessionDependencies,
 } from "./session-context.js";
@@ -29,6 +33,7 @@ export function createApp(
     readonly sessionRoutes?: ProtectedSessionDependencies;
     readonly syntheticBookingRoutes?: SyntheticBookingHttpDependencies;
     readonly syntheticBookingMutations?: SyntheticBookingMutationDependencies;
+    readonly syntheticWorkspaceReads?: SyntheticWorkspaceReadDependencies;
   } = {},
 ): FastifyInstance {
   const app = Fastify({
@@ -69,6 +74,10 @@ export function createApp(
   // mandatory transactional policy ports must be injected by the harness.
   if (options.syntheticBookingMutations)
     registerSyntheticBookingMutations(app, options.syntheticBookingMutations);
+
+  // No workspace or staff schedule read route in normal production startup.
+  if (options.syntheticWorkspaceReads)
+    registerSyntheticWorkspaceReads(app, options.syntheticWorkspaceReads);
 
   app.setNotFoundHandler((_request, reply) =>
     reply.code(404).send({ error: "not-found" }),
