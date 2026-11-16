@@ -211,7 +211,19 @@ export function registerSyntheticWorkspaceReads(
         Date.parse(from) >= Date.parse(to) ||
         Date.parse(to) - Date.parse(from) > 7 * 86_400_000
       ) {
-        return errorReply(reply, 400, "INVALID_REQUEST");
+        return errorReply(
+          reply,
+          400,
+          "INVALID_REQUEST_DEBUG_" +
+            [
+              UUID.test(locationId),
+              UUID.test(staffId),
+              validInstant(from),
+              validInstant(to),
+              Date.parse(from ?? "") >= Date.parse(to ?? ""),
+              Date.parse(to ?? "") - Date.parse(from ?? "") > 7 * 86_400_000,
+            ].join("_"),
+        );
       }
       try {
         const schedule = await readTransaction(pool, async (client) => {
