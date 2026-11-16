@@ -217,38 +217,73 @@ async function checkLabeledControls(cdp, screen) {
 }
 
 async function captureEvidence(cdp, name, stage) {
-  // Wait for short navigation transitions before taking deterministic visual evidence.
-  // This is screenshot-only; interaction assertions run before the pause.
+  // A full-page screenshot of a scrolled page paints position:sticky items
+  // at their *scrolled* location. Reset only for full-document evidence:
+  // otherwise the desktop summary appears hundreds of pixels below its
+  // natural grid anchor, creating a false design regression.
+  // The detail screenshot intentionally clips the current viewport.
   await pause(250);
-  const geometry = await evaluate(cdp, `({
-    innerWidth: innerWidth,
-    innerHeight: innerHeight,
-    fullHeight: document.documentElement.scrollHeight,
-    scrollY: window.scrollY,
-  })`);
-  // Explicit clip prevents Chromium from expanding a mobile screenshot to
-  // include horizontally scrollable child navigation beyond the viewport.
-  const captureHeight = stage === "05-detail"
-    ? geometry.innerHeight
-    : Math.max(geometry.innerHeight, geometry.fullHeight);
-  const screenshot = await cdp.send("Page.captureScreenshot", {
-    format: "png",
-    captureBeyondViewport: true,
-    fromSurface: true,
-    clip: {
-      x: 0,
-      y: stage === "05-detail" ? geometry.scrollY : 0,
-      width: geometry.innerWidth,
-      height: captureHeight,
-      scale: 1,
-    },
-  });
-  const buffer = Buffer.from(screenshot.data, "base64");
-  assert.ok(buffer.length > 1500, name + "/" + stage + ": screenshot is empty");
-  // PNG IHDR width/height; reject visually misleading "mobile" captures.
-  assert.equal(buffer.readUInt32BE(16), geometry.innerWidth, name + "/" + stage + ": wrong screenshot width");
-  assert.equal(buffer.readUInt32BE(20), captureHeight, name + "/" + stage + ": wrong screenshot height");
-  writeFileSync(join(evidenceDir, name + "-" + stage + ".png"), buffer);
+  const scrollBefore = await evaluate(cdp, "window.scrollY");
+  const fullDocument = stage !== "05-detail";
+  if (fullDocument) {
+    await evaluate(cdp, "window.scrollTo(0, 0)");
+    await pause(90);
+  }
+  try {
+    const geometry = await evaluate(cdp, `({
+      innerWidth: innerWidth,
+      innerHeight: innerHeight,
+      fullHeight: document.documentElement.scrollHeight,
+      scrollY: window.scrollY,
+    })`);
+    if (fullDocument) {
+      assert.equal(geometry.scrollY, 0, name + "/" + stage + ": screenshot must start at top");
+    }
+    if (stage === "02-booking" && geometry.innerWidth > 800) {
+      const anchors = await evaluate(cdp, `(() => {
+        const form = document.querySelector(".public-content .booking-panel");
+        const summary = document.querySelector(".public-content .booking-summary-container");
+        return { formTop: form?.getBoundingClientRect().top,
+          summaryTop: summary?.getBoundingClientRect().top };
+      })()`);
+      assert.ok(
+        Number.isFinite(anchors.formTop) &&
+          Number.isFinite(anchors.summaryTop) &&
+          Math.abs(anchors.summaryTop - anchors.formTop) <= 2,
+        name + ": desktop visit summary must align with the form at scroll top " +
+          JSON.stringify(anchors),
+      );
+    }
+    // Explicit clip prevents Chromium from expanding a mobile screenshot to
+    // include horizontally scrollable child navigation beyond the viewport.
+    const captureHeight = fullDocument
+      ? Math.max(geometry.innerHeight, geometry.fullHeight)
+      : geometry.innerHeight;
+    const screenshot = await cdp.send("Page.captureScreenshot", {
+      format: "png",
+      captureBeyondViewport: true,
+      fromSurface: true,
+      clip: {
+        x: 0,
+        y: fullDocument ? 0 : geometry.scrollY,
+        width: geometry.innerWidth,
+        height: captureHeight,
+        scale: 1,
+      },
+    });
+    const buffer = Buffer.from(screenshot.data, "base64");
+    assert.ok(buffer.length > 1500, name + "/" + stage + ": screenshot is empty");
+    // PNG IHDR width/height; reject visually misleading "mobile" captures.
+    assert.equal(buffer.readUInt32BE(16), geometry.innerWidth, name + "/" + stage + ": wrong screenshot width");
+    assert.equal(buffer.readUInt32BE(20), captureHeight, name + "/" + stage + ": wrong screenshot height");
+    writeFileSync(join(evidenceDir, name + "-" + stage + ".png"), buffer);
+  } finally {
+    // Preserve interaction state: screenshots must not change the customer's
+    // scrolling position for the next test step.
+    if (fullDocument && scrollBefore > 0) {
+      await evaluate(cdp, `window.scrollTo(0, ${scrollBefore})`);
+    }
+  }
 }
 
 async function checkWidth(cdp, screen) {
