@@ -232,3 +232,11 @@
   .booking-confirmation .success-receipt dd { font-size: 11px; }
   .booking-confirmation .confirmation-top h2 { font-size: 35px; }
 }
+
+/* Notices complete the same brand vocabulary as the confirmation surface. */
+.alert-ok {
+  color: #526243;
+  background: #f0f5e2;
+  border-color: #dfe9c9;
+}
+.alert-ok .alert-close { color: #526243; }

@@ -40,7 +40,7 @@ Use explicit, typed props and callbacks across screen boundaries. Do not import 
 
 ## Workflow for future AI agents
 
-1. Read `DESIGN.md` and this guide. Find the **one** presentation component and CSS module matching the screen.
+1. Read `AGENTS.md`, `DESIGN.md` and this guide. Find the **one** presentation component and CSS module matching the screen.
 2. Modify that component and its tokens; do not append more rules to `styles.css` or reintroduce a giant `App.svelte` view.
 3. Run `pnpm install --frozen-lockfile`, `pnpm check:ui`, `pnpm --filter @cookie/web check`, `pnpm --filter @cookie/web build`.
 4. Run `node apps/web/scripts/browser-smoke.mjs` (uses built dist, Chrome/Chromium), review full screenshots from 1280×800, 375×812 and 320×568.

@@ -57,5 +57,11 @@ assert.match(app, /<OnboardingScreen\b/, "App must compose the onboarding screen
 assert.match(app, /<OwnerOverview\b/, "App must compose the owner overview");
 assert.match(app, /<BookingForm\b/, "App must compose the booking form");
 assert.match(app, /<CalendarView\b/, "App must compose the calendar");
+for (const name of ["OwnerServicesPage", "OwnerStaffPage", "OwnerSchedulePage", "OwnerLocationsPage", "BookingConfirmation", "DemoState"]) {
+  assert.match(app, new RegExp("<" + name + "\\b"), "App must compose " + name + " instead of inline screen markup");
+}
+assert.ok(!app.includes('<div class="workspace-grid">'), "Owner screen markup belongs in separate Page components");
+assert.ok(existsSync(join(root, "../AGENTS.md")), "Web agent instructions must be present");
+
 
 console.log("PASS Cookie UI file structure: semantic tokens, ordered styles and presentational screens");
