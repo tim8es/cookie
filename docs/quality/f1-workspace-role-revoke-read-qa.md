@@ -2,7 +2,7 @@
 
 ## Status and target
 
-**Unverified pending real PostgreSQL 16 CI.** QA-only branch stacked on backend [PR #173](https://github.com/tim8es/cookie/pull/173), exact parent SHA `48e8ba8b59b85eb8cb31d7b8d0e8cc4dbd4455f2`. This test concerns **policy authorization for a protected workspace read**, not the session/link revocation already covered by [#165](https://github.com/tim8es/cookie/issues/165), nor the membership/session lock-order regression in [#174](https://github.com/tim8es/cookie/pull/174).
+**Confirmed RED against proposed strict Workspace read freshness contract** — [full F1 CI #43918414828](https://github.com/tim8es/cookie/actions/runs/43918414828) on test head `2fbad83301623cb73bc1a4878361664a30a4a675`. Lint, Prettier, module boundaries, TypeScript, unit PASS; **46/47 real PostgreSQL integrations PASS, 1 target assertion FAIL** at test line 174: `HTTP 200 !== expected 403`. Build/browser did not run after the PostgreSQL gate failed. QA-only branch stacked on backend [PR #173](https://github.com/tim8es/cookie/pull/173), exact parent SHA `48e8ba8b59b85eb8cb31d7b8d0e8cc4dbd4455f2`. This test concerns **policy authorization for a protected workspace read**, not the session/link revocation already covered by [#165](https://github.com/tim8es/cookie/issues/165), nor the membership/session lock-order regression in [#174](https://github.com/tim8es/cookie/pull/174).
 
 ## Invariant
 
@@ -23,6 +23,12 @@ When a Role with the only `booking.read` grant is deactivated and that PostgreSQ
 TEST_DATABASE_URL=postgresql://cookie_ci:cookie_ci@127.0.0.1:5432/cookie_ci pnpm exec tsx --test --test-concurrency=1 apps/api/test/workspace-role-revoke-read-qa.integration.test.ts
 ```
 
-Review the **exact-head** F1 Actions run before treating this as GREEN or RED. A failure in formatting, TypeScript, test fixtures or PostgreSQL setup is not evidence of a security bug. The current source review suggests `workspace-http.ts` reads `loadPolicySnapshot` without the `lockPolicyRows` used by `requireTenantPermission`; this is **a hypothesis until the real PG interleaving runs**.
+## Result and policy classification
+
+The independent Role deactivation UPDATE committed **after** the actual policy SQL SELECT returned but **before** the HTTP adapter consumed the held result and completed its decision. The GET returned 200. This proves the current adapter does not synchronize protected Workspace policy snapshots through the end of the read transaction. Session validity itself was real and unchanged; this is not a Cookie session revocation test.
+
+**Important ambiguity:** The SQL policy snapshot was read before revocation committed. If the product chooses a *read-first* linearization point at the successful policy SELECT, then an overlapping revoke is permitted to commit before the HTTP response without invalidating that in-flight read. The RED is therefore against an intentionally **stricter proposed consistency contract**, not sufficient alone to establish an unauthorized production information disclosure or a release-blocking vulnerability. [Issue #175](https://github.com/tim8es/cookie/issues/175) requires the owner to select and document the contract. For strict semantics, acquire Membership/RoleAssignment/Role authority locks before the Session lock and retain them through transaction COMMIT. For snapshot/read-first semantics, assert a read that **begins after revoke COMMIT** denies, and specify UI capability-cache invalidation. Do not mark either policy as approved by a red test alone.
+
+The prior diagnostic CI failed on formatting before integration, so its outcome is **not** cited as a security result. The temporary formatter workflow was deleted. Backend PR #173 advanced independently during this test; the QA branch does not change backend production source or another agent's test file.
 
 No production code, migrations, CI or any other agent's branches were changed. No real Telegram user, PII, external provider, payments or deployment. Related [#113](https://github.com/tim8es/cookie/issues/113), [#165](https://github.com/tim8es/cookie/issues/165), [#173](https://github.com/tim8es/cookie/pull/173).
