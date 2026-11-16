@@ -1,0 +1,29 @@
+name: Temporary QA 183 formatter diagnostic
+on:
+  pull_request:
+    branches:
+      - fix/f1-113-workspace-role-revoke-lock-20261116
+  push:
+    branches:
+      - qa/f1-workspace-revoked-cookie-read-20261116
+permissions:
+  contents: read
+jobs:
+  formatted-qa-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Print exact formatted QA source
+        run: |
+          echo QA183_START
+          pnpm exec prettier apps/api/test/workspace-cookie-revocation-qa.integration.test.ts | base64 -w0
+          echo
+          echo QA183_END
