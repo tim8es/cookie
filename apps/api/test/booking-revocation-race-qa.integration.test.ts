@@ -73,6 +73,8 @@ async function raceRevocation(
     readonly table: PermissionTable;
     readonly tenant: string;
     readonly rowId: string;
+    /** Also exercise revocation by editing the granted permission, not just active flags. */
+    readonly revokeKind?: "deactivate" | "clear-role-permissions";
     readonly submit: (hold: () => Promise<void>) => Promise<unknown>;
   },
 ): Promise<RaceResult> {
@@ -102,21 +104,28 @@ async function raceRevocation(
   ]);
   assert.equal(wasReached, true, "domain policy checkpoint must be reached");
 
+  assert.ok(
+    input.revokeKind !== "clear-role-permissions" || input.table === "roles",
+    "Only roles can have permissions removed",
+  );
+  const column = input.table === "memberships" ? "identity_id" : "id";
+  const revokeSql =
+    "UPDATE cookie_identity." +
+    input.table +
+    (input.revokeKind === "clear-role-permissions"
+      ? " SET permissions=ARRAY[]::text[]"
+      : " SET active=false") +
+    " WHERE tenant_id=$1::uuid AND " +
+    column +
+    "=$2::uuid";
+
   const revoker = await pool.connect();
   let revokeCommittedFirst = false;
   let revokeSerialized = false;
   try {
     await revoker.query("BEGIN");
     await revoker.query("SET LOCAL lock_timeout='500ms'");
-    const column = input.table === "memberships" ? "identity_id" : "id";
-    await revoker.query(
-      "UPDATE cookie_identity." +
-        input.table +
-        " SET active=false WHERE tenant_id=$1::uuid AND " +
-        column +
-        "=$2::uuid",
-      [input.tenant, input.rowId],
-    );
+    await revoker.query(revokeSql, [input.tenant, input.rowId]);
     await revoker.query("COMMIT");
     revokeCommittedFirst = true;
   } catch (error) {
@@ -133,15 +142,7 @@ async function raceRevocation(
   if (revokeSerialized) {
     // The command was allowed to finish before revocation. This is a safe
     // serialization outcome, not evidence of a revocation bypass.
-    const column = input.table === "memberships" ? "identity_id" : "id";
-    await pool.query(
-      "UPDATE cookie_identity." +
-        input.table +
-        " SET active=false WHERE tenant_id=$1::uuid AND " +
-        column +
-        "=$2::uuid",
-      [input.tenant, input.rowId],
-    );
+    await pool.query(revokeSql, [input.tenant, input.rowId]);
   }
 
   return {
@@ -333,6 +334,33 @@ test(
                 actor,
                 bookingId: seed.bookingId,
                 idempotencyKey: "race-cancel-after-policy-read",
+              },
+              hold,
+            ),
+        }),
+      );
+
+      // Role permission grants can be revoked without toggling active.
+      // This must obey the same authorization/COMMIT ordering as a disable.
+      await pool.query(
+        `UPDATE cookie_identity.role_assignments SET active=true
+         WHERE tenant_id=$1::uuid AND id=$2::uuid`,
+        [tenant, assignment],
+      );
+      races.push(
+        await raceRevocation(pool, {
+          label: "booking.create / role permissions removed",
+          table: "roles",
+          revokeKind: "clear-role-permissions",
+          tenant,
+          rowId: role,
+          submit: (hold) =>
+            createBookingInternal(
+              pool,
+              {
+                ...base,
+                startAt: "2028-12-14T16:00:00Z",
+                idempotencyKey: "race-create-permission-removal",
               },
               hold,
             ),
