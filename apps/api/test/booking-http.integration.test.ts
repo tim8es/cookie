@@ -98,7 +98,7 @@ test(
       await pool.query(
         `INSERT INTO cookie_identity.roles
            (tenant_id,id,base_type,display_name,permissions)
-         VALUES ($1,$2,'owner','Owner',ARRAY['booking.create','booking.read']),
+         VALUES ($1,$2,'owner','Owner',ARRAY['booking.create','booking.read','booking.cancel','booking.reschedule']),
                 ($1,$3,'admin','Scoped admin',ARRAY['booking.create','booking.read'])`,
         [tenant, role, adminRole],
       );
