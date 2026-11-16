@@ -202,7 +202,7 @@ test(
         url: scheduleUrl,
         headers: ownerHeader,
       });
-      assert.equal(schedule.statusCode, 200);
+      assert.equal(schedule.statusCode, 200, schedule.body);
       assert.equal(schedule.json().staffId, staff);
       assert.equal(schedule.json().timeZone, "UTC");
       assert.equal(schedule.json().shifts.length, 1);
