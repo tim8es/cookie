@@ -216,6 +216,8 @@ export function registerSyntheticWorkspaceReads(
           400,
           "INVALID_REQUEST_DEBUG_" +
             [
+              "L" + String(locationId).slice(0, 45),
+              "S" + String(staffId).slice(0, 45),
               UUID.test(locationId),
               UUID.test(staffId),
               validInstant(from),
