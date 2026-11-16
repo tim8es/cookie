@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/authorization.js";
 import { createApp } from "../src/app.js";
+import { verifyTenantActor } from "../src/session-context.js";
 import type {
   ProtectedSessionDependencies,
   VerifiedSession,
+  BearerSessionVerifier,
 } from "../src/session-context.js";
 
 const TENANT_A = "11111111-1111-4111-8111-111111111111";
@@ -197,4 +200,35 @@ test("policy denial is 403, storage failure is 503 with no sensitive details", a
   assert.equal(unavailable.statusCode, 503);
   assert.deepEqual(unavailable.json(), { error: "unavailable" });
   assert.doesNotMatch(unavailable.body, /password=secret/);
+});
+
+test("Cookie-format verifier must bind server-owned digest and issuer/audience", async () => {
+  const token = "cs_" + "A".repeat(43);
+  const session = validSession();
+  const hash = createHash("sha256").update(token).digest("hex");
+  const authority = {
+    tokenSha256: hash,
+    issuer: "cookie-qa",
+    audience: "booking-qa",
+  };
+  const authenticate = async (provided: unknown) =>
+    verifyTenantActor("Bearer " + token, TENANT_A, {
+      verifyBearerToken: async () => ({
+        ...session,
+        opaqueSessionAuthority: provided,
+      }),
+    } as BearerSessionVerifier);
+  const accepted = await authenticate(authority);
+  assert.deepEqual(accepted.actor?.opaqueSessionAuthority, authority);
+  for (const malformed of [
+    undefined,
+    null,
+    { ...authority, tokenSha256: "f".repeat(64) },
+    { ...authority, issuer: "" },
+    { ...authority, audience: 12 },
+  ]) {
+    const rejected = await authenticate(malformed);
+    assert.equal(rejected.actor, undefined);
+    assert.equal(rejected.status, 401);
+  }
 });

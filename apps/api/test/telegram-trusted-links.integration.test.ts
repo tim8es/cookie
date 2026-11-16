@@ -134,6 +134,13 @@ test(
         tenantId: tenantA,
         identityId: identityA,
         expiresAtUnixSeconds: first.expiresAtUnixSeconds,
+        opaqueSessionAuthority: {
+          tokenSha256: createHash("sha256")
+            .update(first.bearerToken)
+            .digest("hex"),
+          issuer: "cookie-qa-trusted-link",
+          audience: "cookie-qa-session",
+        },
       });
       const persisted = await pool.query<{
         link_id: string;
