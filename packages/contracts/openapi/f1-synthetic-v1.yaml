@@ -109,6 +109,9 @@ paths:
         Read-only, not a reservation or guaranteed quote. Requires booking.create.
         Service and staff must be active and assigned. Slots use a one-minute grid,
         and cross-branch staff occupancy includes post-service buffer.
+        priceKopecks is the server-owned current Service base price at read time,
+        or null when no active staff-service assignment exists; not a committed
+        quote, discount calculation or promise of final CreateBooking price.
       parameters:
         - name: serviceId
           in: query
@@ -129,8 +132,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [slots]
+                required: [slots, priceKopecks]
                 properties:
+                  priceKopecks:
+                    type: [string, "null"]
+                    pattern: "^[0-9]+$"
+                    description: Server-owned current base price in kopecks, not final Quote.
                   slots:
                     type: array
                     items: { $ref: "#/components/schemas/Slot" }
