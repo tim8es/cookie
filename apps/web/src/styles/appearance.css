@@ -44,7 +44,10 @@
   cursor: pointer;
 }
 .appearance-save { width: 100%; color: #fff; background: #513558; border: 0; }
-.appearance-save:hover { background: #392542; }
+.appearance-save:hover:not(:disabled) { background: #392542; }
+.appearance-save:disabled { background: #9887a0; cursor: default; }
+.appearance-open:disabled { color: #8e8394; border-color: #e6e0e8; cursor: default; }
+.appearance-open:disabled:hover { background: white; }
 .appearance-open { width: 100%; background: white; color: #4c3557; border: 1px solid #d9ccde; }
 .appearance-open:hover { background: #f6f2f7; }
 .appearance-safety, .appearance-preview-hint { color: #776b7c; font-size: 11px; line-height: 1.5; margin: 13px 0 0; }
