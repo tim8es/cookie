@@ -169,22 +169,28 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
     await cdp.send("Network.enable");
     const external = [];
     let bookingPosts = 0;
+    const bookingPostIds = new Set();
+    const bookingHttpStatuses = [];
     cdp.on("Runtime.exceptionThrown", (event) => {
       runtimeErrors.push(event?.exceptionDetails?.exception?.description ?? event?.exceptionDetails?.text);
     });
     cdp.on("Network.loadingFailed", (event) => {
       networkFailures.push(event?.errorText ?? "unknown request failure");
     });
-    cdp.on("Network.responseReceived", ({ response }) => {
+    cdp.on("Network.responseReceived", ({ requestId, response }) => {
+      if (bookingPostIds.has(requestId)) bookingHttpStatuses.push(response.status);
       if (response?.status >= 400)
         networkFailures.push(response.status + " " + response.url);
     });
-    cdp.on("Network.requestWillBeSent", ({ request }) => {
+    cdp.on("Network.requestWillBeSent", ({ request, requestId }) => {
       if (!request?.url?.startsWith("http")) return;
       const host = new URL(request.url).hostname;
       if (host !== "127.0.0.1") external.push(request.url);
       if (request.url.includes(syntheticBearer)) external.push("Synthetic bearer leaked in request URL");
-      if (request.url.includes("/v1/organizations/") && request.method === "POST") bookingPosts++;
+      if (request.url.includes("/v1/organizations/") && request.method === "POST") {
+        bookingPosts++;
+        bookingPostIds.add(requestId);
+      }
     });
     await cdp.send("Emulation.setDeviceMetricsOverride", {
       width: 375, height: 812, deviceScaleFactor: 1,
@@ -235,8 +241,15 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
         assert.ok(choices > 0, "409 must offer freshly fetched backend availability");
       }
       assert.equal(bookingPosts, 1, "One POST only; no implicit retry or duplicate");
+      assert.deepEqual(
+        bookingHttpStatuses,
+        [outcome === "conflict" ? 409 : 403],
+        "Network.responseReceived must prove the real Booking POST status, not only UI text",
+      );
       assert.deepEqual(external, [], "Synthetic client must not make external requests");
       assert.deepEqual(runtimeErrors, [], "Forbidden/conflict must be handled by Svelte");
+      const layout = await evaluate(cdp, "({width:innerWidth, scrollWidth:document.documentElement.scrollWidth})");
+      assert.ok(layout.scrollWidth <= layout.width + 1, "Svelte negative state overflows mobile viewport");
       return { outcome, requests: bookingPosts };
     }
     const receipt = await poll("Server-confirmed receipt rendered by Svelte UI", async () =>
@@ -251,6 +264,7 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
     assert.ok(receipt.includes("1\u00a0755,55 ₽"), "UI must display real committed base price");
     assert.ok(receipt.includes("13.04.2027, 10:00 UTC"), "UI must display backend-confirmed UTC start");
     assert.ok(bookingPosts === 1, "Exactly one browser-originated CreateBooking POST");
+    assert.deepEqual(bookingHttpStatuses, [201], "Real Booking POST must return 201");
     assert.deepEqual(external, [], "Test browser must not request external hosts");
     assert.deepEqual(runtimeErrors, [], "Browser must not emit uncaught Svelte exceptions");
     const layout = await evaluate(cdp, "({width:innerWidth, scrollWidth:document.documentElement.scrollWidth})");
