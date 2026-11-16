@@ -57,10 +57,14 @@ test(
                 if (
                   failAvailabilityRefresh &&
                   statement.includes("SELECT service.duration_minutes") &&
-                  statement.includes("FROM cookie_staff.service_assignments assignment") &&
+                  statement.includes(
+                    "FROM cookie_staff.service_assignments assignment",
+                  ) &&
                   !statement.includes("FOR SHARE")
                 ) {
-                  throw new Error("Synthetic post-409 availability service failure");
+                  throw new Error(
+                    "Synthetic post-409 availability service failure",
+                  );
                 }
                 return target.query(statement, values);
               };
@@ -1061,7 +1065,10 @@ test(
           [tenant, staff, locationA],
         );
       }
-      assert.deepEqual(emptyBrowser, { outcome: "conflict-empty", requests: 1 });
+      assert.deepEqual(emptyBrowser, {
+        outcome: "conflict-empty",
+        requests: 1,
+      });
       assert.deepEqual((await stateCounts()).rows[0], {
         bookings: "6",
         receipts: "8",
