@@ -34,6 +34,38 @@ export function readTelegramInitData(win: Window | undefined): string | null {
   return typeof raw === "string" && raw.length > 0 ? raw : null;
 }
 
+/**
+ * The Telegram object is not available until the official WebApp script runs.
+ * Load it only after the caller selected real API mode. Mock previews must not
+ * load any external SDK, and its contents never count as authenticated claims.
+ */
+export async function loadTelegramInitData(
+  win: Window,
+  doc: Document,
+): Promise<string | null> {
+  const existing = readTelegramInitData(win);
+  if (existing) return existing;
+
+  return new Promise((resolve) => {
+    const script = doc.createElement("script");
+    script.src = "https://telegram.org/js/telegram-web-app.js";
+    script.async = true;
+    script.referrerPolicy = "no-referrer";
+
+    let complete = false;
+    const finish = () => {
+      if (complete) return;
+      complete = true;
+      win.clearTimeout(timeout);
+      resolve(readTelegramInitData(win));
+    };
+    const timeout = win.setTimeout(finish, 7_000);
+    script.onload = finish;
+    script.onerror = finish;
+    doc.head.append(script);
+  });
+}
+
 async function request(
   fetcher: typeof fetch,
   url: string,
