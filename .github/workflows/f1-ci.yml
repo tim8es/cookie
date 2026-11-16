@@ -43,11 +43,6 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
-      - name: Diagnostic canonical QA formatting diff (temporary)
-        run: |
-          pnpm exec prettier --write apps/api/test/session-context-postgres-http-qa.integration.test.ts
-          git diff -- apps/api/test/session-context-postgres-http-qa.integration.test.ts
-          git diff --exit-code -- apps/api/test/session-context-postgres-http-qa.integration.test.ts
       - name: Check source formatting
         run: pnpm format:check
       - name: Check kernel and contract module boundaries
