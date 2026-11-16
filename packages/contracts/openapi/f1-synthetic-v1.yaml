@@ -1,0 +1,319 @@
+openapi: 3.1.0
+info:
+  title: Cookie F1 Synthetic Staff-Assisted Booking API
+  version: 1.0.0-test
+  description: |
+    Experimental opt-in API for synthetic F1 integration. Not a public client
+    API and not enabled in apps/api/src/main.ts. A trusted injected bearer
+    verifier and a trusted in-transaction entitlement callback are mandatory.
+    Customer ownership proof and live AuthN are not implemented.
+servers: []
+security:
+  - syntheticBearer: []
+tags:
+  - name: SyntheticBooking
+    description: Synthetic staff-assisted operations only, no external availability.
+paths:
+  /v1/organizations/{tenantId}/locations/{locationId}/catalog:
+    parameters:
+      - $ref: "#/components/parameters/tenantId"
+      - $ref: "#/components/parameters/locationId"
+    get:
+      tags: [SyntheticBooking]
+      operationId: listSyntheticCatalogOffers
+      description: Requires booking.create permission at the selected location.
+      responses:
+        "200":
+          description: Active service/staff combinations and server base quote.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [offers]
+                properties:
+                  offers:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CatalogOffer"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/AccessDenied" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/organizations/{tenantId}/locations/{locationId}/availability:
+    parameters:
+      - $ref: "#/components/parameters/tenantId"
+      - $ref: "#/components/parameters/locationId"
+    get:
+      tags: [SyntheticBooking]
+      operationId: listSyntheticAvailableSlots
+      description: |
+        Read-only, not a reservation or guaranteed quote. Requires booking.create.
+        Service and staff must be active and assigned. Slots use a one-minute grid,
+        and cross-branch staff occupancy includes post-service buffer.
+      parameters:
+        - name: serviceId
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/Uuid" }
+        - name: staffId
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/Uuid" }
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Currently available slots, no guarantee at create time.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [slots]
+                properties:
+                  slots:
+                    type: array
+                    items: { $ref: "#/components/schemas/Slot" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/AccessDenied" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/organizations/{tenantId}/bookings:
+    parameters:
+      - $ref: "#/components/parameters/tenantId"
+    post:
+      tags: [SyntheticBooking]
+      operationId: createSyntheticBooking
+      description: |
+        Staff-assisted create only. Uses existing internal CreateBooking transaction
+        and must return Confirmed with bookingId only after commit. No client
+        supplied tenant, quote, price or status is trusted. Retry a lost response
+        with the SAME idempotency key and EXACT SAME payload.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBookingRequest"
+      responses:
+        "201":
+          description: Committed booking receipt, including on matching-key replay.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookingReceipt" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/AccessDenied" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/organizations/{tenantId}/bookings/{bookingId}:
+    parameters:
+      - $ref: "#/components/parameters/tenantId"
+      - $ref: "#/components/parameters/bookingId"
+    get:
+      tags: [SyntheticBooking]
+      operationId: getSyntheticBooking
+      description: Requires booking.read permission at persisted booking staff/location.
+      responses:
+        "200":
+          description: Current persisted booking record.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookingDetail" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/AccessDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/organizations/{tenantId}/locations/{locationId}/calendar:
+    parameters:
+      - $ref: "#/components/parameters/tenantId"
+      - $ref: "#/components/parameters/locationId"
+    get:
+      tags: [SyntheticBooking]
+      operationId: listSyntheticCalendar
+      description: |
+        Requires booking.read at selected location. UTC half-open from/to range
+        max seven days. Fails closed if more than 200 entries (pagination TBD).
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Bookings within exact UTC boundaries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bookings]
+                properties:
+                  bookings:
+                    type: array
+                    items: { $ref: "#/components/schemas/BookingDetail" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/AccessDenied" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+components:
+  securitySchemes:
+    syntheticBearer:
+      type: http
+      scheme: bearer
+      description: |
+        Only a separately injected trusted verifier is supported. There is
+        no live signing/verifying provider, development token issuer or customer login.
+  parameters:
+    tenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Uuid" }
+      description: Must equal tenant from verified session, never selects caller scope.
+    locationId:
+      name: locationId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Uuid" }
+    bookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Uuid" }
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+    UtcMinute:
+      type: string
+      pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:00Z$"
+      example: "2027-04-12T10:00:00Z"
+    Slot:
+      type: object
+      additionalProperties: false
+      required: [startAt, endAt, occupiedUntil]
+      properties:
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        occupiedUntil: { type: string, format: date-time }
+    CatalogOffer:
+      type: object
+      additionalProperties: false
+      required:
+        - serviceId
+        - serviceName
+        - staffId
+        - staffName
+        - durationMinutes
+        - postServiceBufferMinutes
+        - priceKopecks
+        - timeZone
+      properties:
+        serviceId: { $ref: "#/components/schemas/Uuid" }
+        serviceName: { type: string }
+        staffId: { $ref: "#/components/schemas/Uuid" }
+        staffName: { type: string }
+        durationMinutes: { type: integer, minimum: 1 }
+        postServiceBufferMinutes: { type: integer, minimum: 0 }
+        priceKopecks: { type: string, pattern: "^[0-9]+$" }
+        timeZone: { type: string }
+    CreateBookingRequest:
+      type: object
+      additionalProperties: false
+      required: [customerId, locationId, staffId, serviceId, startAt]
+      properties:
+        customerId: { $ref: "#/components/schemas/Uuid" }
+        locationId: { $ref: "#/components/schemas/Uuid" }
+        staffId: { $ref: "#/components/schemas/Uuid" }
+        serviceId: { $ref: "#/components/schemas/Uuid" }
+        startAt: { $ref: "#/components/schemas/UtcMinute" }
+    BookingReceipt:
+      type: object
+      additionalProperties: false
+      required: [bookingId, status, startAt, endAt, occupiedUntil, priceKopecks]
+      properties:
+        bookingId: { $ref: "#/components/schemas/Uuid" }
+        status: { type: string, const: Confirmed }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        occupiedUntil: { type: string, format: date-time }
+        priceKopecks: { type: string, pattern: "^[0-9]+$" }
+    BookingDetail:
+      allOf:
+        - $ref: "#/components/schemas/BookingReceipt"
+        - type: object
+          required: [customerId, locationId, staffId, serviceId]
+          properties:
+            customerId: { $ref: "#/components/schemas/Uuid" }
+            locationId: { $ref: "#/components/schemas/Uuid" }
+            staffId: { $ref: "#/components/schemas/Uuid" }
+            serviceId: { $ref: "#/components/schemas/Uuid" }
+            status:
+              type: string
+              enum: [Confirmed, CancelledByBusiness, CancelledByClient, Completed, NoShow]
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code]
+          properties:
+            code:
+              type: string
+              enum:
+                - INVALID_REQUEST
+                - INVALID_BOOKING_COMMAND
+                - UNAUTHENTICATED
+                - ACCESS_DENIED
+                - BOOKING_CONFLICT
+                - IDEMPOTENCY_KEY_REUSED
+                - BOOKING_NOT_FOUND
+                - BACKEND_UNAVAILABLE
+  responses:
+    InvalidRequest:
+      description: Invalid request or unsupported client value.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthenticated:
+      description: Missing, expired or invalid verified session.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    AccessDenied:
+      description: Tenant mismatch, revoked membership, role or location permission.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: |
+        BOOKING_CONFLICT means slot is no longer available; refresh slots.
+        IDEMPOTENCY_KEY_REUSED means the key has a different payload; do not retry it.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: No booking with this ID exists in the verified tenant.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unavailable:
+      description: |
+        Backend storage or policy unavailable. The response may have been lost
+        after DB COMMIT; retry identical payload with identical key to reconcile.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
