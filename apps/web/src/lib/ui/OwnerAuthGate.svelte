@@ -3,7 +3,7 @@
   import { Button } from "../components/ui/button/index.js";
   import * as Card from "../components/ui/card/index.js";
 
-  export type Phase =
+  type Phase =
     | "unavailable"
     | "loading"
     | "verified"
