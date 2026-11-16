@@ -35,6 +35,7 @@ test(
     const readyTenant = randomUUID();
     const topic = "qa.expirysweep";
     let lockHeld = false;
+    let unrelatedTopicId = "";
     const locker = await pool.connect();
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
@@ -65,6 +66,32 @@ test(
       } finally {
         writer.release();
       }
+
+      const unrelatedWriter = await pool.connect();
+      try {
+        unrelatedTopicId = (
+          await enqueueOutbox(unrelatedWriter, {
+            tenantId: blockedTenant,
+            dedupeKey: "expired-other-topic",
+            topic: "qa.anothertopic",
+            payload: { synthetic: true },
+            maxAttempts: 1,
+          })
+        ).id;
+      } finally {
+        unrelatedWriter.release();
+      }
+      const unrelated = await claimOutbox(pool, {
+        topic: "qa.anothertopic",
+        batchSize: 1,
+      });
+      assert.equal(unrelated[0]?.id, unrelatedTopicId);
+      await pool.query(
+        `UPDATE cookie_jobs.outbox_events
+         SET lease_until = clock_timestamp() - interval '1 second'
+         WHERE id=$1::uuid`,
+        [unrelatedTopicId],
+      );
 
       const first = await claimOutbox(pool, { topic, batchSize: 1 });
       assert.equal(first.length, 1);
@@ -148,6 +175,17 @@ test(
         lease_until: null,
       });
       assert.equal(await acknowledgeOutbox(claimingPool, first[0]!), false);
+      const untouchedOtherTopic = await claimingPool.query<{
+        status: string;
+        attempts: number;
+      }>(
+        "SELECT status, attempts FROM cookie_jobs.outbox_events WHERE id=$1::uuid",
+        [unrelatedTopicId],
+      );
+      assert.deepEqual(untouchedOtherTopic.rows[0], {
+        status: "leased",
+        attempts: 1,
+      });
     } finally {
       if (lockHeld) {
         await locker.query("ROLLBACK").catch(() => undefined);
