@@ -72,7 +72,8 @@ test(
         ttlSeconds: 600,
       });
       const route = "/v1/organizations/" + tenantId + "/workspace-context";
-      const tokenHash = (token: string): Buffer => createHash("sha256").update(token).digest();
+      const tokenHash = (token: string): Buffer =>
+        createHash("sha256").update(token).digest();
       const normalApp = createApp(pool, {
         syntheticWorkspaceReads: { pool, verifier: sessions },
       });
@@ -88,14 +89,20 @@ test(
                   'workspace-qa',clock_timestamp()+interval '10 minutes',$5::uuid)`,
           [tokenHash(token), randomBytes(32), tenantId, identityId, linkId],
         );
-        assert.ok(await sessions.verifyBearerToken(token), "real provider must authorize current token");
+        assert.ok(
+          await sessions.verifyBearerToken(token),
+          "real provider must authorize current token",
+        );
         const positive = await normalApp.inject({
           method: "GET",
           url: route,
           headers: { authorization: "Bearer " + token },
         });
         assert.equal(positive.statusCode, 200, positive.body);
-        assert.equal(positive.json().organization.displayName, organizationName);
+        assert.equal(
+          positive.json().organization.displayName,
+          organizationName,
+        );
         assert.equal(positive.json().locations[0].displayName, locationName);
 
         let reached!: () => void;
@@ -198,9 +205,14 @@ test(
         assert.equal(
           committedWhileReadHeld,
           false,
-          kind + " revocation must not commit while prior read holds its session/link guard",
+          kind +
+            " revocation must not commit while prior read holds its session/link guard",
         );
-        assert.equal(blockedByGuard, true, "independent revoker must conflict with FOR SHARE");
+        assert.equal(
+          blockedByGuard,
+          true,
+          "independent revoker must conflict with FOR SHARE",
+        );
         assert.equal(result.statusCode, 200, result.body);
         assert.equal(result.json().organization.displayName, organizationName);
         assert.equal(result.json().locations[0].displayName, locationName);
@@ -240,14 +252,20 @@ test(
           "cookie_tenancy.locations",
         ]) {
           await pool
-            .query("DELETE FROM " + table + " WHERE tenant_id=$1::uuid", [tenantId])
+            .query("DELETE FROM " + table + " WHERE tenant_id=$1::uuid", [
+              tenantId,
+            ])
             .catch(() => undefined);
         }
         await pool
-          .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid", [tenantId])
+          .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid", [
+            tenantId,
+          ])
           .catch(() => undefined);
         await pool
-          .query("DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [identityId])
+          .query("DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [
+            identityId,
+          ])
           .catch(() => undefined);
       } finally {
         await pool.end();
