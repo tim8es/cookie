@@ -67,7 +67,10 @@ export function createJsonTransport(fetcher: typeof fetch): JsonTransport {
       }
 
       if (!response.ok) {
-        throw new TransportFailure(classifyHttpStatus(response.status), response.status);
+        throw new TransportFailure(
+          classifyHttpStatus(response.status),
+          response.status,
+        );
       }
 
       // A successful empty response is distinct from malformed JSON.
