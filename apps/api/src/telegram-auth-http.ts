@@ -51,4 +51,24 @@ export function registerTelegramAuthExchange(
       }
     },
   );
+
+  // Bearer possession permits revocation of that exact short-lived session.
+  // Authorization-header only, no cookie CSRF fallback and no tenant selector.
+  app.post("/v1/auth/logout", async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    const authorization = request.headers.authorization;
+    const token =
+      typeof authorization === "string"
+        ? /^Bearer (cs_[A-Za-z0-9_-]{43})$/.exec(authorization)?.[1]
+        : null;
+    if (!token) {
+      return reply.code(401).send({ error: "UNAUTHENTICATED" });
+    }
+    try {
+      await sessions.revokeBearerToken(token);
+      return reply.code(204).send();
+    } catch {
+      return reply.code(503).send({ error: "BACKEND_UNAVAILABLE" });
+    }
+  });
 }

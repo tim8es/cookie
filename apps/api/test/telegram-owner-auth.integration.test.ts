@@ -188,7 +188,23 @@ test(
       });
       assert.equal(replay.statusCode, 401);
 
-      assert.equal(await sessions.revokeBearerToken(receipt.accessToken), true);
+      const noCredentialLogout = await app.inject({
+        method: "POST",
+        url: "/v1/auth/logout",
+      });
+      assert.equal(noCredentialLogout.statusCode, 401);
+      const logout = await app.inject({
+        method: "POST",
+        url: "/v1/auth/logout",
+        headers: { authorization: `Bearer ${receipt.accessToken}` },
+      });
+      assert.equal(logout.statusCode, 204);
+      const duplicateLogout = await app.inject({
+        method: "POST",
+        url: "/v1/auth/logout",
+        headers: { authorization: `Bearer ${receipt.accessToken}` },
+      });
+      assert.equal(duplicateLogout.statusCode, 204);
       const denied = await app.inject({
         method: "GET",
         url: `/v1/organizations/${setup.tenantId}/session-context`,
