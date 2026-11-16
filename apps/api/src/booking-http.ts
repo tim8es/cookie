@@ -302,7 +302,11 @@ export function registerSyntheticBookingHttp(
       try {
         const snapshot = await inReadTransaction(pool, (client) =>
           readBookingAvailability(client, {
-            actor, locationId, staffId, serviceId, localDate: date,
+            actor,
+            locationId,
+            staffId,
+            serviceId,
+            localDate: date,
           }),
         );
         const slots = snapshot?.slots ?? [];
@@ -349,7 +353,11 @@ export function registerSyntheticBookingHttp(
       try {
         const snapshot = await inReadTransaction(pool, (client) =>
           readBookingAvailability(client, {
-            actor, locationId, staffId, serviceId, localDate: date,
+            actor,
+            locationId,
+            staffId,
+            serviceId,
+            localDate: date,
           }),
         );
         const slot = snapshot?.slots.find(
