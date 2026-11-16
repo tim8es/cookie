@@ -107,6 +107,10 @@ export interface CookieUiPort {
   createBooking(draft: CreateBookingDraft): Promise<BookingView>;
   /** Local synthetic booking actions only; not server commands. */
   cancelBooking(id: string): Promise<BookingView>;
-  rescheduleBooking(id: string, date: string, time: string): Promise<BookingView>;
+  rescheduleBooking(
+    id: string,
+    date: string,
+    time: string,
+  ): Promise<BookingView>;
   resetDemo(): Promise<void>;
 }

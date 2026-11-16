@@ -288,7 +288,10 @@ export class MockCookieApi implements CookieUiPort {
     if (booking.status !== "demo-confirmed") {
       throw invalid("Отменённую демо-запись нельзя перенести.");
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || localDay(parseDay(date)) !== date) {
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      localDay(parseDay(date)) !== date
+    ) {
       throw invalid("Укажите корректную дату для переноса.");
     }
     const choices = await this.getSlotSuggestions(
@@ -297,7 +300,9 @@ export class MockCookieApi implements CookieUiPort {
       date,
     );
     if (!choices.some((item) => item.time === time)) {
-      throw invalid("Выберите время из настроенных демонстрационных интервалов.");
+      throw invalid(
+        "Выберите время из настроенных демонстрационных интервалов.",
+      );
     }
     const occupied = this.snapshot.bookings.some(
       (item) =>

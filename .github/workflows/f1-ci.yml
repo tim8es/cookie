@@ -81,20 +81,3 @@ jobs:
           path: apps/web/artifacts/visual-smoke/
           if-no-files-found: ignore
           retention-days: 7
-
-      - name: Temporary Prettier capture for demo booking management
-        if: ${{ always() }}
-        run: |
-          pnpm exec prettier --write apps/web/src/lib/model.ts apps/web/src/lib/mock.ts apps/web/src/lib/mock.test.ts
-          echo COOKIE_DEMO_MODEL_START
-          base64 -w0 apps/web/src/lib/model.ts
-          echo
-          echo COOKIE_DEMO_MODEL_END
-          echo COOKIE_DEMO_MOCK_START
-          base64 -w0 apps/web/src/lib/mock.ts
-          echo
-          echo COOKIE_DEMO_MOCK_END
-          echo COOKIE_DEMO_TEST_START
-          base64 -w0 apps/web/src/lib/mock.test.ts
-          echo
-          echo COOKIE_DEMO_TEST_END
