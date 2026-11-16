@@ -125,7 +125,9 @@ export async function readBookingAvailability(
     stepMinutes: 1,
     shifts: intervals(shifts.rows),
     breaks: intervals(blocked.rows.filter((row) => row.kind === "break")),
-    exceptions: intervals(blocked.rows.filter((row) => row.kind === "exception")),
+    exceptions: intervals(
+      blocked.rows.filter((row) => row.kind === "exception"),
+    ),
     occupied: occupied.rows.map((row) => ({
       organizationId: actor.tenantId,
       locationId: row.location_id,
