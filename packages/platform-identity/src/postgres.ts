@@ -1,6 +1,7 @@
 import type { PoolClient, QueryResultRow } from "pg";
 
 import {
+  AuthorizationDeniedError,
   requireSensitiveAuthorization,
   type AuthorizationRequest,
   type Membership,
