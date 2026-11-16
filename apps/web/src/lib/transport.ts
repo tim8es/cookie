@@ -25,6 +25,8 @@ export class TransportFailure extends Error {
   constructor(
     public readonly kind: TransportFailureKind,
     public readonly status: number | null = null,
+    /** Untrusted JSON payload. Only reviewed contract mappers may interpret it. */
+    public readonly responseBody: unknown = undefined,
   ) {
     // Do not leak unreviewed server response bodies, URLs or user data to UI.
     super(`HTTP transport failure: ${kind}`);
@@ -67,9 +69,20 @@ export function createJsonTransport(fetcher: typeof fetch): JsonTransport {
       }
 
       if (!response.ok) {
+        // Keep an untrusted JSON error body available for a future reviewed
+        // domain-code parser. Never interpolate its content into UI messages.
+        let responseBody: unknown;
+        if (response.headers.get("content-type")?.includes("json")) {
+          try {
+            responseBody = (await response.json()) as unknown;
+          } catch {
+            // A missing or malformed body stays unverified.
+          }
+        }
         throw new TransportFailure(
           classifyHttpStatus(response.status),
           response.status,
+          responseBody,
         );
       }
 
