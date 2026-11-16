@@ -5,6 +5,7 @@
   export let organizationName: string;
   export let theme: SalonTheme;
   export let introduction: string;
+  export let hasUnsavedAppearance = false;
   export let onThemeChange: (value: SalonTheme) => void;
   export let onIntroductionChange: (value: string) => void;
   export let onSave: () => void;
@@ -52,7 +53,7 @@
           oninput={(event) => onIntroductionChange(event.currentTarget.value)} required></textarea>
       </label>
       <p class="appearance-counter">{introduction.length} / 120</p>
-      <button type="submit" class="appearance-save">Сохранить оформление демо</button>
+      <button type="submit" class="appearance-save" disabled={!hasUnsavedAppearance}>Сохранить оформление демо</button>
       <p class="appearance-safety">Настройки здесь не опубликованы для реальных клиентов и не изменяют сервер.</p>
     </form>
   </section>
@@ -63,7 +64,7 @@
         <span class="eyebrow">ПРЕДПРОСМОТР</span>
         <h2>Так видит клиент</h2>
       </div>
-      <span class="appearance-preview-badge">Демо</span>
+      <span class="appearance-preview-badge">{hasUnsavedAppearance ? "Не сохранено" : "Сохранено · демо"}</span>
     </div>
     <div class="appearance-preview-window"
       style={`--preview-hero:${selected.hero};--preview-accent:${selected.accent};--preview-monogram:${selected.monogram};--preview-ink:${selected.monogramInk};`}>
@@ -82,7 +83,11 @@
       </div>
       <div class="appearance-preview-credit">Работает на <strong>Cookie</strong></div>
     </div>
-    <p class="appearance-preview-hint">Макет показывает цвета и текст, но не заменяет настоящую страницу записи.</p>
-    <button type="button" class="appearance-open" onclick={onOpenBooking}>Открыть демо-запись</button>
+    <p class="appearance-preview-hint" role="status">
+      {hasUnsavedAppearance
+        ? "В предпросмотре показаны изменения. Сохраните их, чтобы увидеть на странице записи."
+        : "Это миниатюра страницы записи. Откройте демо-запись, чтобы проверить сохранённое оформление."}
+    </p>
+    <button type="button" class="appearance-open" onclick={onOpenBooking} disabled={hasUnsavedAppearance}>Открыть демо-запись</button>
   </aside>
 </div>
