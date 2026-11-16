@@ -29,7 +29,9 @@ function signed(userId: string, nonce = randomUUID()): string {
   return (
     Object.entries(fields)
       .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
-      .join("&") + "&hash=" + hash
+      .join("&") +
+    "&hash=" +
+    hash
   );
 }
 
@@ -107,7 +109,10 @@ test(
 
       // HMAC verification alone must NEVER create a Customer, Identity, link
       // or Cookie session. An approved trusted provisioning step is missing.
-      assert.equal(await sessions.exchangeTelegramInitData(signed(TELEGRAM_ID)), null);
+      assert.equal(
+        await sessions.exchangeTelegramInitData(signed(TELEGRAM_ID)),
+        null,
+      );
       const noLink = await pool.query(
         "SELECT count(*)::int AS n FROM cookie_identity.telegram_identity_links WHERE tenant_id=$1::uuid",
         [tenantA],
@@ -120,7 +125,9 @@ test(
       );
       assert.equal(untrustedAlias, null);
 
-      const first = await sessions.exchangeTelegramInitData(signed(TELEGRAM_ID));
+      const first = await sessions.exchangeTelegramInitData(
+        signed(TELEGRAM_ID),
+      );
       assert.ok(first);
       const verified = await sessions.verifyBearerToken(first.bearerToken);
       assert.deepEqual(verified, {
@@ -152,7 +159,10 @@ test(
       // A Telegram account may belong to multiple organizations; without a
       // reviewed tenant chooser the server must deny the ambiguous exchange.
       await insertLink(tenantB, identityB, linkB);
-      assert.equal(await sessions.exchangeTelegramInitData(signed(TELEGRAM_ID)), null);
+      assert.equal(
+        await sessions.exchangeTelegramInitData(signed(TELEGRAM_ID)),
+        null,
+      );
       assert.ok(
         await sessions.verifyBearerToken(first.bearerToken),
         "existing token is scoped to tenant A, never silently moved to B",
@@ -174,9 +184,14 @@ test(
           WHERE tenant_id=$1::uuid AND id=$2::uuid`,
         [tenantB, linkB],
       );
-      const again = await sessions.exchangeTelegramInitData(signed(TELEGRAM_ID));
+      const again = await sessions.exchangeTelegramInitData(
+        signed(TELEGRAM_ID),
+      );
       assert.ok(again);
-      assert.equal((await sessions.verifyBearerToken(again.bearerToken))?.tenantId, tenantA);
+      assert.equal(
+        (await sessions.verifyBearerToken(again.bearerToken))?.tenantId,
+        tenantA,
+      );
 
       await pool.query(
         `UPDATE cookie_identity.telegram_identity_links
@@ -186,7 +201,10 @@ test(
       );
       assert.equal(await sessions.verifyBearerToken(first.bearerToken), null);
       assert.equal(await sessions.verifyBearerToken(again.bearerToken), null);
-      assert.equal(await sessions.exchangeTelegramInitData(signed(TELEGRAM_ID)), null);
+      assert.equal(
+        await sessions.exchangeTelegramInitData(signed(TELEGRAM_ID)),
+        null,
+      );
 
       const revokedCount = await pool.query<{ n: number }>(
         `SELECT count(*)::int AS n
@@ -200,7 +218,9 @@ test(
       // A fresh, separately verified and consented link can be provisioned
       // by trusted control-plane action, but cannot resurrect old sessions.
       await insertLink(tenantA, identityA, linkNew);
-      const replacement = await sessions.exchangeTelegramInitData(signed(TELEGRAM_ID));
+      const replacement = await sessions.exchangeTelegramInitData(
+        signed(TELEGRAM_ID),
+      );
       assert.ok(replacement);
       assert.ok(await sessions.verifyBearerToken(replacement.bearerToken));
       assert.equal(await sessions.verifyBearerToken(first.bearerToken), null);
@@ -246,11 +266,16 @@ test(
 
 test("trusted Telegram link resolver requires strong independent HMAC key and verified channel ID", async () => {
   assert.throws(
-    () => createPostgresVerifiedTelegramLinkResolver({ userHashSecret: Buffer.alloc(16) }),
+    () =>
+      createPostgresVerifiedTelegramLinkResolver({
+        userHashSecret: Buffer.alloc(16),
+      }),
     /256-bit secret/,
   );
   const secret = Buffer.alloc(32, 44);
-  const resolver = createPostgresVerifiedTelegramLinkResolver({ userHashSecret: secret });
+  const resolver = createPostgresVerifiedTelegramLinkResolver({
+    userHashSecret: secret,
+  });
   secret.fill(1);
   let calls = 0;
   const fakeClient = {
@@ -264,8 +289,17 @@ test("trusted Telegram link resolver requires strong independent HMAC key and ve
     telegramUserId: "279058397",
     authDateUnixSeconds: 1_794_830_400,
   };
-  assert.equal(await resolver(fakeClient as never, { ...validProof, telegramUserId: "0" }), null);
-  assert.equal(await resolver(fakeClient as never, { ...validProof, telegramUserId: "9007199254740993" }), null);
+  assert.equal(
+    await resolver(fakeClient as never, { ...validProof, telegramUserId: "0" }),
+    null,
+  );
+  assert.equal(
+    await resolver(fakeClient as never, {
+      ...validProof,
+      telegramUserId: "9007199254740993",
+    }),
+    null,
+  );
   assert.equal(await resolver(fakeClient as never, validProof), null);
   assert.equal(calls, 1);
 });
