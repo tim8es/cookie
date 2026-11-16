@@ -55,6 +55,9 @@ source for brand colors, editorial typography, surfaces, and radii.
 booking flow, onboarding, responsive layouts, first-run shell and dashboard.
 The older `src/styles.css` is a compatibility baseline for screens not yet
 migrated; new UI work should **not** append styles to that file.
+The week/day calendar and booking details are styled in `src/styles/calendar.css`
+and reuse Card/Button/Badge primitives. On narrow screens, the week is
+keyboard-scrollable within its own region rather than overflowing the page.
 
 **Change the screen only:** `src/lib/ui/OnboardingScreen.svelte`,
 `OwnerOverview.svelte`, `BookingForm.svelte`, `BookingSummary.svelte`,

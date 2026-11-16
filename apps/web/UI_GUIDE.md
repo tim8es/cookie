@@ -13,6 +13,7 @@
 | Owner shell, sidebar, topbar, shared UI helpers | `src/styles/foundation.css`; `src/lib/ui/Sidebar.svelte`, `Topbar.svelte` |
 | Owner dashboard and stats | `src/styles/ledger.css`; `src/lib/ui/OwnerOverview.svelte` |
 | Owner editor forms (services, staff, schedule, branches) | `src/styles/owner-forms.css`; `src/lib/ui/OwnerFormHeader.svelte` and the four `*Form.svelte` components |
+| Calendar, week/day view, booking details dialog | `src/styles/calendar.css`; `src/lib/ui/CalendarView.svelte`, `BookingDetail.svelte` |
 | Narrow-screen behavior | `src/styles/responsive.css` and narrowly scoped screen rules |
 | Generic accessible Button, Input, Card, Badge, Dialog | `src/lib/components/ui/` (version-controlled shadcn-svelte sources) |
 | Data/state, navigation and synthetic API operations | `src/App.svelte` and `src/lib/api.ts` (do not invent backend wire contracts) |
@@ -27,7 +28,8 @@
 - `BookingForm.svelte`: controlled fields, slot choice, submit callback. It never performs a network call.
 - `OwnerFormHeader.svelte`: shared presentational heading for the four owner editor forms. `ServiceForm`, `StaffForm`, `ScheduleForm`, `LocationForm` reuse Card/Button/Input where appropriate and keep native select controls for keyboard/mobile affordances.
 - `BookingSummary.svelte`: presentation only, uses catalog base price **not** a price quote.
-- `CalendarView.svelte` and `BookingDetail.svelte`: synthetic calendar and accessible details, still gradually migrating legacy visual styles.
+- `CalendarView.svelte`: week/day selection, period navigation and local booking details through Button/Card/Badge. The week region scrolls horizontally and is keyboard-focusable on narrow screens.
+- `BookingDetail.svelte`: shared Card/Button/Badge in a contained synthetic details panel. Its existing two-action focus trap, Escape close and focus return remain verified by Chromium; a future full Bits UI dialog migration requires dedicated screen-reader QA.
 - `src/lib/components/ui`: reusable component primitives from a maintained source registry. Prefer reusing their props and classes to adding one-off buttons/cards. Review generated code and keep the lockfile frozen.
 
 Use explicit, typed props and callbacks across screen boundaries. Do not import the API adapter from display components. Avoid duplicating a color or radius inside another screen; add semantic tokens when it will be reused. Component-specific values should stay in that component's CSS module.

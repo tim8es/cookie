@@ -324,11 +324,18 @@ async function scenario(cdp, origin, width, height) {
 
   await click(cdp, ".success-screen .btn-primary");
   await requireDom(cdp, name + " calendar event", "document.querySelector('.calendar-event')");
+  await requireDom(cdp, name + " shared calendar card", "document.querySelector('.calendar-surface[data-slot=card]')");
+  if (width <= 980) {
+    await requireDom(cdp, name + " independently scrollable week", "(() => { const node = document.querySelector('.calendar-week-scroller'); return node && node.scrollWidth > node.clientWidth && node.tabIndex === 0; })()");
+  }
   await checkWidth(cdp, name + " calendar");
   await checkLabeledControls(cdp, name + " calendar");
   await captureEvidence(cdp, name, "04-calendar-week");
   await click(cdp, ".calendar-event");
   await requireDom(cdp, name + " calendar detail", "document.querySelector('[role=dialog] .close-button')");
+  await requireDom(cdp, name + " accessible dialog", "document.querySelector('.calendar-detail-sheet[role=dialog][aria-modal=true][aria-labelledby][aria-describedby]')");
+  await checkLabeledControls(cdp, name + " calendar detail");
+  await checkWidth(cdp, name + " calendar detail");
   await requireDom(cdp, name + " dialog initial focus", "document.activeElement?.classList.contains('close-button')");
   await captureEvidence(cdp, name, "05-detail");
   await keyboard(cdp, "Tab", 9);

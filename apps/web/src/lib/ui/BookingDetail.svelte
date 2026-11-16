@@ -1,5 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { CalendarDays, Clock3, Info, MapPin, UserRound, X } from "@lucide/svelte";
+  import { Badge } from "../components/ui/badge/index.js";
+  import { Button } from "../components/ui/button/index.js";
+  import * as Card from "../components/ui/card/index.js";
   import { longDate } from "../dates";
   import type { BookingView } from "../model";
 
@@ -12,6 +16,8 @@
   let closeButton: HTMLButtonElement;
   let doneButton: HTMLButtonElement;
 
+  // Preserve the existing verified two-action keyboard focus loop and restore
+  // focus to the calendar event that opened this synthetic details sheet.
   onMount(() => {
     const previousFocus = document.activeElement;
     closeButton?.focus();
@@ -42,42 +48,57 @@
 <svelte:window onkeydown={onKeyDown} />
 
 <div class="modal-backdrop" role="presentation">
-  <div
-    class="booking-detail card"
-    role="dialog"
-    aria-modal="true"
+  <Card.Root class="booking-detail calendar-detail-sheet"
+    role="dialog" aria-modal="true"
     aria-labelledby="demo-booking-title"
-  >
-    <div class="card-title">
-      <div>
-        <span class="eyebrow">КАРТОЧКА ЗАПИСИ</span>
-        <h2 id="demo-booking-title">{serviceName(booking.serviceId)}</h2>
+    aria-describedby="demo-booking-subtitle">
+    <div class="calendar-detail-header">
+      <div class="calendar-detail-heading">
+        <span class="calendar-detail-kicker">COOKIE / ДЕТАЛИ ВИЗИТА</span>
+        <Badge variant="secondary" class="calendar-detail-status">Демо-подтверждена</Badge>
       </div>
-      <button
-        bind:this={closeButton}
-        type="button"
-        class="close-button"
-        onclick={onClose}
-        aria-label="Закрыть детали"
-      >×</button>
+      <Button bind:ref={closeButton} variant="ghost" size="icon"
+        type="button" class="close-button" onclick={onClose} aria-label="Закрыть детали">
+        <X size={19} aria-hidden="true" />
+      </Button>
     </div>
-    <div class="detail-table">
-      <div><span>Дата</span><strong>{longDate(booking.date)}</strong></div>
-      <div><span>Время</span><strong>{booking.time}</strong></div>
-      <div><span>Мастер</span><strong>{staffName(booking.staffId)}</strong></div>
-      <div><span>Филиал</span><strong>{locationName(booking.locationId)}</strong></div>
-      <div><span>Псевдоним</span><strong>{booking.clientAlias}</strong></div>
-      <div><span>Статус</span><strong>Демо-подтверждена</strong></div>
+
+    <div class="calendar-detail-hero">
+      <div class="calendar-detail-icon" aria-hidden="true"><CalendarDays size={24}/></div>
+      <h2 id="demo-booking-title">{serviceName(booking.serviceId)}</h2>
+      <p id="demo-booking-subtitle">Локальная тестовая запись. Время на сервере не резервировалось.</p>
     </div>
-    <div class="inline-note">
-      Изменение, перенос и отмена станут доступны только после согласования
-      серверных команд и прав.
+
+    <dl class="detail-table calendar-detail-table">
+      <div>
+        <dt><CalendarDays size={16} aria-hidden="true"/> Дата</dt>
+        <dd>{longDate(booking.date)}</dd>
+      </div>
+      <div>
+        <dt><Clock3 size={16} aria-hidden="true"/> Время</dt>
+        <dd>{booking.time}</dd>
+      </div>
+      <div>
+        <dt><UserRound size={16} aria-hidden="true"/> Мастер</dt>
+        <dd>{staffName(booking.staffId)}</dd>
+      </div>
+      <div>
+        <dt><MapPin size={16} aria-hidden="true"/> Филиал</dt>
+        <dd>{locationName(booking.locationId)}</dd>
+      </div>
+      <div>
+        <dt><UserRound size={16} aria-hidden="true"/> Псевдоним</dt>
+        <dd>{booking.clientAlias}</dd>
+      </div>
+    </dl>
+    <div class="calendar-detail-note">
+      <Info size={16} aria-hidden="true"/>
+      <p>Изменение, перенос и отмена потребуют согласованных серверных команд и проверки прав.</p>
     </div>
-    <button
-      bind:this={doneButton}
-      type="button"
-      class="btn btn-secondary btn-wide"
-      onclick={onClose}
-    >Закрыть</button>
-  </div>
+
+    <Button bind:ref={doneButton} variant="outline" size="lg"
+      type="button" class="btn-wide calendar-detail-close" onclick={onClose}>
+      Закрыть
+    </Button>
+  </Card.Root>
 </div>
