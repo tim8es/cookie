@@ -888,6 +888,78 @@ test(
         receipts: "6",
         events: "6",
       });
+
+      // Real negative UI path #1: browser already rendered a server slot;
+      // another permitted actor reserves it before the user submits.
+      const conflictBrowser = await runF1BrowserBooking(
+        fixtureUrl.toString(),
+        "synthetic-owner",
+        {
+          slotTime: "12:00",
+          outcome: "conflict",
+          beforeSubmit: async () => {
+            const concurrentClaim = await app.inject({
+              method: "POST",
+              url: `${base}/bookings`,
+              headers: {
+                authorization: "Bearer synthetic-owner",
+                "idempotency-key": "browser-competitor-synthetic",
+              },
+              payload: {
+                customerId: customer,
+                locationId: locationA,
+                staffId: staff,
+                serviceId: service,
+                startAt: "2027-04-13T12:00:00Z",
+              },
+            });
+            assert.equal(concurrentClaim.statusCode, 201);
+          },
+        },
+      );
+      assert.deepEqual(conflictBrowser, { outcome: "conflict", requests: 1 });
+      const stateCounts = () =>
+        pool.query<{
+          bookings: string;
+          receipts: string;
+          events: string;
+        }>(
+          `SELECT
+            (SELECT count(*)::text FROM cookie_booking.bookings WHERE tenant_id=$1) AS bookings,
+            (SELECT count(*)::text FROM cookie_booking.command_receipts WHERE tenant_id=$1) AS receipts,
+            (SELECT count(*)::text FROM cookie_jobs.outbox_events WHERE tenant_id=$1) AS events`,
+          [tenant],
+        );
+      assert.deepEqual((await stateCounts()).rows[0], {
+        bookings: "5",
+        receipts: "7",
+        events: "7",
+      });
+
+      // Real negative UI path #2: valid availability was read, then tenant
+      // membership revoked before POST. Svelte must show denial rather than
+      // a receipt; no unauthorized booking/receipt/outbox may be committed.
+      const deniedBrowser = await runF1BrowserBooking(
+        fixtureUrl.toString(),
+        "synthetic-owner",
+        {
+          slotTime: "14:00",
+          outcome: "denied",
+          beforeSubmit: async () => {
+            const revoked = await pool.query(
+              "UPDATE cookie_identity.memberships SET active=false WHERE tenant_id=$1 AND identity_id=$2",
+              [tenant, owner],
+            );
+            assert.equal(revoked.rowCount, 1);
+          },
+        },
+      );
+      assert.deepEqual(deniedBrowser, { outcome: "denied", requests: 1 });
+      assert.deepEqual((await stateCounts()).rows[0], {
+        bookings: "5",
+        receipts: "7",
+        events: "7",
+      });
     } finally {
       await browserFixtureServer?.close();
       if (browserFixtureModulesLink)
