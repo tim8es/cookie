@@ -243,4 +243,12 @@
   .public-content .booking-hero-copy p {
     font-size: 13px; line-height: 1.4;
   }
+  /* The customer should see the first booking controls before a decorative slogan. */
+  .public-content .booking-head.booking-hero { padding: 15px 19px; }
+  .public-content .booking-hero h1 { font-size: 27px; margin: 0 0 7px; }
+  .public-content .booking-hero h1 br,
+  .public-content .booking-hero h1 em { display: none; }
+  .public-content .booking-form { padding-top: 19px; }
+  .public-content .booking-form-header { margin-bottom: 13px; }
+  .public-content .booking-form-header p { display: none; }
 }
