@@ -89,3 +89,46 @@
   *,*::before,*::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
+
+
+/*
+ * Public booking stays a single responsive screen in ordinary mobile browsers
+ * and an embedded Telegram Mini App WebView. The official Telegram bridge may
+ * populate --tg-*-safe-area-inset-*; absent that bridge, CSS env() applies.
+ * These are layout-only values, never session/authentication signals.
+ */
+.public-shell {
+  --cookie-host-top: max(
+    env(safe-area-inset-top, 0px),
+    calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px))
+  );
+  --cookie-host-bottom: max(
+    env(safe-area-inset-bottom, 0px),
+    calc(var(--tg-safe-area-inset-bottom, 0px) + var(--tg-content-safe-area-inset-bottom, 0px))
+  );
+  --cookie-host-left: max(
+    env(safe-area-inset-left, 0px),
+    calc(var(--tg-safe-area-inset-left, 0px) + var(--tg-content-safe-area-inset-left, 0px))
+  );
+  --cookie-host-right: max(
+    env(safe-area-inset-right, 0px),
+    calc(var(--tg-safe-area-inset-right, 0px) + var(--tg-content-safe-area-inset-right, 0px))
+  );
+}
+.public-shell .public-header {
+  height: calc(73px + var(--cookie-host-top));
+  padding-top: var(--cookie-host-top);
+}
+.public-shell .content.public-content {
+  padding-bottom: calc(10px + var(--cookie-host-bottom));
+}
+@media (max-width: 400px) {
+  .public-shell .public-header {
+    padding-left: max(13px, var(--cookie-host-left));
+    padding-right: max(13px, var(--cookie-host-right));
+  }
+  .public-shell .content.public-content {
+    padding-left: max(10px, var(--cookie-host-left));
+    padding-right: max(10px, var(--cookie-host-right));
+  }
+}
