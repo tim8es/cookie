@@ -28,9 +28,13 @@ function proof(userId: number): string {
     .join("\n");
   const secret = createHmac("sha256", "WebAppData").update(BOT).digest();
   const hash = createHmac("sha256", secret).update(check).digest("hex");
-  return Object.entries(fields)
-    .map(([name, value]) => name + "=" + encodeURIComponent(value))
-    .join("&") + "&hash=" + hash;
+  return (
+    Object.entries(fields)
+      .map(([name, value]) => name + "=" + encodeURIComponent(value))
+      .join("&") +
+    "&hash=" +
+    hash
+  );
 }
 
 test(
@@ -64,7 +68,10 @@ test(
     const disabled = createApp(pool);
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
-      await pool.query("INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)", [ownerId]);
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [ownerId],
+      );
       const owner = await provisionOwnerWorkspace(pool, {
         ownerIdentityId: ownerId,
         organizationName: "Synthetic catalog salon",
@@ -82,7 +89,10 @@ test(
       const prefix = "/v1/organizations/" + owner.tenantId + "/services";
       const absent = await disabled.inject({ method: "GET", url: prefix });
       assert.equal(absent.statusCode, 404);
-      assert.equal((await app.inject({ method: "GET", url: prefix })).statusCode, 401);
+      assert.equal(
+        (await app.inject({ method: "GET", url: prefix })).statusCode,
+        401,
+      );
       const exchange = await app.inject({
         method: "POST",
         url: "/v1/auth/telegram/exchange",
@@ -101,15 +111,24 @@ test(
         headers,
       });
       assert.equal(foreign.statusCode, 403);
-      const draft = { displayName: " Synthetic haircut ", durationMinutes: 60, basePriceKopecks: 150000 };
+      const draft = {
+        displayName: " Synthetic haircut ",
+        durationMinutes: 60,
+        basePriceKopecks: 150000,
+      };
       const key = "catalog-post-" + randomUUID();
-      const submit = () => app.inject({
-        method: "POST", url: prefix,
-        headers: { ...headers, "idempotency-key": key },
-        payload: draft,
-      });
+      const submit = () =>
+        app.inject({
+          method: "POST",
+          url: prefix,
+          headers: { ...headers, "idempotency-key": key },
+          payload: draft,
+        });
       const [first, second] = await Promise.all([submit(), submit()]);
-      assert.deepEqual([first.statusCode, second.statusCode].sort(), [200, 201]);
+      assert.deepEqual(
+        [first.statusCode, second.statusCode].sort(),
+        [200, 201],
+      );
       const a = first.json().service;
       const b = second.json().service;
       assert.deepEqual(a, b);
@@ -118,13 +137,15 @@ test(
       assert.equal(a.basePriceKopecks, 150000);
       assert.match(a.id, /^[0-9a-f-]{36}$/);
       const changed = await app.inject({
-        method: "POST", url: prefix,
+        method: "POST",
+        url: prefix,
         headers: { ...headers, "idempotency-key": key },
         payload: { ...draft, durationMinutes: 30 },
       });
       assert.equal(changed.statusCode, 409);
       const invalid = await app.inject({
-        method: "POST", url: prefix,
+        method: "POST",
+        url: prefix,
         headers: { ...headers, "idempotency-key": randomUUID() },
         payload: { ...draft, active: true },
       });
@@ -142,10 +163,16 @@ test(
         "UPDATE cookie_identity.roles SET permissions=ARRAY[\u0027organization.context.read\u0027]::text[] WHERE tenant_id=$1::uuid",
         [owner.tenantId],
       );
-      assert.equal((await app.inject({ method: "GET", url: prefix, headers })).statusCode, 403);
+      assert.equal(
+        (await app.inject({ method: "GET", url: prefix, headers })).statusCode,
+        403,
+      );
       assert.equal((await submit()).statusCode, 403);
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
-      assert.equal((await app.inject({ method: "GET", url: prefix, headers })).statusCode, 401);
+      assert.equal(
+        (await app.inject({ method: "GET", url: prefix, headers })).statusCode,
+        401,
+      );
     } finally {
       await disabled.close();
       await app.close();
