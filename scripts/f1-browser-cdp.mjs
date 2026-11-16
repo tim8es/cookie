@@ -134,8 +134,11 @@ async function click(cdp, selector) {
 export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
   const slotTime = options.slotTime ?? "10:00";
   const outcome = options.outcome ?? "confirmed";
+  const viewportWidth = options.viewportWidth ?? 375;
+  const isConflict = outcome.startsWith("conflict");
   const beforeSubmit = options.beforeSubmit;
-  assert.ok(["confirmed", "conflict", "denied"].includes(outcome));
+  assert.ok(["confirmed", "conflict", "conflict-empty", "conflict-error", "denied"].includes(outcome));
+  assert.ok([375, 1280].includes(viewportWidth), "QA viewports must be explicit and bounded");
   assert.ok(/^\d{2}:\d{2}$/.test(slotTime));
   const page = new URL(url);
   assert.equal(page.protocol, "http:");
@@ -281,8 +284,8 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
       }
     });
     await cdp.send("Emulation.setDeviceMetricsOverride", {
-      width: 375, height: 812, deviceScaleFactor: 1,
-      mobile: false, screenWidth: 375, screenHeight: 812,
+      width: viewportWidth, height: 812, deviceScaleFactor: 1,
+      mobile: false, screenWidth: viewportWidth, screenHeight: 812,
     });
     await cdp.send("Page.navigate", { url });
     await poll("Svelte form and server-side available slots", async () =>
@@ -314,7 +317,7 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
     const availabilityGetsBeforeSubmit = availabilityGets;
     await click(cdp, ".booking-form button[type=submit]");
     if (outcome !== "confirmed") {
-      const title = outcome === "conflict"
+      const title = isConflict
         ? "Выбранное время больше недоступно"
         : "Операция недоступна";
       await poll("Svelte shows verified " + outcome + " without Confirmed", async () =>
@@ -324,26 +327,42 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
             !card.textContent.includes("Запись подтверждена") &&
             !card.querySelector(".booking-attempt-receipt");
         })()`), 25000);
-      if (outcome === "conflict") {
+      if (isConflict) {
         const choices = await evaluate(cdp,
           "document.querySelectorAll('.booking-attempt-slot-options button').length");
-        assert.ok(choices > 0, "409 must offer freshly fetched backend availability");
+        if (outcome === "conflict") {
+          assert.ok(choices > 0, "409 must offer freshly fetched backend availability");
+        } else {
+          assert.equal(choices, 0, "Empty/failed refresh must not expose stale slot alternatives");
+        }
         assert.ok(
           availabilityGets > availabilityGetsBeforeSubmit,
           "409 must refetch availability over HTTP after the conflicting Booking POST",
         );
-        const refreshed = await poll("CDP body of post-409 backend availability", () =>
-          refreshedAvailabilityBodies.find((entry) => entry.afterConflict), 10000);
-        assert.deepEqual(
-          refreshedAvailabilityErrors,
-          [],
-          "A post-409 availability HTTP body must be readable from CDP",
-        );
+        const refreshed = outcome === "conflict-error"
+          ? null
+          : await poll("CDP body of post-409 backend availability", () =>
+            refreshedAvailabilityBodies.find((entry) => entry.afterConflict), 10000);
+        if (outcome !== "conflict-error") {
+          assert.deepEqual(
+            refreshedAvailabilityErrors,
+            [],
+            "A post-409 availability HTTP body must be readable from CDP",
+          );
+        }
         const initial = [...availabilityRequests.values()].find((entry) => !entry.afterConflict);
         assert.ok(initial, "Expected an initial backend availability request");
         const originalUrl = new URL(initial.url);
-        const refreshedUrl = new URL(refreshed.url);
-        assert.equal(refreshed.status, 200, "Post-409 availability must return HTTP 200");
+        const candidate = refreshed ?? [...availabilityRequests.values()].find(
+          (entry) => entry.afterConflict && entry.status === 503,
+        );
+        assert.ok(candidate, "Observed post-409 availability response must exist");
+        const refreshedUrl = new URL(candidate.url);
+        assert.equal(
+          candidate.status,
+          outcome === "conflict-error" ? 503 : 200,
+          "Actual post-409 availability HTTP status must match the synthetic fault mode",
+        );
         assert.equal(refreshedUrl.pathname, originalUrl.pathname, "Refresh must use the same tenant and Location");
         for (const key of ["serviceId", "staffId", "date"]) {
           assert.equal(
@@ -352,11 +371,17 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
             "Refresh must preserve the original " + key,
           );
         }
-        assert.ok(
-          Array.isArray(refreshed.body?.slots),
-          "CDP response body must contain actual backend slots",
-        );
-        const serverTimes = refreshed.body.slots.map((slot) => {
+        if (outcome === "conflict-error") {
+          const errorText = await evaluate(cdp, `document.querySelector(".booking-attempt-status")?.textContent ?? ""`);
+          assert.match(errorText, /Не удалось обновить свободные интервалы/);
+          assert.equal(refreshedAvailabilityBodies.length, 0, "Failed GET cannot produce trusted slot data");
+        } else {
+          assert.ok(
+            Array.isArray(refreshed.body?.slots),
+            "CDP response body must contain actual backend slots",
+          );
+        }
+        const serverTimes = (refreshed?.body?.slots ?? []).map((slot) => {
           assert.match(slot.startAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/);
           return slot.startAt.slice(11, 16);
         });
@@ -371,17 +396,23 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
           false,
           "Fresh backend availability must exclude the newly committed staff slot",
         );
+        if (outcome === "conflict-empty") {
+          assert.deepEqual(serverTimes, [], "Fresh backend must legitimately return zero slots");
+          const bodyText = await evaluate(cdp, `document.querySelector(".booking-attempt-status")?.textContent ?? ""`);
+          assert.ok(!bodyText.includes("Не удалось обновить"), "Empty valid GET is not a transport failure");
+          assert.ok(bodyText.includes("Изменить дату или мастера"), "Empty state must offer safe selection recovery");
+        }
       }
       assert.equal(bookingPosts, 1, "One POST only; no implicit retry or duplicate");
       assert.deepEqual(
         bookingHttpStatuses,
-        [outcome === "conflict" ? 409 : 403],
+        [isConflict ? 409 : 403],
         "Network.responseReceived must prove the real Booking POST status, not only UI text",
       );
       assert.deepEqual(external, [], "Synthetic client must not make external requests");
       assert.deepEqual(runtimeErrors, [], "Forbidden/conflict must be handled by Svelte");
       const layout = await evaluate(cdp, "({width:innerWidth, scrollWidth:document.documentElement.scrollWidth})");
-      assert.ok(layout.scrollWidth <= layout.width + 1, "Svelte negative state overflows mobile viewport");
+      assert.ok(layout.scrollWidth <= layout.width + 1, "Svelte negative state overflows requested viewport");
       return { outcome, requests: bookingPosts };
     }
     const receipt = await poll("Server-confirmed receipt rendered by Svelte UI", async () =>
