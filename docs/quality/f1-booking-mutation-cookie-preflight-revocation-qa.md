@@ -36,3 +36,7 @@ This **documentation-only** evidence update intentionally leaves the test source
 ## Current-main CI revalidation (2026-11-16)
 
 The independent test originally passed [full CI #43925220385](https://github.com/tim8es/cookie/actions/runs/43925220385) against earlier `main` including canonical Cookie bearer #173. The PR base has now been refreshed to commit `53de65ae8e7b833e1fc7ff756943c78430ca216e`, which also contains bounded worker #166 and hardened F1 CI #139. This documentation-only update forces a full exact-head run on that combined tree; test assertions, endpoints and synthetic fixtures are **unchanged**. Do not merge on the older green run. No production deployment or real customer/Telegram data.
+
+## Integration base advanced during review
+
+After the full green SHA `91c4bde807d05713fda99b2c0be72243d8e23822`, `main` advanced again from `58fc6a9eef14a052578b7fdf66478b7f4f30f316` to `53de65ae8e7b833e1fc7ff756943c78430ca216e` with Outbox worker and CI workflow consolidation. Re-run the **unchanged QA source** against this base, including any newly mandatory worker/visual CI gates, before claiming a current-main green. Prior check remains valid only for its recorded merge-ref.
