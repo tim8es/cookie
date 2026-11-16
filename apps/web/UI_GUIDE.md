@@ -52,3 +52,12 @@ Use explicit, typed props and callbacks across screen boundaries. Do not import 
 
 ### Non-negotiable product boundaries
 All demo data is synthetic and browser-local. "Demo-confirmed" is not a real server reservation, catalog base price is not a final quote, and there is no production auth/permission enforcement. Backend contracts are reviewed separately; never invent them in UI.
+
+## UX iteration branch: public booking, mobile owner, and time/resource calendar
+
+- `PublicHeader.svelte` shows the salon as the primary identity. In production use a trusted tenant display name, never query-string branding.
+- `BookingSummary.svelte` now takes a `Location` and shows address. The initial base price is only a catalog preview, not a contractual quote.
+- `Sidebar.svelte` owns mobile bottom navigation; `responsive.css` owns its safe-area styles and larger inputs. Keep desktop `.nav-links` for the existing navigation inventory and agent smoke tests.
+- `CalendarView.svelte` accepts `services` and `staff` for a visual staff/time layout of existing bookings; mobile remains a day list. Never turn that view into synthetic availability or editable backend actions.
+- `?surface=telegram-preview` adjusts only presentation. It must not grant Telegram identity, token access, booking permissions or genuine WebApp integration.
+- Chromium smoke now checks salon branding, address, base price, desktop time/resource board, and mobile navigation; physical devices still need manual review.

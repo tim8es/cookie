@@ -4,9 +4,10 @@
   import { Button } from "../components/ui/button/index.js";
   import * as Card from "../components/ui/card/index.js";
   import { longDate } from "../dates";
-  import type { BookingView } from "../model";
+  import type { BookingView, Location } from "../model";
 
   export let booking: BookingView;
+  export let location: Location | undefined;
   export let serviceName: (id: string) => string;
   export let staffName: (id: string) => string;
   export let onOpenCalendar: () => void;
@@ -30,6 +31,7 @@
       <div><dt>Услуга</dt><dd>{serviceName(booking.serviceId)}</dd></div>
       <div><dt><CalendarDays size={15} aria-hidden="true"/> Дата и время</dt><dd>{longDate(booking.date)}, {booking.time}</dd></div>
       <div><dt><UserRound size={15} aria-hidden="true"/> Мастер</dt><dd>{staffName(booking.staffId)}</dd></div>
+      <div><dt>Филиал</dt><dd>{location?.name ?? "—"}{#if location?.address}<small class="confirmation-address">{location.address}</small>{/if}</dd></div>
       <div><dt><Hash size={15} aria-hidden="true"/> Демо-ID</dt><dd class="mono">{booking.id.slice(0, 8)}</dd></div>
     </dl>
     <div class="confirmation-note"><ShieldCheck size={16} aria-hidden="true"/> Настоящее подтверждение записи будет выполнять сервер.</div>

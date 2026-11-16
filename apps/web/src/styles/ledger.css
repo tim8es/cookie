@@ -37,3 +37,7 @@
   .onboarding-header-meta { max-width: 130px; text-align: right; }
   .onboarding-shell .atelier-welcome .welcome-form { padding: 24px 20px; }
 }
+
+/* Metrics describe the actual synthetic workspace, never inferred revenue. */
+.stat-card > strong { font-variant-numeric: tabular-nums; }
+.stat-card > small { font-size: 12px; line-height: 1.45; }

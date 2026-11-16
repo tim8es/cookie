@@ -15,11 +15,11 @@
 </script>
 
           <div class="section-head dashboard-welcome"><div><p class="dashboard-kicker">Cookie / рабочее пространство</p><h1>Хорошего дня!</h1><p><strong>{organizationName}</strong> · здесь начинается порядок в записи</p></div><button class="btn btn-secondary" onclick={() => onNavigate("booking")}>Открыть запись ↗</button></div>
-          <div class="stat-grid">
-            <div class="stat-card"><span>Услуги</span><strong>{data.services.length.toString().padStart(2, "0")}</strong><small>в каталоге</small><span class="stat-symbol" aria-hidden="true">01</span></div>
-            <div class="stat-card"><span>Мастера</span><strong>{data.staff.length.toString().padStart(2, "0")}</strong><small>в команде</small><span class="stat-symbol" aria-hidden="true">02</span></div>
-            <div class="stat-card"><span>Демо-записи</span><strong>{data.bookings.length.toString().padStart(2, "0")}</strong><small>в этой вкладке</small><span class="stat-symbol" aria-hidden="true">03</span></div>
-            <div class="stat-card"><span>Филиалы</span><strong>{data.locations.length.toString().padStart(2, "0")}</strong><small>тестовые точки</small><span class="stat-symbol" aria-hidden="true">04</span></div>
+          <div class="stat-grid" aria-label="Сводка демонстрационного салона">
+            <div class="stat-card"><span>На выбранный день</span><strong>{dayBookings.length}</strong><small>демо-записей</small></div>
+            <div class="stat-card"><span>Мастеров</span><strong>{data.staff.length}</strong><small>в команде</small></div>
+            <div class="stat-card"><span>Услуг</span><strong>{data.services.length}</strong><small>в каталоге</small></div>
+            <div class="stat-card"><span>Настроено графиков</span><strong>{data.schedules.length}</strong><small>демо-смен</small></div>
           </div>
           <div class="dashboard-grid"><section class="card dashboard-onboarding"><div class="card-title"><div><span class="eyebrow">БЫСТРЫЙ СТАРТ</span><h2>Подготовьте салон к первой записи</h2></div><span class="round-progress">{stepCount}/5</span></div><div class="checklist">
             {#each [{key:"organization",text:"Создать салон",screen:"home"},{key:"services",text:"Добавить услугу и цену",screen:"services"},{key:"staff",text:"Добавить мастера",screen:"staff"},{key:"schedule",text:"Настроить график",screen:"schedule"},{key:"booking",text:"Создать тестовую запись",screen:"booking"}] as step, index}
