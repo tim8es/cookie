@@ -21,3 +21,7 @@ Keep historical red/green QA evidence on #136/#140; close them as **superseded o
 The first exact-head F1 [run #43923813962](https://github.com/tim8es/cookie/actions/runs/43923813962) completed **SUCCESS** for QA commit `18bc2a84491927d5970cd9f3b98865b1502cb1b7` against then-current `main` `82dd319dbfbb7e23ad19513c3cf076486fb672e2`. The two imported role/tenant QA tests were not modified.
 
 While this run executed, #161 merged a separate bounded alert-delivery maintenance change and `main` advanced to `58fc6a9eef14a052578b7fdf66478b7f4f30f316`. The present documentation-only commit intentionally triggers another full PR CI on the newer merge-base before merging into main. The earlier green run must not be reused as verification of the newer base. No production deployment.
+
+## Current main integration rerun
+
+[F1 CI #43924327926](https://github.com/tim8es/cookie/actions/runs/43924327926) passed the exact prior QA source (head `03a6a55add6dd1c5bf149b5d5144f6c7434de8ae`) on the then-current main. Since that run, the tested main has advanced to `f9df29a2f7c5865da6814c6f6a0423fe47b85569` after #166 worker integration. This documentation-only commit triggers a fresh PR merge-base CI. The imported test assertions remain unchanged; do not treat previous green CI as proof of the new combined state. No deployment.
