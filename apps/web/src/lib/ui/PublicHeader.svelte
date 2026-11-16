@@ -1,29 +1,38 @@
 <script lang="ts">
   import { ArrowLeft, LockKeyhole } from "@lucide/svelte";
-  import { Button } from "../components/ui/button/index.js";
 
   export let organizationName: string;
   export let telegramPreview = false;
+  export let demoMode = false;
   export let onBack: () => void;
+
+  $: salonMonogram = organizationName.trim().slice(0, 1).toLocaleUpperCase("ru-RU") || "С";
 </script>
 
 <header class="public-header">
   <div class="public-brand">
-    <span class="brand-seal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <span class="salon-monogram" aria-hidden="true">{salonMonogram}</span>
     <div class="public-brand-type">
       <strong class="salon-name">{organizationName}</strong>
       <small>Онлайн-запись в салон</small>
     </div>
   </div>
   <div class="public-header-actions">
-    <span class="preview-stamp">{telegramPreview ? "Mini App · демо" : "Демо"} <span class="powered-by">· на платформе Cookie</span></span>
-    <Button type="button" variant="outline" class="public-back" aria-label="Вернуться в демонстрационный кабинет" onclick={onBack}>
-      <ArrowLeft size={16} aria-hidden="true" />
-      <span>В кабинет</span>
-    </Button>
+    <span class="public-service-label">Запись онлайн</span>
   </div>
 </header>
-<div class="public-demo-notice" role="note">
-  <LockKeyhole size={14} aria-hidden="true" />
-  {telegramPreview ? "Визуальный предпросмотр Mini App: Telegram-авторизация и нативные кнопки не подключены" : "Тестовая запись — без передачи данных на сервер"}
-</div>
+
+{#if demoMode}
+  <div class="public-demo-notice" role="note">
+    <LockKeyhole size={14} aria-hidden="true" />
+    <span class="public-demo-copy">
+      {telegramPreview
+        ? "Предпросмотр Mini App: Telegram-авторизация не подключена"
+        : "Демо: запись не передаётся на сервер"}
+    </span>
+    <button class="public-demo-back" type="button" onclick={onBack}>
+      <ArrowLeft size={15} aria-hidden="true" />
+      Вернуться в тестовый кабинет
+    </button>
+  </div>
+{/if}
