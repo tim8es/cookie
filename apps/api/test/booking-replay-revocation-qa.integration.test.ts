@@ -180,10 +180,9 @@ test(
       assert.equal(afterCreate.receipts, "1");
       assert.equal(afterCreate.events, "1");
       await toggle("memberships", "identity_id", owner, false);
-      await assert.rejects(
-        createBookingInternal(pool, create, denyCallback),
-        { code: "ACCESS_DENIED" },
-      );
+      await assert.rejects(createBookingInternal(pool, create, denyCallback), {
+        code: "ACCESS_DENIED",
+      });
       await assert.rejects(
         createBookingInternal(
           pool,
@@ -192,13 +191,19 @@ test(
         ),
         { code: "ACCESS_DENIED" },
       );
-      assert.deepEqual(await state(pool, tenant, created.bookingId), afterCreate);
+      assert.deepEqual(
+        await state(pool, tenant, created.bookingId),
+        afterCreate,
+      );
       await toggle("memberships", "identity_id", owner, true);
       assert.deepEqual(
         await createBookingInternal(pool, create, denyCallback),
         created,
       );
-      assert.deepEqual(await state(pool, tenant, created.bookingId), afterCreate);
+      assert.deepEqual(
+        await state(pool, tenant, created.bookingId),
+        afterCreate,
+      );
 
       const move = {
         actor,
@@ -254,17 +259,22 @@ test(
         ["CancelledByBusiness", "3", "3", "1"],
       );
       await toggle("role_assignments", "id", assignment, false);
-      await assert.rejects(
-        cancelBookingInternal(pool, cancel, denyCallback),
-        { code: "ACCESS_DENIED" },
+      await assert.rejects(cancelBookingInternal(pool, cancel, denyCallback), {
+        code: "ACCESS_DENIED",
+      });
+      assert.deepEqual(
+        await state(pool, tenant, created.bookingId),
+        afterCancel,
       );
-      assert.deepEqual(await state(pool, tenant, created.bookingId), afterCancel);
       await toggle("role_assignments", "id", assignment, true);
       assert.deepEqual(
         await cancelBookingInternal(pool, cancel, denyCallback),
         cancelled,
       );
-      assert.deepEqual(await state(pool, tenant, created.bookingId), afterCancel);
+      assert.deepEqual(
+        await state(pool, tenant, created.bookingId),
+        afterCancel,
+      );
 
       // Historical idempotent create result is returned without reactivating
       // a cancelled booking or generating new Outbox side effects.
@@ -272,7 +282,10 @@ test(
         await createBookingInternal(pool, create, denyCallback),
         created,
       );
-      assert.deepEqual(await state(pool, tenant, created.bookingId), afterCancel);
+      assert.deepEqual(
+        await state(pool, tenant, created.bookingId),
+        afterCancel,
+      );
     } finally {
       const tables = [
         "cookie_booking.time_change_audit",
@@ -303,10 +316,9 @@ test(
             .catch(() => undefined);
         }
         await pool
-          .query(
-            "DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid",
-            [tenant],
-          )
+          .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid", [
+            tenant,
+          ])
           .catch(() => undefined);
         await pool
           .query("DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [
