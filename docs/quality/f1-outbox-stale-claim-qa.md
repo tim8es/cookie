@@ -31,3 +31,7 @@ Current PR #143 has no authoritative `lease_until` check between claim completio
 ## CI execution tracking
 
 The QA PR targets the feature branch of #143 (stacked QA-only diff). Its first head was `6a65565c862be65e762775ffb922c3648ecab495`. The GitHub Actions run must explicitly report this QA head or a later head before interpreting the test; successful CI for parent PR #143 cannot validate the added assertion. If GitHub does not trigger checks for this stacked PR, report **NOT RUN / CI BLOCKED** and ask the platform owner to enable a safe test runner for this branch, rather than falsely using parent CI as proof.
+
+### First CI attempt
+
+- [GitHub Actions #43894035951](https://github.com/tim8es/cookie/actions/runs/43894035951) on QA commit `2783b522cbc969aefb0a56fcb20edac9ca348207`: **FAIL — Prettier formatting only**. The PostgreSQL regression never executed. This is not RED security evidence. The QA branch must remove any temporary formatter diagnostic workflow changes before review/merge.
