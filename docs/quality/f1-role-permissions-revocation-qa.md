@@ -22,6 +22,11 @@ The existing test asserts that no race is both `revokeCommittedFirst` and `fulfi
 - Exact focused command: `pnpm exec tsx --test --test-concurrency=1 apps/api/test/booking-revocation-race-qa.integration.test.ts`.
 - Required full gate: `pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm test:integration` plus the other existing `f1-ci.yml` steps.
 
+## Branch synchronization
+
+- On 2026-11-16, the QA branch was reconciled with `main` merge commit `0c5cffa148c88d169689abe82eedf6abe8cd3e78` (Telegram bot HMAC correction), producing QA merge commit `8dbe1e046d624c1dfc4aeadd0f6069f6385e57e6`.
+- The previously recorded PASS links are exact to their original tested heads. **Current synchronized head requires a separate GitHub Actions run; do not transfer a PASS by ancestry.** No production code was independently edited in this QA PR.
+
 ## Release boundaries and noncoverage
 
 - This is a test of an **internal trusted-actor command**, not public login, production HTTP AuthN, a real browser session or Telegram webhook.
