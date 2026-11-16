@@ -169,6 +169,7 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
     await cdp.send("Network.enable");
     const external = [];
     let bookingPosts = 0;
+    let availabilityGets = 0;
     const bookingPostIds = new Set();
     const bookingHttpStatuses = [];
     cdp.on("Runtime.exceptionThrown", (event) => {
@@ -187,6 +188,9 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
       const host = new URL(request.url).hostname;
       if (host !== "127.0.0.1") external.push(request.url);
       if (request.url.includes(syntheticBearer)) external.push("Synthetic bearer leaked in request URL");
+      if (request.method === "GET" && request.url.includes("/availability")) {
+        availabilityGets++;
+      }
       if (request.url.includes("/v1/organizations/") && request.method === "POST") {
         bookingPosts++;
         bookingPostIds.add(requestId);
@@ -223,6 +227,7 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
     // Another actor can reserve it or revoke this actor's permission before
     // the user clicks Submit. This is a real browser→API negative-path gate.
     if (beforeSubmit) await beforeSubmit();
+    const availabilityGetsBeforeSubmit = availabilityGets;
     await click(cdp, ".booking-form button[type=submit]");
     if (outcome !== "confirmed") {
       const title = outcome === "conflict"
@@ -239,6 +244,15 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
         const choices = await evaluate(cdp,
           "document.querySelectorAll('.booking-attempt-slot-options button').length");
         assert.ok(choices > 0, "409 must offer freshly fetched backend availability");
+        assert.ok(
+          availabilityGets > availabilityGetsBeforeSubmit,
+          "409 must refetch availability over HTTP after the conflicting Booking POST",
+        );
+        const stillOffered = await evaluate(cdp, `(() => {
+          const refreshed = [...document.querySelectorAll(".booking-attempt-slot-options button")];
+          return refreshed.some((button) => button.textContent?.trim() === ${JSON.stringify(slotTime)});
+        })()`);
+        assert.equal(stillOffered, false, "409 must remove the newly booked slot from refreshed choices");
       }
       assert.equal(bookingPosts, 1, "One POST only; no implicit retry or duplicate");
       assert.deepEqual(
