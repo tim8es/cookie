@@ -389,14 +389,17 @@
         {#if createdBooking}
           <BookingConfirmation
             booking={createdBooking}
+            organizationName={org.name}
             location={data.locations.find((item) => item.id === createdBooking?.locationId)}
             serviceName={getService}
             staffName={getStaff}
-            onOpenCalendar={() => { calendarDate = createdBooking!.date; goto("calendar"); }}
             onCreateAnother={() => goto("booking")}
           />
         {:else}
           <PublicBookingHero organizationName={org.name} introduction={data.appearance.introduction} />
+          {#if data.services.length === 0 || data.staff.length === 0 || data.schedules.length === 0}
+            <BookingSetupHint />
+          {:else}
           <BookingForm
             {data}
             staffOptions={bookingStaffOptions}
@@ -418,10 +421,6 @@
             onAliasChange={(value) => clientAlias = value}
             onSubmit={() => void submitBooking()}
           />
-          {#if data.services.length === 0 || data.staff.length === 0 || data.schedules.length === 0}
-            <BookingSetupHint
-              onContinueSetup={() => goto(currentOnboardingStep === "services" ? "services" : currentOnboardingStep === "staff" ? "staff" : "schedule")}
-            />
           {/if}
         {/if}
       {/if}
