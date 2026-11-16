@@ -16,7 +16,10 @@ test("business mutation endpoints are absent without explicit trusted adapters",
   const app = createApp(mockDatabase);
   t.after(async () => app.close());
   for (const suffix of ["cancel", "reschedule"]) {
-    const response = await app.inject({ method: "POST", url: `${base}/${suffix}` });
+    const response = await app.inject({
+      method: "POST",
+      url: `${base}/${suffix}`,
+    });
     assert.equal(response.statusCode, 404);
   }
 });
@@ -38,14 +41,21 @@ test("business mutation HTTP adapter fails closed on absent, invalid, cross-tena
           };
         },
       },
-      assertMayCancel: async () => { policyInvocations++; },
-      assertMayReschedule: async () => { policyInvocations++; },
+      assertMayCancel: async () => {
+        policyInvocations++;
+      },
+      assertMayReschedule: async () => {
+        policyInvocations++;
+      },
     },
   });
   t.after(async () => app.close());
 
   for (const suffix of ["cancel", "reschedule"]) {
-    const anonymous = await app.inject({ method: "POST", url: `${base}/${suffix}` });
+    const anonymous = await app.inject({
+      method: "POST",
+      url: `${base}/${suffix}`,
+    });
     assert.equal(anonymous.statusCode, 401);
     assert.equal(anonymous.json().error.code, "UNAUTHENTICATED");
 
@@ -53,7 +63,8 @@ test("business mutation HTTP adapter fails closed on absent, invalid, cross-tena
       method: "POST",
       url: `/v1/organizations/${OTHER_TENANT}/bookings/${BOOKING}/${suffix}`,
       headers: { authorization: "Bearer synthetic", "idempotency-key": "same" },
-      payload: suffix === "cancel" ? {} : { newStartAt: "2027-04-12T14:00:00Z" },
+      payload:
+        suffix === "cancel" ? {} : { newStartAt: "2027-04-12T14:00:00Z" },
     });
     assert.equal(crossTenant.statusCode, 403);
     assert.equal(crossTenant.json().error.code, "ACCESS_DENIED");
@@ -62,13 +73,22 @@ test("business mutation HTTP adapter fails closed on absent, invalid, cross-tena
       method: "POST",
       url: `${base}/${suffix}`,
       headers: { authorization: "Bearer untrusted", "idempotency-key": "same" },
-      payload: suffix === "cancel" ? {} : { newStartAt: "2027-04-12T14:00:00Z" },
+      payload:
+        suffix === "cancel" ? {} : { newStartAt: "2027-04-12T14:00:00Z" },
     });
     assert.equal(invalidSession.statusCode, 401);
   }
   assert.equal(verifierCalls, 4);
-  const headers = { authorization: "Bearer synthetic", "idempotency-key": "once" };
-  for (const payload of [null, { staffId: IDENTITY }, { status: "CancelledByBusiness" }, { priceKopecks: "0" }]) {
+  const headers = {
+    authorization: "Bearer synthetic",
+    "idempotency-key": "once",
+  };
+  for (const payload of [
+    null,
+    { staffId: IDENTITY },
+    { status: "CancelledByBusiness" },
+    { priceKopecks: "0" },
+  ]) {
     const response = await app.inject({
       method: "POST",
       url: base + "/cancel",
@@ -98,7 +118,8 @@ test("business mutation HTTP adapter fails closed on absent, invalid, cross-tena
       method: "POST",
       url: `${base}/${suffix}`,
       headers: { authorization: "Bearer synthetic" },
-      payload: suffix === "cancel" ? {} : { newStartAt: "2027-04-12T14:00:00Z" },
+      payload:
+        suffix === "cancel" ? {} : { newStartAt: "2027-04-12T14:00:00Z" },
     });
     assert.equal(response.statusCode, 400);
   }
