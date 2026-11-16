@@ -51,12 +51,6 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
-      - name: Temporary formatter diagnostics for Telegram AuthN
-        run: |
-          pnpm exec prettier apps/api/test/telegram-owner-auth.integration.test.ts > /tmp/owner-auth-formatted.ts
-          diff -u apps/api/test/telegram-owner-auth.integration.test.ts /tmp/owner-auth-formatted.ts || true
-          pnpm exec prettier packages/platform-identity/src/operator-link-telegram-cli.ts > /tmp/owner-link-formatted.ts
-          diff -u packages/platform-identity/src/operator-link-telegram-cli.ts /tmp/owner-link-formatted.ts || true
       - name: Lint
         run: pnpm lint
       - name: Check source formatting

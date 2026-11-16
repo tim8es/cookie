@@ -219,39 +219,36 @@ test(
   },
 );
 
-test(
-  "Telegram auth production config refuses unsafe missing TLS and secrets",
-  () => {
-    const pool = {} as Pool;
-    assert.equal(createLiveTelegramSessionProvider({}, pool), null);
-    assert.throws(
-      () =>
-        createLiveTelegramSessionProvider(
-          { COOKIE_TELEGRAM_AUTH_MODE: "yes" },
-          pool,
-        ),
-      /COOKIE_TELEGRAM_AUTH_MODE/,
-    );
-    assert.throws(
-      () =>
-        createLiveTelegramSessionProvider(
-          { COOKIE_TELEGRAM_AUTH_MODE: "enabled" },
-          pool,
-        ),
-      /HMAC_SECRET/,
-    );
-    assert.throws(
-      () =>
-        createLiveTelegramSessionProvider(
-          {
-            COOKIE_TELEGRAM_AUTH_MODE: "enabled",
-            COOKIE_TELEGRAM_USER_HMAC_SECRET: SECRET.toString("hex"),
-            COOKIE_TELEGRAM_BOT_TOKEN: BOT,
-            COOKIE_PUBLIC_ORIGIN: "http://example.com",
-          },
-          pool,
-        ),
-      /HTTPS/,
-    );
-  },
-);
+test("Telegram auth production config refuses unsafe missing TLS and secrets", () => {
+  const pool = {} as Pool;
+  assert.equal(createLiveTelegramSessionProvider({}, pool), null);
+  assert.throws(
+    () =>
+      createLiveTelegramSessionProvider(
+        { COOKIE_TELEGRAM_AUTH_MODE: "yes" },
+        pool,
+      ),
+    /COOKIE_TELEGRAM_AUTH_MODE/,
+  );
+  assert.throws(
+    () =>
+      createLiveTelegramSessionProvider(
+        { COOKIE_TELEGRAM_AUTH_MODE: "enabled" },
+        pool,
+      ),
+    /HMAC_SECRET/,
+  );
+  assert.throws(
+    () =>
+      createLiveTelegramSessionProvider(
+        {
+          COOKIE_TELEGRAM_AUTH_MODE: "enabled",
+          COOKIE_TELEGRAM_USER_HMAC_SECRET: SECRET.toString("hex"),
+          COOKIE_TELEGRAM_BOT_TOKEN: BOT,
+          COOKIE_PUBLIC_ORIGIN: "http://example.com",
+        },
+        pool,
+      ),
+    /HTTPS/,
+  );
+});

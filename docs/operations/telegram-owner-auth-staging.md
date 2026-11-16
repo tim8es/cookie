@@ -53,7 +53,7 @@ The command prints only link ID and replay status.
 Only the exact HMAC-verified owner can exchange a signed proof for a Cookie
 bearer; a session expires in 900 seconds and the initial proof must be no older
 than 300 seconds. Store the returned bearer in memory, not localStorage or URL.
-A new Telegram session needs a fresh launch proof; reusing previous initData
+The bearer-only `POST /v1/auth/logout` route revokes its exact Cookie session and returns 204 without exposing tenant metadata. A new Telegram session needs a fresh launch proof; reusing previous initData
 intentionally fails as replay. User self-service linking, phone OTP, multi-
 tenant picker, secure delivery UX/cookie/CSRF, distributed rate limits,
 alerting and consent/deletion runbooks remain unfinished.
