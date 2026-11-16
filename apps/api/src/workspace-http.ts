@@ -21,7 +21,7 @@ export interface SyntheticWorkspaceReadDependencies {
   readonly verifier: BearerSessionVerifier;
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 type TenantParams = { tenantId: string };
 type StaffScheduleParams = TenantParams & {
@@ -211,21 +211,7 @@ export function registerSyntheticWorkspaceReads(
         Date.parse(from) >= Date.parse(to) ||
         Date.parse(to) - Date.parse(from) > 7 * 86_400_000
       ) {
-        return errorReply(
-          reply,
-          400,
-          "INVALID_REQUEST_DEBUG_" +
-            [
-              "L" + String(locationId).slice(0, 45),
-              "S" + String(staffId).slice(0, 45),
-              UUID.test(locationId),
-              UUID.test(staffId),
-              validInstant(from),
-              validInstant(to),
-              Date.parse(from ?? "") >= Date.parse(to ?? ""),
-              Date.parse(to ?? "") - Date.parse(from ?? "") > 7 * 86_400_000,
-            ].join("_"),
-        );
+        return errorReply(reply, 400, "INVALID_REQUEST");
       }
       try {
         const schedule = await readTransaction(pool, async (client) => {
