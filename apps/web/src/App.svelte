@@ -22,6 +22,7 @@
   import BookingSetupHint from "./lib/ui/BookingSetupHint.svelte";
   import DemoState from "./lib/ui/DemoState.svelte";
   import OwnerAuthGate from "./lib/ui/OwnerAuthGate.svelte";
+  import RealOwnerServicesPage from "./lib/ui/RealOwnerServicesPage.svelte";
   import {
     authenticateTelegramOwner,
     loadTelegramInitData,
@@ -318,7 +319,11 @@
         onDismissNotice={() => notice = ""}
       />
       {#if apiDisconnected}
-        <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
+        {#if ownerAuthPhase === "verified" && ownerSession}
+          <RealOwnerServicesPage session={ownerSession} onLogout={() => void logoutOwner()} />
+        {:else}
+          <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
+        {/if}
       {:else if initializing || busy}
         <div class="loading-card" role="status"><div class="spinner"></div><span>{initializing ? "Загружаем демо-пространство…" : "Обновляем данные в браузерной сессии…"}</span></div>
       {:else if preview === "error"}
