@@ -105,7 +105,7 @@ test(
             "(token_sha256,telegram_exchange_sha256,tenant_id,identity_id,issuer,audience,issued_at,expires_at,revoked_at)",
             "VALUES($1,$2,$3,$4,'synthetic','booking',",
             "clock_timestamp() - $5::int * INTERVAL '1 hour',",
-            "clock_timestamp() + $6::int * INTERVAL '1 hour',",
+            "clock_timestamp() + $6::int * INTERVAL '30 minutes',",
             "CASE WHEN $7::boolean THEN clock_timestamp() ELSE NULL END)",
           ].join("\n"),
           [
@@ -122,7 +122,7 @@ test(
       await insert(oldA, 4, true, true);
       await insert(oldB, 3, true, false);
       await insert(oldActive, 4, false, false);
-      await insert(recentExpired, 0, true, false);
+      await insert(recentExpired, 1, true, false);
 
       const proofVerifier = createTelegramMiniAppProofVerifier({
         botToken: BOT,
