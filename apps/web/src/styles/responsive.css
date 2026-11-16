@@ -251,4 +251,14 @@
   .public-content .booking-form { padding-top: 19px; }
   .public-content .booking-form-header { margin-bottom: 13px; }
   .public-content .booking-form-header p { display: none; }
+  /* Salon identity may occupy two lines, never a single clipped mobile word. */
+  .public-shell .public-header {
+    height: auto; min-height: calc(73px + var(--cookie-host-top));
+    padding-top: calc(10px + var(--cookie-host-top)); padding-bottom: 10px;
+  }
+  .public-brand strong.salon-name {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    white-space: normal; max-width: 54vw; overflow-wrap: anywhere;
+    overflow: hidden; line-height: 1.17;
+  }
 }
