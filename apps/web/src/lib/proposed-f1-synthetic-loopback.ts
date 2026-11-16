@@ -1,13 +1,13 @@
-import type { BookingAttemptPort } from "./booking-attempt";
-import type { ConfirmedBookingReceiptView } from "./booking-attempt-view";
+import type { BookingAttemptPort } from "./booking-attempt.js";
+import type { ConfirmedBookingReceiptView } from "./booking-attempt-view.js";
 import {
   classifyProposedF1Conflict,
   parseProposedF1Availability,
   proposedF1ReceiptView,
   type ProposedF1Availability,
   type ProposedF1AvailableSlot,
-} from "./proposed-f1-synthetic-wire";
-import { createJsonTransport, TransportFailure } from "./transport";
+} from "./proposed-f1-synthetic-wire.js";
+import { createJsonTransport, TransportFailure } from "./transport.js";
 
 /**
  * TEST-HARNESS ONLY: transport adapter for the PROPOSED, opt-in, staff-assisted

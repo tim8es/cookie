@@ -1,6 +1,6 @@
-import { TransportFailure } from "./transport";
-import type { VerifiedBookingConflict } from "./booking-attempt";
-import type { ConfirmedBookingReceiptView } from "./booking-attempt-view";
+import { TransportFailure } from "./transport.js";
+import type { VerifiedBookingConflict } from "./booking-attempt.js";
+import type { ConfirmedBookingReceiptView } from "./booking-attempt-view.js";
 
 /**
  * Review-only decoder for the PROPOSED F1 synthetic, staff-assisted wire contract:
