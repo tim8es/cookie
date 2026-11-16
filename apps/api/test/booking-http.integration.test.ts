@@ -187,6 +187,41 @@ test(
           ),
       );
 
+      const quoteUrl = (startAt: string) =>
+        `${base}/locations/${locationA}/quote?serviceId=${service}&staffId=${staff}&date=2027-04-12&startAt=${startAt}`;
+      const beforeQuote = await app.inject({
+        method: "GET",
+        url: quoteUrl("2027-04-12T10:00:00Z"),
+        headers: ownerHeader,
+      });
+      assert.equal(beforeQuote.statusCode, 200);
+      assert.deepEqual(beforeQuote.json(), {
+        locationId: locationA,
+        serviceId: service,
+        staffId: staff,
+        startAt: "2027-04-12T10:00:00.000Z",
+        endAt: "2027-04-12T11:00:00.000Z",
+        occupiedUntil: "2027-04-12T11:10:00.000Z",
+        durationMinutes: 60,
+        postServiceBufferMinutes: 10,
+        timeZone: "UTC",
+        priceKopecks: "150000",
+        currency: "RUB",
+        priceKind: "base-service",
+        provisional: true,
+      });
+      const invalidQuote = await app.inject({
+        method: "GET",
+        url: quoteUrl("2027-04-12T10:00:30Z"),
+        headers: ownerHeader,
+      });
+      assert.equal(invalidQuote.statusCode, 400);
+      const unauthenticatedQuote = await app.inject({
+        method: "GET",
+        url: quoteUrl("2027-04-12T10:00:00Z"),
+      });
+      assert.equal(unauthenticatedQuote.statusCode, 401);
+
       const create = (
         key: string,
         body = createBody,
@@ -212,6 +247,14 @@ test(
       assert.equal(receipt.status, "Confirmed");
       assert.match(receipt.bookingId, /^[0-9a-f-]{36}$/);
       assert.equal(receipt.priceKopecks, "150000");
+
+      const lostSlotQuote = await app.inject({
+        method: "GET",
+        url: quoteUrl("2027-04-12T10:00:00Z"),
+        headers: ownerHeader,
+      });
+      assert.equal(lostSlotQuote.statusCode, 409);
+      assert.equal(lostSlotQuote.json().error.code, "BOOKING_CONFLICT");
 
       const retry = await create(winningKey);
       assert.equal(retry.statusCode, 201);
@@ -324,6 +367,21 @@ test(
         receipts: "1",
         events: "1",
       });
+
+      // A provisional quote can change between read and create; the existing
+      // Confirmed booking keeps its original snapshot across a time-only move.
+      await pool.query(
+        "UPDATE cookie_catalog.services SET base_price_kopecks=175000 WHERE tenant_id=$1 AND id=$2",
+        [tenant, service],
+      );
+      const repricedQuote = await app.inject({
+        method: "GET",
+        url: quoteUrl("2027-04-12T14:00:00Z"),
+        headers: ownerHeader,
+      });
+      assert.equal(repricedQuote.statusCode, 200);
+      assert.equal(repricedQuote.json().priceKopecks, "175000");
+      assert.equal(repricedQuote.json().provisional, true);
 
       // Mutations are an independent opt-in business-side surface. Their
       // deadlines are intentionally injected synthetic policies, not defaults.
@@ -445,6 +503,7 @@ test(
         startAt: "2027-04-12T14:00:00Z",
       });
       assert.equal(rebook.statusCode, 201);
+      assert.equal(rebook.json().priceKopecks, "175000");
       assert.notEqual(rebook.json().bookingId, receipt.bookingId);
       const mutationLedger = await pool.query<{
         bookings: string;
