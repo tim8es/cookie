@@ -81,12 +81,3 @@ jobs:
           path: apps/web/artifacts/visual-smoke/
           if-no-files-found: ignore
           retention-days: 7
-
-      - name: Temporary formatter output for combined F1 HTTP test
-        if: ${{ always() }}
-        run: |
-          pnpm exec prettier --write apps/api/test/booking-http.integration.test.ts
-          echo "COOKIE_BACKEND_PRETTIER_START"
-          base64 -w0 apps/api/test/booking-http.integration.test.ts
-          echo
-          echo "COOKIE_BACKEND_PRETTIER_END"
