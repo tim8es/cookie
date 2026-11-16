@@ -59,9 +59,10 @@ test(
 
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
-      await pool.query("INSERT INTO cookie_identity.identities(id) VALUES($1)", [
-        identityId,
-      ]);
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1)",
+        [identityId],
+      );
       await pool.query(
         "INSERT INTO cookie_tenancy.organizations(id,owner_identity_id,display_name) VALUES($1,$2,'Synthetic session revocation tenant')",
         [tenantId, identityId],
@@ -122,9 +123,11 @@ test(
           botToken: BOT,
           maxAgeSeconds: 600,
         }),
-        resolveVerifiedTelegramLink: createPostgresVerifiedTelegramLinkResolver({
-          userHashSecret: SECRET,
-        }),
+        resolveVerifiedTelegramLink: createPostgresVerifiedTelegramLinkResolver(
+          {
+            userHashSecret: SECRET,
+          },
+        ),
         issuer: "cookie-qa",
         audience: "booking-qa",
         ttlSeconds: 600,
@@ -138,8 +141,12 @@ test(
       }> = [];
 
       for (const kind of ["bearer", "telegram-unlink"] as const) {
-        const issued = await sessions.exchangeTelegramInitData(signedInitData());
-        assert.ok(issued, "real signed proof must exchange through trusted link");
+        const issued =
+          await sessions.exchangeTelegramInitData(signedInitData());
+        assert.ok(
+          issued,
+          "real signed proof must exchange through trusted link",
+        );
         let reached!: () => void;
         const checked = new Promise<void>((done) => {
           reached = done;
@@ -195,7 +202,10 @@ test(
               "valid bearer must reach a verified AuthN preflight checkpoint",
             );
             if (kind === "bearer") {
-              assert.equal(await sessions.revokeBearerToken(issued.bearerToken), true);
+              assert.equal(
+                await sessions.revokeBearerToken(issued.bearerToken),
+                true,
+              );
             } else {
               const revoked = await pool.query(
                 "UPDATE cookie_identity.telegram_identity_links SET revoked_at=clock_timestamp() WHERE tenant_id=$1 AND id=$2 AND revoked_at IS NULL",
