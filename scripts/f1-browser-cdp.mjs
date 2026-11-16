@@ -2,24 +2,11 @@
 // No production UI, external network, accounts, payments, or browser automation library.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { get as httpGet } from "node:http";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-
-async function freePort() {
-  const server = createServer();
-  await new Promise((ok, fail) => {
-    server.once("error", fail);
-    server.listen(0, "127.0.0.1", ok);
-  });
-  const address = server.address();
-  await new Promise((ok) => server.close(ok));
-  if (!address || typeof address === "string") throw new Error("No local Chrome port");
-  return address.port;
-}
 
 function browserBinary() {
   const choices = [
@@ -122,16 +109,20 @@ async function click(cdp, selector) {
 }
 
 /**
- * @returns {Promise<{bookingId:string, receipt:string, requests:number}>}
+ * @returns {Promise<{bookingId?:string, receipt?:string, requests:number, outcome:string}>}
  * AuthN is a synthetic test-only bearer verified by the injected Fastify app.
  */
-export async function runF1BrowserBooking(url, syntheticBearer) {
+export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
+  const slotTime = options.slotTime ?? "10:00";
+  const outcome = options.outcome ?? "confirmed";
+  const beforeSubmit = options.beforeSubmit;
+  assert.ok(["confirmed", "conflict", "denied"].includes(outcome));
+  assert.ok(/^\d{2}:\d{2}$/.test(slotTime));
   const page = new URL(url);
   assert.equal(page.protocol, "http:");
   assert.equal(page.hostname, "127.0.0.1");
   assert.ok(!page.searchParams.has("syntheticBearer"), "Test bearer must not be in URL");
   assert.equal(syntheticBearer, "synthetic-owner");
-  const chromePort = await freePort();
   const browserDataDir = mkdtempSync(join(tmpdir(), "cookie-f1-pg-browser-"));
   const chromeLogs = [];
   const runtimeErrors = [];
@@ -143,10 +134,19 @@ export async function runF1BrowserBooking(url, syntheticBearer) {
       "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
       "--disable-background-networking", "--no-first-run",
       "--remote-debugging-address=127.0.0.1",
-      "--remote-debugging-port=" + chromePort,
+      "--remote-debugging-port=0",
       "--user-data-dir=" + browserDataDir, "about:blank",
     ], { stdio: ["ignore", "pipe", "pipe"] });
     chrome.stderr.on("data", (chunk) => chromeLogs.push(String(chunk).slice(0, 500)));
+    // Chromium itself binds an available loopback debugging port and writes
+    // DevToolsActivePort atomically. Avoid reserving/releasing guessed ports.
+    const chromePort = await poll("Chrome DevToolsActivePort", async () => {
+      const portFile = join(browserDataDir, "DevToolsActivePort");
+      if (!existsSync(portFile)) return null;
+      const firstLine = readFileSync(portFile, "utf8").split(/\r?\n/)[0];
+      const port = Number(firstLine);
+      return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
+    }, 20000);
     const target = await poll("Chrome DevTools", async () => {
       const result = await getLocal("http://127.0.0.1:" + chromePort + "/json/list");
       return JSON.parse(result.body).find((x) => x.type === "page" && x.webSocketDebuggerUrl);
@@ -169,22 +169,28 @@ export async function runF1BrowserBooking(url, syntheticBearer) {
     await cdp.send("Network.enable");
     const external = [];
     let bookingPosts = 0;
+    const bookingPostIds = new Set();
+    const bookingHttpStatuses = [];
     cdp.on("Runtime.exceptionThrown", (event) => {
       runtimeErrors.push(event?.exceptionDetails?.exception?.description ?? event?.exceptionDetails?.text);
     });
     cdp.on("Network.loadingFailed", (event) => {
       networkFailures.push(event?.errorText ?? "unknown request failure");
     });
-    cdp.on("Network.responseReceived", ({ response }) => {
+    cdp.on("Network.responseReceived", ({ requestId, response }) => {
+      if (bookingPostIds.has(requestId)) bookingHttpStatuses.push(response.status);
       if (response?.status >= 400)
         networkFailures.push(response.status + " " + response.url);
     });
-    cdp.on("Network.requestWillBeSent", ({ request }) => {
+    cdp.on("Network.requestWillBeSent", ({ request, requestId }) => {
       if (!request?.url?.startsWith("http")) return;
       const host = new URL(request.url).hostname;
       if (host !== "127.0.0.1") external.push(request.url);
       if (request.url.includes(syntheticBearer)) external.push("Synthetic bearer leaked in request URL");
-      if (request.url.includes("/v1/organizations/") && request.method === "POST") bookingPosts++;
+      if (request.url.includes("/v1/organizations/") && request.method === "POST") {
+        bookingPosts++;
+        bookingPostIds.add(requestId);
+      }
     });
     await cdp.send("Emulation.setDeviceMetricsOverride", {
       width: 375, height: 812, deviceScaleFactor: 1,
@@ -194,17 +200,17 @@ export async function runF1BrowserBooking(url, syntheticBearer) {
     await poll("Svelte form and server-side available slots", async () =>
       evaluate(cdp, `(() => {
         const buttons = [...document.querySelectorAll(".booking-form .slot-grid button")];
-        return !!buttons.find((element) => element.textContent?.trim() === "10:00");
+        return !!buttons.find((element) => element.textContent?.trim() === ${JSON.stringify(slotTime)});
       })()`), 25000);
     const slotClicked = await evaluate(cdp, `(() => {
       const buttons = [...document.querySelectorAll(".booking-form .slot-grid button")];
-      const target = buttons.find((button) => button.textContent?.trim() === "10:00");
+      const target = buttons.find((button) => button.textContent?.trim() === ${JSON.stringify(slotTime)});
       if (!target) return false;
       target.focus();
       target.click();
       return true;
     })()`);
-    assert.equal(slotClicked, true, "Expected 10:00 to remain an available server slot");
+    assert.equal(slotClicked, true, "Expected " + slotTime + " to remain an available server slot");
     await poll("Svelte selected slot", async () =>
       evaluate(cdp, "Boolean(document.querySelector('.booking-form .slot-grid button[aria-pressed=true]'))"));
     const formReady = await evaluate(cdp, `(() => {
@@ -212,7 +218,40 @@ export async function runF1BrowserBooking(url, syntheticBearer) {
       return form?.checkValidity() && !form.querySelector("button[type=submit]")?.disabled;
     })()`);
     assert.equal(formReady, true, "Synthetic Svelte BookingForm must be valid");
+
+    // The selected slot came from the backend before the test callback.
+    // Another actor can reserve it or revoke this actor's permission before
+    // the user clicks Submit. This is a real browser→API negative-path gate.
+    if (beforeSubmit) await beforeSubmit();
     await click(cdp, ".booking-form button[type=submit]");
+    if (outcome !== "confirmed") {
+      const title = outcome === "conflict"
+        ? "Выбранное время больше недоступно"
+        : "Операция недоступна";
+      await poll("Svelte shows verified " + outcome + " without Confirmed", async () =>
+        evaluate(cdp, `(() => {
+          const card = document.querySelector(".booking-attempt-status");
+          return card?.textContent?.includes(${JSON.stringify(title)}) &&
+            !card.textContent.includes("Запись подтверждена") &&
+            !card.querySelector(".booking-attempt-receipt");
+        })()`), 25000);
+      if (outcome === "conflict") {
+        const choices = await evaluate(cdp,
+          "document.querySelectorAll('.booking-attempt-slot-options button').length");
+        assert.ok(choices > 0, "409 must offer freshly fetched backend availability");
+      }
+      assert.equal(bookingPosts, 1, "One POST only; no implicit retry or duplicate");
+      assert.deepEqual(
+        bookingHttpStatuses,
+        [outcome === "conflict" ? 409 : 403],
+        "Network.responseReceived must prove the real Booking POST status, not only UI text",
+      );
+      assert.deepEqual(external, [], "Synthetic client must not make external requests");
+      assert.deepEqual(runtimeErrors, [], "Forbidden/conflict must be handled by Svelte");
+      const layout = await evaluate(cdp, "({width:innerWidth, scrollWidth:document.documentElement.scrollWidth})");
+      assert.ok(layout.scrollWidth <= layout.width + 1, "Svelte negative state overflows mobile viewport");
+      return { outcome, requests: bookingPosts };
+    }
     const receipt = await poll("Server-confirmed receipt rendered by Svelte UI", async () =>
       evaluate(cdp, `(() => {
         const card = document.querySelector(".booking-attempt-status");
@@ -225,11 +264,12 @@ export async function runF1BrowserBooking(url, syntheticBearer) {
     assert.ok(receipt.includes("1\u00a0755,55 ₽"), "UI must display real committed base price");
     assert.ok(receipt.includes("13.04.2027, 10:00 UTC"), "UI must display backend-confirmed UTC start");
     assert.ok(bookingPosts === 1, "Exactly one browser-originated CreateBooking POST");
+    assert.deepEqual(bookingHttpStatuses, [201], "Real Booking POST must return 201");
     assert.deepEqual(external, [], "Test browser must not request external hosts");
     assert.deepEqual(runtimeErrors, [], "Browser must not emit uncaught Svelte exceptions");
     const layout = await evaluate(cdp, "({width:innerWidth, scrollWidth:document.documentElement.scrollWidth})");
     assert.ok(layout.scrollWidth <= layout.width + 1, "Svelte synthetic form overflows mobile viewport");
-    return { bookingId, receipt, requests: bookingPosts };
+    return { outcome: "confirmed", bookingId, receipt, requests: bookingPosts };
   } catch (error) {
     if (cdp) {
       try {
