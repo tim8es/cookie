@@ -14,6 +14,7 @@ const captures = [
   "locations", "appearance-preview", "themed-booking", "themed-confirmation",
   "unavailable-booking", "sunday-unavailable", "next-day-recovery",
   "slot-lookup-error", "retry-restored", "error-preview", "forbidden-preview",
+  "clay-contrast",
 ];
 
 // Screenshot stage numbers are historical and stay stable when new stages
@@ -24,7 +25,7 @@ const screenshotStages = [
   "10-schedule", "11-locations", "12-error-preview", "13-forbidden-preview",
   "14-appearance-preview", "15-themed-booking", "16-unavailable-booking",
   "17-themed-confirmation", "18-sunday-unavailable", "19-next-day-recovery",
-  "20-slot-lookup-error", "21-retry-restored",
+  "20-slot-lookup-error", "21-retry-restored", "22-clay-contrast",
 ];
 assert.equal(
   new Set(screenshotStages).size,
