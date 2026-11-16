@@ -57,6 +57,7 @@ test(
           : null;
       },
     };
+    let browserFixtureServer: { close(): Promise<void> } | undefined;
     const app = createApp(pool, {
       syntheticBookingRoutes: {
         pool,
@@ -773,7 +774,90 @@ test(
         events: "5",
         committed_price: "175555",
       });
+
+      // Test-only browser harness; NEVER mounted by normal main.ts or
+      // shipping Svelte App. This exercises the existing BookingForm's real
+      // Svelte onSubmit, actual frontend #119 adapter, local HTTP and PG16.
+      await pool.query(
+        `INSERT INTO cookie_scheduling.shift_windows
+          (tenant_id,id,staff_id,location_id,start_at,end_at,active)
+         VALUES ($1,$2,$3,$4,'2027-04-13T09:00:00Z','2027-04-13T18:00:00Z',true)`,
+        [tenant, randomUUID(), staff, locationA],
+      );
+      const viteModuleUrl = new URL(
+        "../../web/node_modules/vite/dist/node/index.js",
+        import.meta.url,
+      ).href;
+      const { createServer } = await import(viteModuleUrl);
+      const vite = await createServer({
+        configFile: resolve(process.cwd(), "apps/web/vite.config.ts"),
+        root: resolve(process.cwd(), "tests/f1-browser"),
+        server: {
+          host: "127.0.0.1",
+          port: 0,
+          strictPort: false,
+          hmr: false,
+          fs: { allow: [process.cwd()] },
+          proxy: { "/v1": { target: loopbackOrigin, changeOrigin: true } },
+        },
+        logLevel: "error",
+      });
+      browserFixtureServer = vite;
+      await vite.listen();
+      const address = vite.httpServer?.address();
+      assert.ok(address && typeof address !== "string");
+      const browserOrigin = `http://127.0.0.1:${address.port}/`;
+      const fixtureUrl = new URL(browserOrigin);
+      for (const [key, value] of Object.entries({
+        tenantId: tenant,
+        locationId: locationA,
+        staffId: staff,
+        serviceId: service,
+        customerId: customer,
+        syntheticBearer: "synthetic-owner",
+      })) {
+        fixtureUrl.searchParams.set(key, value);
+      }
+      const browserDriverUrl = new URL(
+        "../../../scripts/f1-browser-cdp.mjs",
+        import.meta.url,
+      ).href;
+      const { runF1BrowserBooking } = await import(browserDriverUrl);
+      const browserResult = await runF1BrowserBooking(fixtureUrl.toString());
+      const committedBrowser = await pool.query<{
+        booking_id: string;
+        price_kopecks: string;
+        status: string;
+      }>(
+        `SELECT id::text AS booking_id, price_kopecks_snapshot::text AS price_kopecks,
+                status
+           FROM cookie_booking.bookings
+          WHERE tenant_id=$1 AND start_at='2027-04-13T10:00:00Z'::timestamptz`,
+        [tenant],
+      );
+      assert.deepEqual(committedBrowser.rows, [{
+        booking_id: browserResult.bookingId,
+        price_kopecks: "175555",
+        status: "Confirmed",
+      }]);
+      const browserLedger = await pool.query<{
+        bookings: string;
+        receipts: string;
+        events: string;
+      }>(
+        `SELECT
+          (SELECT count(*)::text FROM cookie_booking.bookings WHERE tenant_id=$1) AS bookings,
+          (SELECT count(*)::text FROM cookie_booking.command_receipts WHERE tenant_id=$1) AS receipts,
+          (SELECT count(*)::text FROM cookie_jobs.outbox_events WHERE tenant_id=$1) AS events`,
+        [tenant],
+      );
+      assert.deepEqual(browserLedger.rows[0], {
+        bookings: "4",
+        receipts: "6",
+        events: "6",
+      });
     } finally {
+      await browserFixtureServer?.close();
       await app.close();
       const tables = [
         "cookie_booking.command_receipts",
