@@ -329,7 +329,7 @@ test(
       // deadlines are intentionally injected synthetic policies, not defaults.
       const move = (
         key: string,
-        body: unknown = { newStartAt: "2027-04-12T14:00:00Z" },
+        body: Record<string, string> = { newStartAt: "2027-04-12T14:00:00Z" },
         token = "synthetic-owner",
       ) =>
         app.inject({
@@ -343,7 +343,7 @@ test(
         });
       const cancel = (
         key: string,
-        body: unknown = {},
+        body: Record<string, string> = {},
         token = "synthetic-owner",
       ) =>
         app.inject({
