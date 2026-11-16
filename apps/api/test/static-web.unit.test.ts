@@ -11,7 +11,10 @@ test("compiled static web never enables Booking", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "cookie-static-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "assets"));
-  await writeFile(join(root, "index.html"), "<!doctype html><html>Cookie</html>");
+  await writeFile(
+    join(root, "index.html"),
+    "<!doctype html><html>Cookie</html>",
+  );
   await writeFile(
     join(root, "assets", "app-abc123.js"),
     "export const ready = true;",
@@ -27,7 +30,10 @@ test("compiled static web never enables Booking", async (t) => {
   assert.equal(page.headers["cache-control"], "no-store");
   assert.match(page.body, /Cookie/);
 
-  const asset = await app.inject({ method: "GET", url: "/assets/app-abc123.js" });
+  const asset = await app.inject({
+    method: "GET",
+    url: "/assets/app-abc123.js",
+  });
   assert.equal(asset.statusCode, 200);
   assert.match(asset.headers["content-type"] ?? "", /javascript/);
   assert.match(asset.body, /ready = true/);
