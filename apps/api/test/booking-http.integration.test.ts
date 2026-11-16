@@ -256,6 +256,35 @@ test(
         headers: ownerHeader,
       });
       assert.equal(availability.statusCode, 200);
+      const quoteUrl = (startAt: string) =>
+        `${base}/locations/${locationA}/quote?serviceId=${service}&staffId=${staff}&date=2027-04-12&startAt=${startAt}`;
+      const initialQuote = await app.inject({
+        method: "GET",
+        url: quoteUrl("2027-04-12T10:00:00Z"),
+        headers: ownerHeader,
+      });
+      assert.equal(initialQuote.statusCode, 200);
+      assert.deepEqual(initialQuote.json(), {
+        locationId: locationA,
+        serviceId: service,
+        staffId: staff,
+        startAt: "2027-04-12T10:00:00.000Z",
+        endAt: "2027-04-12T11:00:00.000Z",
+        occupiedUntil: "2027-04-12T11:10:00.000Z",
+        durationMinutes: 60,
+        postServiceBufferMinutes: 10,
+        timeZone: "UTC",
+        priceKopecks: "150000",
+        currency: "RUB",
+        priceKind: "base-service",
+        provisional: true,
+      });
+      const deniedQuote = await app.inject({
+        method: "GET",
+        url: quoteUrl("2027-04-12T10:00:00Z"),
+        headers: { authorization: "Bearer synthetic-outsider" },
+      });
+      assert.equal(deniedQuote.statusCode, 403);
       assert.equal(availability.json().priceKopecks, "150000");
       const unassignedOffer = await app.inject({
         method: "GET",
@@ -329,6 +358,13 @@ test(
       const receipt = winning.json();
       assert.equal(receipt.status, "Confirmed");
       assert.match(receipt.bookingId, /^[0-9a-f-]{36}$/);
+      const occupiedQuote = await app.inject({
+        method: "GET",
+        url: quoteUrl("2027-04-12T10:00:00Z"),
+        headers: ownerHeader,
+      });
+      assert.equal(occupiedQuote.statusCode, 409);
+      assert.equal(occupiedQuote.json().error.code, "BOOKING_CONFLICT");
       assert.equal(receipt.priceKopecks, "150000");
 
       // Deliberately discard a successful replay's response body, then
@@ -360,6 +396,14 @@ test(
         headers: ownerHeader,
       });
       assert.equal(reQuoted.statusCode, 200);
+      const repricedQuote = await app.inject({
+        method: "GET",
+        url: quoteUrl("2027-04-12T14:00:00Z"),
+        headers: ownerHeader,
+      });
+      assert.equal(repricedQuote.statusCode, 200);
+      assert.equal(repricedQuote.json().priceKopecks, "199900");
+      assert.equal(repricedQuote.json().provisional, true);
       assert.equal(reQuoted.json().priceKopecks, "199900");
       assert.deepEqual((await create(winningKey)).json(), receipt);
       await pool.query(
