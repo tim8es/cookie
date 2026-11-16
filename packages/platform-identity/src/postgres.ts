@@ -126,6 +126,58 @@ export async function loadPolicySnapshot(
   };
 }
 
+/**
+ * Synchronize authorization with concurrent policy changes. These row locks
+ * remain held until COMMIT/ROLLBACK when the caller uses one transaction-scoped
+ * PoolClient. In particular, a revocation UPDATE cannot commit while a
+ * previously authorized Booking command is still executing.
+ *
+ * The order is fixed (Organization -> Membership -> Assignments -> Roles)
+ * to prevent lock inversion between guarded commands. FOR SHARE permits
+ * parallel authorized commands; it conflicts with UPDATE/DELETE of any
+ * policy row that contributed to the permission snapshot. Missing rows
+ * remain default-denied; an in-flight grant cannot authorize an old request.
+ *
+ * Never replace this with a late unlocked SELECT: revocation could still
+ * commit between that check and the business transaction's COMMIT.
+ */
+async function lockPolicyRows(
+  client: PoolClient,
+  actor: TrustedActor,
+): Promise<void> {
+  if (!UUID_RE.test(actor.identityId) || !UUID_RE.test(actor.tenantId)) {
+    throw new Error("Trusted actor has invalid identity/tenant IDs");
+  }
+
+  const params = [actor.tenantId, actor.identityId];
+  await client.query(
+    `SELECT id FROM cookie_tenancy.organizations
+       WHERE id=$1::uuid FOR SHARE`,
+    [actor.tenantId],
+  );
+  await client.query(
+    `SELECT identity_id FROM cookie_identity.memberships
+       WHERE tenant_id=$1::uuid AND identity_id=$2::uuid FOR SHARE`,
+    params,
+  );
+  await client.query(
+    `SELECT id FROM cookie_identity.role_assignments
+       WHERE tenant_id=$1::uuid AND identity_id=$2::uuid
+       ORDER BY id FOR SHARE`,
+    params,
+  );
+  await client.query(
+    `SELECT id FROM cookie_identity.roles
+       WHERE tenant_id=$1::uuid
+         AND id IN (
+           SELECT role_id FROM cookie_identity.role_assignments
+             WHERE tenant_id=$1::uuid AND identity_id=$2::uuid
+         )
+       ORDER BY id FOR SHARE`,
+    params,
+  );
+}
+
 /** Only safe preflight metadata is stored, never tokens, contacts or payload. */
 export class PostgresPolicyAudit implements PolicyAuditPort {
   constructor(private readonly client: PoolClient) {}
@@ -162,6 +214,7 @@ export async function requireTenantPermission(
   permission: string,
 ): Promise<void> {
   const request: AuthorizationRequest = { actor, resource, permission };
+  await lockPolicyRows(client, actor);
   const snapshot = await loadPolicySnapshot(client, actor);
   await requireSensitiveAuthorization(
     request,
