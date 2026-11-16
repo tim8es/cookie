@@ -811,7 +811,6 @@ test(
         staffId: staff,
         serviceId: service,
         customerId: customer,
-        syntheticBearer: "synthetic-owner",
       })) {
         fixtureUrl.searchParams.set(key, value);
       }
@@ -820,7 +819,10 @@ test(
         import.meta.url,
       ).href;
       const { runF1BrowserBooking } = await import(browserDriverUrl);
-      const browserResult = await runF1BrowserBooking(fixtureUrl.toString());
+      const browserResult = await runF1BrowserBooking(
+        fixtureUrl.toString(),
+        "synthetic-owner",
+      );
       const committedBrowser = await pool.query<{
         booking_id: string;
         price_kopecks: string;
