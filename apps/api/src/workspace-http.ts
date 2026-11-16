@@ -9,6 +9,7 @@ import {
 import {
   assertActiveOpaqueSession,
   loadPolicySnapshot,
+  lockPolicyRows,
   requireTenantPermission,
 } from "../../../packages/platform-identity/src/postgres.js";
 import {
