@@ -5,6 +5,18 @@ import {
   type HealthResponse,
 } from "../../../packages/contracts/src/index.js";
 import {
+  registerSyntheticBookingMutations,
+  type SyntheticBookingMutationDependencies,
+} from "./booking-http-mutations.js";
+import {
+  registerSyntheticBookingHttp,
+  type SyntheticBookingHttpDependencies,
+} from "./booking-http.js";
+import {
+  registerSyntheticWorkspaceReads,
+  type SyntheticWorkspaceReadDependencies,
+} from "./workspace-http.js";
+import {
   registerProtectedSessionContext,
   type ProtectedSessionDependencies,
 } from "./session-context.js";
@@ -19,6 +31,9 @@ export function createApp(
   options: {
     readonly logger?: boolean;
     readonly sessionRoutes?: ProtectedSessionDependencies;
+    readonly syntheticBookingRoutes?: SyntheticBookingHttpDependencies;
+    readonly syntheticBookingMutations?: SyntheticBookingMutationDependencies;
+    readonly syntheticWorkspaceReads?: SyntheticWorkspaceReadDependencies;
   } = {},
 ): FastifyInstance {
   const app = Fastify({
@@ -49,6 +64,20 @@ export function createApp(
   // No session verifier is installed in the normal API bootstrap: fail closed.
   if (options.sessionRoutes)
     registerProtectedSessionContext(app, options.sessionRoutes);
+
+  // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
+  // synthetic entitlement callback, so these booking routes stay absent.
+  if (options.syntheticBookingRoutes)
+    registerSyntheticBookingHttp(app, options.syntheticBookingRoutes);
+
+  // Business-side cancel/reschedule is also explicitly test-only. Both
+  // mandatory transactional policy ports must be injected by the harness.
+  if (options.syntheticBookingMutations)
+    registerSyntheticBookingMutations(app, options.syntheticBookingMutations);
+
+  // No workspace or staff schedule read route in normal production startup.
+  if (options.syntheticWorkspaceReads)
+    registerSyntheticWorkspaceReads(app, options.syntheticWorkspaceReads);
 
   app.setNotFoundHandler((_request, reply) =>
     reply.code(404).send({ error: "not-found" }),
