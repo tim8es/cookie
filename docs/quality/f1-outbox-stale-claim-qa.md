@@ -27,3 +27,7 @@ Current PR #143 has no authoritative `lease_until` check between claim completio
 - Release gate: backend/DevOps must adjust the lease contract and independently green this test **without** disabling, skipping or weakening the assertion; then run all prior worker, Booking and PostgreSQL CI tests.
 
 **Not proven:** that any current real provider duplicates messages. The current worker is synthetic only and #19 remains open.
+
+## CI execution tracking
+
+The QA PR targets the feature branch of #143 (stacked QA-only diff). Its first head was `6a65565c862be65e762775ffb922c3648ecab495`. The GitHub Actions run must explicitly report this QA head or a later head before interpreting the test; successful CI for parent PR #143 cannot validate the added assertion. If GitHub does not trigger checks for this stacked PR, report **NOT RUN / CI BLOCKED** and ask the platform owner to enable a safe test runner for this branch, rather than falsely using parent CI as proof.
