@@ -515,7 +515,7 @@ async function scenario(cdp, origin, width, height) {
   await requireDom(cdp, name + " reset", "document.querySelector('.welcome-form')");
   assert.equal(await evaluate(cdp, "sessionStorage.getItem('cookie.frontend-demo.v1')"), null);
 
-  console.log("PASS browser viewport " + name + ": onboarding → booking → move → cancel → history → reload → preview → reset");
+  console.log("PASS browser viewport " + name + ": onboarding → booking → move → cancel → history → appearance → themed booking → reset");
 }
 
 async function main() {
@@ -587,7 +587,7 @@ async function main() {
       backend: "not connected",
       chromium: "headless",
       viewports: ["1280x800", "375x812", "320x568"],
-      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "error-preview", "forbidden-preview"],
+      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "appearance-preview", "themed-booking", "error-preview", "forbidden-preview"],
       checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "simulated embedded safe-area CSS", "no external requests", "zero uncaught page exceptions"],
       externalRequests: externalUrls.length,
     }, null, 2) + "\n");
