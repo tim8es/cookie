@@ -5,7 +5,6 @@ import test from "node:test";
 
 import { Pool } from "pg";
 
-
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { createApp } from "../src/app.js";
 
@@ -664,7 +663,10 @@ test(
         tenantId: tenant,
         syntheticCustomerId: customer,
         syntheticBearer: "synthetic-owner",
-        fetcher: async (input, init) => {
+        fetcher: async (
+          input: Parameters<typeof fetch>[0],
+          init?: Parameters<typeof fetch>[1],
+        ) => {
           const response = await fetch(input, init);
           if (!discardedCommittedReply && init?.method === "POST") {
             assert.equal(response.status, 201);
@@ -679,7 +681,8 @@ test(
       assert.equal(beforeSubmit.priceKopecks, "150000");
       assert.ok(
         beforeSubmit.slots.some(
-          (slot: { startAt: string }) => slot.startAt === "2027-04-12T16:00:00.000Z",
+          (slot: { startAt: string }) =>
+            slot.startAt === "2027-04-12T16:00:00.000Z",
         ),
       );
       // A read-side price is not a guaranteed F2 Quote. The current DB
@@ -731,7 +734,8 @@ test(
       assert.equal(conflicted.refreshFailed, false);
       assert.ok(
         !conflicted.slots.some(
-          (slot: { startAt: string }) => slot.startAt === "2027-04-12T16:00:00.000Z",
+          (slot: { startAt: string }) =>
+            slot.startAt === "2027-04-12T16:00:00.000Z",
         ),
       );
       const outsiderClient = createProposedF1SyntheticLoopbackClient({
