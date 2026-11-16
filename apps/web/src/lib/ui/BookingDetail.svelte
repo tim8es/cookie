@@ -13,8 +13,9 @@
   export let locationName: (id: string) => string;
   export let onClose: () => void;
 
-  let closeButton: HTMLButtonElement;
-  let doneButton: HTMLButtonElement;
+  // shadcn Button exposes a $bindable ref whose default is null, not undefined.
+  let closeButton: HTMLButtonElement | null = null;
+  let doneButton: HTMLButtonElement | null = null;
 
   // Preserve the existing verified two-action keyboard focus loop and restore
   // focus to the calendar event that opened this synthetic details sheet.
