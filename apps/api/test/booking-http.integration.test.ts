@@ -282,6 +282,30 @@ test(
           ),
       );
 
+      const quoteUrl = (startAt: string) =>
+        `${base}/locations/${locationA}/quote?serviceId=${service}&staffId=${staff}&date=2027-04-12&startAt=${startAt}`;
+      const beforeQuote = await app.inject({
+        method: "GET",
+        url: quoteUrl("2027-04-12T10:00:00Z"),
+        headers: ownerHeader,
+      });
+      assert.equal(beforeQuote.statusCode, 200);
+      assert.deepEqual(beforeQuote.json(), {
+        locationId: locationA,
+        serviceId: service,
+        staffId: staff,
+        startAt: "2027-04-12T10:00:00.000Z",
+        endAt: "2027-04-12T11:00:00.000Z",
+        occupiedUntil: "2027-04-12T11:10:00.000Z",
+        durationMinutes: 60,
+        postServiceBufferMinutes: 10,
+        timeZone: "UTC",
+        priceKopecks: "150000",
+        currency: "RUB",
+        priceKind: "base-service",
+        provisional: true,
+      });
+
       // All create assertions (including concurrent same-slot creates, replay
       // and revocation) exercise the real HTTP listener rather than inject.
       const networkCatalog = await fetch(
@@ -330,6 +354,13 @@ test(
       assert.equal(receipt.status, "Confirmed");
       assert.match(receipt.bookingId, /^[0-9a-f-]{36}$/);
       assert.equal(receipt.priceKopecks, "150000");
+      const quotedAfterBooking = await app.inject({
+        method: "GET",
+        url: quoteUrl("2027-04-12T10:00:00Z"),
+        headers: ownerHeader,
+      });
+      assert.equal(quotedAfterBooking.statusCode, 409);
+      assert.equal(quotedAfterBooking.json().error.code, "BOOKING_CONFLICT");
 
       // Deliberately discard a successful replay's response body, then
       // reconcile by the same key. This is NOT a lost-COMMIT/TCP-reset test.

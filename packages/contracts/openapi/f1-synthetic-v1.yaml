@@ -145,6 +145,48 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/AccessDenied" }
         "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/organizations/{tenantId}/locations/{locationId}/quote:
+    parameters:
+      - $ref: "#/components/parameters/tenantId"
+      - $ref: "#/components/parameters/locationId"
+    get:
+      tags: [SyntheticBooking]
+      operationId: readSyntheticProvisionalQuote
+      description: |
+        Non-reserving, provisional base Service price for an available exact UTC
+        minute and location/staff/service. Reuses availability evaluator. The price
+        is NOT a final F2 promotion-adjusted Quote. CreateBooking ignores the
+        client-provided quote and saves the current server-owned base price at
+        commit. A 409 means selected slot is no longer available.
+      parameters:
+        - name: serviceId
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/Uuid" }
+        - name: staffId
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/Uuid" }
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+          description: Local date in the Location IANA timezone, not a UTC-date guess.
+        - name: startAt
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/UtcMinute" }
+      responses:
+        "200":
+          description: Provisional available slot with server-owned base price.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProvisionalQuote" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/AccessDenied" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
   /v1/organizations/{tenantId}/bookings:
     parameters:
       - $ref: "#/components/parameters/tenantId"
@@ -437,6 +479,37 @@ components:
         endAt: { type: string, format: date-time }
         occupiedUntil: { type: string, format: date-time }
         priceKopecks: { type: string, pattern: "^[0-9]+$" }
+    ProvisionalQuote:
+      type: object
+      additionalProperties: false
+      required:
+        - locationId
+        - serviceId
+        - staffId
+        - startAt
+        - endAt
+        - occupiedUntil
+        - durationMinutes
+        - postServiceBufferMinutes
+        - timeZone
+        - priceKopecks
+        - currency
+        - priceKind
+        - provisional
+      properties:
+        locationId: { $ref: "#/components/schemas/Uuid" }
+        serviceId: { $ref: "#/components/schemas/Uuid" }
+        staffId: { $ref: "#/components/schemas/Uuid" }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        occupiedUntil: { type: string, format: date-time }
+        durationMinutes: { type: integer, minimum: 1 }
+        postServiceBufferMinutes: { type: integer, minimum: 0 }
+        timeZone: { type: string }
+        priceKopecks: { type: string, pattern: "^[0-9]+$" }
+        currency: { type: string, const: RUB }
+        priceKind: { type: string, const: base-service }
+        provisional: { type: boolean, const: true }
     CancelledReceipt:
       type: object
       additionalProperties: false
