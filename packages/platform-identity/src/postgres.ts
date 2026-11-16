@@ -225,12 +225,12 @@ export async function assertActiveOpaqueSession(
   if (candidate.telegram_link_id !== null) {
     const linked = await client.query(
       `SELECT id FROM cookie_identity.telegram_identity_links
-        WHERE tenant_id=$2::uuid AND identity_id=$3::uuid
-          AND id=$4::uuid AND revoked_at IS NULL
+        WHERE tenant_id=$1::uuid AND identity_id=$2::uuid
+          AND id=$3::uuid AND revoked_at IS NULL
           AND proof_verified_at IS NOT NULL
           AND consent_confirmed_at IS NOT NULL
         FOR SHARE`,
-      [...params, candidate.telegram_link_id],
+      [actor.tenantId, actor.identityId, candidate.telegram_link_id],
     );
     if (linked.rowCount !== 1) throw new AuthorizationDeniedError();
   }

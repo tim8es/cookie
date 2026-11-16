@@ -163,7 +163,15 @@ export function postgresTenantPolicyGuard(pool: Pool): TenantPolicyGuard {
         await client.query("COMMIT");
         active = false;
       } catch (error) {
-        if (active) await client.query("ROLLBACK").catch(() => undefined);
+        if (active) {
+          if (error instanceof AuthorizationDeniedError) {
+            // A denied policy decision carries a sanitized audit entry
+            // that must survive; no protected data write occurred.
+            await client.query("COMMIT");
+          } else {
+            await client.query("ROLLBACK").catch(() => undefined);
+          }
+        }
         throw error;
       } finally {
         client.release();

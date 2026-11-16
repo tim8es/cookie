@@ -28,9 +28,7 @@ test(
     const token = "cs_" + randomBytes(32).toString("base64url");
     const tokenHash = createHash("sha256").update(token).digest();
     const expiredToken = "cs_" + randomBytes(32).toString("base64url");
-    const expiredHash = createHash("sha256")
-      .update(expiredToken)
-      .digest();
+    const expiredHash = createHash("sha256").update(expiredToken).digest();
     const actorVerifier = {
       async verifyBearerToken() {
         return {
@@ -159,12 +157,7 @@ test(
 
         await guarding.query("BEGIN");
         await assert.rejects(
-          requireTenantPermission(
-            guarding,
-            actor,
-            resource,
-            "booking.create",
-          ),
+          requireTenantPermission(guarding, actor, resource, "booking.create"),
           AuthorizationDeniedError,
         );
         await guarding.query("ROLLBACK");
@@ -232,10 +225,9 @@ test(
           )
           .catch(() => undefined);
         await pool
-          .query(
-            "DELETE FROM cookie_identity.roles WHERE tenant_id=$1::uuid",
-            [tenantId],
-          )
+          .query("DELETE FROM cookie_identity.roles WHERE tenant_id=$1::uuid", [
+            tenantId,
+          ])
           .catch(() => undefined);
         await pool
           .query(
@@ -244,16 +236,14 @@ test(
           )
           .catch(() => undefined);
         await pool
-          .query(
-            "DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid",
-            [tenantId],
-          )
+          .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid", [
+            tenantId,
+          ])
           .catch(() => undefined);
         await pool
-          .query(
-            "DELETE FROM cookie_identity.identities WHERE id=$1::uuid",
-            [identityId],
-          )
+          .query("DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [
+            identityId,
+          ])
           .catch(() => undefined);
       } finally {
         await pool.end();
