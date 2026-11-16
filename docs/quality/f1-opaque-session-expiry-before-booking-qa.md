@@ -37,3 +37,7 @@ No backend repair by QA; no real users, real Telegram bot, credentials, deployme
 - To select one canonical implementation instead of merging overlapping #171 and #173, this QA-only PR is now targeted to [backend PR #173](https://github.com/tim8es/cookie/pull/173), which additionally implements reverse-direction locking and an independent real-PG regression. The three-mode QA assertions and fixture remain unchanged. **Outcome on #173 is unverified until new exact-head CI succeeds.**
 
 All candidate results must stay tied to their exact combined commit/base SHA; a previously green #171 does **not** automatically prove #173. The suite is synthetic-only: no public Booking session provider, real Telegram/PII or production rollout.
+
+## Revalidation gate after backend #173 advanced
+
+Backend #173 subsequently advanced from `48e8ba8b59b85eb8cb31d7b8d0e8cc4dbd4455f2` to `ef36fe28cc745e57dc9b12fb3e2c6c20fcc6480c` (further session authority regression changes). This QA-only evidence update triggers a new full PR CI on the actual parent branch merge. All three strict session-revocation/expiry assertions remain **byte-for-byte unchanged**; final HEAD result must be read from GitHub Actions before claiming the latest backend remains GREEN.
