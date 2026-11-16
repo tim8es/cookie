@@ -72,31 +72,40 @@ test("unsigned identity, wrong bot, forged query or duplicate keys fail closed",
   );
 });
 
-test("modern optional signature is not a bearer credential or identity claim", () => {
-  const raw = signed({
+test("bot-owner HMAC authenticates optional signature field without trusting it as a Cookie credential", () => {
+  const fields = {
     auth_date: String(NOW),
     user: '{"id":279058397,"first_name":"Пример"}',
     query_id: "q+space and = symbols",
-  });
-  const withSignature = raw.replace(
-    "&hash=",
-    "&signature=synthetic-ed25519-metadata&hash=",
-  );
+    signature: "synthetic-ed25519-metadata",
+  };
+  const withSignature = signed(fields);
   assert.deepEqual(verifier().verify(withSignature), {
     channel: "telegram-mini-app",
     telegramUserId: "279058397",
     authDateUnixSeconds: NOW,
   });
+  // A tampered signature must not inherit the valid HMAC of other fields.
+  assert.equal(
+    verifier().verify(withSignature.replace("synthetic-ed25519-metadata", "forged-metadata")),
+    null,
+  );
   assert.equal(
     verifier().verify(withSignature.replace("q%2Bspace", "other")),
     null,
   );
-  // The third-party signature is NOT authenticated or exposed by this method.
-  assert.deepEqual(
+  // Telegram's bot HMAC includes signature; appending it to an older
+  // otherwise-valid payload without computing a new hash must be rejected.
+  const withoutSignature = signed({
+    auth_date: fields.auth_date,
+    user: fields.user,
+    query_id: fields.query_id,
+  });
+  assert.equal(
     verifier().verify(
-      withSignature.replace("synthetic-ed25519-metadata", "not-verified"),
+      withoutSignature.replace("&hash=", "&signature=synthetic-ed25519-metadata&hash="),
     ),
-    verifier().verify(withSignature),
+    null,
   );
 });
 

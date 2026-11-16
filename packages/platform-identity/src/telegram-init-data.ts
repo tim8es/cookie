@@ -72,9 +72,10 @@ function parseFields(raw: unknown): Map<string, string> | null {
 /**
  * Telegram bot-owner HMAC validation of raw WebApp.initData.
  *
- * For modern Mini Apps, the optional Ed25519 third-party "signature" is
- * independent of the bot-owner "hash" and is not used as a credential.
- * The HMAC input contains all decoded fields except hash and signature.
+ * For bot-owner HMAC verification, Telegram requires all received fields
+ * except "hash" in the data-check string, INCLUDING optional "signature".
+ * Only the separate third-party Ed25519 verification algorithm omits both
+ * "hash" and "signature". The Ed25519 value is not itself a Cookie credential.
  * No field is trusted or logged before authentication succeeds.
  *
  * Deliberately DOES NOT implement a login endpoint, grant access, infer a
@@ -121,7 +122,7 @@ export function createTelegramMiniAppProofVerifier(
 
       // Sort strictly by ASCII field name; never re-serialize user JSON.
       const check = [...fields.entries()]
-        .filter(([key]) => key !== "hash" && key !== "signature")
+        .filter(([key]) => key !== "hash")
         .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
         .map(([key, value]) => `${key}=${value}`)
         .join("\n");
