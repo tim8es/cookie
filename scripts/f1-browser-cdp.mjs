@@ -171,7 +171,15 @@ export async function runF1BrowserBooking(url) {
         const buttons = [...document.querySelectorAll(".booking-form .slot-grid button")];
         return !!buttons.find((element) => element.textContent?.trim() === "10:00");
       })()`), 25000);
-    await click(cdp, ".booking-form .slot-grid button");
+    const slotClicked = await evaluate(cdp, `(() => {
+      const buttons = [...document.querySelectorAll(".booking-form .slot-grid button")];
+      const target = buttons.find((button) => button.textContent?.trim() === "10:00");
+      if (!target) return false;
+      target.focus();
+      target.click();
+      return true;
+    })()`);
+    assert.equal(slotClicked, true, "Expected 10:00 to remain an available server slot");
     await poll("Svelte selected slot", async () =>
       evaluate(cdp, "Boolean(document.querySelector('.booking-form .slot-grid button[aria-pressed=true]'))"));
     const formReady = await evaluate(cdp, `(() => {
