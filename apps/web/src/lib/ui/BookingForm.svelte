@@ -57,10 +57,16 @@
             <select value={bookingService} onchange={(event) => onServiceChange(event.currentTarget.value)} required>
               <option value="" disabled>Выберите услугу</option>
               {#each data.services as service (service.id)}
-                <option value={service.id}>{service.name} · {service.durationMinutes} мин</option>
+                <option value={service.id}>{service.name} · {money(service.basePriceRub)}</option>
               {/each}
             </select>
           </label>
+          {#if selectedService}
+            <div class="booking-service-meta" aria-live="polite">
+              <span><Clock3 size={14} aria-hidden="true" /> {selectedService.durationMinutes} мин</span>
+              <span class="booking-service-price">По каталогу <strong>{money(selectedService.basePriceRub)}</strong></span>
+            </div>
+          {/if}
           <div class="form-pair">
             {#if data.locations.length > 1}
               <label class="field">
