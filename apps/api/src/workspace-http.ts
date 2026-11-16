@@ -122,19 +122,19 @@ export function registerSyntheticWorkspaceReads(
       if (!actor) return reply;
       try {
         const result = await readTransaction(pool, async (client) => {
-          const [org, locationRows, policy] = await Promise.all([
-            client.query<{ display_name: string }>(
-              "SELECT display_name FROM cookie_tenancy.organizations WHERE id=$1::uuid",
-              [actor.tenantId],
-            ),
-            client.query<LocationRow>(
-              `SELECT id::text, display_name, time_zone
-                 FROM cookie_tenancy.locations
-                WHERE tenant_id=$1::uuid ORDER BY display_name, id LIMIT 101`,
-              [actor.tenantId],
-            ),
-            loadPolicySnapshot(client, actor),
-          ]);
+          // PoolClient is a single PostgreSQL connection: issue reads
+          // sequentially to avoid overlapping queries on one client.
+          const org = await client.query<{ display_name: string }>(
+            "SELECT display_name FROM cookie_tenancy.organizations WHERE id=$1::uuid",
+            [actor.tenantId],
+          );
+          const locationRows = await client.query<LocationRow>(
+            `SELECT id::text, display_name, time_zone
+               FROM cookie_tenancy.locations
+              WHERE tenant_id=$1::uuid ORDER BY display_name, id LIMIT 101`,
+            [actor.tenantId],
+          );
+          const policy = await loadPolicySnapshot(client, actor);
           if (locationRows.rows.length > 100) {
             throw new Error("Workspace exceeds bounded synthetic location list");
           }
