@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { Pool } from "pg";
+import type { PoolClient } from "pg";
 
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { PostgresOpaqueSessionMaintenance } from "../../../packages/platform-identity/src/opaque-session-maintenance.js";
@@ -46,7 +47,7 @@ test("opaque retention rejects unsafe deletion windows and unbounded batches", (
     [7_200, 501],
     [Number.NaN, 10],
     [7_200, Number.POSITIVE_INFINITY],
-  ]) {
+  ] as const) {
     assert.throws(
       () =>
         new PostgresOpaqueSessionMaintenance({
@@ -82,7 +83,7 @@ test(
     const oldB = createHash("sha256").update(randomUUID()).digest();
     const oldActive = createHash("sha256").update(randomUUID()).digest();
     const recentExpired = createHash("sha256").update(randomUUID()).digest();
-    let blocker: Awaited<ReturnType<typeof pool.connect>> | undefined;
+    let blocker: PoolClient | undefined;
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
       await pool.query(
@@ -198,16 +199,25 @@ test(
         blocker.release();
       }
       await pool
-        .query("DELETE FROM cookie_identity.opaque_sessions WHERE tenant_id=$1", [tenantId])
+        .query(
+          "DELETE FROM cookie_identity.opaque_sessions WHERE tenant_id=$1",
+          [tenantId],
+        )
         .catch(() => undefined);
       await pool
-        .query("DELETE FROM cookie_identity.memberships WHERE tenant_id=$1", [tenantId])
+        .query("DELETE FROM cookie_identity.memberships WHERE tenant_id=$1", [
+          tenantId,
+        ])
         .catch(() => undefined);
       await pool
-        .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1", [tenantId])
+        .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1", [
+          tenantId,
+        ])
         .catch(() => undefined);
       await pool
-        .query("DELETE FROM cookie_identity.identities WHERE id=$1", [identityId])
+        .query("DELETE FROM cookie_identity.identities WHERE id=$1", [
+          identityId,
+        ])
         .catch(() => undefined);
       await pool.end();
     }
@@ -340,22 +350,36 @@ test(
       assert.equal(await sessions.exchangeTelegramInitData(raw), null);
     } finally {
       await pool
-        .query("DELETE FROM cookie_identity.role_assignments WHERE tenant_id=$1", [tenantId])
+        .query(
+          "DELETE FROM cookie_identity.role_assignments WHERE tenant_id=$1",
+          [tenantId],
+        )
         .catch(() => undefined);
       await pool
-        .query("DELETE FROM cookie_identity.roles WHERE tenant_id=$1", [tenantId])
+        .query("DELETE FROM cookie_identity.roles WHERE tenant_id=$1", [
+          tenantId,
+        ])
         .catch(() => undefined);
       await pool
-        .query("DELETE FROM cookie_identity.opaque_sessions WHERE tenant_id=$1", [tenantId])
+        .query(
+          "DELETE FROM cookie_identity.opaque_sessions WHERE tenant_id=$1",
+          [tenantId],
+        )
         .catch(() => undefined);
       await pool
-        .query("DELETE FROM cookie_identity.memberships WHERE tenant_id=$1", [tenantId])
+        .query("DELETE FROM cookie_identity.memberships WHERE tenant_id=$1", [
+          tenantId,
+        ])
         .catch(() => undefined);
       await pool
-        .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1", [tenantId])
+        .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1", [
+          tenantId,
+        ])
         .catch(() => undefined);
       await pool
-        .query("DELETE FROM cookie_identity.identities WHERE id=$1", [identityId])
+        .query("DELETE FROM cookie_identity.identities WHERE id=$1", [
+          identityId,
+        ])
         .catch(() => undefined);
       await pool.end();
     }
