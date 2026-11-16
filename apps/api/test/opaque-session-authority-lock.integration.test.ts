@@ -30,11 +30,18 @@ test(
     const expiredToken = "cs_" + randomBytes(32).toString("base64url");
     const expiredHash = createHash("sha256").update(expiredToken).digest();
     const actorVerifier = {
-      async verifyBearerToken() {
+      async verifyBearerToken(verifiedToken: string) {
         return {
           tenantId,
           identityId,
           expiresAtUnixSeconds: Math.floor(Date.now() / 1_000) + 600,
+          opaqueSessionAuthority: {
+            tokenSha256: createHash("sha256")
+              .update(verifiedToken)
+              .digest("hex"),
+            issuer: "cookie-qa",
+            audience: "booking-qa",
+          },
         };
       },
     };
@@ -105,7 +112,49 @@ test(
         tokenHash.toString("hex"),
       );
       const actor = verified.actor;
+      assert.equal(actor.opaqueSessionIssuer, "cookie-qa");
+      assert.equal(actor.opaqueSessionAudience, "booking-qa");
       const resource = { kind: "organization" as const, tenantId };
+
+      // The exact same token digest under an alternate trusted audience or
+      // issuer must not authorize a Booking command in this database.
+      for (const changed of [
+        { issuer: "wrong-issuer", audience: "booking-qa" },
+        { issuer: "cookie-qa", audience: "wrong-audience" },
+      ]) {
+        const validClaims = await actorVerifier.verifyBearerToken(token);
+        const otherVerifier = {
+          verifyBearerToken: async () => ({
+            ...validClaims,
+            opaqueSessionAuthority: {
+              ...validClaims.opaqueSessionAuthority,
+              ...changed,
+            },
+          }),
+        };
+        const authenticated = await verifyTenantActor(
+          "Bearer " + token,
+          tenantId,
+          otherVerifier,
+        );
+        assert.ok(authenticated.actor);
+        const deniedClient = await pool.connect();
+        try {
+          await deniedClient.query("BEGIN");
+          await assert.rejects(
+            requireTenantPermission(
+              deniedClient,
+              authenticated.actor,
+              resource,
+              "booking.create",
+            ),
+            AuthorizationDeniedError,
+          );
+          await deniedClient.query("ROLLBACK");
+        } finally {
+          deniedClient.release();
+        }
+      }
       const guarding = await pool.connect();
       const revoking = await pool.connect();
       try {
