@@ -32,3 +32,9 @@ The independent Role deactivation UPDATE committed **after** the actual policy S
 The prior diagnostic CI failed on formatting before integration, so its outcome is **not** cited as a security result. The temporary formatter workflow was deleted. Backend PR #173 advanced independently during this test; the QA branch does not change backend production source or another agent's test file.
 
 No production code, migrations, CI or any other agent's branches were changed. No real Telegram user, PII, external provider, payments or deployment. Related [#113](https://github.com/tim8es/cookie/issues/113), [#165](https://github.com/tim8es/cookie/issues/165), [#173](https://github.com/tim8es/cookie/pull/173).
+
+## Proposed strict-consistency implementation comparison (2026-11-16)
+
+The independent QA test above remains source-identical (original blob `342302318473e08746676cd9c475c1944856d7e1`). Candidate [PR #179](https://github.com/tim8es/cookie/pull/179) copies that unchanged test and adds transaction-held Policy/Membership/Role row locks before Cookie link/session revalidation. Its exact-head [F1 CI #43919139176](https://github.com/tim8es/cookie/actions/runs/43919139176) completed **SUCCESS**, including 47/47 real PostgreSQL 16 tests, 101/101 unit and 46/46 web checks. The previously RED role revocation assertion is GREEN in that source-fix branch.
+
+This QA PR was retargeted to #179 only to obtain a *separate QA-branch* integrated CI. **Issue #175 remains OPEN:** the owner has not yet selected strict transaction-scoped read linearization versus snapshot/read-first semantics. A green strict implementation is engineering evidence, not acceptance of a contested product contract. Do not merge #179 or mark #175 closed without the contract decision, current-main integration and frontend capability-cache review. No production deploy.
