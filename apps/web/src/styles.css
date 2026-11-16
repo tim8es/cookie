@@ -1,0 +1,8 @@
+/*
+ * Transitional CSS cascade. Kept in historical order to avoid accidental
+ * visual changes while per-screen rules migrate to src/styles/*.css.
+ * Do not add rules here; see apps/web/UI_GUIDE.md and AGENTS.md.
+ */
+@import "./styles/compat/base.css";
+@import "./styles/compat/workspace.css";
+@import "./styles/compat/public.css";

@@ -1,0 +1,117 @@
+/*
+ * Cookie owner editor forms
+ * Shared shadcn-svelte primitives and one visual language across
+ * services, staff, schedule and locations. Add screen-specific rules here,
+ * not to the legacy app stylesheet.
+ */
+.workspace-grid { min-width: 0; }
+.workspace-grid > .card {
+  border: 1px solid var(--cookie-border);
+  background: var(--cookie-surface);
+  border-radius: var(--cookie-radius-surface);
+  box-shadow: none;
+  min-width: 0;
+  padding: 29px;
+}
+.workspace-grid > .card > .eyebrow { color: #917f99; letter-spacing: .02em; font-size: 11px; font-weight: 700; }
+.workspace-grid > .card h2 { color: var(--cookie-ink); font-size: 19px; letter-spacing: -.035em; }
+.workspace-grid > .card .empty-mini > span {
+  color: #6b4d74; background: #f0eaf3; font-size: 22px;
+}
+.workspace-grid > .card .entity-row { border-color: #eee7ef; padding: 15px 0; min-width: 0; }
+.workspace-grid > .card .entity-text strong { color: #3e3046; font-size: 13px; font-weight: 730; }
+.workspace-grid > .card .entity-text small { color: #897d8c; line-height: 1.5; }
+.workspace-grid > .card .price-label { color: #4f355b; }
+.workspace-grid > .card .service-tile,
+.workspace-grid > .card .staff-avatar,
+.workspace-grid > .card .schedule-icon {
+  background: #f0eaf3; color: #6c4a75; border-radius: 10px;
+}
+.workspace-grid > .card .status-pill { background: #f1ebf4; color: #674a70; }
+.workspace-grid > .card .schedule-summary { border-bottom-color: #eee7ef; }
+.workspace-grid > .card .schedule-summary p { color: #897b8e; }
+.workspace-grid > .card .weekday-chips span { background: #f5f2f6; color: #9c8da0; }
+.workspace-grid > .card .weekday-chips span.chosen { background: #e6efc8; color: #4c4253; }
+
+.owner-form-panel[data-slot=card] {
+  padding: 0; display: block; min-width: 0; overflow: hidden;
+  border-radius: var(--cookie-radius-surface);
+  border: 1px solid var(--cookie-border);
+  background: var(--cookie-surface); box-shadow: none;
+}
+.owner-form { display: block; padding: 28px 29px 27px; min-width: 0; }
+.owner-form-heading { border-bottom: 1px solid #f0eaf2; padding-bottom: 22px; margin-bottom: 21px; }
+.owner-form-heading-row { display: flex; align-items: center; gap: 11px; margin-bottom: 16px; }
+.owner-form-icon {
+  width: 38px; height: 38px; display: grid; place-items: center;
+  background: #f0eaf3; color: #6b4b75; border-radius: 11px; flex-shrink: 0;
+}
+.owner-form-eyebrow { color: #806e88; font-size: 10px; font-weight: 760; letter-spacing: .05em; }
+.owner-form-heading h2 { font-size: 23px; color: #34283c; font-weight: 750; letter-spacing: -.04em; margin: 0 0 7px; }
+.owner-form-heading p { font-size: 12px; line-height: 1.55; color: #867989; margin: 0; }
+.owner-form-fields { display: flex; flex-direction: column; gap: 1px; }
+.owner-form .field { font-size: 12px; color: #5f5265; font-weight: 690; margin: 0 0 18px; gap: 9px; min-width: 0; }
+.owner-form .field-caption { color: #5f5265; font-size: 12px; font-weight: 690; }
+.owner-form .field input[data-slot=input],
+.owner-form .field select {
+  background: #fff; border: 1px solid #e1dae5; border-radius: var(--cookie-radius-control);
+  color: #3d3044; min-height: 46px; height: 46px; font-size: 13px;
+  font-weight: 560; padding: 10px 13px; box-shadow: none; width: 100%;
+}
+.owner-form .field input[data-slot=input]:hover,
+.owner-form .field select:hover { border-color: #b7a3c0; }
+.owner-form .field input[data-slot=input]:focus-visible,
+.owner-form .field select:focus-visible { outline: 3px solid #e8dced; outline-offset: 1px; border-color: #896e95; }
+.owner-form .field input[data-slot=input]::placeholder { color: #a79aac; }
+.owner-form .form-pair { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 13px; }
+.owner-form .form-pair > .field { min-width: 0; }
+.owner-form-note {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: #f6f3f7; border: 1px solid #f0ebf2; border-radius: 9px;
+  padding: 12px 13px; color: #807285; font-size: 11px; line-height: 1.55;
+  margin: 1px 0 16px;
+}
+.owner-form-note svg { flex-shrink: 0; color: #8c7694; margin-top: 1px; }
+.owner-form button.owner-submit[data-slot=button] {
+  width: 100%; min-height: 48px; height: 48px;
+  border-radius: var(--cookie-radius-control); background: var(--cookie-brand);
+  color: white; font-size: 12px; font-weight: 750;
+  justify-content: space-between; padding: 0 16px; box-shadow: none;
+}
+.owner-form button.owner-submit[data-slot=button]:hover:not(:disabled) { background: #382440; }
+.owner-form button.owner-submit-secondary[data-slot=button] {
+  background: #f0eaf3; color: #573b61; border: 1px solid #e3d8e6;
+}
+.owner-form button.owner-submit-secondary[data-slot=button]:hover:not(:disabled) { background: #e9deec; }
+.owner-form .weekday-select {
+  display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 5px;
+}
+.owner-form .weekday-select button[data-slot=button] {
+  height: 39px; min-height: 39px; min-width: 0; width: 100%;
+  border-radius: 8px; background: white; border: 1px solid #e0d9e5;
+  color: #675970; font-size: 11px; font-weight: 700; padding: 0; box-shadow: none;
+}
+.owner-form .weekday-select button[data-slot=button].selected {
+  background: #53385e; border-color: #53385e; color: white;
+}
+.owner-form .weekday-select button[data-slot=button]:hover:not(.selected) {
+  background: #f3eef5; border-color: #bba4c3;
+}
+@media (max-width: 1050px) {
+  .workspace-grid { grid-template-columns: minmax(0,1fr); }
+}
+@media (max-width: 680px) {
+  /* Mobile owners should see the primary editing task before an empty catalog. */
+  .workspace-grid > .owner-form-panel { order: -1; }
+  .workspace-grid > .card { padding: 23px 20px; }
+  .owner-form { padding: 23px 20px; }
+  .owner-form-heading { padding-bottom: 18px; margin-bottom: 18px; }
+  .owner-form-heading h2 { font-size: 22px; }
+}
+@media (max-width: 420px) {
+  .workspace-grid > .card { padding: 19px 16px; }
+  .owner-form { padding: 20px 16px; }
+  .owner-form .form-pair { grid-template-columns: minmax(0,1fr); gap: 0; }
+  .owner-form .weekday-select { gap: 3px; }
+  .owner-form .weekday-select button[data-slot=button] { height: 37px; min-height: 37px; font-size: 10px; }
+}
