@@ -46,23 +46,19 @@ async function assertAuthFailure(
   });
 }
 
-test("only Telegram Mini App JS can supply proof, never URL or demo data", () => {
+test("proof comes only from Mini App JS, never URL or demo", () => {
   assert.equal(readTelegramInitData(undefined), null);
-  assert.equal(
-    readTelegramInitData({ location: { search: "?initData=forged" } } as unknown as Window),
-    null,
-  );
-  assert.equal(
-    readTelegramInitData({ Telegram: { WebApp: { initData: "" } } } as unknown as Window),
-    null,
-  );
-  assert.equal(
-    readTelegramInitData({ Telegram: { WebApp: { initData: "signed-proof" } } } as unknown as Window),
-    "signed-proof",
-  );
+  const spoofed = { location: { search: "?initData=forged" } } as unknown as Window;
+  const empty = { Telegram: { WebApp: { initData: "" } } } as unknown as Window;
+  const valid = {
+    Telegram: { WebApp: { initData: "signed-proof" } },
+  } as unknown as Window;
+  assert.equal(readTelegramInitData(spoofed), null);
+  assert.equal(readTelegramInitData(empty), null);
+  assert.equal(readTelegramInitData(valid), "signed-proof");
 });
 
-test("success requires both signed proof exchange and a matching protected context", async () => {
+test("proof exchange and matching protected context are mandatory", async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const fetcher = responder(
     [
@@ -85,7 +81,9 @@ test("success requires both signed proof exchange and a matching protected conte
     assert.equal(init.referrerPolicy, "no-referrer");
   }
   assert.equal(calls[0]?.init.method, "POST");
-  assert.deepEqual(JSON.parse(String(calls[0]?.init.body)), { initData: "signed-proof" });
+  assert.deepEqual(JSON.parse(String(calls[0]?.init.body)), {
+    initData: "signed-proof",
+  });
   assert.equal(
     (calls[1]?.init.headers as Record<string, string>).authorization,
     "Bearer " + TOKEN,
@@ -96,7 +94,10 @@ test("success requires both signed proof exchange and a matching protected conte
 test("no proof and oversized proof fail without issuing requests", async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const fetcher = responder([], calls);
-  await assertAuthFailure(authenticateTelegramOwner("", fetcher, NOW), "unauthorized");
+  await assertAuthFailure(
+    authenticateTelegramOwner("", fetcher, NOW),
+    "unauthorized",
+  );
   await assertAuthFailure(
     authenticateTelegramOwner("a".repeat(8193), fetcher, NOW),
     "unauthorized",
@@ -104,7 +105,7 @@ test("no proof and oversized proof fail without issuing requests", async () => {
   assert.equal(calls.length, 0);
 });
 
-test("rejects unverified response fields without a context request", async () => {
+test("invalid response fields reject without requesting context", async () => {
   const invalid = [
     receipt({ accessToken: "test-token" }),
     receipt({ tenantId: "invalid" }),
@@ -147,9 +148,9 @@ test("401 exchange and disabled endpoint do not obtain session", async () => {
   }
 });
 
-test("context mismatch or revoked session triggers best-effort logout and fail-closed result", async () => {
+test("context mismatch or revocation fails closed and attempts logout", async () => {
   for (const [response, reason] of [
-    [() => Response.json({ tenantId: "22222222-2222-4222-8222-222222222222" }), "invalid-response"],
+    [() => Response.json({ tenantId: "wrong-tenant" }), "invalid-response"],
     [() => new Response(null, { status: 403 }), "unauthorized"],
     [() => new Response(null, { status: 503 }), "unavailable"],
   ] as const) {
@@ -174,7 +175,10 @@ test("failed request and logout response never claim success", async () => {
   const offline = (async () => {
     throw new Error("secret internal network path");
   }) as typeof fetch;
-  await assertAuthFailure(authenticateTelegramOwner("proof", offline, NOW), "unavailable");
+  await assertAuthFailure(
+    authenticateTelegramOwner("proof", offline, NOW),
+    "unavailable",
+  );
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const session = receipt() as {
     accessToken: string;
