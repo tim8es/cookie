@@ -38,6 +38,7 @@ try {
     signal: signal.signal,
     topic: "test.synthetic",
     leaseMs: 30_000,
+    handlerTimeoutMs: 20_000,
     idleDelayMs: 1000,
     busyDelayMs: 50,
     observe(snapshot) {
