@@ -177,11 +177,23 @@ export class PostgresOpaqueSessionMaintenance {
   ): Promise<number> {
     const result = await client.query(
       [
-        "DELETE FROM cookie_identity.opaque_sessions",
-        " WHERE tenant_id=$2::uuid AND identity_id=$3::uuid",
-        "   AND " + RETENTION_CONDITION,
+        "WITH candidates AS (",
+        "  SELECT token_sha256 FROM cookie_identity.opaque_sessions",
+        "  WHERE tenant_id=$2::uuid AND identity_id=$3::uuid",
+        "    AND " + RETENTION_CONDITION,
+        "  ORDER BY issued_at ASC, token_sha256 ASC",
+        "  LIMIT $4::integer FOR UPDATE SKIP LOCKED",
+        ")",
+        "DELETE FROM cookie_identity.opaque_sessions AS s",
+        " USING candidates AS c",
+        " WHERE s.token_sha256=c.token_sha256",
       ].join("\n"),
-      [this.config.retentionSeconds, tenantId, identityId],
+      [
+        this.config.retentionSeconds,
+        tenantId,
+        identityId,
+        this.config.batchSize,
+      ],
     );
     return result.rowCount ?? 0;
   }
