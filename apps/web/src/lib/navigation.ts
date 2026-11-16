@@ -6,6 +6,7 @@ export type Screen =
   | "schedule"
   | "calendar"
   | "locations"
+  | "appearance"
   | "booking";
 
 export interface NavigationItem {
@@ -21,5 +22,6 @@ export const screens: readonly NavigationItem[] = [
   { id: "staff", label: "Мастера", glyph: "♧" },
   { id: "schedule", label: "Расписание", glyph: "◷" },
   { id: "locations", label: "Филиалы", glyph: "⌂" },
+  { id: "appearance", label: "Оформление", glyph: "◐" },
   { id: "booking", label: "Онлайн-запись", glyph: "↗" },
 ];
