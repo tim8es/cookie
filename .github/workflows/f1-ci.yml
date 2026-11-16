@@ -81,3 +81,8 @@ jobs:
           path: apps/web/artifacts/visual-smoke/
           if-no-files-found: ignore
           retention-days: 7
+      - name: QA-only temporary Prettier diagnostic (remove before review)
+        if: ${{ always() }}
+        run: |
+          pnpm exec prettier --write apps/api/test/worker-stale-claim-qa.integration.test.ts
+          git --no-pager diff -- apps/api/test/worker-stale-claim-qa.integration.test.ts
