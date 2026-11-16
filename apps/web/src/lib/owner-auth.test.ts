@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   OwnerAuthFailure,
   authenticateTelegramOwner,
+  loadTelegramInitData,
   readTelegramInitData,
   revokeTelegramOwnerSession,
 } from "./owner-auth";
@@ -56,6 +57,55 @@ test("proof comes only from Mini App JS, never URL or demo", () => {
   assert.equal(readTelegramInitData(spoofed), null);
   assert.equal(readTelegramInitData(empty), null);
   assert.equal(readTelegramInitData(valid), "signed-proof");
+});
+
+test("Telegram SDK is loaded only when proof is not yet present", async () => {
+  const injected = {
+    Telegram: { WebApp: { initData: "" } },
+    setTimeout: () => 1,
+    clearTimeout: () => undefined,
+  };
+  let loaded = "";
+  const doc = {
+    createElement: () => ({
+      src: "",
+      async: false,
+      referrerPolicy: "",
+      onload: null as (() => void) | null,
+      onerror: null as (() => void) | null,
+    }),
+    head: {
+      append: (script: {
+        src: string;
+        async: boolean;
+        referrerPolicy: string;
+        onload: (() => void) | null;
+      }) => {
+        loaded = script.src;
+        assert.equal(script.async, true);
+        assert.equal(script.referrerPolicy, "no-referrer");
+        injected.Telegram.WebApp.initData = "new-signed-proof";
+        script.onload?.();
+      },
+    },
+  };
+  assert.equal(
+    await loadTelegramInitData(
+      injected as unknown as Window,
+      doc as unknown as Document,
+    ),
+    "new-signed-proof",
+  );
+  assert.equal(loaded, "https://telegram.org/js/telegram-web-app.js");
+  loaded = "";
+  assert.equal(
+    await loadTelegramInitData(
+      injected as unknown as Window,
+      doc as unknown as Document,
+    ),
+    "new-signed-proof",
+  );
+  assert.equal(loaded, "");
 });
 
 test("proof exchange and matching protected context are mandatory", async () => {
