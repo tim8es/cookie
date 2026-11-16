@@ -47,15 +47,21 @@ test("disconnected API mode cannot call the network from any UI operation", asyn
       () => api.addService("Synthetic service", 30, 1250),
       () => api.addStaff("Synthetic stylist", "Stylist", ["synthetic-service"]),
       () => api.saveSchedule(syntheticSchedule),
-      () => api.getSlotSuggestions("synthetic-staff", "synthetic-location", "2026-11-16"),
-      () => api.createBooking({
-        locationId: "synthetic-location",
-        serviceId: "synthetic-service",
-        staffId: "synthetic-staff",
-        date: "2026-11-16",
-        time: "10:00",
-        clientAlias: "Synthetic guest",
-      }),
+      () =>
+        api.getSlotSuggestions(
+          "synthetic-staff",
+          "synthetic-location",
+          "2026-11-16",
+        ),
+      () =>
+        api.createBooking({
+          locationId: "synthetic-location",
+          serviceId: "synthetic-service",
+          staffId: "synthetic-staff",
+          date: "2026-11-16",
+          time: "10:00",
+          clientAlias: "Synthetic guest",
+        }),
       () => api.resetDemo(),
     ];
     const notConnected = (reason: unknown): boolean =>
