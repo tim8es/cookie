@@ -242,6 +242,17 @@ export class MockCookieApi implements CookieUiPort {
     locationId: string,
     date: string,
   ): Promise<SlotView[]> {
+    // One-shot failure belongs exclusively to Chromium's synthetic demo smoke.
+    // This does not modify tenant data or affect real API mode.
+    const smokeFailureKey = "cookie.frontend-demo.smoke.fail-next-slots";
+    const isBrowserSmoke =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).has("browser-smoke");
+    if (isBrowserSmoke && this.storage?.getItem(smokeFailureKey) === "1") {
+      this.storage.removeItem(smokeFailureKey);
+      throw new Error("SYNTHETIC_SMOKE_SLOT_LOOKUP_FAILED");
+    }
+
     const schedule = this.snapshot.schedules.find((item) => {
       return item.staffId === staffId && item.locationId === locationId;
     });
