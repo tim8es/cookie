@@ -26,7 +26,8 @@ test("exactly four branded presets include light and dark modes", () => {
     );
     const tokens = compileBrandTokens(settings);
     assert.ok(
-      brandContrast(tokens["--salon-hero"]!, tokens["--salon-hero-ink"]!) >= 4.5,
+      brandContrast(tokens["--salon-hero"]!, tokens["--salon-hero-ink"]!) >=
+        4.5,
     );
     assert.ok(
       brandContrast(
