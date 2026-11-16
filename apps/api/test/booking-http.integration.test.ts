@@ -684,7 +684,7 @@ test(
       if (recovered.phase !== "confirmed")
         throw new Error("frontend may only accept verified Confirmed");
       assert.match(recovered.receipt.bookingId, /^[0-9a-f-]{36}$/);
-      assert.equal(recovered.receipt.finalPriceText, "1\\u00a0755,55 ₽");
+      assert.equal(recovered.receipt.finalPriceText, "1\u00a0755,55 ₽");
       assert.equal(recovered.receipt.dateTimeText, "12.04.2027, 16:00 UTC");
       const historicalReplay = await frontend.port.create(
         selection,
