@@ -217,6 +217,9 @@ async function checkLabeledControls(cdp, screen) {
 }
 
 async function captureEvidence(cdp, name, stage) {
+  // Wait for short navigation transitions before taking deterministic visual evidence.
+  // This is screenshot-only; interaction assertions run before the pause.
+  await pause(250);
   const geometry = await evaluate(cdp, `({
     innerWidth: innerWidth,
     innerHeight: innerHeight,
