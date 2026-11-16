@@ -9,6 +9,7 @@ import {
 import {
   assertActiveOpaqueSession,
   loadPolicySnapshot,
+  lockPolicyRows,
   requireTenantPermission,
 } from "../../../packages/platform-identity/src/postgres.js";
 import {
@@ -125,8 +126,10 @@ export function registerSyntheticWorkspaceReads(
       if (!actor) return reply;
       try {
         const result = await readTransaction(pool, async (client) => {
-          // Authenticated Cookie bearer and Telegram link must stay valid
-          // for this entire protected workspace read transaction.
+          // Lock tenant policy before bearer/link authority, matching the
+          // mutation guard's Membership -> Role -> Link -> Session order.
+          // Revocation must not commit ahead of this read's policy decision.
+          await lockPolicyRows(client, actor);
           await assertActiveOpaqueSession(client, actor);
           // PoolClient is a single PostgreSQL connection: issue reads
           // sequentially to avoid overlapping queries on one client.
