@@ -454,7 +454,7 @@ async function scenario(cdp, origin, width, height) {
   );
   await requireDom(
     cdp, name + " Telegram preview visibly synthetic",
-    "document.querySelector('.public-demo-notice')?.textContent.includes('Тестовая запись')",
+    "document.querySelector('.public-demo-notice')?.textContent.includes('Telegram-авторизация и нативные кнопки не подключены')",
   );
   await checkLabeledControls(cdp, name + " Telegram preview");
   await checkWidth(cdp, name + " Telegram preview");
