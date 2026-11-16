@@ -5,6 +5,7 @@ import type { Pool } from "pg";
 
 import {
   AuthorizationDeniedError,
+  type VerifiedOpaqueSessionAuthority,
   type ProtectedResource,
   type TrustedActor,
 } from "../../../packages/platform-identity/src/authorization.js";
@@ -20,6 +21,7 @@ export interface VerifiedSession {
   readonly identityId: string;
   readonly tenantId: string;
   readonly expiresAtUnixSeconds: number;
+  readonly opaqueSessionAuthority?: VerifiedOpaqueSessionAuthority;
 }
 
 export interface BearerSessionVerifier {
@@ -44,6 +46,8 @@ const UUID_RE =
 // Cookie's high-entropy PostgreSQL bearer format. Other opt-in verifier
 // formats still require their own reviewed transactional revocation contract.
 const OPAQUE_COOKIE_BEARER = /^cs_[A-Za-z0-9_-]{43}$/;
+const HEX_SHA256 = /^[0-9a-f]{64}$/;
+const SESSION_LABEL = /^[a-zA-Z0-9._:/-]{1,128}$/;
 
 function bearerToken(header: string | undefined): string | null {
   if (!header) return null;
@@ -86,6 +90,25 @@ export async function verifyTenantActor(
   ) {
     return { status: 401, error: "unauthorized" };
   }
+  const opaque = OPAQUE_COOKIE_BEARER.test(token);
+  const authority = session.opaqueSessionAuthority;
+  const digest = opaque
+    ? createHash("sha256").update(token, "utf8").digest("hex")
+    : undefined;
+  if (
+    authority !== undefined &&
+    (!opaque ||
+      !authority ||
+      typeof authority.tokenSha256 !== "string" ||
+      typeof authority.issuer !== "string" ||
+      typeof authority.audience !== "string" ||
+      !HEX_SHA256.test(authority.tokenSha256) ||
+      !SESSION_LABEL.test(authority.issuer) ||
+      !SESSION_LABEL.test(authority.audience) ||
+      authority.tokenSha256 !== digest)
+  ) {
+    return { status: 401, error: "unauthorized" };
+  }
   if (pathTenantId !== session.tenantId) {
     return { status: 403, error: "forbidden" };
   }
@@ -94,11 +117,15 @@ export async function verifyTenantActor(
       identityId: session.identityId,
       tenantId: session.tenantId,
       correlationId: randomUUID(),
-      ...(OPAQUE_COOKIE_BEARER.test(token)
+      ...(opaque
         ? {
-            opaqueSessionTokenSha256: createHash("sha256")
-              .update(token, "utf8")
-              .digest("hex"),
+            opaqueSessionTokenSha256: digest,
+            ...(authority
+              ? {
+                  opaqueSessionIssuer: authority.issuer,
+                  opaqueSessionAudience: authority.audience,
+                }
+              : {}),
           }
         : {}),
     },
