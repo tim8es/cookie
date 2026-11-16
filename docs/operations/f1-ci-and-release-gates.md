@@ -18,7 +18,7 @@
 2. Cancel outdated runs of the **same PR** on new commits, but do not cancel `main` runs. Treat a passing run only as evidence for the specific PR **head SHA** shown in the summary, as tested using GitHub's PR merge ref.
 3. Pin third-party GitHub Actions to verified immutable commit SHAs: checkout, pnpm setup, Node setup and artifact upload; disable persisted checkout credentials in untrusted PR test environments; manually review future upgrades.
 4. Cache **pnpm's package store**, keyed through `pnpm-lock.yaml` by setup-node; continue `pnpm install --frozen-lockfile`. Do not cache `node_modules` or share PostgreSQL state.
-5. If a browser smoke actually ran, missing visual evidence must fail the upload step. Preserve evidence after a browser-smoke failure when produced. Append tested/source SHAs and smoke outcome to the run's job summary.
+5. If a browser smoke actually ran, missing visual evidence must fail the upload step. After a successful browser smoke, run `node scripts/ci-visual-evidence-check.mjs`: fail on missing/corrupt/extra PNG files, incorrect viewport widths, incomplete manifest, non-synthetic sessions, connected backend or external requests. Preserve evidence after a browser-smoke failure when produced. Append tested/source SHAs and smoke outcome to the run's job summary.
 6. Keep one workflow/job and all existing mandatory test commands; no skip/path filter or CI bypass introduced.
 
 ### Required F1 gate / evidence boundary
@@ -31,7 +31,7 @@
 | Backup/restore | `scripts/ci-restore-smoke.sh` with **exact** `cookie_ci` URL | Local synthetic restore only; no remote backup retention or RPO/RTO |
 | API and worker | `pnpm build` + current worker smoke | Build/startup only; PR #138 independently proposes a compiled worker smoke |
 | Web types/unit/build | `pnpm --filter @cookie/web check`, then `pnpm --filter @cookie/web build` | `check` already includes web unit tests |
-| Chromium visual regression | `node apps/web/scripts/browser-smoke.mjs`, visual artifact | Built demo UI at 3 viewports; **does not** establish all real backend Booking E2E paths |
+| Chromium visual regression | `node apps/web/scripts/browser-smoke.mjs`, `node scripts/ci-visual-evidence-check.mjs`, visual artifact | 39 required PNGs (13 scenes × 3 viewports), synthetic manifest; **does not** establish all real backend Booking E2E paths |
 | PR merge eligibility | Passing checks for latest head and reviewed diff | **Organizational rule only** until GitHub branch protection enforces it |
 
 **No PASS by omission:** a skipped mandatory step is not equivalent to passing the complete gate. Do not merge PRs based solely on stale or rerun statuses from earlier commits. The workflow's all-in-one job is deliberately preserved while repository-level required checks are unavailable.
@@ -53,6 +53,7 @@ pnpm build
 pnpm --filter @cookie/web check
 pnpm --filter @cookie/web build
 node apps/web/scripts/browser-smoke.mjs
+node scripts/ci-visual-evidence-check.mjs
 ```
 
 Browser smoke requires installed Chrome/Chromium; screenshots and manifest are **synthetic**. For PostgreSQL integration, start local development PostgreSQL with `docker compose -f docker-compose.dev.yml up -d` and use the separately documented local development DB URL. The **CI-only restore smoke refuses to run** without `CI=true` and the exact isolated `cookie_ci` database URL; never bypass that guard for real data.
@@ -79,6 +80,6 @@ To debug a PR: open **Actions → F1 quality gates**, select the run associated 
 
 ## Measured performance / open risks
 
-Baseline run [43889327565](https://github.com/tim8es/cookie/actions/runs/43889327565): **117 seconds**. First post-change run [43890432409](https://github.com/tim8es/cookie/actions/runs/43890432409): **128 seconds**, successful, full visual evidence present; the initial cache was populated (254 packages downloaded; store cache saved under the lockfile key). This cold run was **11 seconds slower** than the unrelated PR baseline; do not mislabel it as an optimization. Compare a subsequent same-PR cache-hit run before claiming any speedup.
+Baseline run [43889327565](https://github.com/tim8es/cookie/actions/runs/43889327565): **117 seconds**. First post-change run [43890432409](https://github.com/tim8es/cookie/actions/runs/43890432409): **128 seconds**, successful, full visual evidence present; the initial cache was populated (254 packages downloaded; store cache saved under the lockfile key). Next warm run [43890995415](https://github.com/tim8es/cookie/actions/runs/43890995415) on head `aca4ed20` succeeded in **119 seconds** with cache hit (254 reused, 0 downloaded) and visual artifact. The observed cold→warm improvement was 9 seconds (~7%) but still **2 seconds slower** than the unrelated 117-second pre-change run. Both runs preceded the stricter 39-PNG verifier and latest-main synchronization; measure new exact-head CI again.
 
 Known risks: unprotected `main`, no enforced mandatory status contexts, action SHAs need periodic review, mutable PostgreSQL 16 Alpine image, no dedicated supply-chain/license vulnerability gate, test coverage is bounded by implemented F1 functionality, and visual screenshots may contain synthetic-only test data but still require review before public sharing. This pipeline does not prove production readiness.
