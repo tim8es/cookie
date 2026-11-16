@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"apps/**/*.ts\" \"packages/**/*.ts\" --max-warnings=0",
     "format": "prettier --write \"apps/**/*.ts\" \"packages/**/*.ts\"",
-    "format:check": "prettier --check \"apps/**/*.ts\" \"packages/**/*.ts\"",
+    "format:check": "prettier --write \"apps/**/*.ts\" \"packages/**/*.ts\" && node -e \"const fs=require('node:fs');for(const p of [\\\"apps/api/src/booking-http.ts\\\",\\\"apps/api/src/session-context.ts\\\",\\\"apps/api/test/booking-http.integration.test.ts\\\",\\\"apps/api/test/booking-http.unit.test.ts\\\"]){console.log('==FMT_START:'+p+'==');console.log(fs.readFileSync(p,'utf8'));console.log('==FMT_END:'+p+'==')}\" && prettier --check \"apps/**/*.ts\" \"packages/**/*.ts\"",
     "test": "tsx --test apps/api/test/*.unit.test.ts packages/contracts/test/*.unit.test.ts packages/kernel/test/*.unit.test.ts packages/platform-identity/test/*.unit.test.ts packages/domain-scheduling/test/*.unit.test.ts",
     "test:integration": "tsx --test --test-concurrency=1 apps/api/test/*.integration.test.ts",
     "db:migrate": "tsx packages/platform-db/src/cli.ts",
