@@ -397,7 +397,9 @@ export function registerSyntheticBookingHttp(
           });
           return {
             priceKopecks: settings.price_kopecks,
-            slots: available.filter((slot) => Date.parse(slot.startAt) > Date.now()),
+            slots: available.filter(
+              (slot) => Date.parse(slot.startAt) > Date.now(),
+            ),
           };
         });
         return reply.send(availability);
