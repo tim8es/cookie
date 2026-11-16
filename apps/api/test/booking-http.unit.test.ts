@@ -20,6 +20,7 @@ test("booking routes are absent from ordinary production composition", async (t)
   t.after(async () => app.close());
   for (const url of [
     path,
+    `/v1/organizations/${TENANT}/locations/${LOCATION}/quote?serviceId=${SERVICE}&staffId=${STAFF}&date=2027-04-12&startAt=2027-04-12T10:00:00Z`,
     `/v1/organizations/${TENANT}/locations/${LOCATION}/catalog`,
   ]) {
     const response = await app.inject({
@@ -109,4 +110,31 @@ test("opt-in booking adapter requires verified actor, rejects forged tenant and 
     payload: body,
   });
   assert.equal(noKey.statusCode, 400);
+
+  const quoteUrl = `/v1/organizations/${TENANT}/locations/${LOCATION}/quote?serviceId=${SERVICE}&staffId=${STAFF}&date=2027-04-12&startAt=2027-04-12T10:00:00Z`;
+  const anonymousQuote = await app.inject({
+    method: "GET",
+    url: quoteUrl,
+    headers: { "x-tenant-id": TENANT, "x-identity-id": IDENTITY },
+  });
+  assert.equal(anonymousQuote.statusCode, 401);
+  const wrongTenantQuote = await app.inject({
+    method: "GET",
+    url: quoteUrl.replace(TENANT, OTHER),
+    headers: { authorization: "Bearer valid" },
+  });
+  assert.equal(wrongTenantQuote.statusCode, 403);
+  const invalidDateQuote = await app.inject({
+    method: "GET",
+    url: quoteUrl.replace("date=2027-04-12", "date=2027-02-30"),
+    headers: { authorization: "Bearer valid" },
+  });
+  assert.equal(invalidDateQuote.statusCode, 400);
+  const invalidMinuteQuote = await app.inject({
+    method: "GET",
+    url: quoteUrl.replace("T10:00:00Z", "T10:00:30Z"),
+    headers: { authorization: "Bearer valid" },
+  });
+  assert.equal(invalidMinuteQuote.statusCode, 400);
+  assert.equal(invalidMinuteQuote.json().error.code, "INVALID_REQUEST");
 });
