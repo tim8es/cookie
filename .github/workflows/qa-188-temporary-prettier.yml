@@ -1,0 +1,29 @@
+name: Temporary QA 188 formatting diagnostic
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - qa/f1-mutation-cookie-preflight-revoke-20261116
+permissions:
+  contents: read
+jobs:
+  format-qa-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Exact formatted QA source
+        run: |
+          echo QA188_FORMAT_START
+          pnpm exec prettier apps/api/test/booking-mutation-cookie-revocation-qa.integration.test.ts | base64 -w0
+          echo
+          echo QA188_FORMAT_END
