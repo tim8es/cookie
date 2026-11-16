@@ -39,3 +39,7 @@ The original #183 source test is preserved **byte-for-byte** (Git blob `e8ae9fed
 ## Main merge-base revalidation after role QA #187
 
 Role permission and tenant isolation QA [#187](https://github.com/tim8es/cookie/pull/187) was merged independently into `main` `a26807dbcc4bccb21c4ef7ffe68e20f140ce793d`. This protected Workspace Cookie revoke-first test remains source byte-identical to original #183; only its PR base and this evidence note changed. Run full F1 CI at the new exact head before merge; earlier passing CI from #183's strict Workspace branch is not sufficient. No #175 decision was made by this extraction.
+
+## Final current-main security composition (2026-11-16)
+
+QA #188 was merged into main as `9279bb29e128f01c0b604998e07825bd3db96f4b`, adding positive and revoke-first Cancel/Reschedule cases. This Workspace read QA PR is explicitly retargeted to that commit for an exact-head full GitHub F1 CI run; only this note changed, original protected Workspace three-mode test still has blob `e8ae9fede2087a587084f902295d59571b6ac544`. No application source or unresolved #175 Workspace role-policy contract is changed. No public API/deployment.
