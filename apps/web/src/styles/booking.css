@@ -263,3 +263,25 @@
 .public-shell .public-content button.book-submit[data-slot=button]:hover:not(:disabled) {
   background: var(--salon-action-hover);
 }
+
+/* Customer-facing unavailable state. Missing owner setup belongs in Workspace. */
+.public-content .booking-unavailable {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 10px; width: min(100%, 720px); padding: clamp(24px, 5vw, 36px);
+  border: 1px solid #e9e1eb; border-radius: var(--cookie-radius-surface);
+  background: #fff; color: var(--cookie-ink);
+}
+.public-content .booking-unavailable-icon {
+  display: grid; place-items: center; width: 44px; height: 44px;
+  color: #604c69; background: #f0eaf3; border-radius: 12px;
+}
+.public-content .booking-unavailable h2 {
+  margin: 5px 0 0; font-size: clamp(21px, 4vw, 27px); line-height: 1.2;
+}
+.public-content .booking-unavailable p {
+  margin: 0; max-width: 44ch; font-size: 14px; line-height: 1.6;
+  color: #6c6071;
+}
+@media (max-width: 400px) {
+  .public-content .booking-unavailable { padding: 23px 20px; }
+}
