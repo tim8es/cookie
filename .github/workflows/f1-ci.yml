@@ -81,3 +81,12 @@ jobs:
           path: apps/web/artifacts/visual-smoke/
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Temporary capture canonical Telegram link test formatting
+        if: ${{ always() }}
+        run: |
+          pnpm exec prettier --write apps/api/test/telegram-trusted-links.integration.test.ts
+          echo COOKIE_TRUSTED_LINK_TEST_START
+          base64 -w0 apps/api/test/telegram-trusted-links.integration.test.ts
+          echo
+          echo COOKIE_TRUSTED_LINK_TEST_END
