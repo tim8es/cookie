@@ -81,3 +81,16 @@ jobs:
           path: apps/web/artifacts/visual-smoke/
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Emit exact Prettier loopback source for formatting repair
+        if: ${{ always() }}
+        run: |
+          pnpm exec prettier --write apps/web/src/lib/proposed-f1-synthetic-loopback.ts apps/web/src/lib/proposed-f1-synthetic-loopback.test.ts
+          echo COOKIE_LOOPBACK_TS_START
+          base64 -w0 apps/web/src/lib/proposed-f1-synthetic-loopback.ts
+          echo
+          echo COOKIE_LOOPBACK_TS_END
+          echo COOKIE_LOOPBACK_TEST_START
+          base64 -w0 apps/web/src/lib/proposed-f1-synthetic-loopback.test.ts
+          echo
+          echo COOKIE_LOOPBACK_TEST_END
