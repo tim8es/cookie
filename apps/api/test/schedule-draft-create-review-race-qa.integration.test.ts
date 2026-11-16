@@ -191,12 +191,15 @@ test(
         },
       ];
       const settled = await Promise.allSettled(
-        attempts.map((input) =>
-          reviewShiftDraftCreateInternal(pool, input, allow),
-        ),
+        attempts.map((input) => reviewShiftDraftCreateInternal(pool, input, allow)),
       );
-      assert.equal(settled.filter((item) => item.status === "fulfilled").length, 1);
-      const winnerIndex = settled.findIndex((item) => item.status === "fulfilled");
+      assert.equal(
+        settled.filter((item) => item.status === "fulfilled").length,
+        1,
+      );
+      const winnerIndex = settled.findIndex(
+        (item) => item.status === "fulfilled",
+      );
       const winner = settled[winnerIndex];
       const loser = settled[1 - winnerIndex];
       assert.ok(winner);
@@ -333,14 +336,16 @@ test(
           .catch(() => undefined);
       }
       await pool
-        .query("DELETE FROM cookie_tenancy.organizations WHERE id=ANY($1::uuid[])", [
-          tenants,
-        ])
+        .query(
+          "DELETE FROM cookie_tenancy.organizations WHERE id=ANY($1::uuid[])",
+          [tenants],
+        )
         .catch(() => undefined);
       await pool
-        .query("DELETE FROM cookie_identity.identities WHERE id=ANY($1::uuid[])", [
-          [owner, manager],
-        ])
+        .query(
+          "DELETE FROM cookie_identity.identities WHERE id=ANY($1::uuid[])",
+          [[owner, manager]],
+        )
         .catch(() => undefined);
       await pool.end();
     }
