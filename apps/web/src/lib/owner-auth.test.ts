@@ -49,7 +49,9 @@ async function assertAuthFailure(
 
 test("proof comes only from Mini App JS, never URL or demo", () => {
   assert.equal(readTelegramInitData(undefined), null);
-  const spoofed = { location: { search: "?initData=forged" } } as unknown as Window;
+  const spoofed = {
+    location: { search: "?initData=forged" },
+  } as unknown as Window;
   const empty = { Telegram: { WebApp: { initData: "" } } } as unknown as Window;
   const valid = {
     Telegram: { WebApp: { initData: "signed-proof" } },
@@ -108,7 +110,7 @@ test("Telegram SDK is loaded only when proof is not yet present", async () => {
   assert.equal(loaded, "");
 });
 
-test("proof exchange and matching protected context are mandatory", async () => {
+test("proof exchange must match protected context", async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const fetcher = responder(
     [
@@ -198,7 +200,7 @@ test("401 exchange and disabled endpoint do not obtain session", async () => {
   }
 });
 
-test("context mismatch or revocation fails closed and attempts logout", async () => {
+test("context mismatch triggers logout and fails closed", async () => {
   for (const [response, reason] of [
     [() => Response.json({ tenantId: "wrong-tenant" }), "invalid-response"],
     [() => new Response(null, { status: 403 }), "unauthorized"],
@@ -208,11 +210,14 @@ test("context mismatch or revocation fails closed and attempts logout", async ()
     await assertAuthFailure(
       authenticateTelegramOwner(
         "proof",
-        responder([
-          () => Response.json(receipt(), { status: 201 }),
-          response,
-          () => new Response(null, { status: 204 }),
-        ], calls),
+        responder(
+          [
+            () => Response.json(receipt(), { status: 201 }),
+            response,
+            () => new Response(null, { status: 204 }),
+          ],
+          calls,
+        ),
         NOW,
       ),
       reason,
