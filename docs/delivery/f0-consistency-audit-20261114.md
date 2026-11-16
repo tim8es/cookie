@@ -1,5 +1,7 @@
 # Финальный документальный аудит F0 Cookie — 14.11.2026
 
+> **Актуализация 2026-11-16:** этот документ фиксирует **историческое состояние на момент pre-approval F0 audit**. Позже 2026-11-14 владелец утвердил F0-P01–F0-P12 (DEC-115), разрешил синтетическую F1 инженерную разработку и [PR #43](https://github.com/tim8es/cookie/pull/43) был объединён с `main` 2026-11-15. Формулировки ниже «F0 Gate BLOCKED», «код запрещён» и «PR Draft» относятся к прошлому срезу, а не к текущему разрешению на F1. Реальный коммерческий пилот, production, ПДн и платежи всё ещё требуют отдельного допуска.
+
 **Объект:** [Draft PR #43](https://github.com/tim8es/cookie/pull/43), ветка `docs/product-foundation-20261113`, GitHub Issues #8–#15 и связанные #20/#21/#26/#29/#30/#35/#37–#39.  
 **Тип:** документальный consistency/completeness/readiness review; **не** code/security/legal/performance audit.
 **Вердикт, обновлён 14.11.2026:** **F0 DOCS PREPARED FOR SINGLE OWNER REVIEW; F0 Gate BLOCKED**. Архитектурные рекомендации, screen map, traceability 67 REQ, 41 негативный/приёмочный сценарий, operations runbooks и competitor/economics model созданы. **Не выполнено:** owner approval ADR/PR, реальные тесты, юридическая проверка и коммерческие измерения. См. [сводное F0 closure review](f0-closure-review-20261114.md). Этот аудит не разрешает coding, merge и реальные ПДн/оплаты.
