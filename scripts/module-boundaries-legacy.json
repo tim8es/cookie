@@ -6,7 +6,6 @@
   ],
   "apps/api/src/booking-http.ts": [
     "../../../packages/domain-booking/src/create.js",
-    "../../../packages/platform-db/src/booking-availability.js",
     "../../../packages/platform-identity/src/authorization.js",
     "../../../packages/platform-identity/src/postgres.js"
   ],
@@ -64,10 +63,6 @@
   ],
   "packages/domain-scheduling/src/publish-shift.ts": [
     "../../platform-db/src/outbox.js",
-    "../../platform-identity/src/authorization.js",
-    "../../platform-identity/src/postgres.js"
-  ],
-  "packages/platform-db/src/booking-availability.ts": [
     "../../platform-identity/src/authorization.js",
     "../../platform-identity/src/postgres.js"
   ],
