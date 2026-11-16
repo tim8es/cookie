@@ -13,7 +13,7 @@
   <div class="public-brand">
     <span class="salon-monogram" aria-hidden="true">{salonMonogram}</span>
     <div class="public-brand-type">
-      <strong class="salon-name">{organizationName}</strong>
+      <strong class="salon-name" title={organizationName}>{organizationName}</strong>
       <small>Онлайн-запись в салон</small>
     </div>
   </div>
