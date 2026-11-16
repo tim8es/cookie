@@ -2,8 +2,8 @@
 
 **Status:** DRAFT, synthetic-only F1 engineering, not merged or deployed.
 
-This branch has one parent, `a3f498a222fe43d0484389e93e5097cd0a76e7ae` (main after the
-Cookie session guard #173 merge). It copies exactly the reviewed Outbox
+This branch has one parent, `82dd319dbfbb7e23ad19513c3cf076486fb672e2` (current main after
+Cookie session guard #173 and ordinary Outbox sweep #159 merges). It copies exactly the reviewed Outbox
 worker source, synthetic-only handler deadline configuration, and all
 timeout/claim/renewal/row-lock regressions from the independent QA #167
 head `18808b0e8f2297312b06cdf39d831e3904e75a04`.
@@ -50,3 +50,16 @@ deployment, real user/PII data, payments or commercial pilot is enabled.
 Main protection #144, required reviews and final integration gates
 remain open. Don't merge the earlier #143/#155/#166 parent PRs
 independently after collapsing their changes here.
+
+## Current-main compatibility refresh
+
+After the original integration HEAD `42256c2c35076d6e86380d50634b72aaae87ec39`
+passed F1 CI #43922560339, `main` advanced to
+`82dd319dbfbb7e23ad19513c3cf076486fb672e2` with #159's
+bounded ordinary Outbox expiry maintenance. This new two-parent
+integration commit preserves that updated `outbox.ts`, the new
+PostgreSQL maintenance regression and docs **from main**, while
+retaining the byte-identical worker source and QA regression blobs
+from the old integration head. Earlier CI is not evidence of the new
+combined state; rerun full exact-head F1 CI and keep the issue open
+until review.

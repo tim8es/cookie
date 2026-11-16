@@ -1,0 +1,9 @@
+# F1 #19 — Outbox expired-lease lock isolation
+
+**Incremental internal PostgreSQL change; synthetic only.** Previously, `claimOutbox` executed a plain `UPDATE` to mark *all* expired final-attempt leases `dead` **before** the worker's existing `FOR UPDATE SKIP LOCKED` claim. A concurrently locked expired row could therefore stall or fail the entire claim, even when another tenant has an eligible pending event.
+
+The expired-final-attempt sweep now selects only **currently unlockable** rows in a CTE with `FOR UPDATE SKIP LOCKED`, then marks those rows `dead` with `LEASE_EXHAUSTED`. It preserves topic scoping and does not alter the later single-claim fencing, attempts, idempotency or at-least-once semantics. Skipped rows are not falsely acknowledged or lost: they stay `leased` until a **subsequent** claim after lock release processes them. This is eventual maintenance, not a guaranteed immediate deadline nor a separately scheduled cleanup service.
+
+A new real PostgreSQL 16 integration test creates two synthetic tenants and holds a row lock on an expired final-attempt lease in tenant A. A separate connection with a 300 ms PostgreSQL lock timeout must still claim and acknowledge a ready event from tenant B. Once the lock is released, a later claim must transition the expired row to `dead`, clear its lease metadata and reject a stale acknowledgement. Before the fix, the plain UPDATE would block on tenant A and fail with PostgreSQL lock timeout before claiming tenant B.
+
+No SQL migrations, identity/policy/booking changes, frontend, outbox worker supervisor or external provider are part of this patch. No production deployment, real PII or real notifications are authorized. No claim of exactly-once external delivery. Review CI against the **exact PR HEAD SHA**; #19 stays open for production operations and provider idempotency.
