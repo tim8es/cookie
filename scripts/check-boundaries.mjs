@@ -72,6 +72,17 @@ export function checkFileImports({ root, file, content, exceptions = new Set() }
     if (destination.isAlias && destination.isPublic && ["packages/contracts", "packages/kernel"].includes(destination.module) && sourceModule !== "packages/contracts") {
       continue;
     }
+    // Public capability entrypoints are the only allowed cross-package
+    // relative imports. Keep these explicit until package exports/aliases are
+    // configured. Kernel and Contracts must never depend on business/platform.
+    if (
+      destination.isRelative &&
+      destination.module.startsWith("packages/") &&
+      !["packages/kernel", "packages/contracts"].includes(sourceModule) &&
+      destination.path === join(root, destination.module, "src/index.js")
+    ) {
+      continue;
+    }
     const exception = from + "|" + specifier;
     if (exceptions.has(exception)) {
       usedExceptions.push(exception);
