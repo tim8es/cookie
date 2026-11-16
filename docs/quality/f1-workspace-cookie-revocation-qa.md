@@ -35,3 +35,7 @@ This QA document update does not change the test source or assertions. The test-
 ## Independent latest-main extraction (2026-11-16)
 
 The original #183 source test is preserved **byte-for-byte** (Git blob `e8ae9fede2087a587084f902295d59571b6ac544`) in this new clean branch from `main` `53de65ae8e7b833e1fc7ff756943c78430ca216e`. The old #183 branch inherited #179's **unapproved strict role-read implementation**, which conflicts with current main and with the unresolved policy choice #175. Only this bearer/session/link revoke-before protected Workspace GET test and its evidence document are moved; no role-read implementation or synthetic API behavior changes. Previous green CI #43922612156 was on the older #179 stack and is not PASS evidence for this clean main extraction. Run exact-head full F1 CI again before merge; no production deployment or PII.
+
+## Main merge-base revalidation after role QA #187
+
+Role permission and tenant isolation QA [#187](https://github.com/tim8es/cookie/pull/187) was merged independently into `main` `a26807dbcc4bccb21c4ef7ffe68e20f140ce793d`. This protected Workspace Cookie revoke-first test remains source byte-identical to original #183; only its PR base and this evidence note changed. Run full F1 CI at the new exact head before merge; earlier passing CI from #183's strict Workspace branch is not sufficient. No #175 decision was made by this extraction.
