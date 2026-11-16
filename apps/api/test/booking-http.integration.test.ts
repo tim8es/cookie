@@ -6,7 +6,9 @@ import test from "node:test";
 import { Pool } from "pg";
 
 import { BookingAttempt } from "../../web/src/lib/booking-attempt.js";
-import { createProposedF1SyntheticLoopbackClient } from "../../web/src/lib/proposed-f1-synthetic-loopback.js";
+import {
+  createProposedF1SyntheticLoopbackClient,
+} from "../../web/src/lib/proposed-f1-synthetic-loopback.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { createApp } from "../src/app.js";
 
