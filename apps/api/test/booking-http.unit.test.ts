@@ -22,7 +22,10 @@ test("booking routes are absent from ordinary production composition", async (t)
     path,
     `/v1/organizations/${TENANT}/locations/${LOCATION}/catalog`,
   ]) {
-    const response = await app.inject({ method: url === path ? "POST" : "GET", url });
+    const response = await app.inject({
+      method: url === path ? "POST" : "GET",
+      url,
+    });
     assert.equal(response.statusCode, 404);
   }
 });
@@ -56,7 +59,11 @@ test("opt-in booking adapter requires verified actor, rejects forged tenant and 
     serviceId: SERVICE,
     startAt: "2027-04-12T10:00:00Z",
   };
-  const unauthenticated = await app.inject({ method: "POST", url: path, payload: body });
+  const unauthenticated = await app.inject({
+    method: "POST",
+    url: path,
+    payload: body,
+  });
   assert.equal(unauthenticated.statusCode, 401);
   assert.equal(unauthenticated.json().error.code, "UNAUTHENTICATED");
   assert.equal(verifierCalls, 0);
@@ -64,7 +71,7 @@ test("opt-in booking adapter requires verified actor, rejects forged tenant and 
   const wrongTenant = await app.inject({
     method: "POST",
     url: `/v1/organizations/${OTHER}/bookings`,
-    headers: { authorization: "Bearer valid" },
+    headers: { authorization: "***" },
     payload: body,
   });
   assert.equal(wrongTenant.statusCode, 403);
@@ -73,7 +80,7 @@ test("opt-in booking adapter requires verified actor, rejects forged tenant and 
   const invalid = await app.inject({
     method: "POST",
     url: path,
-    headers: { authorization: "Bearer invalid", "idempotency-key": "same" },
+    headers: { authorization: "***", "idempotency-key": "same" },
     payload: body,
   });
   assert.equal(invalid.statusCode, 401);
@@ -89,7 +96,7 @@ test("opt-in booking adapter requires verified actor, rejects forged tenant and 
     const response = await app.inject({
       method: "POST",
       url: path,
-      headers: { authorization: "Bearer valid", "idempotency-key": "key" },
+      headers: { authorization: "***", "idempotency-key": "key" },
       payload,
     });
     assert.equal(response.statusCode, 400);
@@ -98,7 +105,7 @@ test("opt-in booking adapter requires verified actor, rejects forged tenant and 
   const noKey = await app.inject({
     method: "POST",
     url: path,
-    headers: { authorization: "Bearer valid" },
+    headers: { authorization: "***" },
     payload: body,
   });
   assert.equal(noKey.statusCode, 400);
