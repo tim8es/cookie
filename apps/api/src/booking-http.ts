@@ -300,7 +300,7 @@ export function registerSyntheticBookingHttp(
       )
         return fail(reply, 400, "INVALID_REQUEST");
       try {
-        const slots = await inReadTransaction(pool, async (client) => {
+        const availability = await inReadTransaction(pool, async (client) => {
           await requireTenantPermission(
             client,
             actor,
@@ -315,10 +315,11 @@ export function registerSyntheticBookingHttp(
           const service = await client.query<{
             duration_minutes: number;
             post_service_buffer_minutes: number;
+            price_kopecks: string;
             time_zone: string;
           }>(
             `SELECT service.duration_minutes, service.post_service_buffer_minutes,
-                    loc.time_zone
+                    service.base_price_kopecks::text AS price_kopecks, loc.time_zone
                FROM cookie_staff.service_assignments assignment
                JOIN cookie_staff.location_assignments staff_loc
                  ON staff_loc.tenant_id=assignment.tenant_id
@@ -337,7 +338,7 @@ export function registerSyntheticBookingHttp(
             [actor.tenantId, locationId, staffId, serviceId],
           );
           const settings = service.rows[0];
-          if (!settings) return [];
+          if (!settings) return { slots: [], priceKopecks: null };
           const shifts = await client.query<{ start_at: Date; end_at: Date }>(
             `SELECT start_at, end_at FROM cookie_scheduling.shift_windows
               WHERE tenant_id=$1::uuid AND location_id=$2::uuid
@@ -394,11 +395,12 @@ export function registerSyntheticBookingHttp(
               occupiedUntil: row.occupied_until.toISOString(),
             })),
           });
-          return available.filter(
-            (slot) => Date.parse(slot.startAt) > Date.now(),
-          );
+          return {
+            priceKopecks: settings.price_kopecks,
+            slots: available.filter((slot) => Date.parse(slot.startAt) > Date.now()),
+          };
         });
-        return reply.send({ slots });
+        return reply.send(availability);
       } catch (error) {
         return handleFailure(error, reply);
       }
