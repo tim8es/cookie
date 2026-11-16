@@ -5,6 +5,9 @@ import test from "node:test";
 
 import { Pool } from "pg";
 
+import { BookingAttempt } from "../../web/src/lib/booking-attempt.js";
+import { createProposedF1SyntheticLoopbackClient } from "../../web/src/lib/proposed-f1-synthetic-loopback.js";
+
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { createApp } from "../src/app.js";
 
@@ -626,6 +629,128 @@ test(
         events: "4",
         cancels: "1",
         reschedules: "1",
+      });
+
+      // Cross-stack contract gate: execute the EXACT frontend #119 loopback
+      // adapter and #106 BookingAttempt state machine against this real
+      // Fastify TCP listener and real PostgreSQL state, not a stubbed fetch.
+      const selection = {
+        locationId: locationA,
+        staffId: staff,
+        serviceId: service,
+        localDate: "2027-04-12",
+        startAt: "2027-04-12T16:00:00Z",
+      };
+      let discardedCommittedReply = false;
+      const frontend = createProposedF1SyntheticLoopbackClient({
+        origin: loopbackOrigin,
+        tenantId: tenant,
+        syntheticCustomerId: customer,
+        syntheticBearer: "synthetic-owner",
+        fetcher: async (input, init) => {
+          const response = await fetch(input, init);
+          if (!discardedCommittedReply && init?.method === "POST") {
+            assert.equal(response.status, 201);
+            await response.body?.cancel();
+            discardedCommittedReply = true;
+            throw new Error("synthetic client discarded committed HTTP reply");
+          }
+          return response;
+        },
+      });
+      const beforeSubmit = await frontend.readAvailability(selection);
+      assert.equal(beforeSubmit.priceKopecks, "150000");
+      assert.ok(
+        beforeSubmit.slots.some(
+          (slot) => slot.startAt === "2027-04-12T16:00:00.000Z",
+        ),
+      );
+      // A read-side price is not a guaranteed F2 Quote. The current DB
+      // price at COMMIT must win and appear in the verified frontend receipt.
+      await pool.query(
+        "UPDATE cookie_catalog.services SET base_price_kopecks=175555 WHERE tenant_id=$1 AND id=$2",
+        [tenant, service],
+      );
+      const attempt = new BookingAttempt(frontend.port, () => "ui-wire-loss");
+      const unknownOutcome = await attempt.submit(selection);
+      assert.equal(unknownOutcome.phase, "error");
+      if (unknownOutcome.phase !== "error") throw new Error("expected error");
+      assert.equal(unknownOutcome.reason, "network");
+      assert.equal(unknownOutcome.retryable, true);
+      assert.equal(discardedCommittedReply, true);
+      assert.equal(attempt.reset(), false, "uncertain COMMIT blocks new key");
+      const recovered = await attempt.retry();
+      assert.equal(recovered.phase, "confirmed");
+      if (recovered.phase !== "confirmed")
+        throw new Error("frontend may only accept verified Confirmed");
+      assert.match(recovered.receipt.bookingId, /^[0-9a-f-]{36}$/);
+      assert.equal(recovered.receipt.finalPriceText, "1\\u00a0755,55 ₽");
+      assert.equal(recovered.receipt.dateTimeText, "12.04.2027, 16:00 UTC");
+      const historicalReplay = await frontend.port.create(
+        selection,
+        "ui-wire-loss",
+      );
+      assert.deepEqual(
+        frontend.port.verifyConfirmed(historicalReplay),
+        recovered.receipt,
+      );
+
+      // A separate frontend attempt at an occupied slot gets a verified
+      // BOOKING_CONFLICT and refreshes the ACTUAL backend availability.
+      const normalClient = createProposedF1SyntheticLoopbackClient({
+        origin: loopbackOrigin,
+        tenantId: tenant,
+        syntheticCustomerId: customer,
+        syntheticBearer: "synthetic-owner",
+        fetcher: fetch,
+      });
+      const competingAttempt = new BookingAttempt(
+        normalClient.port,
+        () => "ui-wire-competing",
+      );
+      const conflicted = await competingAttempt.submit(selection);
+      assert.equal(conflicted.phase, "conflict");
+      if (conflicted.phase !== "conflict") throw new Error("expected conflict");
+      assert.equal(conflicted.refreshFailed, false);
+      assert.ok(
+        !conflicted.slots.some(
+          (slot) => slot.startAt === "2027-04-12T16:00:00.000Z",
+        ),
+      );
+      const outsiderClient = createProposedF1SyntheticLoopbackClient({
+        origin: loopbackOrigin,
+        tenantId: tenant,
+        syntheticCustomerId: customer,
+        syntheticBearer: "synthetic-outsider",
+        fetcher: fetch,
+      });
+      const outsiderAttempt = new BookingAttempt(
+        outsiderClient.port,
+        () => "ui-wire-forbidden",
+      );
+      assert.deepEqual(await outsiderAttempt.submit(selection), {
+        phase: "denied",
+        reason: "forbidden",
+      });
+      const bridgeLedger = await pool.query<{
+        bookings: string;
+        receipts: string;
+        events: string;
+        committed_price: string;
+      }>(
+        `SELECT
+          (SELECT count(*)::text FROM cookie_booking.bookings WHERE tenant_id=$1) AS bookings,
+          (SELECT count(*)::text FROM cookie_booking.command_receipts WHERE tenant_id=$1) AS receipts,
+          (SELECT count(*)::text FROM cookie_jobs.outbox_events WHERE tenant_id=$1) AS events,
+          (SELECT price_kopecks_snapshot::text FROM cookie_booking.bookings
+             WHERE tenant_id=$1 AND start_at='2027-04-12T16:00:00Z'::timestamptz) AS committed_price`,
+        [tenant],
+      );
+      assert.deepEqual(bridgeLedger.rows[0], {
+        bookings: "3",
+        receipts: "5",
+        events: "5",
+        committed_price: "175555",
       });
     } finally {
       await app.close();
