@@ -56,7 +56,7 @@
       staffId: bookingStaff,
       serviceId: bookingService,
       localDate: bookingDate,
-      startAt: `${bookingDate}T${bookingTime}:00Z`,
+      startAt: `${bookingDate}T${bookingTime || "09:00"}:00Z`,
     };
   }
 
