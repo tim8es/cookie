@@ -246,3 +246,70 @@
   /* Desktop's global topbar already includes this action. */
   .calendar-page-head button.calendar-create[data-slot=button] { display: none; }
 }
+
+/* Local-only booking management: never represents server authorization. */
+.calendar-detail-sheet[data-slot=card] {
+  max-height: min(92dvh, 850px); overflow-y: auto;
+}
+.calendar-demo-actions {
+  display: flex; align-items: stretch; flex-wrap: wrap; gap: 9px;
+  margin-top: 18px;
+}
+.calendar-demo-actions button[data-slot=button] {
+  flex: 1 1 170px; min-height: 42px; height: auto;
+  white-space: normal; padding: 10px 13px; line-height: 1.35;
+}
+.calendar-demo-actions .calendar-demo-cancel[data-slot=button] {
+  color: #87434b; border-color: #dec8ce;
+}
+.calendar-move-form, .calendar-cancel-confirm {
+  margin-top: 18px; padding: 15px; background: #faf8fb;
+  border: 1px solid #eee6f0; border-radius: 12px;
+}
+.calendar-move-form h3 {
+  margin: 0 0 15px; font-size: 15px; color: #493852;
+}
+.calendar-move-form label {
+  display: flex; flex-direction: column; gap: 7px;
+  margin-bottom: 14px; color: #67546f; font-size: 12px; font-weight: 700;
+}
+.calendar-move-form input, .calendar-move-form select {
+  display: block; width: 100%; min-height: 42px;
+  border: 1px solid #e1d7e5; border-radius: 8px;
+  background: #fff; color: #403049; padding: 8px 10px;
+  font: inherit;
+}
+.calendar-move-form input:focus-visible, .calendar-move-form select:focus-visible {
+  outline: 3px solid #b5ca80; outline-offset: 1px;
+}
+.calendar-move-form p, .calendar-cancel-confirm p {
+  margin: 3px 0 12px; color: #75667d; font-size: 12px; line-height: 1.5;
+}
+.calendar-demo-error {
+  color: #8b2c3b; margin: 12px 0 0; font-size: 12px; line-height: 1.4;
+}
+.calendar-cancelled-history {
+  max-width: 1040px; margin-top: 18px; padding: 20px 22px;
+  border: 1px solid #e8e0ea; border-radius: 13px; background: #fcfafc;
+}
+.calendar-cancelled-history h2 {
+  font-size: 17px; font-weight: 750; margin: 0 0 6px; color: #493752;
+}
+.calendar-cancelled-history p {
+  font-size: 12px; margin: 0 0 14px; color: #84758c;
+}
+.calendar-cancelled-entry {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  width: 100%; text-align: left; padding: 13px 0;
+  border: 0; border-top: 1px solid #eee7ef; background: transparent;
+  color: #67546f; font-size: 12px;
+}
+.calendar-cancelled-entry strong { color: #4e3a56; font-size: 12px; }
+.calendar-cancelled-entry:hover, .calendar-cancelled-entry:focus-visible {
+  background: #f4eff6; outline-offset: 2px;
+}
+@media (max-width: 680px) {
+  .calendar-cancelled-history { margin: 14px; padding: 17px; }
+  .calendar-demo-actions { flex-direction: column; }
+  .calendar-demo-actions button[data-slot=button] { flex-basis: auto; width: 100%; }
+}

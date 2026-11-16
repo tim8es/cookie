@@ -49,6 +49,12 @@ class NotConnectedApi implements CookieUiPort {
   async createBooking(): Promise<BookingView> {
     return this.unavailable();
   }
+  async cancelBooking(): Promise<BookingView> {
+    return this.unavailable();
+  }
+  async rescheduleBooking(): Promise<BookingView> {
+    return this.unavailable();
+  }
   async resetDemo(): Promise<void> {
     return this.unavailable();
   }
