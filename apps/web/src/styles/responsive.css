@@ -205,7 +205,6 @@
   .public-back span { display: none; }
   .public-demo-notice { font-size: 12px; padding: 7px 12px; }
   .ticket-top { padding: 19px 22px; }
-  .ticket-mark { display: none; }
   .ticket-top h2 { font-size: 24px; margin: 11px 0 8px; }
   .ticket-top p, .ticket-fineprint p, .ticket-details dt, .ticket-details dd { font-size: 12px; }
   .ticket-location-address { font-size: 12px; }
