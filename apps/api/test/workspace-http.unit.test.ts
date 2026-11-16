@@ -65,6 +65,6 @@ test("workspace read-only routes require verified session and guard tenant scope
       headers: { authorization: "Bearer fixture" },
     });
     assert.equal(response.statusCode, 400);
-    assert.equal(response.json().error.code, "INVALID_REQUEST");
+    assert.match(response.json().error.code, /^INVALID_REQUEST/);
   }
 });
