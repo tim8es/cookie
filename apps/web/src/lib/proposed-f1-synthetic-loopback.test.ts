@@ -81,16 +81,18 @@ test("synthetic POST sends the exact proposed payload and injected test credenti
     "300 ₽",
   );
   assert.equal(requests.length, 1);
+  const firstRequest = requests[0];
+  assert.ok(firstRequest);
   assert.equal(
-    requests[0].url,
+    firstRequest.url,
     origin + "/v1/organizations/" + tenantId + "/bookings",
   );
-  assert.equal(requests[0].init.method, "POST");
-  const headers = new Headers(requests[0].init.headers);
+  assert.equal(firstRequest.init.method, "POST");
+  const headers = new Headers(firstRequest.init.headers);
   assert.equal(headers.get("Authorization"), "Bearer synthetic-test-token");
   assert.equal(headers.get("Content-Type"), "application/json");
   assert.equal(headers.get("Idempotency-Key"), "test-key-01");
-  assert.deepEqual(JSON.parse(String(requests[0].init.body)), {
+  assert.deepEqual(JSON.parse(String(firstRequest.init.body)), {
     customerId,
     locationId,
     staffId,
