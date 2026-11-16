@@ -64,11 +64,7 @@ export class BookingAttempt<Selection, Receipt, Slot> {
   /** User-initiated retry only; never creates a second idempotency key. */
   retry(): Promise<BookingAttemptState<Receipt, Slot>> {
     if (this.running) return this.running;
-    if (
-      this.state.phase !== "error" ||
-      !this.state.retryable ||
-      !this.active
-    ) {
+    if (this.state.phase !== "error" || !this.state.retryable || !this.active) {
       return Promise.resolve(this.state);
     }
     return this.run();
@@ -112,7 +108,7 @@ export class BookingAttempt<Selection, Receipt, Slot> {
         // Invalid or Pending responses cannot become success in the UI.
       }
       this.state =
-        verified === null
+        verified === null || verified === undefined
           ? {
               phase: "error",
               reason: "unverified-response",
@@ -135,7 +131,8 @@ export class BookingAttempt<Selection, Receipt, Slot> {
       ) {
         this.state = { phase: "denied", reason: reason.kind };
       } else {
-        const kind = reason instanceof TransportFailure ? reason.kind : "unexpected";
+        const kind =
+          reason instanceof TransportFailure ? reason.kind : "unexpected";
         const retryable =
           kind === "network" ||
           kind === "aborted" ||
