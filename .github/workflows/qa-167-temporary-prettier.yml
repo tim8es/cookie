@@ -1,5 +1,8 @@
 name: QA 167 temporary Prettier preview
 on:
+  pull_request:
+    branches:
+      - feature/f1-outbox-locked-handler-dispatch-20261116
   push:
     branches:
       - qa/f1-outbox-handler-start-lock-proof-20261116
