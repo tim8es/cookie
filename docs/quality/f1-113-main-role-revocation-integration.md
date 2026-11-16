@@ -15,3 +15,9 @@ Require a new exact-head **full** F1 workflow with real PostgreSQL16 before clai
 No runtime/API/schema/frontend/provider changes in this PR, no real PII, pilot, or production rollout. #113 remains release-gating pending cross-surface policy and customer ownership verification. Source tests are policy/Booking command-layer, not proof of actual public AuthN, permission-revocation delivery or all PostgreSQL deadlock schedules.
 
 Keep historical red/green QA evidence on #136/#140; close them as **superseded only after** merged QA goes into main.
+
+## Independent initial CI evidence and moving-base revalidation
+
+The first exact-head F1 [run #43923813962](https://github.com/tim8es/cookie/actions/runs/43923813962) completed **SUCCESS** for QA commit `18bc2a84491927d5970cd9f3b98865b1502cb1b7` against then-current `main` `82dd319dbfbb7e23ad19513c3cf076486fb672e2`. The two imported role/tenant QA tests were not modified.
+
+While this run executed, #161 merged a separate bounded alert-delivery maintenance change and `main` advanced to `58fc6a9eef14a052578b7fdf66478b7f4f30f316`. The present documentation-only commit intentionally triggers another full PR CI on the newer merge-base before merging into main. The earlier green run must not be reused as verification of the newer base. No production deployment.
