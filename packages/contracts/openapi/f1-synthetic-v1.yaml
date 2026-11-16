@@ -111,6 +111,72 @@ paths:
         "403": { $ref: "#/components/responses/AccessDenied" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/organizations/{tenantId}/bookings/{bookingId}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/tenantId"
+      - $ref: "#/components/parameters/bookingId"
+    post:
+      tags: [SyntheticBooking]
+      operationId: cancelSyntheticBusinessBooking
+      description: |
+        Business-side only, no customer self-service. Requires live booking.cancel
+        permission for persisted location and mandatory server-provided, transaction
+        scoped deadline/exception policy. Body must be empty or absent.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        "200":
+          description: Committed business cancellation; exact receipt on same-key replay.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CancelledReceipt" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/AccessDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/organizations/{tenantId}/bookings/{bookingId}/reschedule:
+    parameters:
+      - $ref: "#/components/parameters/tenantId"
+      - $ref: "#/components/parameters/bookingId"
+    post:
+      tags: [SyntheticBooking]
+      operationId: rescheduleSyntheticBusinessBooking
+      description: |
+        Business-side time-only change. No service, staff, location or price changes.
+        Requires live booking.reschedule permission and mandatory server transaction
+        policy. Existing Confirmed slot remains on any failure.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [newStartAt]
+              properties:
+                newStartAt: { $ref: "#/components/schemas/UtcMinute" }
+      responses:
+        "200":
+          description: Committed time-only move; exact receipt on same-key replay.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RescheduledReceipt" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/AccessDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/Unavailable" }
   /v1/organizations/{tenantId}/bookings/{bookingId}:
     parameters:
       - $ref: "#/components/parameters/tenantId"
@@ -248,6 +314,33 @@ components:
         endAt: { type: string, format: date-time }
         occupiedUntil: { type: string, format: date-time }
         priceKopecks: { type: string, pattern: "^[0-9]+$" }
+    CancelledReceipt:
+      type: object
+      additionalProperties: false
+      required: [bookingId, status, cancelledAt]
+      properties:
+        bookingId: { $ref: "#/components/schemas/Uuid" }
+        status: { type: string, const: CancelledByBusiness }
+        cancelledAt: { type: string, format: date-time }
+    RescheduledReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - bookingId
+        - status
+        - previousStartAt
+        - startAt
+        - endAt
+        - occupiedUntil
+        - priceKopecks
+      properties:
+        bookingId: { $ref: "#/components/schemas/Uuid" }
+        status: { type: string, const: Confirmed }
+        previousStartAt: { type: string, format: date-time }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        occupiedUntil: { type: string, format: date-time }
+        priceKopecks: { type: string, pattern: "^[0-9]+$" }
     BookingDetail:
       type: object
       additionalProperties: false
@@ -295,6 +388,9 @@ components:
                 - BOOKING_CONFLICT
                 - IDEMPOTENCY_KEY_REUSED
                 - BOOKING_NOT_FOUND
+                - BOOKING_NOT_CONFIRMED
+                - CANCELLATION_POLICY_DENIED
+                - RESCHEDULE_POLICY_DENIED
                 - BACKEND_UNAVAILABLE
   responses:
     InvalidRequest:
