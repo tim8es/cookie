@@ -112,34 +112,57 @@ test("opt-in booking adapter requires verified actor, rejects forged tenant and 
   assert.equal(noKey.statusCode, 400);
 });
 
-test("opt-in synthetic Quote rejects anonymous, cross-tenant and malformed requests before SQL", async (t) => {
-  const app = createApp(mockDb, {
-    syntheticBookingRoutes: {
-      pool: {} as Pool,
-      verifier: {
-        verifyBearerToken: async () => ({
-          tenantId: TENANT,
-          identityId: IDENTITY,
-          expiresAtUnixSeconds: Math.floor(Date.now() / 1000) + 600,
-        }),
+test(
+  "opt-in synthetic Quote rejects anonymous, cross-tenant and malformed requests before SQL",
+  async (t) => {
+    const app = createApp(mockDb, {
+      syntheticBookingRoutes: {
+        pool: {} as Pool,
+        verifier: {
+          verifyBearerToken: async () => ({
+            tenantId: TENANT,
+            identityId: IDENTITY,
+            expiresAtUnixSeconds: Math.floor(Date.now() / 1000) + 600,
+          }),
+        },
+        assertEntitled: async () => {
+          throw new Error("Quote must not invoke Booking entitlement");
+        },
       },
-      assertEntitled: async () => {
-        throw new Error("Quote must not invoke Booking entitlement");
+    });
+    t.after(async () => app.close());
+    const quote = `/v1/organizations/${TENANT}/locations/${LOCATION}/quote?serviceId=${SERVICE}&staffId=${STAFF}&date=2027-04-12&startAt=2027-04-12T10:00:00Z`;
+    const cases = [
+      { url: quote, headers: {}, status: 401, code: "UNAUTHENTICATED" },
+      {
+        url: quote.replace(TENANT, OTHER),
+        headers: { authorization: "Bearer valid" },
+        status: 403,
+        code: "ACCESS_DENIED",
       },
-    },
-  });
-  t.after(async () => app.close());
-  const quote = `/v1/organizations/${TENANT}/locations/${LOCATION}/quote?serviceId=${SERVICE}&staffId=${STAFF}&date=2027-04-12&startAt=2027-04-12T10:00:00Z`;
-  const cases = [
-    { url: quote, headers: {}, status: 401, code: "UNAUTHENTICATED" },
-    { url: quote.replace(TENANT, OTHER), headers: { authorization: "Bearer valid" }, status: 403, code: "ACCESS_DENIED" },
-    { url: quote.replace("date=2027-04-12", "date=2027-02-30"), headers: { authorization: "Bearer valid" }, status: 400, code: "INVALID_REQUEST" },
-    { url: quote.replace("T10:00:00Z", "T10:00:30Z"), headers: { authorization: "Bearer valid" }, status: 400, code: "INVALID_REQUEST" },
-    { url: quote.replace(`staffId=${STAFF}`, "staffId=not-uuid"), headers: { authorization: "Bearer valid" }, status: 400, code: "INVALID_REQUEST" },
-  ];
-  for (const { url, headers, status, code } of cases) {
-    const response = await app.inject({ method: "GET", url, headers });
-    assert.equal(response.statusCode, status);
-    assert.equal(response.json().error.code, code);
-  }
-});
+      {
+        url: quote.replace("date=2027-04-12", "date=2027-02-30"),
+        headers: { authorization: "Bearer valid" },
+        status: 400,
+        code: "INVALID_REQUEST",
+      },
+      {
+        url: quote.replace("T10:00:00Z", "T10:00:30Z"),
+        headers: { authorization: "Bearer valid" },
+        status: 400,
+        code: "INVALID_REQUEST",
+      },
+      {
+        url: quote.replace(`staffId=${STAFF}`, "staffId=not-uuid"),
+        headers: { authorization: "Bearer valid" },
+        status: 400,
+        code: "INVALID_REQUEST",
+      },
+    ];
+    for (const { url, headers, status, code } of cases) {
+      const response = await app.inject({ method: "GET", url, headers });
+      assert.equal(response.statusCode, status);
+      assert.equal(response.json().error.code, code);
+    }
+  },
+);
