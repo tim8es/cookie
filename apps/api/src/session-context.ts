@@ -90,7 +90,11 @@ export async function verifyTenantActor(
   const authority = session.opaqueSessionAuthority;
   if (
     authority !== undefined &&
-    (!SESSION_HASH_RE.test(authority.tokenSha256) ||
+    (!authority ||
+      typeof authority.tokenSha256 !== "string" ||
+      typeof authority.issuer !== "string" ||
+      typeof authority.audience !== "string" ||
+      !SESSION_HASH_RE.test(authority.tokenSha256) ||
       !SESSION_LABEL_RE.test(authority.issuer) ||
       !SESSION_LABEL_RE.test(authority.audience))
   ) {
