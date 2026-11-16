@@ -46,10 +46,7 @@ test(
         existing.rows[0]!.indexdef,
         /\(tenant_id, identity_id, issued_at, token_sha256\)/,
       );
-      assert.match(
-        existing.rows[1]!.indexdef,
-        /\(issued_at, token_sha256\)/,
-      );
+      assert.match(existing.rows[1]!.indexdef, /\(issued_at, token_sha256\)/);
 
       const client = await pool.connect();
       let active = false;
