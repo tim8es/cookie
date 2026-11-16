@@ -35,7 +35,8 @@
   function bookingDuration(serviceId: string): number {
     return services.find((item) => item.id === serviceId)?.durationMinutes ?? 60;
   }
-  $: bookedStaff = staff.filter((member) => dayBookings.some((booking) => booking.staffId === member.id));
+  // Show every member, including those without demo bookings: empty never implies availability.
+  $: bookedStaff = staff;
   $: dayStartHour = dayBookings.length
     ? Math.max(6, Math.min(9, Math.floor(Math.min(...dayBookings.map((item) => startMinutes(item.time))) / 60) - 1))
     : 8;
@@ -159,6 +160,9 @@
             <section class="resource-staff-column" aria-label={"Записи мастера " + member.displayName}>
               <h3 class="resource-column-heading">{member.displayName}</h3>
               <div class="resource-time-lane" style:height={boardHeight + "px"}>
+                {#if !dayBookings.some((item) => item.staffId === member.id)}
+                  <span class="resource-empty">Нет демо-записей</span>
+                {/if}
                 {#each dayBookings.filter((item) => item.staffId === member.id) as booking (booking.id)}
                   <button type="button" class="resource-visit"
                     style:top={((startMinutes(booking.time) - dayStartHour * 60) / 60) * hourHeight + "px"}
@@ -167,7 +171,6 @@
                     onclick={() => selectedBookingId = booking.id}>
                     <span>{booking.time} · {bookingDuration(booking.serviceId)} мин</span>
                     <strong>{serviceName(booking.serviceId)}</strong>
-                    <small>{booking.clientAlias}</small>
                   </button>
                 {/each}
               </div>

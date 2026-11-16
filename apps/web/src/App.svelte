@@ -62,7 +62,7 @@
   let slotSuggestions: SlotView[] = [];
   let createdBooking: BookingView | null = null;
   let calendarDate = localDay(new Date());
-  let calendarMode: "day" | "week" = "week";
+  let calendarMode: "day" | "week" = typeof window !== "undefined" && window.innerWidth <= 900 ? "day" : "week";
 
   $: org = data.organization;
   $: stepCount = Number(!!org) + Number(data.services.length > 0) +
@@ -320,7 +320,6 @@
           onCreateBooking={() => goto("booking")}
         />
       {:else if screen === "booking"}
-        <PublicBookingHero organizationName={org.name} />
         {#if createdBooking}
           <BookingConfirmation
             booking={createdBooking}
@@ -331,6 +330,7 @@
             onCreateAnother={() => goto("booking")}
           />
         {:else}
+          <PublicBookingHero organizationName={org.name} />
           <BookingForm
             {data}
             staffOptions={bookingStaffOptions}

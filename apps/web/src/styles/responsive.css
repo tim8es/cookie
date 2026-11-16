@@ -186,3 +186,18 @@
   .telegramPreview .public-brand strong.salon-name { max-width: 47vw; }
   .telegramPreview .content.public-content { padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* Screenshot QA: do not repeat a desktop toolbar on mobile. */
+@media (max-width: 680px) {
+  .app-shell:not(.public-shell) .topbar { display: none; }
+  .public-content .booking-head.booking-hero {
+    padding: 18px 19px; min-height: 0; margin-bottom: 10px;
+  }
+  .public-content .booking-hero-section { display: none; }
+  .public-content .booking-hero h1 {
+    font-size: 29px; line-height: 1.03; margin: 0 0 8px;
+  }
+  .public-content .booking-hero-copy p {
+    font-size: 13px; line-height: 1.4;
+  }
+}

@@ -321,6 +321,12 @@ async function scenario(cdp, origin, width, height) {
   await requireDom(cdp, name + " modular public hero", "document.querySelector('section.booking-hero .booking-hero-studio strong')?.textContent.includes('Студия Smoke')");
   await requireDom(cdp, name + " primary salon header", "document.querySelector('.public-header .salon-name')?.textContent.includes('Студия Smoke')");
   await requireDom(cdp, name + " location with address in booking receipt", "document.querySelector('.booking-summary .ticket-location-address')?.textContent.includes('Демонстрационный адрес')");
+  if (width <= 680) {
+    await requireDom(cdp, name + " expandable mobile receipt", "document.querySelector('.booking-summary-toggle[aria-expanded=false]')");
+    await click(cdp, ".booking-summary-toggle");
+    await requireDom(cdp, name + " expanded mobile receipt", "document.querySelector('.booking-summary-toggle[aria-expanded=true]')");
+    await click(cdp, ".booking-summary-toggle");
+  }
   await requireDom(cdp, name + " upfront base price", "document.querySelector('.booking-checkout-summary strong')?.textContent.includes('₽')");
   await captureEvidence(cdp, name, "02-booking");
   await click(cdp, ".booking-form .slot-grid button");
@@ -331,6 +337,7 @@ async function scenario(cdp, origin, width, height) {
   await captureEvidence(cdp, name, "03-confirmation");
 
   await click(cdp, ".success-screen .btn-primary");
+  if (width <= 900) await click(cdp, ".segmented button:nth-child(2)");
   await requireDom(cdp, name + " calendar event", "document.querySelector('.calendar-event')");
   await requireDom(cdp, name + " shared calendar card", "document.querySelector('.calendar-surface[data-slot=card]')");
   if (width <= 980) {

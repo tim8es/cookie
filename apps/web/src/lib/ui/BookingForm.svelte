@@ -28,6 +28,7 @@
   export let onAliasChange: (alias: string) => void;
   export let onSubmit: () => void;
 
+  let showSummary = false;
   $: selectedService = data.services.find((item) => item.id === bookingService);
 </script>
 
@@ -61,15 +62,22 @@
             </select>
           </label>
           <div class="form-pair">
-            <label class="field">
-              <span class="field-label"><MapPin size={15} aria-hidden="true" /> Филиал</span>
-              <select value={bookingLocation} onchange={(event) => onLocationChange(event.currentTarget.value)} required>
-                <option value="" disabled>Выберите филиал</option>
-                {#each data.locations as location (location.id)}
-                  <option value={location.id}>{location.name}</option>
-                {/each}
-              </select>
-            </label>
+            {#if data.locations.length > 1}
+              <label class="field">
+                <span class="field-label"><MapPin size={15} aria-hidden="true" /> Филиал</span>
+                <select value={bookingLocation} onchange={(event) => onLocationChange(event.currentTarget.value)} required>
+                  <option value="" disabled>Выберите филиал</option>
+                  {#each data.locations as location (location.id)}
+                    <option value={location.id}>{location.name}</option>
+                  {/each}
+                </select>
+              </label>
+            {:else}
+              <div class="booking-single-location" aria-label="Выбранный филиал">
+                <MapPin size={16} aria-hidden="true" />
+                <span>Филиал <strong>{data.locations[0]?.name ?? "Не выбран"}</strong></span>
+              </div>
+            {/if}
             <label class="field">
               <span class="field-label"><UserRound size={15} aria-hidden="true" /> Мастер</span>
               <select value={bookingStaff} onchange={(event) => onStaffChange(event.currentTarget.value)} required>
@@ -149,6 +157,15 @@
       </div>
     </form>
   </Card.Root>
-  <BookingSummary service={selectedService} location={data.locations.find((item) => item.id === bookingLocation)} staffId={bookingStaff}
-    {bookingDate} {bookingTime} {staffName} />
+  <div class="booking-summary-container" class:expanded={showSummary}>
+    <button type="button" class="booking-summary-toggle" aria-expanded={showSummary}
+      aria-controls="booking-summary-details" onclick={() => showSummary = !showSummary}>
+      <span>{showSummary ? "Скрыть детали визита" : "Посмотреть детали визита"}</span>
+      <span aria-hidden="true">{showSummary ? "−" : "+"}</span>
+    </button>
+    <div id="booking-summary-details" class="booking-summary-content">
+      <BookingSummary service={selectedService} location={data.locations.find((item) => item.id === bookingLocation)} staffId={bookingStaff}
+        {bookingDate} {bookingTime} {staffName} />
+    </div>
+  </div>
 </div>
