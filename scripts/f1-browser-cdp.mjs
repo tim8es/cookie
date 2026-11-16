@@ -125,7 +125,12 @@ async function click(cdp, selector) {
  * @returns {Promise<{bookingId:string, receipt:string, requests:number}>}
  * AuthN is a synthetic test-only bearer verified by the injected Fastify app.
  */
-export async function runF1BrowserBooking(url) {
+export async function runF1BrowserBooking(url, syntheticBearer) {
+  const page = new URL(url);
+  assert.equal(page.protocol, "http:");
+  assert.equal(page.hostname, "127.0.0.1");
+  assert.ok(!page.searchParams.has("syntheticBearer"), "Test bearer must not be in URL");
+  assert.equal(syntheticBearer, "synthetic-owner");
   const chromePort = await freePort();
   const browserDataDir = mkdtempSync(join(tmpdir(), "cookie-f1-pg-browser-"));
   const chromeLogs = [];
@@ -148,6 +153,17 @@ export async function runF1BrowserBooking(url) {
     });
     cdp = connect(target.webSocketDebuggerUrl);
     await cdp.ready;
+    await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+      source:
+        'Object.defineProperty(window, "__COOKIE_F1_SYNTHETIC_BEARER__", ' +
+        JSON.stringify({
+          value: syntheticBearer,
+          writable: false,
+          configurable: false,
+          enumerable: false,
+        }) +
+        ')',
+    });
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
     await cdp.send("Network.enable");
@@ -167,6 +183,7 @@ export async function runF1BrowserBooking(url) {
       if (!request?.url?.startsWith("http")) return;
       const host = new URL(request.url).hostname;
       if (host !== "127.0.0.1") external.push(request.url);
+      if (request.url.includes(syntheticBearer)) external.push("Synthetic bearer leaked in request URL");
       if (request.url.includes("/v1/organizations/") && request.method === "POST") bookingPosts++;
     });
     await cdp.send("Emulation.setDeviceMetricsOverride", {
