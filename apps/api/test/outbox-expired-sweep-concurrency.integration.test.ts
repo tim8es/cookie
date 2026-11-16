@@ -150,7 +150,10 @@ test(
         status: "leased",
         attempts: 1,
       });
-      assert.equal(await acknowledgeOutbox(claimingPool, recoveredReady[0]!), true);
+      assert.equal(
+        await acknowledgeOutbox(claimingPool, recoveredReady[0]!),
+        true,
+      );
 
       await locker.query("COMMIT");
       lockHeld = false;
