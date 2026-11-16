@@ -53,8 +53,9 @@ agent instructions live in [UI_GUIDE.md](./UI_GUIDE.md).
 source for brand colors, editorial typography, surfaces, and radii.
 `src/visual-system.css` imports independent styles for the workspace,
 booking flow, onboarding, responsive layouts, first-run shell and dashboard.
-The older `src/styles.css` is a compatibility baseline for screens not yet
-migrated; new UI work should **not** append styles to that file.
+`src/styles.css` contains a shrinking compatibility-only helper/layout layer. Two outdated
+palette roots and 59 unused CSS rules were removed. The `check:ui` guard prevents
+that stylesheet from growing: add all new styles to the appropriate screen module.
 The week/day calendar and booking details are styled in `src/styles/calendar.css`
 and reuse Card/Button/Badge primitives. On narrow screens, the week is
 keyboard-scrollable within its own region rather than overflowing the page.
@@ -62,8 +63,9 @@ keyboard-scrollable within its own region rather than overflowing the page.
 **Change the screen only:** `src/lib/ui/OnboardingScreen.svelte`,
 `OwnerOverview.svelte`, `BookingForm.svelte`, `BookingSummary.svelte`,
 `CalendarView.svelte` and the owner forms contain screen presentation.
-`App.svelte` orchestrates state and synthetic adapter actions, avoiding
-another monolithic screen template.
+`App.svelte` orchestrates state and synthetic adapter actions. The four owner
+list+editor pages now live in standalone `Owner*Page.svelte` files and the
+confirmation/feedback flow in `BookingConfirmation.svelte` and `DemoState.svelte`.
 
 The versioned `shadcn-svelte` components in `src/lib/components/ui/`
 provide accessible Button/Card/Input/Badge/Dialog/Label/Separator primitives,

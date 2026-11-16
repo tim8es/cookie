@@ -29,6 +29,15 @@ const actual = [...index.matchAll(/@import "\.\/([^"]+)";/g)].map((match) => mat
 assert.deepEqual(actual, paths, "Visual CSS import order must stay explicit and token-first");
 assert.ok(index.length < 1200, "Visual entrypoint must stay import-only, not become another giant stylesheet");
 
+const compatibility = read("styles.css");
+assert.ok(
+  compatibility.length <= 36000,
+  "Legacy compatibility CSS must shrink, never grow. Add new styles in src/styles/<screen>.css",
+);
+assert.ok(!compatibility.includes("--green: #"), "Obsolete green palettes must not be reintroduced");
+assert.ok(!compatibility.includes(".welcome-metrics"), "Retired onboarding rules must not return");
+assert.ok(!compatibility.includes(".summary-visual"), "Retired booking-summary rules must not return");
+
 const tokens = read("styles/tokens.css");
 for (const name of [
   "--cookie-paper", "--cookie-surface", "--cookie-ink",

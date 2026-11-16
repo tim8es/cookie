@@ -1,7 +1,7 @@
 /*
  * Cookie UI theme, in intentional cascade order.
  * Each screen module can be updated independently; see apps/web/UI_GUIDE.md.
- * The old baseline styles.css is retained for unmigrated owner forms.
+ * The shrinking styles.css layer is compatibility-only; new screen rules belong here.
  */
 @import "./styles/tokens.css";
 @import "./styles/foundation.css";

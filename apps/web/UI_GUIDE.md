@@ -20,13 +20,15 @@
 | Generic accessible Button, Input, Card, Badge, Dialog | `src/lib/components/ui/` (version-controlled shadcn-svelte sources) |
 | Data/state, navigation and synthetic API operations | `src/App.svelte` and `src/lib/api.ts` (do not invent backend wire contracts) |
 
-`src/visual-system.css` is a deliberately short ordered CSS entrypoint. **Do not add selectors there**; it exists only to import the modules. Tokens load first. The remaining `src/styles.css` contains the old owner-form/calendar baseline; it is retained for compatibility and is **not a place for new visual overrides**. When migrating another screen, move its styles into a dedicated module and verify screenshots before deleting its legacy CSS.
+`src/visual-system.css` is a deliberately short ordered CSS entrypoint. **Do not add selectors there**; it exists only to import the modules. Tokens load first. `src/styles.css` is now a shrinking **compatibility-only layout and helper layer**. Legacy color roots and 59 obsolete CSS rules are removed. The automated UI boundary check rejects increases in its size; do **not** add new visual overrides there. Move any remaining required selectors to their owning modular stylesheet when a screen changes. When migrating another screen, move its styles into a dedicated module and verify screenshots before deleting its legacy CSS.
 
 ## Component ownership
 
 - `App.svelte`: state and orchestration only. It calls the adapter; routes between screens and passes typed values/callbacks.
 - `OnboardingScreen.svelte`: presentation. Parent owns the organization input value and submit effect.
 - `OwnerOverview.svelte`: display only. Parent owns navigation, snapshot and date.
+- `OwnerServicesPage`, `OwnerStaffPage`, `OwnerSchedulePage`, `OwnerLocationsPage`: each owns its list and editor composition. A single App keeps the corresponding state and passes callbacks.
+- `BookingConfirmation.svelte`, `DemoState.svelte`: presentation-only success, error, empty, forbidden and setup outcomes; final booking confirmation remains on the backend.
 - `BookingForm.svelte`: controlled fields, slot choice, submit callback. It never performs a network call.
 - `OwnerFormHeader.svelte`: shared presentational heading for the four owner editor forms. `ServiceForm`, `StaffForm`, `ScheduleForm`, `LocationForm` reuse Card/Button/Input where appropriate and keep native select controls for keyboard/mobile affordances.
 - `BookingSummary.svelte`: presentation only, uses catalog base price **not** a price quote.
