@@ -116,7 +116,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function isOneOf<T extends string>(value: unknown, values: readonly T[]): value is T {
+function isOneOf<T extends string>(
+  value: unknown,
+  values: readonly T[],
+): value is T {
   return typeof value === "string" && values.includes(value as T);
 }
 
@@ -131,7 +134,9 @@ function requireHex(value: unknown, field: string): string {
 function requireAssetId(value: unknown, field: string): string | null {
   if (value === null) return null;
   if (typeof value !== "string" || !/^[a-zA-Z0-9_-]{16,96}$/.test(value)) {
-    throw new Error("Invalid " + field + ": expected a validated server asset ID");
+    throw new Error(
+      "Invalid " + field + ": expected a validated server asset ID",
+    );
   }
   return value;
 }
@@ -141,8 +146,10 @@ function linear(value: number): number {
 }
 
 function luminance(hex: string): number {
-  const parts = [1, 3, 5].map((start) => linear(parseInt(hex.slice(start, start + 2), 16) / 255));
-  return 0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2];
+  const red = linear(parseInt(hex.slice(1, 3), 16) / 255);
+  const green = linear(parseInt(hex.slice(3, 5), 16) / 255);
+  const blue = linear(parseInt(hex.slice(5, 7), 16) / 255);
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
 }
 
 /** WCAG 2.x relative-luminance contrast for two validated opaque hex colors. */
@@ -155,12 +162,15 @@ export function brandContrast(a: string, b: string): number {
 function readableInk(background: string): string {
   const nearBlack = "#151820";
   const nearWhite = "#ffffff";
-  return brandContrast(nearBlack, background) >= brandContrast(nearWhite, background)
+  return brandContrast(nearBlack, background) >=
+    brandContrast(nearWhite, background)
     ? nearBlack
     : nearWhite;
 }
 
-export function createBrandConfig(presetId: BrandPresetId = "atelier"): BrandConfigV1 {
+export function createBrandConfig(
+  presetId: BrandPresetId = "atelier",
+): BrandConfigV1 {
   const preset = brandPresets.find((item) => item.id === presetId);
   if (!preset) throw new Error("Unknown Cookie branding preset");
   return {
@@ -183,30 +193,61 @@ export function createBrandConfig(presetId: BrandPresetId = "atelier"): BrandCon
  * values with a different design or allow arbitrary CSS declarations.
  */
 export function validateBrandConfig(value: unknown): BrandConfigV1 {
-  if (!isRecord(value)) throw new Error("Invalid Cookie branding configuration");
+  if (!isRecord(value))
+    throw new Error("Invalid Cookie branding configuration");
   const fields = [
-    "version", "presetId", "mode", "backgroundColor", "primaryColor",
-    "accentColor", "buttonRadius", "typography", "accentStyle",
-    "logoAssetId", "backgroundAssetId",
+    "version",
+    "presetId",
+    "mode",
+    "backgroundColor",
+    "primaryColor",
+    "accentColor",
+    "buttonRadius",
+    "typography",
+    "accentStyle",
+    "logoAssetId",
+    "backgroundAssetId",
   ];
-  if (Object.keys(value).some((key) => !fields.includes(key)) ||
-      fields.some((field) => !Object.hasOwn(value, field))) {
+  if (
+    Object.keys(value).some((key) => !fields.includes(key)) ||
+    fields.some((field) => !Object.hasOwn(value, field))
+  ) {
     throw new Error("Unknown or missing Cookie branding configuration field");
   }
-  if (value.version !== 1) throw new Error("Unsupported branding config version");
+  if (value.version !== 1)
+    throw new Error("Unsupported branding config version");
   const presetIds = brandPresets.map((preset) => preset.id);
-  if (!isOneOf(value.presetId, presetIds) ||
-      !isOneOf(value.mode, ["light", "dark"] as const) ||
-      !isOneOf(value.buttonRadius, ["compact", "soft", "round", "pill"] as const) ||
-      !isOneOf(value.typography, ["editorial", "modern", "humanist", "classic"] as const) ||
-      !isOneOf(value.accentStyle, ["minimal", "line", "filled", "highlight"] as const)) {
+  if (
+    !isOneOf(value.presetId, presetIds) ||
+    !isOneOf(value.mode, ["light", "dark"] as const) ||
+    !isOneOf(value.buttonRadius, [
+      "compact",
+      "soft",
+      "round",
+      "pill",
+    ] as const) ||
+    !isOneOf(value.typography, [
+      "editorial",
+      "modern",
+      "humanist",
+      "classic",
+    ] as const) ||
+    !isOneOf(value.accentStyle, [
+      "minimal",
+      "line",
+      "filled",
+      "highlight",
+    ] as const)
+  ) {
     throw new Error("Unsupported Cookie branding style");
   }
   const primaryColor = requireHex(value.primaryColor, "primaryColor");
   const accentColor = requireHex(value.accentColor, "accentColor");
   const backgroundColor = requireHex(value.backgroundColor, "backgroundColor");
   if (brandContrast(primaryColor, accentColor) < 4.5) {
-    throw new Error("Accent and primary colors need at least 4.5:1 text contrast");
+    throw new Error(
+      "Accent and primary colors need at least 4.5:1 text contrast",
+    );
   }
   return {
     version: 1,
@@ -219,12 +260,17 @@ export function validateBrandConfig(value: unknown): BrandConfigV1 {
     typography: value.typography,
     accentStyle: value.accentStyle,
     logoAssetId: requireAssetId(value.logoAssetId, "logoAssetId"),
-    backgroundAssetId: requireAssetId(value.backgroundAssetId, "backgroundAssetId"),
+    backgroundAssetId: requireAssetId(
+      value.backgroundAssetId,
+      "backgroundAssetId",
+    ),
   };
 }
 
 /** CSS properties are a finite allowlist, not user-supplied stylesheets or URLs. */
-export function compileBrandTokens(raw: unknown): Readonly<Record<string, string>> {
+export function compileBrandTokens(
+  raw: unknown,
+): Readonly<Record<string, string>> {
   const config = validateBrandConfig(raw);
   return {
     "--salon-primary": config.primaryColor,
