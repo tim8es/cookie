@@ -103,7 +103,8 @@ export async function listTenantServices(
       WHERE tenant_id=$1::uuid ORDER BY created_at, id LIMIT 101`,
     [tenantId],
   );
-  if (result.rows.length > 100) throw new Error("Service catalog exceeds F1 limit");
+  if (result.rows.length > 100)
+    throw new Error("Service catalog exceeds F1 limit");
   return result.rows.map(mapService);
 }
 
@@ -145,7 +146,9 @@ export async function createTenantDraftService(
   );
 
   if (existing.rows[0] && existing.rows[0].request_sha256 !== hash) {
-    throw new CatalogReplayConflict("idempotency key reused with another request");
+    throw new CatalogReplayConflict(
+      "idempotency key reused with another request",
+    );
   }
   const serviceId = existing.rows[0]?.service_id ?? randomUUID();
   if (!existing.rows[0]) {
@@ -153,7 +156,13 @@ export async function createTenantDraftService(
       `INSERT INTO cookie_catalog.services
        (tenant_id,id,display_name,duration_minutes,base_price_kopecks,active)
        VALUES($1::uuid,$2::uuid,$3,$4,$5::bigint,false)`,
-      [tenantId, serviceId, input.displayName, input.durationMinutes, input.basePriceKopecks],
+      [
+        tenantId,
+        serviceId,
+        input.displayName,
+        input.durationMinutes,
+        input.basePriceKopecks,
+      ],
     );
     await client.query(
       `INSERT INTO cookie_catalog.service_create_receipts
@@ -168,5 +177,8 @@ export async function createTenantDraftService(
     [tenantId, serviceId],
   );
   if (!saved.rows[0]) throw new Error("Stored service not found");
-  return { service: mapService(saved.rows[0]), replayed: Boolean(existing.rows[0]) };
+  return {
+    service: mapService(saved.rows[0]),
+    replayed: Boolean(existing.rows[0]),
+  };
 }
