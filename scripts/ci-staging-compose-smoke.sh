@@ -39,7 +39,7 @@ status="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://12
 [[ "$status" == "404" ]] || { echo "Unapproved booking route became public (HTTP $status)"; exit 1; }
 
 count="$("${compose[@]}" exec -T postgres psql -U cookie -d cookie -Atqc 'SELECT count(*) FROM public.cookie_schema_migrations')"
-(( count >= 23 )) || { echo "Migrations were not applied: $count"; exit 1; }
+(( count >= 24 )) || { echo "Migrations were not applied: $count"; exit 1; }
 "${compose[@]}" exec -T postgres psql -U cookie -d cookie -v ON_ERROR_STOP=1 -c 'CREATE TABLE public.cookie_runtime_ci_persistence (value integer NOT NULL)' >/dev/null
 "${compose[@]}" exec -T postgres psql -U cookie -d cookie -v ON_ERROR_STOP=1 -c 'INSERT INTO public.cookie_runtime_ci_persistence(value) VALUES (42)' >/dev/null
 

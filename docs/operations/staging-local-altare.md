@@ -27,3 +27,39 @@ Do not turn on auto-deploy to real customers. Altare's supported regions and the
 ## Automated evidence
 
 `scripts/ci-staging-compose-smoke.sh` is a **CI-only** disposable test. It builds compiled images, starts genuine PostgreSQL, applies checked migrations, verifies `/health/ready` through the web reverse proxy, asserts unapproved Booking URLs remain 404, creates a database sentinel, restarts API/Postgres, and proves the value survived. No mock owner/customer booking or real Telegram delivery is asserted. Next test must prove the full owner+customer live flow through API with real AuthN, PostgreSQL and browser — Issue #203, dependencies #66/#113/#165.
+
+
+## Privileged first workspace provisioning (real PostgreSQL, no user login yet)
+
+After migrations, the new `start:provision-owner` command can atomically create
+a real Organization, first Location with an IANA time zone, active Membership,
+non-delegable Owner role/organization-wide RoleAssignment, and an idempotency
+receipt. No browser-local mock is involved. It requires **operator control of
+DATABASE_URL**, never a user-supplied HTTP identity/tenant parameter.
+
+Use generated **non-personal** names in staging. Run this in a Docker-capable
+environment only after `migrate` has succeeded:
+
+```bash
+export COOKIE_OWNER_IDENTITY_ID="$(node -e 'console.log(require("node:crypto").randomUUID())')"
+export COOKIE_OWNER_SETUP_KEY="$(node -e 'console.log(require("node:crypto").randomUUID())')"
+export COOKIE_OWNER_ORGANIZATION="Cookie staging salon"
+export COOKIE_OWNER_LOCATION="Main branch"
+export COOKIE_OWNER_TIME_ZONE="Europe/Moscow"
+
+docker compose --env-file .env.staging.local -f docker-compose.staging.yml \
+  exec -T -e COOKIE_OPERATOR_BOOTSTRAP=acknowledged \
+  -e COOKIE_OWNER_IDENTITY_ID -e COOKIE_OWNER_SETUP_KEY \
+  -e COOKIE_OWNER_ORGANIZATION -e COOKIE_OWNER_LOCATION \
+  -e COOKIE_OWNER_TIME_ZONE \
+  api node dist/packages/platform-identity/src/bootstrap-owner-cli.js
+```
+
+**Save the two generated UUID values privately** to retry the same operation:
+the same owner identity, key and payload return the **same** tenant/location;
+reusing that key with changed data fails closed. This command does **not**
+issue an authentication token, prove phone/Telegram ownership, activate
+client Booking, create service/staff/schedule records, authorize real PII or
+satisfy customer onboarding. Subsequent owner login/identity proof and safe
+booking API integration still require #18/#66/#113/#165. Never use the
+operator command as a public registration or JWT shortcut.

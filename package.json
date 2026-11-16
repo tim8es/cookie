@@ -25,7 +25,9 @@
     "typecheck:web": "pnpm --filter @cookie/web check",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:ui": "node apps/web/scripts/check-ui-structure.mjs",
-    "build:runtime": "pnpm build && node scripts/link-runtime-modules.mjs && VITE_COOKIE_DATA_MODE=api pnpm build:web"
+    "build:runtime": "pnpm build && node scripts/link-runtime-modules.mjs && VITE_COOKIE_DATA_MODE=api pnpm build:web",
+    "db:provision-owner": "tsx packages/platform-identity/src/bootstrap-owner-cli.ts",
+    "start:provision-owner": "node dist/packages/platform-identity/src/bootstrap-owner-cli.js"
   },
   "dependencies": {
     "pg": "8.23.1"
