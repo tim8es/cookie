@@ -44,7 +44,7 @@ const UUID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 const UTC_MINUTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/;
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ATTEMPT_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
-const TEST_BEARER = /^[A-Za-z0-9._~+/-]{1,512}$/;
+const TEST_BEARER = /^[A-Za-z0-9._~+-]{1,512}$/;
 
 function utcMinute(value: string): boolean {
   if (!UTC_MINUTE.test(value)) return false;
