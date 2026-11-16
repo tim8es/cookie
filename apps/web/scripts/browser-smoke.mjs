@@ -404,6 +404,10 @@ async function scenario(cdp, origin, width, height) {
     await click(cdp, ".booking-summary-toggle");
   }
   await requireDom(cdp, name + " upfront base price", "document.querySelector('.booking-checkout-summary strong')?.textContent.includes('₽')");
+  await requireDom(cdp, name + " service choices expose their catalog cost", "Array.from(document.querySelectorAll('.booking-form .booking-fields select option')).filter(item => item.value).every(item => item.textContent.includes('₽'))");
+  await requireDom(cdp, name + " first selection shows duration and preliminary price", "document.querySelector('.booking-service-meta')?.textContent.includes('60 мин') && document.querySelector('.booking-service-meta')?.textContent.includes('1 500 ₽')");
+  await requireDom(cdp, name + " preliminary price appears before staff picker", "(() => { const meta = document.querySelector('.booking-service-meta'); const staff = document.querySelector('.booking-form .form-pair'); return meta && staff && Boolean(meta.compareDocumentPosition(staff) & Node.DOCUMENT_POSITION_FOLLOWING); })()");
+  await requireDom(cdp, name + " summary prioritizes visit data", "document.querySelector('.ticket-top h2')?.textContent.trim() === 'Ваш визит' && !document.querySelector('.booking-summary .ticket-mark')");
   await captureEvidence(cdp, name, "02-booking");
   await click(cdp, ".booking-form .slot-grid button");
   await requireDom(cdp, name + " selected slot", "document.querySelector('.booking-form .slot-grid button[aria-pressed=true]')");
@@ -504,6 +508,7 @@ async function scenario(cdp, origin, width, height) {
   await click(cdp, ".appearance-open");
   await requireDom(cdp, name + " themed booking", "document.querySelector('.public-shell.salonThemeForest .booking-hero-copy p')?.textContent.includes('Добро пожаловать на запись')");
   await requireDom(cdp, name + " theme applied to public hero", "getComputedStyle(document.querySelector('.public-content .booking-hero')).backgroundColor === 'rgb(36, 72, 59)'");
+  await requireDom(cdp, name + " themed booking retains upfront price", "document.querySelector('.booking-service-meta .booking-service-price')?.textContent.includes('1 500 ₽')");
   await captureEvidence(cdp, name, "15-themed-booking");
   await click(cdp, ".booking-form .slot-grid button");
   await submitValidForm(cdp, ".booking-form");
