@@ -12,6 +12,8 @@
 | First-run split hero and form | `src/styles/onboarding.css`, `src/styles/first-run.css`, `src/lib/ui/OnboardingScreen.svelte` |
 | Owner shell, sidebar, topbar, shared UI helpers | `src/styles/foundation.css`; `src/lib/ui/Sidebar.svelte`, `Topbar.svelte` |
 | Owner page composition (lists + editor) | `src/lib/ui/OwnerServicesPage.svelte`, `OwnerStaffPage.svelte`, `OwnerSchedulePage.svelte`, `OwnerLocationsPage.svelte`; form styles in `styles/owner-forms.css` |
+| Public booking masthead, setup hint | `src/lib/ui/PublicBookingHero.svelte`, `BookingSetupHint.svelte`; styles in `src/styles/booking.css` |
+| Global notices and footer | `src/lib/ui/DemoNotices.svelte`, `DemoFooter.svelte`; structural legacy rules in compat until migrated |
 | Confirmation & demo UI states | `src/styles/feedback.css`, `src/lib/ui/BookingConfirmation.svelte`, `DemoState.svelte` |
 | Owner dashboard and stats | `src/styles/ledger.css`; `src/lib/ui/OwnerOverview.svelte` |
 | Owner editor forms (services, staff, schedule, branches) | `src/styles/owner-forms.css`; `src/lib/ui/OwnerFormHeader.svelte` and the four `*Form.svelte` components |
@@ -20,7 +22,7 @@
 | Generic accessible Button, Input, Card, Badge, Dialog | `src/lib/components/ui/` (version-controlled shadcn-svelte sources) |
 | Data/state, navigation and synthetic API operations | `src/App.svelte` and `src/lib/api.ts` (do not invent backend wire contracts) |
 
-`src/visual-system.css` is a deliberately short ordered CSS entrypoint. **Do not add selectors there**; it exists only to import the modules. Tokens load first. `src/styles.css` is now a shrinking **compatibility-only layout and helper layer**. Legacy color roots and 59 obsolete CSS rules are removed. The automated UI boundary check rejects increases in its size; do **not** add new visual overrides there. Move any remaining required selectors to their owning modular stylesheet when a screen changes. When migrating another screen, move its styles into a dedicated module and verify screenshots before deleting its legacy CSS.
+`src/visual-system.css` is a deliberately short ordered CSS entrypoint. **Do not add selectors there**; it exists only to import the modules. Tokens load first. `src/styles.css` is now an **import-only entrypoint** for the historical cascade in `src/styles/compat/{base,workspace,public}.css`. The three modules are a temporary migration boundary, *not* a place for new UI. Their combined size is capped at **35 591 bytes** by `pnpm check:ui`; edits must reduce them by moving currently used rules into the appropriate screen module while maintaining the import order. Move any remaining required selectors to their owning modular stylesheet when a screen changes. When migrating another screen, move its styles into a dedicated module and verify screenshots before deleting its legacy CSS.
 
 ## Component ownership
 
@@ -29,6 +31,7 @@
 - `OwnerOverview.svelte`: display only. Parent owns navigation, snapshot and date.
 - `OwnerServicesPage`, `OwnerStaffPage`, `OwnerSchedulePage`, `OwnerLocationsPage`: each owns its list and editor composition. A single App keeps the corresponding state and passes callbacks.
 - `BookingConfirmation.svelte`, `DemoState.svelte`: presentation-only success, error, empty, forbidden and setup outcomes; final booking confirmation remains on the backend.
+- `PublicBookingHero.svelte`, `BookingSetupHint.svelte`, `DemoNotices.svelte`, `DemoFooter.svelte`: shell views/controls, no adapter ownership; App passes explicit callbacks.
 - `BookingForm.svelte`: controlled fields, slot choice, submit callback. It never performs a network call.
 - `OwnerFormHeader.svelte`: shared presentational heading for the four owner editor forms. `ServiceForm`, `StaffForm`, `ScheduleForm`, `LocationForm` reuse Card/Button/Input where appropriate and keep native select controls for keyboard/mobile affordances.
 - `BookingSummary.svelte`: presentation only, uses catalog base price **not** a price quote.

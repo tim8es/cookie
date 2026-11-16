@@ -315,11 +315,13 @@ async function scenario(cdp, origin, width, height) {
   await requireDom(cdp, name + " synthetic slots", "document.querySelector('.booking-form .slot-grid button')");
   await checkWidth(cdp, name + " booking");
   await checkLabeledControls(cdp, name + " booking");
+  await requireDom(cdp, name + " modular public hero", "document.querySelector('section.booking-hero .booking-hero-studio strong')?.textContent.includes('Студия Cookie')");
   await captureEvidence(cdp, name, "02-booking");
   await click(cdp, ".booking-form .slot-grid button");
   await requireDom(cdp, name + " selected slot", "document.querySelector('.booking-form .slot-grid button[aria-pressed=true]')");
   await submitValidForm(cdp, ".booking-form");
   await requireDom(cdp, name + " synthetic success", "document.querySelector('.success-screen')?.textContent.includes('не подтверждена backend')");
+  await requireDom(cdp, name + " extracted confirmation", "document.querySelector('.booking-confirmation .confirmation-receipt')");
   await captureEvidence(cdp, name, "03-confirmation");
 
   await click(cdp, ".success-screen .btn-primary");
@@ -447,6 +449,7 @@ async function main() {
       await scenario(cdp, origin, width, height);
     }
     assert.deepEqual(externalUrls, [], "Synthetic frontend made external network requests");
+    assert.deepEqual(runtimeErrors, [], "Frontend must not throw uncaught JavaScript exceptions");
     assert.ok(pageRequests >= 3, "Expected local JS/CSS/page requests to be observed");
     writeFileSync(join(evidenceDir, "manifest.json"), JSON.stringify({
       data: "synthetic sessionStorage only",
@@ -454,7 +457,7 @@ async function main() {
       chromium: "headless",
       viewports: ["1280x800", "375x812", "320x568"],
       captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "error-preview", "forbidden-preview"],
-      checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "no external requests"],
+      checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "no external requests", "zero uncaught page exceptions"],
       externalRequests: externalUrls.length,
     }, null, 2) + "\n");
     console.log("PASS evidence: 39 PNG screenshots and manifest; external requests =", externalUrls.length);

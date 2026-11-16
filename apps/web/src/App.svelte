@@ -16,6 +16,10 @@
   import OwnerSchedulePage from "./lib/ui/OwnerSchedulePage.svelte";
   import OwnerLocationsPage from "./lib/ui/OwnerLocationsPage.svelte";
   import BookingConfirmation from "./lib/ui/BookingConfirmation.svelte";
+  import PublicBookingHero from "./lib/ui/PublicBookingHero.svelte";
+  import DemoFooter from "./lib/ui/DemoFooter.svelte";
+  import DemoNotices from "./lib/ui/DemoNotices.svelte";
+  import BookingSetupHint from "./lib/ui/BookingSetupHint.svelte";
   import DemoState from "./lib/ui/DemoState.svelte";
   import CalendarView from "./lib/ui/CalendarView.svelte";
   import BookingForm from "./lib/ui/BookingForm.svelte";
@@ -230,8 +234,11 @@
     {/if}
 
     <main class="content" class:public-content={screen === "booking"}>
-      {#if error}<div class="alert alert-error" role="alert"><span aria-hidden="true">!</span><div><strong>Операция не выполнена</strong><p>{error}</p></div><button class="alert-close" type="button" onclick={() => error = ""} aria-label="Закрыть ошибку">×</button></div>{/if}
-      {#if notice}<div class="alert alert-ok" role="status"><span aria-hidden="true">✓</span><p>{notice}</p><button class="alert-close" type="button" onclick={() => notice = ""} aria-label="Закрыть сообщение">×</button></div>{/if}
+      <DemoNotices
+        {error} {notice}
+        onDismissError={() => error = ""}
+        onDismissNotice={() => notice = ""}
+      />
       {#if initializing || busy}
         <div class="loading-card" role="status"><div class="spinner"></div><span>{initializing ? "Загружаем демо-пространство…" : "Обновляем данные в браузерной сессии…"}</span></div>
       {:else if preview === "error"}
@@ -309,19 +316,7 @@
           onCreateBooking={() => goto("booking")}
         />
       {:else if screen === "booking"}
-        <section class="booking-head booking-hero" aria-label="Онлайн-запись">
-          <div class="booking-hero-copy">
-            <span class="booking-hero-section">Cookie / запись к мастеру</span>
-            <h1>Время для себя.<br /><em>В вашем ритме.</em></h1>
-            <p>Выберите услугу, мастера и удобное время. Остальное мы уже собрали в одном месте.</p>
-          </div>
-          <div class="booking-hero-studio">
-            <div class="hero-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-            <span>Ваша студия</span>
-            <strong>{org.name}</strong>
-            <small>Демонстрационная запись</small>
-          </div>
-        </section>
+        <PublicBookingHero organizationName={org.name} />
         {#if createdBooking}
           <BookingConfirmation
             booking={createdBooking}
@@ -352,11 +347,17 @@
             onAliasChange={(value) => clientAlias = value}
             onSubmit={() => void submitBooking()}
           />
-          {#if data.services.length === 0 || data.staff.length === 0 || data.schedules.length === 0}<div class="setup-shortcut"><span>Для полного сценария сначала создайте услугу, мастера и график.</span><button class="btn btn-secondary" onclick={() => goto(currentOnboardingStep === "services" ? "services" : currentOnboardingStep === "staff" ? "staff" : "schedule")}>Продолжить настройку →</button></div>{/if}
+          {#if data.services.length === 0 || data.staff.length === 0 || data.schedules.length === 0}
+            <BookingSetupHint
+              onContinueSetup={() => goto(currentOnboardingStep === "services" ? "services" : currentOnboardingStep === "staff" ? "staff" : "schedule")}
+            />
+          {/if}
         {/if}
       {/if}
 
-      {#if !initializing}<footer class="footer"><span>Cookie · frontend preview · запись не отправляется на сервер</span>{#if screen !== "booking"}<button type="button" onclick={() => void resetDemo()} disabled={busy}>Сбросить демо-данные</button>{/if}</footer>{/if}
+      {#if !initializing}
+        <DemoFooter showReset={screen !== "booking"} {busy} onReset={() => void resetDemo()} />
+      {/if}
     </main>
   </div>
 </div>

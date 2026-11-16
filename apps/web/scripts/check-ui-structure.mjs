@@ -29,10 +29,24 @@ const actual = [...index.matchAll(/@import "\.\/([^"]+)";/g)].map((match) => mat
 assert.deepEqual(actual, paths, "Visual CSS import order must stay explicit and token-first");
 assert.ok(index.length < 1200, "Visual entrypoint must stay import-only, not become another giant stylesheet");
 
-const compatibility = read("styles.css");
+const compatibilityEntrypoint = read("styles.css");
+const compatPaths = [
+  "styles/compat/base.css",
+  "styles/compat/workspace.css",
+  "styles/compat/public.css",
+];
+const compatImports = [...compatibilityEntrypoint.matchAll(/@import "\.\/([^"]+)";/g)]
+  .map((match) => match[1]);
+assert.deepEqual(compatImports, compatPaths, "Preserve the historical CSS cascade in compatibility imports");
+assert.ok(compatibilityEntrypoint.length < 800, "Legacy entrypoint must not contain new CSS selectors");
+assert.ok(!/[{}]/.test(compatibilityEntrypoint), "Legacy entrypoint must be imports and comments only");
+for (const path of compatPaths) {
+  assert.ok(existsSync(join(root, path)), `Missing compatibility CSS: ${path}`);
+}
+const compatibility = compatPaths.map(read).join("");
 assert.ok(
-  compatibility.length <= 36000,
-  "Legacy compatibility CSS must shrink, never grow. Add new styles in src/styles/<screen>.css",
+  compatibility.length <= 35591,
+  "Compatibility CSS must shrink from its 2026-11-16 baseline. Add new styles to src/styles/<screen>.css",
 );
 assert.ok(!compatibility.includes("--green: #"), "Obsolete green palettes must not be reintroduced");
 assert.ok(!compatibility.includes(".welcome-metrics"), "Retired onboarding rules must not return");
@@ -49,7 +63,7 @@ for (const name of [
   assert.ok(tokens.includes(name + ":"), `Missing design token ${name}`);
 }
 
-for (const path of ["OnboardingScreen.svelte", "OwnerOverview.svelte", "BookingForm.svelte", "BookingSummary.svelte", "ServiceForm.svelte", "StaffForm.svelte", "ScheduleForm.svelte", "LocationForm.svelte", "OwnerFormHeader.svelte", "CalendarView.svelte", "BookingDetail.svelte", "OwnerServicesPage.svelte", "OwnerStaffPage.svelte", "OwnerSchedulePage.svelte", "OwnerLocationsPage.svelte", "BookingConfirmation.svelte", "DemoState.svelte"]) {
+for (const path of ["OnboardingScreen.svelte", "OwnerOverview.svelte", "BookingForm.svelte", "BookingSummary.svelte", "ServiceForm.svelte", "StaffForm.svelte", "ScheduleForm.svelte", "LocationForm.svelte", "OwnerFormHeader.svelte", "CalendarView.svelte", "BookingDetail.svelte", "OwnerServicesPage.svelte", "OwnerStaffPage.svelte", "OwnerSchedulePage.svelte", "OwnerLocationsPage.svelte", "BookingConfirmation.svelte", "DemoState.svelte", "PublicBookingHero.svelte", "DemoFooter.svelte", "DemoNotices.svelte", "BookingSetupHint.svelte"]) {
   assert.ok(existsSync(join(root, "lib/ui", path)), `Missing presentational screen: ${path}`);
 }
 const app = read("App.svelte");
@@ -57,10 +71,13 @@ assert.match(app, /<OnboardingScreen\b/, "App must compose the onboarding screen
 assert.match(app, /<OwnerOverview\b/, "App must compose the owner overview");
 assert.match(app, /<BookingForm\b/, "App must compose the booking form");
 assert.match(app, /<CalendarView\b/, "App must compose the calendar");
-for (const name of ["OwnerServicesPage", "OwnerStaffPage", "OwnerSchedulePage", "OwnerLocationsPage", "BookingConfirmation", "DemoState"]) {
+for (const name of ["OwnerServicesPage", "OwnerStaffPage", "OwnerSchedulePage", "OwnerLocationsPage", "BookingConfirmation", "DemoState", "PublicBookingHero", "DemoFooter", "DemoNotices", "BookingSetupHint"]) {
   assert.match(app, new RegExp("<" + name + "\\b"), "App must compose " + name + " instead of inline screen markup");
 }
 assert.ok(!app.includes('<div class="workspace-grid">'), "Owner screen markup belongs in separate Page components");
+assert.ok(!app.includes('<section class="booking-head booking-hero"'), "Public booking hero belongs in a presentation component");
+assert.ok(!app.includes('<footer class="footer"'), "Footer belongs in a presentation component");
+assert.ok(!app.includes('<div class="alert alert-error"'), "Alert markup belongs in a presentation component");
 assert.ok(existsSync(join(root, "../AGENTS.md")), "Web agent instructions must be present");
 
 

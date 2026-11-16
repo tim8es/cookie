@@ -1,0 +1,74 @@
+/* The customer booking preview has its own shell: owner-only navigation
+   and QA controls must not dominate the booking experience on mobile. */
+.app-shell.public-shell { grid-template-columns: minmax(0,1fr); }
+.public-shell .main-area { min-width: 0; }
+.public-header {
+  display: flex; justify-content: space-between; align-items: center; gap: 20px;
+  height: 71px; padding: 0 clamp(18px, 5vw, 72px);
+  background: white; border-bottom: 1px solid #e5ebe6;
+}
+.public-brand { display: flex; align-items: center; gap: 11px; }
+.public-brand strong { display: block; font-size: 21px; letter-spacing: -1px; line-height: 1.1; color: #1d3427; font-weight: 780; }
+.public-brand strong span { color: #327b58; }
+.public-brand small { display: block; margin-top: 4px; font-size: 10px; color: #819486; letter-spacing: .25px; }
+.public-header-actions { display: flex; align-items: center; gap: 14px; }
+.public-header button.public-back[data-slot=button] {
+  border-radius: 9px; height: 37px; font-size: 12px; font-weight: 660;
+  padding: 0 12px; border-color: #dce7df; color: #345f49; background: white;
+}
+.public-header button.public-back[data-slot=button]:hover { background: #f1f7f3; }
+.public-demo-notice {
+  display: flex; gap: 9px; align-items: center; justify-content: center;
+  background: #eef6f0; border-bottom: 1px solid #deebdf;
+  color: #538364; min-height: 32px; padding: 7px 16px; font-size: 11px;
+}
+.public-demo-notice svg { color: #528968; flex-shrink: 0; }
+.content.public-content { max-width: 1110px; padding-top: 38px; }
+.public-content .booking-head { margin-bottom: 25px; align-items: flex-end; }
+.public-content .booking-head h1 { font-size: clamp(31px,3.1vw,39px); }
+.public-content .booking-head .public-chip { font-size: 10px; padding: 7px 12px; }
+.public-content .booking-layout { grid-template-columns: minmax(0, 1.35fr) minmax(300px, .8fr); }
+.public-content .booking-panel[data-slot=card], .public-content .booking-summary[data-slot=card] { border-radius: 14px; }
+@media (max-width: 800px) {
+  .public-content .booking-layout { grid-template-columns: minmax(0,1fr); }
+  .public-content .booking-summary[data-slot=card] { position: static; }
+}
+@media (max-width: 680px) {
+  .public-header { height: 63px; padding: 0 16px; gap: 9px; }
+  .public-header-actions { gap: 8px; }
+  .public-demo-notice { font-size: 10px; text-align: center; min-height: 29px; padding: 6px 14px; }
+  .content.public-content { padding: 27px 15px 16px; }
+  .public-content .booking-head { margin-bottom: 18px; }
+  .public-content .booking-head h1 { font-size: 29px; }
+  .public-content .booking-head .public-chip { display: none; }
+  .public-content .booking-form { padding: 23px 19px; }
+}
+@media (max-width: 420px) {
+  .public-header button.public-back[data-slot=button] { padding: 0 10px; font-size: 11px; }
+  .public-content .booking-form { padding: 20px 16px; }
+}
+
+/* Polished onboarding action, using the shared UI Button component. */
+.welcome-form button.welcome-submit[data-slot=button] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 48px;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 720;
+  background: #1c664f;
+  color: #fff;
+  box-shadow: 0 2px 5px rgba(17, 95, 58, .11);
+}
+.welcome-form button.welcome-submit[data-slot=button]:hover:not(:disabled) {
+  background: #14533d;
+}
+.welcome-form input[data-slot=input] {
+  height: 46px;
+  box-shadow: none;
+  background: #fff;
+}

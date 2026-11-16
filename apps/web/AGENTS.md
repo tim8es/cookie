@@ -22,8 +22,10 @@ production launch or unrestricted visual redesign. Keep it consistent.
   `src/lib/components/ui/`; avoid writing custom substitute buttons/inputs.
 - Screen-specific CSS lives in the named `src/styles/*.css` module.
   Reusable visual values go to `src/styles/tokens.css`.
-  The `src/styles.css` file is a **shrinking compatibility layer**; never
-  add new feature styles or obsolete color palettes to it.
+  `src/styles.css` only imports the historical CSS layers in
+  `src/styles/compat/{base,workspace,public}.css`. Those files are
+  **compatibility-only**, capped by `pnpm check:ui` and must shrink over
+  time; never add feature styles or old palette rules there.
 - Calendar, owner forms, public booking and confirmation are separate
   presentation components. Backend price, booking availability, permissions,
   and payment logic **must not** be implemented in this UI.

@@ -53,9 +53,11 @@ agent instructions live in [UI_GUIDE.md](./UI_GUIDE.md).
 source for brand colors, editorial typography, surfaces, and radii.
 `src/visual-system.css` imports independent styles for the workspace,
 booking flow, onboarding, responsive layouts, first-run shell and dashboard.
-`src/styles.css` contains a shrinking compatibility-only helper/layout layer. Two outdated
-palette roots and 59 unused CSS rules were removed. The `check:ui` guard prevents
-that stylesheet from growing: add all new styles to the appropriate screen module.
+`src/styles.css` now only imports three historical compatibility layers in
+`src/styles/compat/{base,workspace,public}.css`. Their combined size is capped
+by `check:ui`; it must decrease as selectors are migrated to screen modules.
+Two outdated palette roots and 59 dead rules were removed earlier; do not
+reintroduce them or append new presentation rules to these layers.
 The week/day calendar and booking details are styled in `src/styles/calendar.css`
 and reuse Card/Button/Badge primitives. On narrow screens, the week is
 keyboard-scrollable within its own region rather than overflowing the page.
@@ -94,7 +96,9 @@ the 39-screenshot Chromium browser smoke across desktop and mobile.
 - `src/lib/ui/BookingDetail.svelte`: booking drawer with keyboard Escape, initial focus, Tab loop and focus restoration.
 - `src/lib/ui/CalendarView.svelte`: standalone day/week calendar, date navigation and keyboard-selectable booking details.
 - `src/lib/calendar.ts`: pure presentation selector for date-based and deterministic chronological ordering.
-- `src/styles.css`: global design tokens, responsive design and component classes.
+- `src/styles/tokens.css`: canonical tokens; `src/styles/compat/`: temporary
+legacy cascade modules that must shrink; `src/styles/*.css`: maintained
+visual styling, by owning screen.
 - `src/lib/model.ts`: **frontend view models only**, not official wire types.
 - `src/lib/api.ts`: typed port and adapter selection. Production adapter deliberately fails closed until review.
 - `src/lib/mock.ts`: strictly synthetic browser-local data adapter.
