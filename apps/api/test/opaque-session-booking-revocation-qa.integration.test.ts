@@ -140,7 +140,11 @@ test(
         events: number;
       }> = [];
 
-      for (const kind of ["bearer", "session-expiry", "telegram-unlink"] as const) {
+      for (const kind of [
+        "bearer",
+        "session-expiry",
+        "telegram-unlink",
+      ] as const) {
         const issued =
           await sessions.exchangeTelegramInitData(signedInitData());
         assert.ok(
