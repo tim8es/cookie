@@ -70,14 +70,16 @@ export function bookingFeedback(
       if (state.reason === "unauthenticated") {
         return {
           title: "Необходимо восстановить сессию",
-          description: "Сервер не подтвердил вашу сессию. Запись не подтверждена.",
+          description:
+            "Сервер не подтвердил вашу сессию. Запись не подтверждена.",
           announce: "alert",
           canRetry: false,
         };
       }
       return {
         title: "Операция недоступна",
-        description: "Сервер отклонил доступ. Повторение не обойдёт ограничение прав.",
+        description:
+          "Сервер отклонил доступ. Повторение не обойдёт ограничение прав.",
         announce: "alert",
         canRetry: false,
       };
