@@ -5,6 +5,10 @@ import {
   type HealthResponse,
 } from "../../../packages/contracts/src/index.js";
 import {
+  registerSyntheticBookingHttp,
+  type SyntheticBookingHttpDependencies,
+} from "./booking-http.js";
+import {
   registerProtectedSessionContext,
   type ProtectedSessionDependencies,
 } from "./session-context.js";
@@ -19,6 +23,7 @@ export function createApp(
   options: {
     readonly logger?: boolean;
     readonly sessionRoutes?: ProtectedSessionDependencies;
+    readonly syntheticBookingRoutes?: SyntheticBookingHttpDependencies;
   } = {},
 ): FastifyInstance {
   const app = Fastify({
@@ -49,6 +54,11 @@ export function createApp(
   // No session verifier is installed in the normal API bootstrap: fail closed.
   if (options.sessionRoutes)
     registerProtectedSessionContext(app, options.sessionRoutes);
+
+  // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
+  // synthetic entitlement callback, so these booking routes stay absent.
+  if (options.syntheticBookingRoutes)
+    registerSyntheticBookingHttp(app, options.syntheticBookingRoutes);
 
   app.setNotFoundHandler((_request, reply) =>
     reply.code(404).send({ error: "not-found" }),
