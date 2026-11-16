@@ -28,9 +28,11 @@ sanitized abandoned-lease error.
 function happens **before COMMIT and while the row lock is held**.
 No asynchronous handler work is awaited under the transaction; the
 transaction closes and releases its lock immediately after invocation.
-The handler timeout covers the invocation and completion; a COMMIT
-failure **after** invocation stops the worker fail-closed without
-claiming new work, because the external outcome is ambiguous.
+The handler timeout covers the invocation and completion. Connection
+acquisition, BEGIN/COMMIT, authority-check and rollback failures stop
+this claimed worker fail-closed; a COMMIT failure **after** invocation
+also aborts the handler signal. An incomplete Pool adapter lacking
+`connect` must fail closed, not silently continue polling.
 
 This is a start-linearity guarantee against concurrent PostgreSQL
 reclaim, **not a claim of exactly-once external effects**. A handler

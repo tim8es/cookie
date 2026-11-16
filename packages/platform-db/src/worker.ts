@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 
 import {
   acknowledgeOutbox,
@@ -243,7 +243,14 @@ async function runBoundedOutboxBatch(
   let work: Promise<HandlerOutcome> | undefined;
   let timeout: Promise<HandlerOutcome> | undefined;
   let handlerStarted = false;
-  const client = await pool.connect();
+  let client: PoolClient;
+  try {
+    client = await pool.connect();
+  } catch {
+    // An already-claimed lease with an unknown dispatch authority must not
+    // be returned to a polling loop (including incomplete Pool adapters).
+    throw new AbandonedOutboxLeaseError();
+  }
   let transactionOpen = false;
   try {
     await client.query("BEGIN");
@@ -289,18 +296,18 @@ async function runBoundedOutboxBatch(
     }
     await client.query("COMMIT");
     transactionOpen = false;
-  } catch (error) {
+  } catch {
     if (transactionOpen) {
       await client.query("ROLLBACK").catch(() => undefined);
     }
     if (timer) clearTimeout(timer);
     if (handlerStarted) {
       // The handler may already have issued an irreversible effect.
-      // Never resume claims after an ambiguous dispatch transaction.
       handlerController.abort();
-      throw new AbandonedOutboxLeaseError();
     }
-    throw error;
+    // A claimed event with no verified start authority must never be
+    // retried by this supervisor, even if BEGIN/COMMIT failed.
+    throw new AbandonedOutboxLeaseError();
   } finally {
     client.release();
   }
