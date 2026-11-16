@@ -160,6 +160,10 @@ test(
         [tenant, randomUUID(), staff, locationA],
       );
 
+      // Real TCP transport stays bound to ephemeral localhost in CI only.
+      // Production main.ts does not mount these injected synthetic routes.
+      const loopbackOrigin = await app.listen({ host: "127.0.0.1", port: 0 });
+
       const workspace = await app.inject({
         method: "GET",
         url: `${base}/workspace-context`,
@@ -276,17 +280,40 @@ test(
           ),
       );
 
-      const create = (
+      // All create assertions (including concurrent same-slot creates, replay
+      // and revocation) exercise the real HTTP listener rather than inject.
+      const networkCatalog = await fetch(
+        `${loopbackOrigin}${base}/locations/${locationA}/catalog`,
+        { headers: ownerHeader },
+      );
+      assert.equal(networkCatalog.status, 200);
+      assert.deepEqual(await networkCatalog.json(), catalog.json());
+      const networkAvailability = await fetch(`${loopbackOrigin}${slotsUrl}`, {
+        headers: ownerHeader,
+      });
+      assert.equal(networkAvailability.status, 200);
+      assert.deepEqual(await networkAvailability.json(), availability.json());
+
+      const create = async (
         key: string,
         body = createBody,
         token = "synthetic-owner",
-      ) =>
-        app.inject({
+      ) => {
+        const response = await fetch(`${loopbackOrigin}${base}/bookings`, {
           method: "POST",
-          url: `${base}/bookings`,
-          headers: { authorization: `Bearer ${token}`, "idempotency-key": key },
-          payload: body,
+          headers: {
+            authorization: `Bearer ${token}`,
+            "idempotency-key": key,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(body),
         });
+        const responseBody = await response.text();
+        return {
+          statusCode: response.status,
+          json: () => JSON.parse(responseBody),
+        };
+      };
       const [first, competitor] = await Promise.all([
         create("first"),
         create("competitor"),
@@ -301,6 +328,20 @@ test(
       assert.equal(receipt.status, "Confirmed");
       assert.match(receipt.bookingId, /^[0-9a-f-]{36}$/);
       assert.equal(receipt.priceKopecks, "150000");
+
+      // Deliberately discard a successful replay's response body, then
+      // reconcile by the same key. This is NOT a lost-COMMIT/TCP-reset test.
+      const unreadReplay = await fetch(`${loopbackOrigin}${base}/bookings`, {
+        method: "POST",
+        headers: {
+          ...ownerHeader,
+          "idempotency-key": winningKey,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(createBody),
+      });
+      assert.equal(unreadReplay.status, 201);
+      await unreadReplay.body?.cancel();
 
       const retry = await create(winningKey);
       assert.equal(retry.statusCode, 201);
@@ -346,6 +387,12 @@ test(
       assert.equal(booking.statusCode, 200);
       assert.equal(booking.json().bookingId, receipt.bookingId);
       assert.equal(booking.json().status, "Confirmed");
+      const networkBooking = await fetch(
+        `${loopbackOrigin}${base}/bookings/${receipt.bookingId}`,
+        { headers: ownerHeader },
+      );
+      assert.equal(networkBooking.status, 200);
+      assert.deepEqual(await networkBooking.json(), booking.json());
 
       const calendarUrl = `${base}/locations/${locationA}/calendar?from=2027-04-12T00:00:00Z&to=2027-04-13T00:00:00Z`;
       const calendar = await app.inject({
@@ -355,6 +402,11 @@ test(
       });
       assert.equal(calendar.statusCode, 200);
       assert.equal(calendar.json().bookings.length, 1);
+      const networkCalendar = await fetch(`${loopbackOrigin}${calendarUrl}`, {
+        headers: ownerHeader,
+      });
+      assert.equal(networkCalendar.status, 200);
+      assert.deepEqual(await networkCalendar.json(), calendar.json());
 
       const blockedAvailability = await app.inject({
         method: "GET",
