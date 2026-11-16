@@ -4,6 +4,7 @@
 
 ## Delivered surface (web + API)
 
+- In **API mode** only, the web UI loads the official Telegram WebApp SDK from `https://telegram.org/js/telegram-web-app.js` (with a bounded timeout). Mock mode does not request this external script; the operator must review the SDK/CSP supply-chain exposure before enabling real users.
 - In **API mode** only, the web UI reads `window.Telegram.WebApp.initData` directly from Telegram Mini App. No proof input fields, query-string fallback, debug bypass, fake account selector or sessionStorage authentication.
 - Signed initData is sent **once** to `POST /v1/auth/telegram/exchange`. Server cryptography, existing owner/link and DB role govern success; the browser does not mint a user, tenant or role.
 - UI validates the short-lived bearer response and issues `GET /v1/organizations/:tenantId/session-context` with Authorization. It displays verified status only if both server operations succeed and their tenants match.
