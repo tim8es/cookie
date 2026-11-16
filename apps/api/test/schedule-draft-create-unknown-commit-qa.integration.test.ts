@@ -217,7 +217,10 @@ test(
       assert.equal(stored.rowCount, 1);
       const requestId = stored.rows[0]?.id;
       assert.ok(requestId);
-      const replayedRequest = await requestShiftDraftCreateInternal(pool, request);
+      const replayedRequest = await requestShiftDraftCreateInternal(
+        pool,
+        request,
+      );
       assert.equal(replayedRequest.requestId, requestId);
       assert.equal(replayedRequest.status, "pending");
       assert.equal(replayedRequest.policyRevision, 0);
@@ -328,7 +331,11 @@ test(
       await assert.rejects(
         reviewShiftDraftCreateInternal(
           pool,
-          { ...rejection, action: "approve", idempotencyKey: "qa-opposite-review" },
+          {
+            ...rejection,
+            action: "approve",
+            idempotencyKey: "qa-opposite-review",
+          },
           pass,
         ),
         { code: "DRAFT_CREATE_APPROVAL_ALREADY_DECIDED" },
@@ -344,13 +351,17 @@ test(
       );
       assert.equal(events.rows.length, 4);
       assert.deepEqual(
-        events.rows.filter((row) => row.request_id === requestId)
-          .map((row) => row.topic).sort(),
+        events.rows
+          .filter((row) => row.request_id === requestId)
+          .map((row) => row.topic)
+          .sort(),
         ["schedule.draft.create.applied", "schedule.draft.create.requested"],
       );
       assert.deepEqual(
-        events.rows.filter((row) => row.request_id === second.requestId)
-          .map((row) => row.topic).sort(),
+        events.rows
+          .filter((row) => row.request_id === second.requestId)
+          .map((row) => row.topic)
+          .sort(),
         ["schedule.draft.create.rejected", "schedule.draft.create.requested"],
       );
     } finally {
@@ -397,15 +408,15 @@ test(
             .catch(() => undefined);
         }
         await pool
-          .query(
-            "DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid",
-            [tenant],
-          )
+          .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid", [
+            tenant,
+          ])
           .catch(() => undefined);
         await pool
-          .query("DELETE FROM cookie_identity.identities WHERE id=ANY($1::uuid[])", [
-            [owner, manager],
-          ])
+          .query(
+            "DELETE FROM cookie_identity.identities WHERE id=ANY($1::uuid[])",
+            [[owner, manager]],
+          )
           .catch(() => undefined);
       } finally {
         await pool.end();
