@@ -404,7 +404,7 @@ async function scenario(cdp, origin, width, height) {
     await click(cdp, ".booking-summary-toggle");
   }
   await requireDom(cdp, name + " upfront base price", "document.querySelector('.booking-checkout-summary strong')?.textContent.includes('₽')");
-  await requireDom(cdp, name + " service choices expose their catalog cost", "Array.from(document.querySelectorAll('.booking-form .booking-fields select option')).filter(item => item.value).every(item => item.textContent.includes('₽'))");
+  await requireDom(cdp, name + " service choices expose their catalog cost", "Array.from(document.querySelectorAll('.booking-form .booking-fields > label.field select option')).filter(item => item.value).every(item => item.textContent.includes('₽'))");
   await requireDom(cdp, name + " first selection shows duration and preliminary price", "document.querySelector('.booking-service-meta')?.textContent.includes('60 мин') && document.querySelector('.booking-service-meta')?.textContent.includes('1 500 ₽')");
   await requireDom(cdp, name + " preliminary price appears before staff picker", "(() => { const meta = document.querySelector('.booking-service-meta'); const staff = document.querySelector('.booking-form .form-pair'); return meta && staff && Boolean(meta.compareDocumentPosition(staff) & Node.DOCUMENT_POSITION_FOLLOWING); })()");
   await requireDom(cdp, name + " summary prioritizes visit data", "document.querySelector('.ticket-top h2')?.textContent.trim() === 'Ваш визит' && !document.querySelector('.booking-summary .ticket-mark')");
