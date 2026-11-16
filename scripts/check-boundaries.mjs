@@ -93,6 +93,37 @@ export function checkFileImports({ root, file, content, exceptions = new Set() }
   return { failures, usedExceptions };
 }
 
+/** Fail closed on direct and transitive module cycles, including legacy imports. */
+export function findModuleCycles(dependencies) {
+  const graph = new Map();
+  for (const [from, to] of dependencies) {
+    if (from === to) continue;
+    if (!graph.has(from)) graph.set(from, new Set());
+    graph.get(from).add(to);
+  }
+  const states = new Map();
+  const stack = [];
+  const cycles = [];
+  function visit(module) {
+    states.set(module, "visiting");
+    stack.push(module);
+    for (const dependency of [...(graph.get(module) || [])].sort()) {
+      if (states.get(dependency) === "visiting") {
+        const index = stack.indexOf(dependency);
+        cycles.push([...stack.slice(index), dependency].join(" -> "));
+      } else if (!states.has(dependency)) {
+        visit(dependency);
+      }
+    }
+    stack.pop();
+    states.set(module, "done");
+  }
+  for (const module of [...graph.keys()].sort()) {
+    if (!states.has(module)) visit(module);
+  }
+  return cycles.sort();
+}
+
 async function sourceFiles(directory) {
   let entries;
   try {
@@ -139,11 +170,22 @@ export async function checkRepository(root) {
     }
   }
   const usedExceptions = new Set();
+  const dependencies = [];
   for (const file of sources) {
     const content = await readFile(file, "utf8");
+    const sourceModule = moduleOf(file, root);
+    for (const specifier of importsIn(file, content)) {
+      const destination = destinationOf(specifier, file, root);
+      if (sourceModule && destination?.module && destination.module !== sourceModule) {
+        dependencies.push([sourceModule, destination.module]);
+      }
+    }
     const report = checkFileImports({ root, file, content, exceptions: allowed });
     failures.push(...report.failures);
     for (const exception of report.usedExceptions) usedExceptions.add(exception);
+  }
+  for (const cycle of findModuleCycles(dependencies)) {
+    failures.push("Module dependency cycle: " + cycle);
   }
   for (const exception of allowed) {
     if (!usedExceptions.has(exception)) failures.push("Stale legacy exception: " + exception + " (remove it from the baseline)");

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { checkFileImports, checkRepository } from "./check-boundaries.mjs";
+import { checkFileImports, checkRepository, findModuleCycles } from "./check-boundaries.mjs";
 
 const root = join(process.cwd(), "test-module-root");
 const file = join(root, "packages/domain-booking/src/create.ts");
@@ -80,6 +80,48 @@ test("prevents production imports of sibling test folders or app source", () => 
 test("cannot bypass boundary policy through package aliases", () => {
   const result = report("import '@cookie/platform-db'; import '@cookie/contracts/src/index.js';");
   assert.equal(result.failures.length, 2);
+});
+
+test("reports transitive module cycles, even when imports use public entrypoints", () => {
+  const edges = [
+    ["packages/domain-booking", "packages/domain-scheduling"],
+    ["packages/domain-scheduling", "packages/platform-db"],
+    ["packages/platform-db", "packages/domain-scheduling"],
+  ];
+  assert.deepEqual(findModuleCycles(edges), [
+    "packages/domain-scheduling -> packages/platform-db -> packages/domain-scheduling",
+  ]);
+  assert.deepEqual(findModuleCycles(edges.slice(0, 2)), []);
+});
+
+test("repository scan rejects a real two-package public-entrypoint cycle", async () => {
+  const sandbox = await mkdtemp(join(tmpdir(), "cookie-module-cycle-"));
+  try {
+    const first = join(sandbox, "packages/first/src");
+    const second = join(sandbox, "packages/second/src");
+    await Promise.all([
+      mkdir(first, { recursive: true }),
+      mkdir(second, { recursive: true }),
+      mkdir(join(sandbox, "scripts"), { recursive: true }),
+    ]);
+    await writeFile(
+      join(first, "index.ts"),
+      'import "../../second/src/index.js";\n',
+    );
+    await writeFile(
+      join(second, "index.ts"),
+      'import "../../first/src/index.js";\n',
+    );
+    await writeFile(join(sandbox, "scripts/module-boundaries-legacy.json"), "{}");
+    const result = await checkRepository(sandbox);
+    assert.deepEqual(result.failures, [
+      "Module dependency cycle: packages/first -> packages/second -> packages/first",
+    ]);
+    await writeFile(join(second, "index.ts"), "export const ready = true;\n");
+    assert.deepEqual((await checkRepository(sandbox)).failures, []);
+  } finally {
+    await rm(sandbox, { recursive: true, force: true });
+  }
 });
 
 test("repository scan rejects new cross-module imports and stale exceptions", async () => {
