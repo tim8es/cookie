@@ -81,6 +81,7 @@ test("409 conflict refreshes slots but never confirms the booking", async () => 
       throw new TransportFailure("conflict", 409);
     },
     verifyConfirmed,
+    classifyConflict: () => "slot-unavailable" as const,
     refreshSlots: async () => {
       refreshCalls++;
       return ["12:00", "14:00"];
@@ -103,6 +104,7 @@ test("a failed refresh still shows conflict, never fake availability", async () 
       throw new TransportFailure("conflict", 409);
     },
     verifyConfirmed,
+    classifyConflict: () => "slot-unavailable" as const,
     refreshSlots: async () => {
       throw new TypeError("Synthetic offline");
     },
@@ -161,4 +163,81 @@ test("401 and 403 deny without retry or false confirmation", async () => {
     await flow.retry();
     assert.equal(calls, 1);
   }
+});
+
+test("generic HTTP 409 cannot be treated as a slot conflict", async () => {
+  let refreshed = 0;
+  let mutations = 0;
+  const flow = new BookingAttempt(
+    {
+      create: async () => {
+        mutations++;
+        throw new TransportFailure("conflict", 409);
+      },
+      verifyConfirmed,
+      refreshSlots: async () => {
+        refreshed++;
+        return ["12:00"];
+      },
+    },
+    () => "key-for-unknown-outcome",
+  );
+  const state = await flow.submit(selection);
+  assert.equal(state.phase, "error");
+  if (state.phase === "error") {
+    assert.equal(state.reason, "unverified-conflict");
+    assert.equal(state.retryable, false);
+  }
+  assert.equal(refreshed, 0);
+  assert.equal(flow.reset(), false, "unknown 409 must be reconciled first");
+  await flow.retry();
+  await flow.submit({ slot: "12:00" });
+  assert.equal(mutations, 1, "neither retry nor new key is issued");
+});
+
+test("a verified idempotency conflict cannot refresh availability or reset", async () => {
+  let refreshed = 0;
+  const flow = new BookingAttempt(
+    {
+      create: async () => {
+        throw new TransportFailure("conflict", 409);
+      },
+      verifyConfirmed,
+      classifyConflict: () => "idempotency-key-reused" as const,
+      refreshSlots: async () => {
+        refreshed++;
+        return ["12:00"];
+      },
+    },
+    () => "synthetic-key",
+  );
+  const state = await flow.submit(selection);
+  assert.equal(state.phase, "error");
+  if (state.phase === "error") {
+    assert.equal(state.reason, "idempotency-key-reused");
+    assert.equal(state.retryable, false);
+  }
+  assert.equal(refreshed, 0);
+  assert.equal(flow.reset(), false);
+});
+
+test("a throwing conflict validator fails closed", async () => {
+  const flow = new BookingAttempt(
+    {
+      create: async () => {
+        throw new TransportFailure("conflict", 409);
+      },
+      verifyConfirmed,
+      classifyConflict: () => {
+        throw new Error("invalid server body");
+      },
+      refreshSlots: async () => {
+        throw new Error("should not refresh unverified conflicts");
+      },
+    },
+    () => "synthetic-key",
+  );
+  const state = await flow.submit(selection);
+  assert.equal(state.phase, "error");
+  assert.equal(flow.reset(), false);
 });
