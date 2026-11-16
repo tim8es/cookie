@@ -34,11 +34,20 @@ export interface Membership {
   readonly assignments: readonly RoleAssignment[];
 }
 
+/** Server-only provenance for an authenticated opaque Cookie bearer. Never accept it from JSON. */
+export interface OpaqueSessionAuthority {
+  readonly tokenSha256: string;
+  readonly issuer: string;
+  readonly audience: string;
+}
+
 /** Construct ONLY after server-side session/identity verification. */
 export interface TrustedActor {
   readonly identityId: string;
   readonly tenantId: string;
   readonly correlationId: string;
+  /** Transactionally revalidate this exact session before protected DB work. */
+  readonly opaqueSessionAuthority?: OpaqueSessionAuthority;
 }
 
 /** Relations must be loaded from authoritative tenant-scoped storage. */
