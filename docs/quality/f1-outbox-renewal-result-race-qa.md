@@ -1,6 +1,6 @@
 # F1 independent QA — lease renewal response race after #150 fix
 
-**Status: NOT RUN at authoring.** This is a second, distinct PostgreSQL 16 deterministic concurrency probe stacked on the #155 fix candidate. Only QA test and documentation changed.
+**Status: CONFIRMED RED (High) on PostgreSQL 16; see [F1 CI #43901887904](https://github.com/tim8es/cookie/actions/runs/43901887904) at test head `2ecd6c104800fc35fa87b37c39fa076e7469c449`.** Independent QA test stacked on the #155 fix candidate; only test and documentation changed. The parent #155's initial #148 regression remains GREEN, but this *separate* renewal-response case fails.
 
 ## Invariant
 
@@ -31,3 +31,13 @@ This tests a distinct interleaving from the original #148 test: **claim → rene
 An adversarially held query-result delivery demonstrates a possible loss of lease authority, **not** actual SMS/Telegram duplication. The problem may require stronger lease ownership/fencing semantics or approved provider idempotency instead of a narrow extra preflight check. Backend owner must evaluate without changes by QA to production code. No deployment, payments, real customer data or pilot.
 
 Related: #150, #19, #143, #148, #155.
+
+## Exact QA evidence
+
+- Parent fix candidate: [PR #155](https://github.com/tim8es/cookie/pull/155) SHA `cc1f174677b41a651de0f5f73981f2ae261919d1`.
+- Independent QA test commit `2ecd6c104800fc35fa87b37c39fa076e7469c449` → [F1 CI #43901887904](https://github.com/tim8es/cookie/actions/runs/43901887904): **102 unit tests passed**, **43 PostgreSQL integration passed, one PostgreSQL integration failed, zero skipped**.
+- `apps/api/test/worker-stale-claim-qa.integration.test.ts`: **PASS** (previously failing #148 regression).
+- `apps/api/test/worker-renewal-result-race-qa.integration.test.ts:151`: **FAIL**, `AssertionError [ERR_ASSERTION]`, `handlerStarts` actual `1` vs expected `0`.
+- Parent #155 implementation checks a renewal UPDATE's affected row count only after the SQL promise resolves. The query result is not durable proof that the lease remains owned at the subsequent JavaScript handler call.
+- Related Issue [#150](https://github.com/tim8es/cookie/issues/150) and PR #155 comments contain the reproduction and remediation request. No real duplicate provider delivery was observed.
+- Documentation-only subsequent commits must receive their own exact-head checks before being labelled current-head PASS or RED.
