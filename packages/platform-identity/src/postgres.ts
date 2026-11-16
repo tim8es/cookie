@@ -179,7 +179,6 @@ async function lockPolicyRows(
   );
 }
 
-
 interface OpaqueSessionLinkRow extends QueryResultRow {
   telegram_link_id: string | null;
 }
