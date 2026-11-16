@@ -34,3 +34,7 @@ separate ordinary queue portion is tracked in PR #159; HIGH issue
 ## Final main-branch reconciliation (2026-11-16)
 
 This PR now targets `main` including the reviewed synthetic Cookie session security fix #173 (commit `a3f498a222fe43d0484389e93e5097cd0a76e7ae`). It contains BOTH the original SKIP LOCKED isolation change and the bounded expired-lease maintenance follow-up. No test assertions or runtime implementation have been altered in this retargeting commit. A new exact-HEAD GitHub F1 CI run is required before merging; previous green results on the older stacked base cannot substitute for current-main integration. No external provider, real messages or production rollout is enabled.
+
+## Combined-base check after ordinary Outbox merge (2026-11-16)
+
+Ordinary Outbox #159 was merged into `main` as commit `82dd319dbfbb7e23ad19513c3cf076486fb672e2`. This alert-queue PR remains independent, but its earlier [CI #43922271773](https://github.com/tim8es/cookie/actions/runs/43922271773) tested the prior main. A fresh exact-HEAD full F1 CI is required on the updated base before #161 can merge. Source SQL and QA assertions are unchanged. No live notification provider or production deployment.
