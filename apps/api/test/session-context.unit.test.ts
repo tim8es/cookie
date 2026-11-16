@@ -4,11 +4,11 @@ import test from "node:test";
 
 import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/authorization.js";
 import { createApp } from "../src/app.js";
+import { verifyTenantActor } from "../src/session-context.js";
 import type {
   ProtectedSessionDependencies,
   VerifiedSession,
   BearerSessionVerifier,
-  verifyTenantActor,
 } from "../src/session-context.js";
 
 const TENANT_A = "11111111-1111-4111-8111-111111111111";
