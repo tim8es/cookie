@@ -178,6 +178,76 @@ async function lockPolicyRows(
   );
 }
 
+/**
+ * Revalidate the EXACT server-verified opaque bearer inside the protected
+ * command's transaction. An HTTP preflight is insufficient: revocation may
+ * commit after verifyBearerToken but before Booking acquires policy locks.
+ *
+ * Lock order is policy rows -> Telegram link -> opaque session. This agrees
+ * with Membership disable (Membership -> session) and Telegram unlink
+ * (link -> revocation-triggered session UPDATE), avoiding reverse locks.
+ * The preliminary link-id SELECT is untrusted for authorization: both rows
+ * are rechecked under FOR SHARE and held until the caller's COMMIT.
+ */
+async function lockOpaqueSessionAuthority(
+  client: PoolClient,
+  actor: TrustedActor,
+): Promise<void> {
+  const authority = actor.opaqueSessionAuthority;
+  // Other synthetic verifier providers keep their existing explicitly opt-in
+  // boundary. A live opaque Cookie provider MUST return this provenance.
+  if (!authority) return;
+  if (
+    !/^[0-9a-f]{64}$/i.test(authority.tokenSha256) ||
+    !/^[a-zA-Z0-9._:/-]{1,128}$/.test(authority.issuer) ||
+    !/^[a-zA-Z0-9._:/-]{1,128}$/.test(authority.audience)
+  ) {
+    throw new AuthorizationDeniedError();
+  }
+
+  const params = [
+    authority.tokenSha256,
+    actor.tenantId,
+    actor.identityId,
+    authority.issuer,
+    authority.audience,
+  ];
+  const reference = await client.query<{ telegram_link_id: string | null }>(
+    `SELECT telegram_link_id::text AS telegram_link_id
+       FROM cookie_identity.opaque_sessions
+      WHERE token_sha256=decode($1::text, 'hex')
+        AND tenant_id=$2::uuid AND identity_id=$3::uuid
+        AND issuer=$4 AND audience=$5`,
+    params,
+  );
+  const session = reference.rows[0];
+  if (!session) throw new AuthorizationDeniedError();
+
+  if (session.telegram_link_id !== null) {
+    const link = await client.query(
+      `SELECT id FROM cookie_identity.telegram_identity_links
+        WHERE tenant_id=$2::uuid AND identity_id=$3::uuid
+          AND id=$6::uuid AND revoked_at IS NULL
+        FOR SHARE`,
+      [...params, session.telegram_link_id],
+    );
+    if (link.rowCount !== 1) throw new AuthorizationDeniedError();
+  }
+
+  const locked = await client.query(
+    `SELECT token_sha256 FROM cookie_identity.opaque_sessions
+      WHERE token_sha256=decode($1::text, 'hex')
+        AND tenant_id=$2::uuid AND identity_id=$3::uuid
+        AND issuer=$4 AND audience=$5
+        AND telegram_link_id IS NOT DISTINCT FROM $6::uuid
+        AND revoked_at IS NULL
+        AND expires_at > clock_timestamp()
+      FOR SHARE`,
+    [...params, session.telegram_link_id],
+  );
+  if (locked.rowCount !== 1) throw new AuthorizationDeniedError();
+}
+
 /** Only safe preflight metadata is stored, never tokens, contacts or payload. */
 export class PostgresPolicyAudit implements PolicyAuditPort {
   constructor(private readonly client: PoolClient) {}
@@ -215,6 +285,7 @@ export async function requireTenantPermission(
 ): Promise<void> {
   const request: AuthorizationRequest = { actor, resource, permission };
   await lockPolicyRows(client, actor);
+  await lockOpaqueSessionAuthority(client, actor);
   const snapshot = await loadPolicySnapshot(client, actor);
   await requireSensitiveAuthorization(
     request,
