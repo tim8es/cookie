@@ -357,7 +357,7 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
           "CDP response body must contain actual backend slots",
         );
         const serverTimes = refreshed.body.slots.map((slot) => {
-          assert.match(slot.startAt, /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$/);
+          assert.match(slot.startAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/);
           return slot.startAt.slice(11, 16);
         });
         const displayedTimes = await evaluate(cdp, `[...document.querySelectorAll(".booking-attempt-slot-options button")].map((button) => button.textContent?.trim())`);
