@@ -10,6 +10,7 @@ import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/opaque-sessions.js";
 import { createTelegramMiniAppProofVerifier } from "../../../packages/platform-identity/src/telegram-init-data.js";
 import { createApp } from "../src/app.js";
+import type { BearerSessionVerifier } from "../src/session-context.js";
 
 test(
   "cancel and reschedule reject revoked or expired exact Cookie bearer after successful HTTP preflight",
@@ -48,7 +49,7 @@ test(
     });
     const url = (id: string, operation: "cancel" | "reschedule") =>
       "/v1/organizations/" + tenantId + "/bookings/" + id + "/" + operation;
-    const makeApp = (verifier: typeof sessions) =>
+    const makeApp = (verifier: BearerSessionVerifier) =>
       createApp(pool, {
         syntheticBookingMutations: {
           pool,
@@ -208,7 +209,7 @@ test(
             return authority;
           },
         };
-        const app = makeApp(verifier as typeof sessions);
+        const app = makeApp(verifier);
         apps.push(app);
         const before = await snapshot();
         const target = await pool.query<{ status: string; start_at: Date }>(
