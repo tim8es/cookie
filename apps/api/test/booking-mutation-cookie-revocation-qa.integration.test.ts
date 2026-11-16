@@ -66,7 +66,12 @@ test(
             issuer,audience,expires_at)
          VALUES($1::bytea,$2::bytea,$3::uuid,$4::uuid,'cookie-qa',
                 'booking-qa',clock_timestamp()+interval '10 minutes')`,
-        [createHash("sha256").update(token).digest(), randomBytes(32), tenantId, identityId],
+        [
+          createHash("sha256").update(token).digest(),
+          randomBytes(32),
+          tenantId,
+          identityId,
+        ],
       );
       assert.ok(await sessions.verifyBearerToken(token));
       return token;
@@ -89,7 +94,10 @@ test(
 
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
-      await pool.query("INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)", [identityId]);
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [identityId],
+      );
       await pool.query(
         "INSERT INTO cookie_tenancy.organizations(id,owner_identity_id,display_name) VALUES($1::uuid,$2::uuid,'QA mutation token revocation')",
         [tenantId, identityId],
@@ -156,8 +164,12 @@ test(
         assert.equal(created.status, "Confirmed");
         bookings.push(created.bookingId);
       }
-      const [reschedulePositiveId, cancelPositiveId, cancelBlockedId, rescheduleBlockedId] =
-        bookings as [string, string, string, string];
+      const [
+        reschedulePositiveId,
+        cancelPositiveId,
+        cancelBlockedId,
+        rescheduleBlockedId,
+      ] = bookings as [string, string, string, string];
 
       const control = makeApp(sessions);
       apps.push(control);
@@ -224,7 +236,10 @@ test(
             authorization: "Bearer " + token,
             "idempotency-key": "qa-blocked-" + kind,
           },
-          payload: operation === "cancel" ? {} : { newStartAt: "2028-09-20T19:30:00Z" },
+          payload:
+            operation === "cancel"
+              ? {}
+              : { newStartAt: "2028-09-20T19:30:00Z" },
         });
         try {
           assert.equal(
@@ -257,8 +272,16 @@ test(
           release();
         }
         const result = await pending;
-        assert.equal(result.statusCode, 403, kind + ": revoked preflight must deny");
-        assert.deepEqual(await snapshot(), before, kind + ": no new receipts or outbox");
+        assert.equal(
+          result.statusCode,
+          403,
+          kind + ": revoked preflight must deny",
+        );
+        assert.deepEqual(
+          await snapshot(),
+          before,
+          kind + ": no new receipts or outbox",
+        );
         const after = await pool.query<{ status: string; start_at: Date }>(
           "SELECT status,start_at FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
           [tenantId, bookingId],
@@ -290,10 +313,22 @@ test(
           "cookie_identity.memberships",
           "cookie_tenancy.locations",
         ]) {
-          await pool.query("DELETE FROM " + table + " WHERE tenant_id=$1::uuid", [tenantId]).catch(() => undefined);
+          await pool
+            .query("DELETE FROM " + table + " WHERE tenant_id=$1::uuid", [
+              tenantId,
+            ])
+            .catch(() => undefined);
         }
-        await pool.query("DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid", [tenantId]).catch(() => undefined);
-        await pool.query("DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [identityId]).catch(() => undefined);
+        await pool
+          .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid", [
+            tenantId,
+          ])
+          .catch(() => undefined);
+        await pool
+          .query("DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [
+            identityId,
+          ])
+          .catch(() => undefined);
       } finally {
         await pool.end();
       }
