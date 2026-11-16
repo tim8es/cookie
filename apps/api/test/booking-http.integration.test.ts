@@ -794,9 +794,16 @@ test(
       // Vite resolves Svelte internals from its project root. Reuse the
       // workspace's already-installed dependencies without downloading or
       // editing a single file under apps/web/**.
-      const fixtureModules = resolve(process.cwd(), "tests/f1-browser/node_modules");
+      const fixtureModules = resolve(
+        process.cwd(),
+        "tests/f1-browser/node_modules",
+      );
       if (!existsSync(fixtureModules)) {
-        symlinkSync(resolve(process.cwd(), "apps/web/node_modules"), fixtureModules, "dir");
+        symlinkSync(
+          resolve(process.cwd(), "apps/web/node_modules"),
+          fixtureModules,
+          "dir",
+        );
         browserFixtureModulesLink = fixtureModules;
       }
       const vite = await createServer({
@@ -870,7 +877,8 @@ test(
       });
     } finally {
       await browserFixtureServer?.close();
-      if (browserFixtureModulesLink) rmSync(browserFixtureModulesLink, { force: true });
+      if (browserFixtureModulesLink)
+        rmSync(browserFixtureModulesLink, { force: true });
       await app.close();
       const tables = [
         "cookie_booking.command_receipts",
