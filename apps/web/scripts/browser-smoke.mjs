@@ -422,6 +422,11 @@ async function main() {
     await cdp.ready;
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
+    const runtimeErrors = [];
+    cdp.onEvent("Runtime.exceptionThrown", (params) => {
+      runtimeErrors.push(params?.exceptionDetails?.exception?.description ?? params?.exceptionDetails?.text ?? "unknown JS exception");
+      console.error("PAGE RUNTIME ERROR", runtimeErrors[runtimeErrors.length - 1]);
+    });
     await cdp.send("Network.enable");
     const externalUrls = [];
     let pageRequests = 0;
