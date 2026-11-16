@@ -321,6 +321,8 @@ export async function createShiftDraftInternal(
   pool: Pool,
   input: InternalCreateShiftDraft,
   assertMayChange: AssertMayChangeDraft,
+  /** Trusted composition: caller owns SQL transaction and connection. */
+  transactionClient?: PoolClient,
 ): Promise<ShiftDraftReceipt> {
   validateBase(input);
   if (
@@ -336,10 +338,11 @@ export async function createShiftDraftInternal(
   const requestHash = digest(
     JSON.stringify([input.staffId, input.locationId, startAt, endAt]),
   );
-  const client = await pool.connect();
+  const client = transactionClient ?? (await pool.connect());
+  const ownsTransaction = transactionClient === undefined;
   let active = false;
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
     active = true;
 
     // Every scheduler and booking mutation first holds this tenant/staff row.
@@ -360,7 +363,7 @@ export async function createShiftDraftInternal(
       requestHash,
     );
     if (previous) {
-      await client.query("COMMIT");
+      if (ownsTransaction) await client.query("COMMIT");
       active = false;
       return previous;
     }
@@ -399,14 +402,16 @@ export async function createShiftDraftInternal(
       requestHash,
       receipt,
     });
-    await client.query("COMMIT");
+    if (ownsTransaction) await client.query("COMMIT");
     active = false;
     return receipt;
   } catch (error) {
-    if (active) await client.query("ROLLBACK").catch(() => undefined);
+    if (active && ownsTransaction) {
+      await client.query("ROLLBACK").catch(() => undefined);
+    }
     throw error;
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
 
