@@ -1,0 +1,7 @@
+# F1 #19 — compiled synthetic Outbox worker smoke
+
+This incremental change proves that the **existing** synthetic, opt-in Outbox worker can run from the JavaScript artifact produced by `pnpm build`. The start command now uses `node dist/apps/api/src/synthetic-worker-main.js`, rather than loading TypeScript with the development-only `tsx` runner. `dev:worker:synthetic` continues using `tsx` for local iteration.
+
+The F1 CI now invokes `scripts/ci-compiled-synthetic-worker-smoke.sh` **after the TypeScript build**. It checks that the built entrypoint exists, verifies the actual synthetic-worker security guard rejects (1) missing explicit enablement, (2) a nonlocal DB, and (3) a CI database mismatch, then starts the compiled process on the explicitly synthetic CI database and proves it exits cleanly on SIGTERM. All three negative cases assert the guard's diagnostic rather than accepting an unrelated runtime error.
+
+**Scope and limits:** No changes to Booking, policy, outbox delivery/lease or transaction semantics, domain modules, external providers, endpoints or migrations. This is a Node execution smoke against existing repository dependencies, **not** a self-contained deployment artifact, production worker packaging, a real notification provider, independently proven provider idempotency, live-PII processing or permission to deploy. Remaining #19 gates stay open. The GitHub PR must show a passing workflow run for its exact head SHA before any acceptance claim.

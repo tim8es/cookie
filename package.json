@@ -10,7 +10,7 @@
   "scripts": {
     "dev:api": "tsx watch apps/api/src/main.ts",
     "dev:worker:synthetic": "tsx apps/api/src/synthetic-worker-main.ts",
-    "worker:synthetic": "node --import tsx apps/api/src/synthetic-worker-main.ts",
+    "worker:synthetic": "node dist/apps/api/src/synthetic-worker-main.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"apps/**/*.ts\" \"packages/**/*.ts\" --max-warnings=0",
