@@ -10,7 +10,7 @@
   "scripts": {
     "dev:api": "tsx watch apps/api/src/main.ts",
     "dev:worker:synthetic": "tsx apps/api/src/synthetic-worker-main.ts",
-    "worker:synthetic": "node --import tsx apps/api/src/synthetic-worker-main.ts",
+    "worker:synthetic": "node dist/apps/api/src/synthetic-worker-main.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"apps/**/*.ts\" \"packages/**/*.ts\" --max-warnings=0",
@@ -25,6 +25,9 @@
     "typecheck:web": "pnpm --filter @cookie/web check",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:ui": "node apps/web/scripts/check-ui-structure.mjs"
+  },
+  "dependencies": {
+    "pg": "8.23.1"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",
