@@ -118,7 +118,8 @@ export async function linkVerifiedTelegramOwner(
           AND revoked_at IS NULL FOR SHARE`,
       [input.tenantId, input.ownerIdentityId],
     );
-    if (other.rowCount) throw new TrustedOwnerTelegramLinkError("LINK_CONFLICT");
+    if (other.rowCount)
+      throw new TrustedOwnerTelegramLinkError("LINK_CONFLICT");
 
     const linkId = randomUUID();
     await client.query(
