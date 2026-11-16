@@ -96,9 +96,11 @@ test(
           botToken: BOT,
           maxAgeSeconds: 600,
         }),
-        resolveVerifiedTelegramLink: createPostgresVerifiedTelegramLinkResolver({
-          userHashSecret: SECRET,
-        }),
+        resolveVerifiedTelegramLink: createPostgresVerifiedTelegramLinkResolver(
+          {
+            userHashSecret: SECRET,
+          },
+        ),
         issuer: "cookie-qa",
         audience: "workspace-qa",
         ttlSeconds: 600,
@@ -109,9 +111,17 @@ test(
       });
       apps.push(verifiedApp);
 
-      for (const kind of ["bearer", "session-expiry", "telegram-unlink"] as const) {
-        const issued = await sessions.exchangeTelegramInitData(signedInitData());
-        assert.ok(issued, "real signed Telegram proof must exchange through trusted link");
+      for (const kind of [
+        "bearer",
+        "session-expiry",
+        "telegram-unlink",
+      ] as const) {
+        const issued =
+          await sessions.exchangeTelegramInitData(signedInitData());
+        assert.ok(
+          issued,
+          "real signed Telegram proof must exchange through trusted link",
+        );
 
         // A valid Cookie bearer must actually return tenant-scoped metadata.
         // This prevents a vacuous pass caused by universal access denial.
@@ -121,7 +131,10 @@ test(
           headers: { authorization: "Bearer " + issued.bearerToken },
         });
         assert.equal(positive.statusCode, 200);
-        assert.equal(positive.json().organization.displayName, organizationName);
+        assert.equal(
+          positive.json().organization.displayName,
+          organizationName,
+        );
         assert.equal(positive.json().locations[0].displayName, locationName);
 
         let reached!: () => void;
@@ -161,11 +174,17 @@ test(
             "valid bearer must pass real DB verification before revoke-first interleaving",
           );
           if (kind === "bearer") {
-            assert.equal(await sessions.revokeBearerToken(issued.bearerToken), true);
+            assert.equal(
+              await sessions.revokeBearerToken(issued.bearerToken),
+              true,
+            );
           } else if (kind === "session-expiry") {
             const expired = await pool.query(
               "UPDATE cookie_identity.opaque_sessions SET issued_at=clock_timestamp()-interval '610 seconds', expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1::uuid AND token_sha256=$2::bytea AND revoked_at IS NULL RETURNING token_sha256",
-              [tenantId, createHash("sha256").update(issued.bearerToken).digest()],
+              [
+                tenantId,
+                createHash("sha256").update(issued.bearerToken).digest(),
+              ],
             );
             assert.equal(expired.rowCount, 1);
           } else {
@@ -197,7 +216,11 @@ test(
           url: route,
           headers: { authorization: "Bearer " + issued.bearerToken },
         });
-        assert.equal(nextRead.statusCode, 401, "subsequent AuthN must reject lost authority");
+        assert.equal(
+          nextRead.statusCode,
+          401,
+          "subsequent AuthN must reject lost authority",
+        );
         await app.close();
       }
       const membership = await pool.query<{ active: boolean }>(
@@ -218,14 +241,20 @@ test(
           "cookie_tenancy.locations",
         ]) {
           await pool
-            .query("DELETE FROM " + table + " WHERE tenant_id=$1::uuid", [tenantId])
+            .query("DELETE FROM " + table + " WHERE tenant_id=$1::uuid", [
+              tenantId,
+            ])
             .catch(() => undefined);
         }
         await pool
-          .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid", [tenantId])
+          .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid", [
+            tenantId,
+          ])
           .catch(() => undefined);
         await pool
-          .query("DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [identityId])
+          .query("DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [
+            identityId,
+          ])
           .catch(() => undefined);
       } finally {
         await pool.end();
