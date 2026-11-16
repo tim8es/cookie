@@ -29,3 +29,16 @@ A successful session verification outside a Booking transaction is not by itself
 - No bypass, skip or assertion relaxation. A future backend/Identity fix must make the unchanged test GREEN, and review must verify the reverse interleaving, protected reads, tenant scope and SQL lock ordering.
 
 No backend repair by QA; no real users, real Telegram bot, credentials, deployment, payment or commercial pilot. Related #165, #113, #18, #22, #66.
+
+## Integration verification against backend candidate #171
+
+2026-11-16: The original independent QA branch remains **RED** when tested
+against #162 alone ([CI #43911762004](https://github.com/tim8es/cookie/actions/runs/43911762004)).
+This PR was retargeted to the already full-green backend [PR #171](https://github.com/tim8es/cookie/pull/171)
+(head `439cb0a27eb59ffe7fcec92bea32b19c3653dfa2`, [CI #43912780705](https://github.com/tim8es/cookie/actions/runs/43912780705)).
+The test implementation and its expected three-case denial assertions are **unchanged** by this retarget.
+
+A new exact-HEAD F1 CI on the combined merge state is mandatory. Do not
+interpret the earlier RED on the old base as evidence against the new fix, or
+the parent's prior GREEN as proof that this new expiry scenario is already
+covered. No production API or real Telegram provider is enabled.
