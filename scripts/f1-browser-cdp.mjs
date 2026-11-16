@@ -2,24 +2,11 @@
 // No production UI, external network, accounts, payments, or browser automation library.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { get as httpGet } from "node:http";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-
-async function freePort() {
-  const server = createServer();
-  await new Promise((ok, fail) => {
-    server.once("error", fail);
-    server.listen(0, "127.0.0.1", ok);
-  });
-  const address = server.address();
-  await new Promise((ok) => server.close(ok));
-  if (!address || typeof address === "string") throw new Error("No local Chrome port");
-  return address.port;
-}
 
 function browserBinary() {
   const choices = [
@@ -136,7 +123,6 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
   assert.equal(page.hostname, "127.0.0.1");
   assert.ok(!page.searchParams.has("syntheticBearer"), "Test bearer must not be in URL");
   assert.equal(syntheticBearer, "synthetic-owner");
-  const chromePort = await freePort();
   const browserDataDir = mkdtempSync(join(tmpdir(), "cookie-f1-pg-browser-"));
   const chromeLogs = [];
   const runtimeErrors = [];
@@ -148,10 +134,19 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
       "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
       "--disable-background-networking", "--no-first-run",
       "--remote-debugging-address=127.0.0.1",
-      "--remote-debugging-port=" + chromePort,
+      "--remote-debugging-port=0",
       "--user-data-dir=" + browserDataDir, "about:blank",
     ], { stdio: ["ignore", "pipe", "pipe"] });
     chrome.stderr.on("data", (chunk) => chromeLogs.push(String(chunk).slice(0, 500)));
+    // Chromium itself binds an available loopback debugging port and writes
+    // DevToolsActivePort atomically. Avoid reserving/releasing guessed ports.
+    const chromePort = await poll("Chrome DevToolsActivePort", async () => {
+      const portFile = join(browserDataDir, "DevToolsActivePort");
+      if (!existsSync(portFile)) return null;
+      const firstLine = readFileSync(portFile, "utf8").split(/\r?\n/)[0];
+      const port = Number(firstLine);
+      return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
+    }, 20000);
     const target = await poll("Chrome DevTools", async () => {
       const result = await getLocal("http://127.0.0.1:" + chromePort + "/json/list");
       return JSON.parse(result.body).find((x) => x.type === "page" && x.webSocketDebuggerUrl);
