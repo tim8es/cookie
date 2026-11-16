@@ -14,6 +14,8 @@ import type {
 export interface LinkedIdentity {
   readonly tenantId: string;
   readonly identityId: string;
+  /** Present for DB-resolved links; only the legacy synthetic callback may omit it. */
+  readonly telegramLinkId?: string;
 }
 
 /**
@@ -133,13 +135,36 @@ export class PostgresOpaqueTelegramSessions {
         return null;
       }
 
+      // The production-candidate resolver binds a real consented link. The
+      // old opt-in synthetic test callback may still omit its link ID.
+      if (linked.telegramLinkId !== undefined) {
+        if (!UUID.test(linked.telegramLinkId)) {
+          await client.query("ROLLBACK");
+          active = false;
+          return null;
+        }
+        const allowedLink = await client.query(
+          `SELECT id FROM cookie_identity.telegram_identity_links
+             WHERE tenant_id=$1::uuid AND identity_id=$2::uuid
+               AND id=$3::uuid AND revoked_at IS NULL
+             FOR SHARE`,
+          [linked.tenantId, linked.identityId, linked.telegramLinkId],
+        );
+        if (allowedLink.rowCount !== 1) {
+          await client.query("ROLLBACK");
+          active = false;
+          return null;
+        }
+      }
+
       const bearerToken = "cs_" + randomBytes(32).toString("base64url");
       const created = await client.query<SessionRow>(
         `INSERT INTO cookie_identity.opaque_sessions
            (token_sha256,telegram_exchange_sha256,tenant_id,identity_id,
-            issuer,audience,issued_at,expires_at)
+            issuer,audience,issued_at,expires_at,telegram_link_id)
          VALUES ($1::bytea,$2::bytea,$3::uuid,$4::uuid,$5,$6,
-                 clock_timestamp(),clock_timestamp() + $7::integer * INTERVAL '1 second')
+                 clock_timestamp(),clock_timestamp() + $7::integer * INTERVAL '1 second',
+                 $8::uuid)
          ON CONFLICT DO NOTHING
          RETURNING tenant_id::text,identity_id::text,expires_at`,
         [
@@ -150,6 +175,7 @@ export class PostgresOpaqueTelegramSessions {
           this.deps.issuer,
           this.deps.audience,
           this.deps.ttlSeconds,
+          linked.telegramLinkId ?? null,
         ],
       );
       const receipt = created.rows[0];
@@ -191,7 +217,17 @@ export class PostgresOpaqueTelegramSessions {
           AND s.issuer=$2 AND s.audience=$3
           AND s.revoked_at IS NULL
           AND s.expires_at > clock_timestamp()
-          AND m.active`,
+          AND m.active
+          AND (
+            s.telegram_link_id IS NULL
+            OR EXISTS (
+              SELECT 1 FROM cookie_identity.telegram_identity_links AS link
+               WHERE link.tenant_id=s.tenant_id
+                 AND link.identity_id=s.identity_id
+                 AND link.id=s.telegram_link_id
+                 AND link.revoked_at IS NULL
+            )
+          )`,
       [tokenDigest(bearerToken), this.deps.issuer, this.deps.audience],
     );
     const value = result.rows[0];
