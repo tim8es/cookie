@@ -60,17 +60,26 @@ test("appearance preview is validated, local-only, and survives existing demo st
   const storage = new MemoryStorage();
   const api = new MockCookieApi(storage);
   await api.createOrganization("Тестовая студия");
-  const saved = await api.saveAppearance({ theme: "forest", introduction: "  У нас ждут гостей  " });
-  assert.deepEqual(saved, { theme: "forest", introduction: "У нас ждут гостей" });
+  const saved = await api.saveAppearance({
+    theme: "forest",
+    introduction: "  У нас ждут гостей  ",
+  });
+  assert.deepEqual(saved, {
+    theme: "forest",
+    introduction: "У нас ждут гостей",
+  });
   const restored = await new MockCookieApi(storage).getSnapshot();
   assert.deepEqual(restored.appearance, saved);
   await assert.rejects(
-    () => api.saveAppearance({ theme: "unknown" as "forest", introduction: "x" }),
-    (error: unknown) => error instanceof UiFailure && error.code === "INVALID_DEMO_INPUT",
+    () =>
+      api.saveAppearance({ theme: "unknown" as "forest", introduction: "x" }),
+    (error: unknown) =>
+      error instanceof UiFailure && error.code === "INVALID_DEMO_INPUT",
   );
   await assert.rejects(
     () => api.saveAppearance({ theme: "clay", introduction: "x".repeat(121) }),
-    (error: unknown) => error instanceof UiFailure && error.code === "INVALID_DEMO_INPUT",
+    (error: unknown) =>
+      error instanceof UiFailure && error.code === "INVALID_DEMO_INPUT",
   );
   assert.deepEqual((await api.getSnapshot()).appearance, saved);
   await api.resetDemo();
