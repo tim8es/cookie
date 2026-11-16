@@ -25,3 +25,7 @@ Both negative UI paths retain the same 375×812 mobile horizontal-overflow asser
 - The tested bearer and localhost are synthetic; this is **not** production Cookie AuthN, public Booking API deployment, a real Telegram Mini App or a complete F1/pilot readiness proof.
 
 Related #23, #66, #113.
+
+## Latest-main test-only consolidation (2026-11-16)
+
+This final QA leaf now targets `main` `53de65ae8e7b833e1fc7ff756943c78430ca216e` and carries BOTH independent Chromium tests from #135 (stale-slot 409 and revoked-role 403, retaining 201 Confirmed positive control) and #152 (assert actual correlated HTTP 201/409/403 Network responses, not only UI text). No production source/API/SQL/CI workflow is changed. Previous [CI #43896682467](https://github.com/tim8es/cookie/actions/runs/43896682467) tested the older stacked branch; a new full F1 CI on the updated main-based PR is mandatory before merge. Chrome DevTools startup intermittency is tracked separately as #164 and must never be hidden by weakening these HTTP/DB assertions.
