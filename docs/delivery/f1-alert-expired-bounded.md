@@ -1,0 +1,32 @@
+# F1 #154 — bounded operational alert delivery expiry cleanup
+
+**Status:** synthetic-only technical reliability increment stacked on
+PR #149. This is separate from the ordinary Outbox queue bounded by
+PR #159. No alert provider or production process is enabled.
+
+The alert delivery `claimOutboxAlertDeliveries` now bounds the
+pre-claim sweep to **25 expired final-attempt leases** per call:
+`ORDER BY lease_until, transition_id LIMIT 25 FOR UPDATE SKIP LOCKED`.
+Only eligible, unlockable rows change to `dead` with
+`LEASE_EXHAUSTED`; any overflow stays leased and becomes eligible
+for the next sweep. This preserves the independent claim/ACK fencing,
+attempts, retry, journal identity, failure codes and lease tokens.
+
+This is a per-call maintenance budget, **not** a cleanup deadline,
+production SLA or a separate background service. An exhausted queue
+requires subsequent claim calls to finish dead-letter maintenance.
+No external side effects or real operator notifications are enabled.
+
+The real PostgreSQL 16 test seeds 70 expired final-attempt delivery rows
+and one pending transition with the normal journal trigger. It proves
+that the first call obtains and ACKs the ready transition while moving
+only 25 expired rows to `dead`, and that two later calls move the
+remaining 25 and 20. It records actual observed claim duration and
+counts without treating the sample as an operational benchmark.
+A final poll is idempotent.
+
+No migration, Booking, Identity, UI, CI or normal Outbox worker changes.
+External idempotency/authorization, provider consent, real PII, backups,
+RPO/RTO and production release gates remain **OPEN**. Issue #154's
+separate ordinary queue portion is tracked in PR #159; HIGH issue
+#150 / QA #157 remains unaddressed by this change.

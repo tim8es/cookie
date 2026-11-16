@@ -85,6 +85,8 @@ export async function claimOutboxAlertDeliveries(
 
   // Best-effort cleanup must not wait for an unrelated expired row
   // currently locked by another transaction. A later claim will sweep it.
+  // Restrict each maintenance cycle to 25 rows before claiming ready alerts:
+  // even large crash backlogs should not dominate an unrelated delivery.
   await pool.query(
     `WITH expired AS (
        SELECT transition_id
@@ -92,6 +94,7 @@ export async function claimOutboxAlertDeliveries(
         WHERE status='leased' AND lease_until <= clock_timestamp()
           AND attempts >= max_attempts
         ORDER BY lease_until, transition_id
+        LIMIT 25
         FOR UPDATE SKIP LOCKED
      )
      UPDATE cookie_jobs.outbox_alert_delivery AS delivery
