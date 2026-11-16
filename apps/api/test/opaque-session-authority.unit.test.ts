@@ -7,7 +7,7 @@ import {
   type BearerSessionVerifier,
 } from "../src/session-context.js";
 
-test("verified opaque authority is propagated only with valid trusted shape", async () => {
+test("opaque session authority validation and propagation", async () => {
   const tenantId = randomUUID();
   const identityId = randomUUID();
   const claims = {
@@ -46,16 +46,12 @@ test("verified opaque authority is propagated only with valid trusted shape", as
     assert.equal(invalid.status, 401);
   }
 
-  const foreign = await verifyTenantActor(
-    "Bearer test_token",
-    randomUUID(),
-    {
-      verifyBearerToken: async () => ({
-        ...claims,
-        opaqueSessionAuthority: authority,
-      }),
-    },
-  );
+  const foreign = await verifyTenantActor("Bearer test_token", randomUUID(), {
+    verifyBearerToken: async () => ({
+      ...claims,
+      opaqueSessionAuthority: authority,
+    }),
+  });
   assert.equal(foreign.status, 403);
 
   const legacy = await verifyTenantActor("Bearer test_token", tenantId, {
