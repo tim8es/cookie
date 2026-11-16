@@ -1,6 +1,6 @@
 # F1 Chromium CDP startup reliability — bounded pre-CDP retry
 
-**Status: UNVERIFIED until exact-head full F1 CI.** [Issue #164](https://github.com/tim8es/cookie/issues/164). F1 engineering/test infrastructure only. Source baseline is `main` `476eb9a3ed80024b203898e35aab6f6a1cfb7520`, after #193 and #194 were merged. No production browser, real data, provider, payment, pilot or deployment.
+**Status: VERIFIED in consolidated current-main F1 CI; independent review and merge pending.** [Issue #164](https://github.com/tim8es/cookie/issues/164). F1 engineering/test infrastructure only. Source baseline is `main` `476eb9a3ed80024b203898e35aab6f6a1cfb7520`, after #193 and #194 were merged. No production browser, real data, provider, payment, pilot or deployment.
 
 ## Observed issue and scope
 
@@ -31,3 +31,7 @@ The **real** Chromium/HTTP/PostgreSQL integration still runs unchanged through `
 ## Limits and release decisions
 
 This is test infrastructure stabilization, **not** a change in authorization semantics and **not** a resolution of strict role-read policy [#175](https://github.com/tim8es/cookie/issues/175), Booking [#113](https://github.com/tim8es/cookie/issues/113), Cookie session [#165](https://github.com/tim8es/cookie/issues/165), or unprotected main [#144](https://github.com/tim8es/cookie/issues/144). Keep #164 open until repeatability is demonstrated and no test failures are silently retried. Production and commercial pilot remain prohibited.
+
+## Consolidated current-main integration evidence (2026-11-16)
+
+[Draft integration PR #216](https://github.com/tim8es/cookie/pull/216) combines unchanged test/code blobs from #207, #209 and #213 **on main `54a77bd035e9df6d0157ecfa140a2df81c562ae4`**, after the salon-first UI changes. The [first exact-integration-head F1 run #43941593608](https://github.com/tim8es/cookie/actions/runs/43941593608) is **SUCCESS**: 103 original unit + five CDP-startup unit, **66/66 real PG16** integration, **49/49 updated web** unit tests, restore, compiled worker, API/Svelte builds and browser smoke. Historical leaf/stack descriptions above document their original source branches, **not the proposed merge order**. The sole candidate for final review is #216; do **not** merge its three superseded leaves separately or infer approval of unrelated security/policy gates. The browser, availability and Booking assertions are unchanged from already-green #213 SHA `642d2e244476b9208aefdb548de2c18a2a04f6ed`. This evidence does not mean the work is merged or released; require independent review and full CI on the final commit after any edits.
