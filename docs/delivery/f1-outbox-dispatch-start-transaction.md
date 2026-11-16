@@ -62,3 +62,7 @@ real outbound channel, secrets, payments or actual customer data.
 Parent worker PRs must not merge without the corrected safety contract
 and review. Issue #19 remains open for provider-side idempotency and
 operational gates.
+
+## Consolidated current-main F1 CI gate (2026-11-16)
+
+This leaf PR now targets `main` exactly at `58fc6a9eef14a052578b7fdf66478b7f4f30f316`, which already contains canonical Cookie session revocation #173, bounded ordinary Outbox #159 and bounded alert queue #161. It includes the complete previous #143→#155→#166 worker chain and independent locked-handler-start QA #167, without merging any unsafe intermediate worker version into main. A fresh exact-HEAD full F1 CI is required on this combined base. Earlier green standalone worker runs are supporting evidence, not proof of this final integration. The worker still has at-least-once external-effect semantics; providers must dedupe by the stable event key. No live channels, PII, payments or production rollout.
