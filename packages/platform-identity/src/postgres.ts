@@ -142,7 +142,7 @@ export async function loadPolicySnapshot(
  * Never replace this with a late unlocked SELECT: revocation could still
  * commit between that check and the business transaction's COMMIT.
  */
-async function lockPolicyRows(
+export async function lockPolicyRows(
   client: PoolClient,
   actor: TrustedActor,
 ): Promise<void> {
