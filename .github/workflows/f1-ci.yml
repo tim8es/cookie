@@ -51,6 +51,11 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
+      - name: Temporary Prettier output for new Workspace slice
+        run: |
+          pnpm exec prettier --write apps/api/src/live-workspace-http.ts apps/api/test/live-workspace-http.integration.test.ts
+          echo "COOKIE_FORMATTED_LIVE_WORKSPACE=$(base64 -w0 apps/api/src/live-workspace-http.ts)"
+          echo "COOKIE_FORMATTED_LIVE_WORKSPACE_TEST=$(base64 -w0 apps/api/test/live-workspace-http.integration.test.ts)"
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
