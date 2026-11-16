@@ -43,6 +43,11 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
+      - name: Temporary exact Prettier diff for security fix
+        run: |
+          pnpm exec prettier --write packages/platform-identity/src/postgres.ts apps/api/test/policy-revocation-locks-qa.integration.test.ts
+          git diff -- packages/platform-identity/src/postgres.ts apps/api/test/policy-revocation-locks-qa.integration.test.ts
+          git diff --exit-code -- packages/platform-identity/src/postgres.ts apps/api/test/policy-revocation-locks-qa.integration.test.ts
       - name: Check source formatting
         run: pnpm format:check
       - name: Check kernel and contract module boundaries
