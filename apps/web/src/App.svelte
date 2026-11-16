@@ -92,12 +92,12 @@
 
   async function authenticateOwner(): Promise<void> {
     ownerAuthPhase = "loading";
-    const initData = await loadTelegramInitData(window, document);
-    if (!initData) {
-      ownerAuthPhase = "unavailable";
-      return;
-    }
     try {
+      const initData = await loadTelegramInitData(window, document);
+      if (!initData) {
+        ownerAuthPhase = "unavailable";
+        return;
+      }
       ownerSession = await authenticateTelegramOwner(initData);
       ownerAuthPhase = "verified";
     } catch {
