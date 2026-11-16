@@ -51,6 +51,13 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
+      # Temporary source-only formatting diagnostic; no write token or repo push.
+      # Removed before this PR is considered mergeable.
+      - name: Capture formatted branding TypeScript (temporary)
+        run: |
+          pnpm exec prettier --write apps/web/src/lib/branding-config.ts apps/web/src/lib/branding-config.test.ts
+          echo "BRANDING_CONFIG_TS_BASE64=$(base64 -w0 apps/web/src/lib/branding-config.ts)"
+          echo "BRANDING_TEST_TS_BASE64=$(base64 -w0 apps/web/src/lib/branding-config.test.ts)"
       - name: Lint
         run: pnpm lint
       - name: Check source formatting
