@@ -53,6 +53,17 @@ test("workspace read-only routes require verified session and guard tenant scope
   assert.equal(foreign.json().error.code, "ACCESS_DENIED");
 
   const schedule = `${base}/locations/${LOCATION}/staff/${STAFF}/schedule`;
+  // A correctly formed v4 UUID and a valid UTC range pass input parsing.
+  // The mock does not supply a DB client; a 503 proves validation did not
+  // incorrectly reject the identifiers with a 400 before reaching storage.
+  const accepted = await app.inject({
+    method: "GET",
+    url: schedule + "?from=2027-04-12T10:00:00Z&to=2027-04-12T11:00:00Z",
+    headers: { authorization: "Bearer fixture" },
+  });
+  assert.equal(accepted.statusCode, 503);
+  assert.equal(accepted.json().error.code, "BACKEND_UNAVAILABLE");
+
   for (const url of [
     schedule + "?from=2027-04-12T10:00:00Z&to=2027-04-12T09:00:00Z",
     schedule + "?from=2027-04-12T10:00:00+03:00&to=2027-04-12T11:00:00Z",
@@ -65,6 +76,6 @@ test("workspace read-only routes require verified session and guard tenant scope
       headers: { authorization: "Bearer fixture" },
     });
     assert.equal(response.statusCode, 400);
-    assert.match(response.json().error.code, /^INVALID_REQUEST/);
+    assert.equal(response.json().error.code, "INVALID_REQUEST");
   }
 });
