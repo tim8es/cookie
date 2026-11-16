@@ -29,3 +29,7 @@ Related #23, #66, #113.
 ## Latest-main test-only consolidation (2026-11-16)
 
 This final QA leaf now targets `main` `53de65ae8e7b833e1fc7ff756943c78430ca216e` and carries BOTH independent Chromium tests from #135 (stale-slot 409 and revoked-role 403, retaining 201 Confirmed positive control) and #152 (assert actual correlated HTTP 201/409/403 Network responses, not only UI text). No production source/API/SQL/CI workflow is changed. Previous [CI #43896682467](https://github.com/tim8es/cookie/actions/runs/43896682467) tested the older stacked branch; a new full F1 CI on the updated main-based PR is mandatory before merge. Chrome DevTools startup intermittency is tracked separately as #164 and must never be hidden by weakening these HTTP/DB assertions.
+
+## Current-main final F1 gate (2026-11-16)
+
+This QA branch now targets `main` commit `ff31b9e1c0b0717ee90fe7b5b617d616de27b24b`, including Cookie revoke-first Booking/Workspace QA, bounded worker and hardened CI. It consolidates the original #135 UI stale-slot (HTTP 409) and Membership revocation (HTTP 403) cases with explicit DevTools **real network POST** 201/409/403 response-code evidence. Previous successful #152 CI [#43926353865](https://github.com/tim8es/cookie/actions/runs/43926353865) ran on an older base, so this documentation-only commit triggers an exact new F1 workflow before any merge. No browser or DB regression assertions are altered, no new public route, provider, real customer data or production deploy.
