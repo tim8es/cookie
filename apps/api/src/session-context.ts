@@ -47,6 +47,53 @@ function bearerToken(header: string | undefined): string | null {
   return /^Bearer ([a-zA-Z0-9._~+\x2f-]{1,4096}=*)$/i.exec(header)?.[1] ?? null;
 }
 
+/** Central fail-closed AuthN gate for opt-in HTTP adapters. */
+export async function verifyTenantActor(
+  authorization: string | undefined,
+  pathTenantId: string,
+  verifier: BearerSessionVerifier,
+): Promise<
+  | {
+      readonly actor: TrustedActor;
+      readonly status?: never;
+      readonly error?: never;
+    }
+  | {
+      readonly actor?: never;
+      readonly status: 401 | 403;
+      readonly error: "unauthorized" | "forbidden";
+    }
+> {
+  const token = bearerToken(authorization);
+  if (!token) return { status: 401, error: "unauthorized" };
+
+  let session: VerifiedSession | null;
+  try {
+    session = await verifier.verifyBearerToken(token);
+  } catch {
+    return { status: 401, error: "unauthorized" };
+  }
+  if (
+    !session ||
+    !UUID_RE.test(session.tenantId) ||
+    !UUID_RE.test(session.identityId) ||
+    !Number.isFinite(session.expiresAtUnixSeconds) ||
+    session.expiresAtUnixSeconds <= Date.now() / 1000
+  ) {
+    return { status: 401, error: "unauthorized" };
+  }
+  if (pathTenantId !== session.tenantId) {
+    return { status: 403, error: "forbidden" };
+  }
+  return {
+    actor: {
+      identityId: session.identityId,
+      tenantId: session.tenantId,
+      correlationId: randomUUID(),
+    },
+  };
+}
+
 /**
  * Authenticate a server-owned tenant context before any policy check.
  * No user-submitted headers, query string, cookies or JSON become actor claims.
@@ -59,36 +106,14 @@ export function registerProtectedSessionContext(
   app.get<{ Params: { tenantId: string } }>(
     "/v1/organizations/:tenantId/session-context",
     async (request, reply) => {
-      const token = bearerToken(request.headers.authorization);
-      if (!token) return reply.code(401).send({ error: "unauthorized" });
-
-      let session: VerifiedSession | null;
-      try {
-        session = await dependencies.verifier.verifyBearerToken(token);
-      } catch {
-        return reply.code(401).send({ error: "unauthorized" });
-      }
-
-      if (
-        !session ||
-        !UUID_RE.test(session.tenantId) ||
-        !UUID_RE.test(session.identityId) ||
-        !Number.isFinite(session.expiresAtUnixSeconds) ||
-        session.expiresAtUnixSeconds <= Date.now() / 1000
-      ) {
-        return reply.code(401).send({ error: "unauthorized" });
-      }
-
-      // A path parameter selects a resource; it cannot select an actor tenant.
-      if (request.params.tenantId !== session.tenantId) {
-        return reply.code(403).send({ error: "forbidden" });
-      }
-
-      const actor: TrustedActor = {
-        identityId: session.identityId,
-        tenantId: session.tenantId,
-        correlationId: randomUUID(),
-      };
+      const verified = await verifyTenantActor(
+        request.headers.authorization,
+        request.params.tenantId,
+        dependencies.verifier,
+      );
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
+      const actor = verified.actor;
       const resource: ProtectedResource = {
         kind: "organization",
         tenantId: actor.tenantId,

@@ -1,0 +1,246 @@
+/* Responsive system: preserve the reading order and avoid crammed gutters. */
+@media(max-width:1120px) {
+  .app-shell:not(.public-shell) { grid-template-columns: 215px minmax(0,1fr); }
+  .public-content .booking-layout { grid-template-columns: minmax(0,1.36fr) minmax(280px,.82fr); gap: 15px; }
+  .public-content .booking-form { padding: 26px 26px 24px; }
+  .ticket-body,.ticket-top { padding-left: 23px; padding-right: 23px; }
+  .atelier-welcome .welcome-copy { padding: 38px; }
+  .welcome-introline { left: 38px; right: 38px; }
+}
+@media(max-width:950px) {
+  .app-shell:not(.public-shell) { grid-template-columns: minmax(0,1fr); }
+  .app-shell:not(.public-shell) .sidebar { position: static; display: block; height: auto; padding: 13px 16px 12px; }
+  .sidebar .brand { padding: 0 6px 14px; }
+  .sidebar .brand strong { font-size: 21px; }
+  .sidebar .brand .brand-seal { width: 30px; height: 30px; }
+  .sidebar-heading,.sidebar-bottom { display: none; }
+  .sidebar .nav-links { display: flex; flex-direction: row; overflow-x: auto; min-width: 0; max-width: 100%; padding: 0 0 4px; scrollbar-width: thin; }
+  .sidebar .nav-links button { min-height: 39px; flex-shrink: 0; padding: 8px 12px; font-size: 12px; white-space: nowrap; }
+  .atelier-welcome { grid-template-columns: 1fr 1fr; min-height: 0; }
+  .atelier-welcome .welcome-copy { min-height: 540px; }
+  .atelier-welcome .welcome-form { padding: 32px; }
+  .welcome-introline { gap: 8px; }
+}
+@media(max-width:800px) {
+  .public-content .booking-layout { grid-template-columns: minmax(0,1fr); }
+  .public-content .booking-summary[data-slot=card] { position: static; }
+  .public-content .booking-hero-studio { flex: 0 0 160px; width: 160px; padding-left: 20px; }
+  .atelier-welcome { grid-template-columns: 1fr; }
+  .atelier-welcome .welcome-copy { min-height: 330px; }
+  .atelier-welcome .welcome-form { padding: 32px; }
+  .welcome-illustration { width: 42%; right: 8%; top: 8%; }
+}
+@media(max-width:680px) {
+  .topbar { min-height: 62px; height: auto; flex-wrap: wrap; padding: 10px 17px; }
+  .topbar-title { flex: 0 0 auto; }
+  .topbar-actions { flex: 1; justify-content: flex-end; min-width: 0; }
+  .topbar .preview-control > span { display: none; }
+  .topbar .preview-control select { min-width: 100px; }
+  .public-header { height: 61px; padding: 0 18px; gap: 6px; }
+  .public-brand .brand-seal { width: 33px; height: 33px; }
+  .public-brand strong { font-size: 21px; }
+  .public-brand small { font-size: 9px; }
+  .preview-stamp { display: none; }
+  .public-header button.public-back[data-slot=button] { border-radius: 8px; padding: 0 10px; height: 35px; font-size: 11px; }
+  .public-demo-notice { font-size: 10px; min-height: 28px; }
+  .content.public-content { padding: 17px 13px 10px; }
+  .public-content .booking-head.booking-hero { min-height: 190px; padding: 25px 23px 23px; margin-bottom: 14px; border-radius: var(--cookie-radius-panel); }
+  .booking-hero-section { font-size: 10px; }
+  .public-content .booking-hero h1 { font-size: clamp(31px,9vw,43px); margin: 17px 0 10px; letter-spacing: -.04em; }
+  .booking-hero-copy p { font-size: 11px; line-height: 1.5; max-width: 310px; }
+  .booking-hero-studio { display: none; }
+  .public-content .booking-form { padding: 23px 21px; }
+  .booking-form-header h2 { font-size: 23px; }
+  .booking-group { padding-top: 21px; }
+  .booking-group-head { margin-bottom: 16px; }
+  .booking-form .form-pair { grid-template-columns: minmax(0,1fr); gap: 0; }
+  .public-content .booking-summary[data-slot=card] { margin-top: 0; }
+  .ticket-top { padding: 24px; }
+  .ticket-body { padding: 24px; }
+  .content:has(.atelier-welcome) { padding: 16px 12px; }
+  .atelier-welcome { border-radius: var(--cookie-radius-panel); }
+  .atelier-welcome .welcome-copy { min-height: 310px; padding: 74px 25px 29px; }
+  .welcome-introline { top: 23px; left: 25px; right: 25px; }
+  .atelier-welcome .welcome-copy h1 { font-size: clamp(34px,9.3vw,46px); max-width: 520px; margin-bottom: 14px; }
+  .atelier-welcome .welcome-copy > p { font-size: 12px; line-height: 1.6; margin: 0 0 20px; max-width: 430px; }
+  .welcome-caption { font-size: 10px; }
+  .welcome-illustration { top: 21%; right: -12%; width: 45%; }
+  .atelier-welcome .welcome-form { padding: 28px 25px; }
+  .welcome-form-top { margin-bottom: 20px; }
+}
+@media(max-width:400px) {
+  .public-brand-type small { display: none; }
+  .public-header { padding: 0 13px; }
+  .content.public-content { padding: 13px 10px; }
+  .public-content .booking-head.booking-hero { padding: 22px 20px; min-height: 176px; }
+  .public-content .booking-hero h1 { font-size: 32px; }
+  .public-content .booking-form { padding: 20px 16px; }
+  .booking-form-header { gap: 8px; }
+  .booking-form-header h2 { font-size: 21px; }
+  .booking-form .slot-grid { gap: 7px; }
+  .slot-grid button[data-slot=button] { font-size: 12px; }
+  .ticket-top,.ticket-body { padding-left: 20px; padding-right: 20px; }
+  .topbar { flex-wrap: wrap; }
+  .topbar-title { flex: 1 1 100%; }
+  .topbar-actions { flex: 1 1 100%; justify-content: space-between; }
+  .topbar .preview-control select { width: 105px; }
+}
+@media(prefers-reduced-motion: reduce) {
+  *,*::before,*::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+
+
+/*
+ * Public booking stays a single responsive screen in ordinary mobile browsers
+ * and an embedded Telegram Mini App WebView. The official Telegram bridge may
+ * populate --tg-*-safe-area-inset-*; absent that bridge, CSS env() applies.
+ * These are layout-only values, never session/authentication signals.
+ */
+.public-shell {
+  --cookie-host-top: max(
+    env(safe-area-inset-top, 0px),
+    calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px))
+  );
+  --cookie-host-bottom: max(
+    env(safe-area-inset-bottom, 0px),
+    calc(var(--tg-safe-area-inset-bottom, 0px) + var(--tg-content-safe-area-inset-bottom, 0px))
+  );
+  --cookie-host-left: max(
+    env(safe-area-inset-left, 0px),
+    calc(var(--tg-safe-area-inset-left, 0px) + var(--tg-content-safe-area-inset-left, 0px))
+  );
+  --cookie-host-right: max(
+    env(safe-area-inset-right, 0px),
+    calc(var(--tg-safe-area-inset-right, 0px) + var(--tg-content-safe-area-inset-right, 0px))
+  );
+}
+.public-shell .public-header {
+  height: calc(73px + var(--cookie-host-top));
+  padding-top: var(--cookie-host-top);
+}
+.public-shell .content.public-content {
+  padding-bottom: calc(10px + var(--cookie-host-bottom));
+}
+@media (max-width: 400px) {
+  .public-shell .public-header {
+    padding-left: max(13px, var(--cookie-host-left));
+    padding-right: max(13px, var(--cookie-host-right));
+  }
+  .public-shell .content.public-content {
+    padding-left: max(10px, var(--cookie-host-left));
+    padding-right: max(10px, var(--cookie-host-right));
+  }
+}
+
+/* Mobile owner navigation is persistent, with secondary sections in a sheet. */
+.mobile-nav, .mobile-more-panel { display: none; }
+@media (max-width: 680px) {
+  .app-shell:not(.public-shell) .sidebar .nav-links { display: none; }
+  .app-shell:not(.public-shell) .sidebar { padding: 10px 16px 6px; }
+  .app-shell:not(.public-shell) .sidebar .brand { padding: 0; }
+  .app-shell:not(.public-shell) .main-area { padding-bottom: calc(74px + env(safe-area-inset-bottom, 0px)); }
+  .mobile-nav {
+    display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+    position: fixed; inset: auto 0 0; z-index: 40;
+    gap: 4px; padding: 7px 10px calc(7px + env(safe-area-inset-bottom, 0px));
+    background: var(--cookie-surface); border-top: 1px solid var(--cookie-border);
+    box-shadow: 0 -8px 24px rgba(50,32,58,.065);
+  }
+  .mobile-nav button {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; min-width: 0; min-height: 53px;
+    border: none; border-radius: 10px; background: transparent;
+    color: #5d5063; font-size: 12px; font-weight: 680;
+  }
+  .mobile-nav button.active { background: #e5f2bb; color: #332b3b; }
+  .mobile-nav button:focus-visible { outline: 3px solid #749352; }
+  .mobile-more-panel {
+    display: grid; position: fixed; z-index: 39;
+    left: 10px; right: 10px; bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+    grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px;
+    border: 1px solid var(--cookie-border); border-radius: 14px;
+    padding: 14px; background: var(--cookie-surface);
+    box-shadow: 0 -8px 32px rgba(40,25,49,.15);
+  }
+  .mobile-more-panel button {
+    min-height: 46px; border-radius: 9px; padding: 10px 12px;
+    background: #f5f1f6; border: 1px solid #e8e1ea;
+    color: #44334c; text-align: left; font-size: 14px;
+  }
+  .mobile-more-panel button[aria-current=page] { background: #e5f2bb; }
+  .topbar button.btn-top[data-slot=button] { display: none; }
+
+  /* Native iOS inputs need at least 16px to avoid involuntary page zoom. */
+  .booking-form .field input,
+  .booking-form .field select,
+  .booking-form .field input[data-slot=input] { font-size: 16px; }
+  .booking-form .field-label { font-size: 14px; }
+  .booking-form-header p,
+  .booking-group-head p,
+  .booking-hero-copy p { font-size: 14px; }
+  .booking-group h3 { font-size: 17px; }
+  .public-content .booking-hero-copy p { font-size: 14px; }
+  .public-content .booking-form-disclaimer,
+  .public-content .booking-privacy { font-size: 12px; }
+  .public-content .booking-form { padding-bottom: 16px; }
+  .public-content .booking-hero h1 { margin: 7px 0 10px; }
+  .public-content .booking-head.booking-hero { min-height: 0; padding: 24px; }
+  .public-content .booking-steps { display: none; }
+  .booking-group { padding-top: 16px; }
+  .booking-group-head { margin-bottom: 14px; }
+  .public-content .booking-checkout {
+    position: sticky; bottom: 0; z-index: 2;
+    background: var(--cookie-surface); border-top: 1px solid var(--cookie-border);
+    padding: 14px 0 calc(11px + var(--cookie-host-bottom, env(safe-area-inset-bottom, 0px)));
+    box-shadow: 0 -9px 18px rgba(50,32,58,.035);
+  }
+  .booking-checkout-summary strong { font-size: 18px; }
+  .booking-checkout-summary span { font-size: 12px; }
+  .public-brand strong.salon-name { font-size: 17px; max-width: 47vw; }
+  .public-brand small { font-size: 11px; }
+  .preview-stamp { display: block; font-size: 11px; }
+  .preview-stamp .powered-by { display: none; }
+  .public-header button.public-back[data-slot=button] { min-width: 44px; min-height: 44px; padding: 0; }
+  .public-back span { display: none; }
+  .public-demo-notice { font-size: 12px; padding: 7px 12px; }
+  .ticket-top { padding: 19px 22px; }
+  .ticket-mark { display: none; }
+  .ticket-top h2 { font-size: 24px; margin: 11px 0 8px; }
+  .ticket-top p, .ticket-fineprint p, .ticket-details dt, .ticket-details dd { font-size: 12px; }
+  .ticket-location-address { font-size: 12px; }
+  .confirmation-address { font-size: 12px; }
+}
+
+/* F2 design preview only: shared Booking UI within a compact Telegram-like shell.
+   This does not validate initData, register BackButton or call Telegram APIs. */
+.telegramPreview.public-shell { background: var(--cookie-surface); }
+.telegramPreview.public-shell .content.public-content { max-width: 760px; padding: 12px max(12px, var(--cookie-host-right)) calc(28px + var(--cookie-host-bottom)) max(12px, var(--cookie-host-left)); }
+.telegramPreview.public-shell .public-header { height: calc(56px + var(--cookie-host-top)); padding: var(--cookie-host-top) max(14px, var(--cookie-host-right)) 0 max(14px, var(--cookie-host-left)); }
+.telegramPreview .public-demo-notice { padding: 8px 14px; line-height: 1.45; }
+.telegramPreview .public-content .booking-head.booking-hero {
+  min-height: 0; padding: 21px; margin-bottom: 12px;
+}
+.telegramPreview .public-content .booking-hero h1 { font-size: 31px; margin: 10px 0; }
+.telegramPreview .booking-hero-studio, .telegramPreview .booking-steps { display: none; }
+.telegramPreview .public-content .booking-layout { grid-template-columns: minmax(0,1fr); gap: 12px; }
+.telegramPreview .public-content .booking-summary[data-slot=card] { position: static; }
+@media (max-width: 680px) {
+  .telegramPreview .public-brand strong.salon-name { max-width: 47vw; }
+  .telegramPreview.public-shell .content.public-content { padding-bottom: calc(20px + var(--cookie-host-bottom)); }
+}
+
+/* Screenshot QA: do not repeat a desktop toolbar on mobile. */
+@media (max-width: 680px) {
+  .app-shell:not(.public-shell) .topbar { display: none; }
+  .public-content .booking-head.booking-hero {
+    padding: 18px 19px; min-height: 0; margin-bottom: 10px;
+  }
+  .public-content .booking-hero-section { display: none; }
+  .public-content .booking-hero h1 {
+    font-size: 29px; line-height: 1.03; margin: 0 0 8px;
+  }
+  .public-content .booking-hero-copy p {
+    font-size: 13px; line-height: 1.4;
+  }
+}

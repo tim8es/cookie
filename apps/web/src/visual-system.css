@@ -1,0 +1,15 @@
+/*
+ * Cookie UI theme, in intentional cascade order.
+ * Each screen module can be updated independently; see apps/web/UI_GUIDE.md.
+ * The shrinking styles.css layer is compatibility-only; new screen rules belong here.
+ */
+@import "./styles/tokens.css";
+@import "./styles/foundation.css";
+@import "./styles/booking.css";
+@import "./styles/onboarding.css";
+@import "./styles/responsive.css";
+@import "./styles/first-run.css";
+@import "./styles/ledger.css";
+@import "./styles/owner-forms.css";
+@import "./styles/calendar.css";
+@import "./styles/feedback.css";

@@ -1,0 +1,57 @@
+/*
+ * Cookie design tokens — change these before editing individual screens.
+ * Product palette, spacing and shape live here; shadcn-svelte consumes the
+ * compatible --background/--primary/... variables below.
+ *
+ * A token change should be reviewed on the 7 Chromium screenshot stages.
+ */
+:root {
+  --cookie-paper: #f7f6f8;
+  --cookie-surface: #ffffff;
+  --cookie-ink: #28222e;
+  --cookie-brand: #503458;
+  --cookie-hero: #3d2a48;
+  --cookie-owner-rail: #302437;
+  --cookie-ticket: #4e345a;
+  --cookie-onboarding: #4c3557;
+  --cookie-lime: #e0f2a5;
+  --cookie-lime-soft: #e8f4b6;
+  --cookie-border: #e9e5eb;
+  --cookie-radius-surface: 14px;
+  --cookie-radius-panel: 13px;
+  --cookie-radius-control: 9px;
+  --cookie-font-ui: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --cookie-font-editorial: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+}
+
+:root {
+  --background: var(--cookie-paper);
+  --foreground: var(--cookie-ink);
+  --card: var(--cookie-surface);
+  --card-foreground: var(--cookie-ink);
+  --popover: var(--cookie-surface);
+  --popover-foreground: var(--cookie-ink);
+  --primary: var(--cookie-brand);
+  --primary-foreground: var(--cookie-surface);
+  --secondary: #f0eaf3;
+  --secondary-foreground: #4d3654;
+  --muted: #f1eef3;
+  --muted-foreground: #6d6472;
+  --accent: var(--cookie-lime-soft);
+  --accent-foreground: #30253b;
+  --destructive: #b83d50;
+  --border: var(--cookie-border);
+  --input: #dcd5e1;
+  --ring: #74527d;
+  --radius: var(--cookie-radius-panel);
+  --ink: var(--cookie-ink);
+  --green: var(--cookie-brand);
+  --green-dark: #392542;
+  --line: var(--cookie-border);
+  --cream: var(--cookie-paper);
+  --shadow: 0 8px 30px rgba(58, 37, 63, .04);
+  font-family: var(--cookie-font-ui);
+  color: var(--cookie-ink);
+  background: var(--cookie-paper);
+}
+

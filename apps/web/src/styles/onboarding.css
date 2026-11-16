@@ -1,0 +1,31 @@
+/* Onboarding is a studio editorial cover opposite a practical form. */
+.content:has(.atelier-welcome) { max-width: 1490px; padding: 30px clamp(24px,3vw,45px); }
+.atelier-welcome { min-height: 650px; gap: 0; grid-template-columns: minmax(0,1.12fr) minmax(340px,.88fr); align-items: stretch; border-radius: 17px; overflow: hidden; background: var(--cookie-surface); }
+.atelier-welcome .welcome-copy { position: relative; isolation: isolate; overflow: hidden; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; min-height: 620px; padding: 44px 47px; background: var(--cookie-onboarding); color: var(--cookie-surface); }
+.welcome-introline { position: absolute; left: 47px; right: 47px; top: 38px; display: flex; align-items: center; justify-content: space-between; gap: 14px; color: #ded3e2; font-size: 10px; font-weight: 700; letter-spacing: .06em; }
+.welcome-edition { color: #c6b8cd; text-align: right; letter-spacing: 0; font-weight: 450; }
+.welcome-illustration { position: absolute; z-index: -1; right: -15%; top: 11%; width: 62%; aspect-ratio: 1; border-radius: 50%; opacity: .88; }
+.welcome-arc { position: absolute; inset: 0; border-radius: 50%; border: 1px solid #88728e; }
+.welcome-arc.two { inset: 14%; border-color: #a494ab; }
+.welcome-arc.three { inset: 29%; border-color: #b9a6c0; }
+.welcome-illustration-core { position: absolute; inset: 45%; border-radius: 50%; background: #dff1a8; }
+.atelier-welcome .welcome-copy h1 {
+  color: white; font-family: var(--cookie-font-editorial); font-size: clamp(43px,4.6vw,70px); font-weight: 400;
+  line-height: 1.02; letter-spacing: -.045em; margin: 0 0 22px; max-width: 640px;
+}
+.atelier-welcome .welcome-copy h1 span { color: #e2f1b3; }
+.atelier-welcome .welcome-copy > p { color: #dcd1df; font-size: 14px; line-height: 1.65; max-width: 450px; margin: 0 0 41px; }
+.welcome-caption { display: flex; align-items: center; gap: 12px; color: #e4dbde; font-size: 11px; }
+.welcome-caption-line { display: inline-block; width: 30px; height: 1px; background: #dbeea5; }
+.atelier-welcome .welcome-form { display: flex; flex-direction: column; justify-content: center; max-width: none; width: 100%; box-shadow: none; border: 0; border-radius: 0; padding: clamp(30px,5vw,75px); }
+.welcome-form-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; color: #6e5a76; font-size: 12px; font-weight: 690; margin-bottom: 30px; }
+.welcome-form-step { padding: 7px 9px; background: #efe8f2; color: #74587d; border-radius: 6px; font-size: 11px; }
+.atelier-welcome .welcome-form h2 { font-size: clamp(27px,2.8vw,38px); line-height: 1.12; font-weight: 730; letter-spacing: -.05em; margin-bottom: 17px; }
+.atelier-welcome .welcome-form > .muted { color: #766a7b; font-size: 13px; line-height: 1.6; margin-bottom: 23px; }
+.atelier-welcome .welcome-form .field { font-size: 12px; margin: 0 0 14px; font-weight: 710; gap: 11px; }
+.atelier-welcome .welcome-form input[data-slot=input] { background: var(--cookie-surface); border: 1px solid #e2dae6; border-radius: 8px; height: 49px; font-size: 13px; color: #423448; }
+.welcome-form-help { font-size: 11px; color: #8d8191; line-height: 1.6; margin: 3px 0 26px; }
+.atelier-welcome .welcome-form button.welcome-submit[data-slot=button] { background: #4e3558; border-radius: var(--cookie-radius-control); font-size: 12px; min-height: 50px; height: 50px; color: white; width: 100%; padding: 0 17px; display: flex; justify-content: space-between; }
+.atelier-welcome .welcome-form button.welcome-submit[data-slot=button]:hover { background: #35243d; }
+.atelier-welcome .form-foot { text-align: left; font-size: 10px; margin-top: 20px; color: #9b8f9f; }
+

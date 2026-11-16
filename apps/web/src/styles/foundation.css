@@ -1,0 +1,105 @@
+
+/*
+ * COOKIE VISUAL WORLD 02 — Studio appointment journal
+ * The visitor reserves a moment, not a table in a generic CRM.
+ * Distinctive signal: a paper-like appointment pass in rich aubergine,
+ * restrained chartreuse marks, and purposeful typographic scale.
+ * Shared shadcn-svelte controls retain accessible native behavior.
+ * All values here style synthetic UX only; no pricing/availability logic.
+ */
+::selection { background: #d9efa1; color: #2c2236; }
+body { color: var(--cookie-ink); background: var(--cookie-paper); }
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 3px solid #b8d981; outline-offset: 2px;
+}
+h1,h2,h3 { color: var(--cookie-ink); letter-spacing: -.035em; }
+.card { border: 1px solid #ece8ed; box-shadow: none; }
+.eyebrow { color: #85788a; letter-spacing: .03em; font-size: 11px; font-weight: 700; }
+.btn-primary { background: var(--cookie-brand); color: white; }
+.btn-primary:hover:not(:disabled) { background: #382440; }
+.btn-secondary { background: #f1eef3; color: #543a5d; border-color: #e9e4eb; }
+.btn-secondary:hover:not(:disabled) { background: #e8e0ed; }
+.muted,.section-head p { color: #726777; }
+.field, .field-caption { color: #514755; }
+.field input,.field select { border-color: #ded8e2; color: #392e3f; background: var(--cookie-surface); }
+.field input:focus-visible,.field select:focus-visible { border-color: #8b6a96; outline-color: #e5d7eb; }
+.inline-note { color: #675d6d; background: #f5f2f6; border-color: #ede8ee; }
+.counter-pill,.status-pill,.public-chip {
+  color: #624a69; background: #f1ebf4; border-color: #e5dce9;
+}
+.app-shell:not(.public-shell) { grid-template-columns: 232px minmax(0,1fr); }
+.main-area { background: var(--cookie-paper); }
+.app-shell:not(.public-shell) .sidebar {
+  background: var(--cookie-owner-rail);
+  border-right: 0;
+  color: #e9e3eb;
+  padding: 27px 14px 18px;
+}
+.brand { padding: 0 10px 40px; gap: 11px; align-items: center; }
+.brand strong { color: white; font-weight: 800; font-size: 26px; letter-spacing: -.06em; }
+.brand-dot { color: #e1efb0; }
+.brand small { color: #b4a6b9; font-size: 10px; letter-spacing: .02em; }
+.brand-seal { position: relative; width: 38px; height: 38px; flex-shrink: 0; display: block; background: #e2f5ad; border-radius: 12px; transform: rotate(-6deg); }
+.brand-seal i { position: absolute; width: 8px; height: 11px; left: 15px; top: 7px; border-radius: 100% 100% 35% 35%; background: #4c3256; transform-origin: 4px 12px; }
+.brand-seal i:nth-child(2) { transform: rotate(90deg); }
+.brand-seal i:nth-child(3) { transform: rotate(180deg); }
+.brand-seal i:nth-child(4) { transform: rotate(270deg); }
+.sidebar-heading { color: #a99aae; font-size: 11px; letter-spacing: .02em; font-weight: 650; padding-left: 13px; text-transform: none; }
+.nav-links { gap: 4px; }
+.nav-links button {
+  color: #c7bccb; background: transparent;
+  min-height: 43px; border-radius: var(--cookie-radius-control); font-size: 13px;
+  font-weight: 530; padding: 11px 12px; gap: 12px;
+}
+.nav-links button:hover { background: #46344e; color: var(--cookie-surface); }
+.nav-links button.active { background: #e6f4bd; color: #2e2634; font-weight: 750; }
+.nav-glyph { color: inherit; }
+.sidebar-tip { background: #3e2f45; border: 1px solid #5c4662; border-radius: 12px; padding: 18px; }
+.tip-progress-header { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 11px; color: #e5dce9; font-weight: 650; }
+.progress-track { background: #66536b; height: 5px; margin: 15px 0 11px; }
+.progress-track div { background: #ddf49f; }
+.sidebar-tip p { font-size: 11px; line-height: 1.5; margin: 0; color: #c5b9c9; }
+.workspace-identity { border-top: 1px solid #54415b; }
+.identity-avatar { background: #e5efc1; color: #3a3041; }
+.workspace-identity strong { color: #eee5f0; }
+.workspace-identity small { color: #b7a8bd; }
+.demo-ribbon {
+  background: #f1ecf3; color: #716375;
+  border-bottom: 1px solid #e7e0e9; min-height: 30px; font-size: 11px;
+}
+.ribbon-pulse { background: #86648c; }
+.topbar { background: var(--cookie-surface); border-bottom: 1px solid #eee8ef; height: 75px; }
+.topbar-title strong { color: #382b3d; font-size: 14px; }
+.breadcrumb { color: #948a98; }
+.preview-control select { border-color: #e6dfe8; color: #594d60; background: #fcfbfc; }
+.preview-control { color: #817584; }
+.topbar button.btn-top[data-slot=button] {
+  background: #513558; color: white; border: 0;
+  font-size: 12px; padding: 0 17px; height: 40px; border-radius: var(--cookie-radius-control);
+  box-shadow: none;
+}
+.topbar button.btn-top[data-slot=button]:hover { background: #36253f; }
+.content { padding-top: 37px; }
+.section-head { margin-bottom: 27px; }
+.section-head h1 { font-weight: 760; font-size: clamp(29px,3.2vw,39px); }
+.stat-grid { gap: 12px; margin-bottom: 21px; }
+.stat-card { border: 0; background: white; border-radius: 12px; box-shadow: 0 1px 0 #eae5ec; padding: 24px; min-height: 146px; }
+.stat-card > span:first-child { font-size: 12px; color: #807586; }
+.stat-card > strong { font-size: 38px; color: #382440; font-weight: 740; }
+.stat-card > small { color: #94899a; }
+.stat-symbol { color: #e9e1ed; font-family: inherit; font-size: 29px; font-weight: 850; letter-spacing: -.07em; }
+.dashboard-kicker { font-size: 12px; color: #8c7893; margin: 0 0 10px; }
+.dashboard-grid .card,.workspace-grid .card { border: 1px solid #ece7ef; border-radius: var(--cookie-radius-panel); }
+.check-indicator.done { background: #e4f3b7; color: #40334a; }
+.round-progress { background: #ede5f0; color: #624a69; }
+.calendar-card { border-radius: var(--cookie-radius-panel); border: 1px solid #eae5ed; }
+.calendar-toolbar { border-bottom-color: #eee9ef; }
+.calendar-toolbar h2 { font-size: 16px; color: #32283a; font-weight: 720; }
+.calendar-move button,.segmented button { border-color: #e5dfe8; color: #5c4a65; border-radius: 8px; }
+.segmented button.active { background: #4e3557; color: white; border-color: #4e3557; }
+.calendar-event { border-left: 0; border-top: 3px solid #bca5c8; background: #f1ebf3; color: #482e52; border-radius: 8px; padding: 11px 10px; }
+.calendar-event:hover { background: #e9ddec; }
+.calendar-event small { color: #806b87; }
+.week-heading.today strong { background: #52355e; color: white; }
+.week-heading.today small { color: #5a4066; }
+
