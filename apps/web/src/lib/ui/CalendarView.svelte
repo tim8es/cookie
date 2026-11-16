@@ -5,7 +5,7 @@
   import * as Card from "../components/ui/card/index.js";
   import { bookingsForDay } from "../calendar";
   import { localDay, longDate, mondayOf, offsetDay, parseDay, shortDate } from "../dates";
-  import type { BookingView, Service, StaffMember } from "../model";
+  import type { BookingView, Service, SlotView, StaffMember } from "../model";
   import BookingDetail from "./BookingDetail.svelte";
 
   export let bookings: BookingView[];
@@ -17,13 +17,18 @@
   export let staffName: (id: string) => string;
   export let locationName: (id: string) => string;
   export let onCreateBooking: () => void;
+  export let onReadRescheduleSlots: (id: string, date: string) => Promise<SlotView[]>;
+  export let onRescheduleBooking: (id: string, date: string, time: string) => Promise<void>;
+  export let onCancelBooking: (id: string) => Promise<void>;
 
   let selectedBookingId = "";
 
   $: weekDates = Array.from({ length: 7 }, (_, index) =>
     offsetDay(mondayOf(calendarDate), index),
   );
-  $: dayBookings = bookingsForDay(bookings, calendarDate);
+  $: activeBookings = bookings.filter((item) => item.status === "demo-confirmed");
+  $: cancelledBookings = bookings.filter((item) => item.status === "demo-cancelled");
+  $: dayBookings = bookingsForDay(activeBookings, calendarDate);
   $: chosenBooking = bookings.find((item) => item.id === selectedBookingId);
 
   // A visual schedule of existing synthetic bookings, NOT live availability.
@@ -112,10 +117,10 @@
               <strong>{day.slice(-2)}</strong>
             </button>
             <div class="week-body">
-              {#if bookingsForDay(bookings, day).length === 0}
+              {#if bookingsForDay(activeBookings, day).length === 0}
                 <span class="no-bookings" aria-label="Записей нет">—</span>
               {:else}
-                {#each bookingsForDay(bookings, day) as booking (booking.id)}
+                {#each bookingsForDay(activeBookings, day) as booking (booking.id)}
                   <button type="button" class="calendar-event"
                     aria-label={"Демо-запись " + booking.time + ", " + serviceName(booking.serviceId) + ", " + staffName(booking.staffId)}
                     onclick={() => selectedBookingId = booking.id}>
@@ -198,7 +203,25 @@
   {/if}
 </Card.Root>
 
+{#if cancelledBookings.length}
+  <section class="calendar-cancelled-history" aria-label="История отменённых демо-записей">
+    <h2>Отменённые демо-записи</h2>
+    <p>Сохранены только в этой вкладке и не занимают время мастеров.</p>
+    {#each cancelledBookings as booking (booking.id)}
+      <button type="button" class="calendar-cancelled-entry"
+        onclick={() => selectedBookingId = booking.id}>
+        <span>{longDate(booking.date)}, {booking.time}</span>
+        <strong>{serviceName(booking.serviceId)} · {staffName(booking.staffId)}</strong>
+        <Badge variant="secondary">Отменена</Badge>
+      </button>
+    {/each}
+  </section>
+{/if}
+
 {#if chosenBooking}
   <BookingDetail booking={chosenBooking} {serviceName} {staffName} {locationName}
+    onReadMoveSlots={(date) => onReadRescheduleSlots(chosenBooking!.id, date)}
+    onReschedule={(date, time) => onRescheduleBooking(chosenBooking!.id, date, time)}
+    onCancel={() => onCancelBooking(chosenBooking!.id)}
     onClose={() => selectedBookingId = ""} />
 {/if}

@@ -70,7 +70,7 @@
   $: stepCount = Number(!!org) + Number(data.services.length > 0) +
     Number(data.staff.length > 0) + Number(data.schedules.length > 0) +
     Number(data.bookings.length > 0);
-  $: dayBookings = data.bookings.filter(item => item.date === calendarDate);
+  $: dayBookings = data.bookings.filter(item => item.date === calendarDate && item.status === "demo-confirmed");
   $: bookingStaffOptions = data.staff.filter(item => !bookingService || item.serviceIds.includes(bookingService));
   $: canBook = Boolean(bookingService && bookingStaff && bookingLocation && bookingDate && bookingTime && clientAlias.trim());
   $: currentOnboardingStep = !org ? "organization" : !data.services.length ? "services" :
@@ -215,6 +215,32 @@
       calendarDate = bookingDate;
     }, undefined, "Создана только демо-запись в sessionStorage. Backend ничего не подтверждал.");
   }
+  async function readDemoRescheduleSlots(id: string, date: string): Promise<SlotView[]> {
+    const booking = data.bookings.find((item) => item.id === id);
+    if (!booking || booking.status !== "demo-confirmed") {
+      throw new UiFailure("NOT_FOUND", "Демо-запись недоступна.");
+    }
+    const slots = await api.getSlotSuggestions(booking.staffId, booking.locationId, date);
+    return slots.filter((slot) => !data.bookings.some(
+      (item) =>
+        item.id !== id &&
+        item.status === "demo-confirmed" &&
+        item.staffId === booking.staffId &&
+        item.date === date &&
+        item.time === slot.time,
+    ));
+  }
+  async function rescheduleDemoBooking(id: string, date: string, time: string): Promise<void> {
+    await api.rescheduleBooking(id, date, time);
+    calendarDate = date;
+    await reload();
+    notice = "Демо-запись перенесена только в этой вкладке. Backend не изменялся.";
+  }
+  async function cancelDemoBooking(id: string): Promise<void> {
+    await api.cancelBooking(id);
+    await reload();
+    notice = "Демо-запись отменена локально; запись сохранена в истории.";
+  }
   async function resetDemo(): Promise<void> {
     await transact(() => api.resetDemo(), "home", "Тестовые данные этой вкладки удалены.");
     data = blank;
@@ -328,6 +354,9 @@
           staffName={getStaff}
           locationName={getLocation}
           onCreateBooking={() => goto("booking")}
+          onReadRescheduleSlots={readDemoRescheduleSlots}
+          onRescheduleBooking={rescheduleDemoBooking}
+          onCancelBooking={cancelDemoBooking}
         />
       {:else if screen === "booking"}
         {#if createdBooking}
