@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { createCookieUiApi } from "./lib/api";
+  import { defaultSalonAppearance } from "./lib/appearance";
   import { localDay, upcomingWeekday } from "./lib/dates";
   import { UiFailure } from "./lib/model";
-  import type { BookingView, DemoSnapshot, SlotView, ViewState } from "./lib/model";
+  import type { BookingView, DemoSnapshot, SalonTheme, SlotView, ViewState } from "./lib/model";
   import type { Screen } from "./lib/navigation";
   import Sidebar from "./lib/ui/Sidebar.svelte";
   import Topbar from "./lib/ui/Topbar.svelte";
@@ -16,6 +17,7 @@
   import OwnerStaffPage from "./lib/ui/OwnerStaffPage.svelte";
   import OwnerSchedulePage from "./lib/ui/OwnerSchedulePage.svelte";
   import OwnerLocationsPage from "./lib/ui/OwnerLocationsPage.svelte";
+  import OwnerAppearancePage from "./lib/ui/OwnerAppearancePage.svelte";
   import BookingConfirmation from "./lib/ui/BookingConfirmation.svelte";
   import PublicBookingHero from "./lib/ui/PublicBookingHero.svelte";
   import DemoFooter from "./lib/ui/DemoFooter.svelte";
@@ -31,7 +33,7 @@
   const api = createCookieUiApi();
   // Presentation-only Telegram-sized preview; no Telegram API, initData or auth.
   const telegramPreview = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "telegram-preview";
-  const blank: DemoSnapshot = { organization: null, locations: [], services: [], staff: [], schedules: [], bookings: [] };
+  const blank: DemoSnapshot = { organization: null, appearance: { ...defaultSalonAppearance }, locations: [], services: [], staff: [], schedules: [], bookings: [] };
 
   let screen: Screen = "home";
   let data: DemoSnapshot = blank;
@@ -51,6 +53,8 @@
   let staffService = "";
   let locationName = "Второй филиал (демо)";
   let locationAddress = "Тестовый адрес";
+  let appearanceTheme: SalonTheme = defaultSalonAppearance.theme;
+  let appearanceIntroduction = defaultSalonAppearance.introduction;
   let scheduleStaff = "";
   let scheduleLocation = "";
   let scheduleDays: number[] = [1, 2, 3, 4, 5, 6];
@@ -86,6 +90,8 @@
   async function reload(): Promise<void> {
     try {
       data = await api.getSnapshot();
+      appearanceTheme = data.appearance.theme;
+      appearanceIntroduction = data.appearance.introduction;
       apiDisconnected = false;
       if (!staffService) staffService = data.services[0]?.id ?? "";
       if (!scheduleStaff) scheduleStaff = data.staff[0]?.id ?? "";
@@ -205,6 +211,13 @@
   async function createLocation(): Promise<void> {
     await transact(() => api.addLocation(locationName, locationAddress), "locations");
   }
+  async function saveAppearance(): Promise<void> {
+    await transact(
+      () => api.saveAppearance({ theme: appearanceTheme, introduction: appearanceIntroduction }),
+      "appearance",
+      "Демо-оформление сохранено в этой вкладке. Сервер и реальные страницы не изменены.",
+    );
+  }
   async function submitBooking(): Promise<void> {
     if (!canBook) return;
     await transact(async () => {
@@ -256,7 +269,7 @@
   <meta name="description" content={api.mode === "api" ? "Cookie: тестовое подключение Backend API пока недоступно." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
-<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org} class:telegramPreview={telegramPreview && screen === "booking"}>
+<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org} class:telegramPreview={telegramPreview && screen === "booking"} class:salonThemeForest={data.appearance.theme === "forest"} class:salonThemeOcean={data.appearance.theme === "ocean"} class:salonThemeClay={data.appearance.theme === "clay"}>
   {#if screen !== "booking" && !(screen === "home" && !org)}
     <Sidebar {screen} {stepCount} onNavigate={goto} />
   {/if}
@@ -344,6 +357,16 @@
           onAddressChange={(value) => locationAddress = value}
           onSubmit={() => void createLocation()}
         />
+      {:else if screen === "appearance"}
+        <OwnerAppearancePage
+          organizationName={org.name}
+          theme={appearanceTheme}
+          introduction={appearanceIntroduction}
+          onThemeChange={(value) => appearanceTheme = value}
+          onIntroductionChange={(value) => appearanceIntroduction = value}
+          onSave={() => void saveAppearance()}
+          onOpenBooking={() => goto("booking")}
+        />
       {:else if screen === "calendar"}
         <CalendarView
           bookings={data.bookings}
@@ -370,7 +393,7 @@
             onCreateAnother={() => goto("booking")}
           />
         {:else}
-          <PublicBookingHero organizationName={org.name} />
+          <PublicBookingHero organizationName={org.name} introduction={data.appearance.introduction} />
           <BookingForm
             {data}
             staffOptions={bookingStaffOptions}
