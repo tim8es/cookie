@@ -1,6 +1,6 @@
 # F1 QA — concurrent role permission removal during Booking
 
-**Status: NOT RUN on this branch until exact-head CI completes.** Independent security regression only; no claim that Issue #113 is closed or that production is ready.
+**Verified test-source evidence:** F1 GitHub Actions [run #43890522218](https://github.com/tim8es/cookie/actions/runs/43890522218) passed at commit `17af91116f761b1f2f7b23ab000c62cc56f03e75` (PostgreSQL 16 integration: 40 passed, 0 failed; unit: 100 passed, 0 failed; Svelte frontend: 46 passed, 0 failed). **This evidence is exact to that commit; check the latest PR head after documentation-only updates before merge.** Independent security regression only; no claim that Issue #113 is closed or that production is ready.
 
 ## Risk and invariant
 
