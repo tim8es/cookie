@@ -100,7 +100,12 @@ test(
             GROUP BY topic, status ORDER BY topic, status`,
           [stalledTenant],
         );
-        return result.rows;
+        return Object.fromEntries(
+          result.rows.map((row) => [
+            `${row.topic}:${row.status}`,
+            Number(row.count),
+          ]),
+        );
       };
 
       const started = performance.now();
@@ -115,11 +120,11 @@ test(
       assert.equal(claimed[0]?.tenantId, readyTenant);
       assert.equal(claimed[0]?.attempts, 1);
       assert.equal(await acknowledgeOutbox(pool, claimed[0]!), true);
-      assert.deepEqual(await snapshot(), [
-        { topic, status: "dead", count: String(budget) },
-        { topic, status: "leased", count: String(exhaustedCount - budget) },
-        { topic: ignoredTopic, status: "leased", count: String(unrelatedCount) },
-      ].sort((a, b) => a.topic.localeCompare(b.topic) || a.status.localeCompare(b.status)));
+      assert.deepEqual(await snapshot(), {
+        [`${topic}:dead`]: budget,
+        [`${topic}:leased`]: exhaustedCount - budget,
+        [`${ignoredTopic}:leased`]: unrelatedCount,
+      });
 
       // Report actual observed synthetic work/latency; no assumed SLA.
       console.info(
@@ -133,17 +138,17 @@ test(
       );
 
       await claimOutbox(pool, { topic, batchSize: 1 });
-      assert.deepEqual(await snapshot(), [
-        { topic, status: "dead", count: String(budget * 2) },
-        { topic, status: "leased", count: String(exhaustedCount - budget * 2) },
-        { topic: ignoredTopic, status: "leased", count: String(unrelatedCount) },
-      ].sort((a, b) => a.topic.localeCompare(b.topic) || a.status.localeCompare(b.status)));
+      assert.deepEqual(await snapshot(), {
+        [`${topic}:dead`]: budget * 2,
+        [`${topic}:leased`]: exhaustedCount - budget * 2,
+        [`${ignoredTopic}:leased`]: unrelatedCount,
+      });
 
       await claimOutbox(pool, { topic, batchSize: 1 });
-      assert.deepEqual(await snapshot(), [
-        { topic, status: "dead", count: String(exhaustedCount) },
-        { topic: ignoredTopic, status: "leased", count: String(unrelatedCount) },
-      ].sort((a, b) => a.topic.localeCompare(b.topic) || a.status.localeCompare(b.status)));
+      assert.deepEqual(await snapshot(), {
+        [`${topic}:dead`]: exhaustedCount,
+        [`${ignoredTopic}:leased`]: unrelatedCount,
+      });
 
       // A topic-filtered claim never sweeps unrelated expired leases.
       await claimOutbox(pool, { topic, batchSize: 1 });
