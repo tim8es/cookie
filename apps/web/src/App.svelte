@@ -223,8 +223,8 @@
 </script>
 
 <svelte:head>
-  <title>{screen === "booking" ? "Cookie — онлайн-запись · демо" : "Cookie — кабинет салона · демо"}</title>
-  <meta name="description" content="Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными." />
+  <title>{apiDisconnected ? "Cookie — API не подключён" : screen === "booking" ? "Cookie — онлайн-запись · демо" : "Cookie — кабинет салона · демо"}</title>
+  <meta name="description" content={api.mode === "api" ? "Cookie: тестовое подключение Backend API пока недоступно." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
 <div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org}>
@@ -236,7 +236,7 @@
     {#if screen === "booking"}
       <PublicHeader onBack={() => goto("home")} />
     {:else if screen === "home" && !org}
-      <OnboardingHeader />
+      <OnboardingHeader apiMode={apiDisconnected} />
     {:else}
       <Topbar {screen} bind:preview canCreateBooking={!!org} onNavigate={goto} />
     {/if}
