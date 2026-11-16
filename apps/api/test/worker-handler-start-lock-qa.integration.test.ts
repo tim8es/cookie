@@ -35,13 +35,14 @@ test(
       signalHandlerStarted = done;
     });
     const shutdown = new AbortController();
-    let supervisor: Promise<{ completed: boolean; error?: unknown }> | undefined;
+    let supervisor: Promise<{ completed: boolean }> | undefined;
 
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
-      await pool.query("INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)", [
-        identityId,
-      ]);
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [identityId],
+      );
       await pool.query(
         "INSERT INTO cookie_tenancy.organizations(id,owner_identity_id,display_name) VALUES($1::uuid,$2::uuid,'Synthetic dispatch lock proof')",
         [tenantId, identityId],
@@ -146,9 +147,21 @@ test(
 
       releaseCommit();
       const finished = await supervisor;
-      assert.equal(finished.completed, true, "guarded worker must finish normally");
-      assert.equal(handlerStarts, 1, "valid event must be handled exactly once");
-      assert.equal(guardedConnections, 1, "one real transactional dispatch guard");
+      assert.equal(
+        finished.completed,
+        true,
+        "guarded worker must finish normally",
+      );
+      assert.equal(
+        handlerStarts,
+        1,
+        "valid event must be handled exactly once",
+      );
+      assert.equal(
+        guardedConnections,
+        1,
+        "one real transactional dispatch guard",
+      );
       const state = await pool.query<{ status: string; attempts: number }>(
         "SELECT status,attempts FROM cookie_jobs.outbox_events WHERE id=$1::uuid",
         [eventId],
@@ -159,10 +172,12 @@ test(
       shutdown.abort();
       await supervisor?.catch(() => undefined);
       try {
-        await pool.query(
-          "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid",
-          [tenantId],
-        ).catch(() => undefined);
+        await pool
+          .query(
+            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid",
+            [tenantId],
+          )
+          .catch(() => undefined);
         await pool.query(
           "DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid",
           [tenantId],
