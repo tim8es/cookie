@@ -5,6 +5,8 @@ import test from "node:test";
 
 import { Pool } from "pg";
 
+import { BookingAttempt } from "../../web/src/lib/booking-attempt.js";
+import { createProposedF1SyntheticLoopbackClient } from "../../web/src/lib/proposed-f1-synthetic-loopback.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { createApp } from "../src/app.js";
 
@@ -638,35 +640,14 @@ test(
         localDate: "2027-04-12",
         startAt: "2027-04-12T16:00:00Z",
       };
-      // API tests compile under NodeNext, while the frontend library uses
-      // Vite/bundler resolution. Import the ORIGINAL local TS modules at
-      // runtime so their extensionless internal imports remain untouched;
-      // this does not build a second frontend adapter or start a browser.
-      const frontendAdapterModuleUrl = new URL(
-        "../../web/src/lib/proposed-f1-synthetic-loopback.ts",
-        import.meta.url,
-      ).href;
-      const frontendAttemptModuleUrl = new URL(
-        "../../web/src/lib/booking-attempt.ts",
-        import.meta.url,
-      ).href;
-      const frontendModules = await Promise.all([
-        import(frontendAdapterModuleUrl),
-        import(frontendAttemptModuleUrl),
-      ]);
-      const createProposedF1SyntheticLoopbackClient =
-        frontendModules[0].createProposedF1SyntheticLoopbackClient;
-      const BookingAttempt = frontendModules[1].BookingAttempt;
+      // Static imports verify the SAME frontend port with NodeNext types and tsx runtime.
       let discardedCommittedReply = false;
       const frontend = createProposedF1SyntheticLoopbackClient({
         origin: loopbackOrigin,
         tenantId: tenant,
         syntheticCustomerId: customer,
         syntheticBearer: "synthetic-owner",
-        fetcher: async (
-          input: Parameters<typeof fetch>[0],
-          init?: Parameters<typeof fetch>[1],
-        ) => {
+        fetcher: async (input, init) => {
           const response = await fetch(input, init);
           if (!discardedCommittedReply && init?.method === "POST") {
             assert.equal(response.status, 201);
