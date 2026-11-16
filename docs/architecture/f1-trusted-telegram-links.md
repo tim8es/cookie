@@ -19,7 +19,7 @@ A valid Telegram Mini App HMAC verifies only the Telegram account's identifier, 
 
 1. A trustworthy consent and link-provisioning workflow, with proof of account ownership, conflict recovery, logged operator authorization, privacy review, and explicit unlink.
 2. A reviewed tenant chooser for one Telegram account in multiple Cookie organizations. Until then *ambiguous exchange denies*; this deliberately prioritizes safety over convenience.
-3. A tenant-scoped `Customer` table/link and server-proven ownership. The current F1 schema has no `Customer` entity. A link to Identity **does not** permit access to customer bookings.
+3. A tenant-scoped `Customer` table/link and server-proven ownership. The current F1 schema has only the FK anchor `cookie_customers.customers(tenant_id,id)`; it has no customer identity/ownership link, customer PII fields, or client self-service contract. A link to Identity **does not** permit access to customer bookings.
 4. Cookie session delivery via secure cookie/CSRF policy (or approved bearer transport), production secret management, authorization per mutation, transactional link-revocation enforcement for in-flight Booking commands, entitlement policy, rate limiting, abuse monitoring and operational deletion/retention.
 5. Production rollout, real Telegram provider secrets, real PII, real customers and commercial pilot still require separate approval.
 
