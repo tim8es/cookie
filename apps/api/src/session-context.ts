@@ -5,6 +5,7 @@ import type { Pool } from "pg";
 
 import {
   AuthorizationDeniedError,
+  type OpaqueSessionAuthority,
   type ProtectedResource,
   type TrustedActor,
 } from "../../../packages/platform-identity/src/authorization.js";
@@ -20,6 +21,7 @@ export interface VerifiedSession {
   readonly identityId: string;
   readonly tenantId: string;
   readonly expiresAtUnixSeconds: number;
+  readonly opaqueSessionAuthority?: OpaqueSessionAuthority;
 }
 
 export interface BearerSessionVerifier {
@@ -39,6 +41,8 @@ export interface ProtectedSessionDependencies {
   readonly policy: TenantPolicyGuard;
 }
 
+const SESSION_HASH_RE = /^[0-9a-f]{64}$/i;
+const SESSION_LABEL_RE = /^[a-zA-Z0-9._:/-]{1,128}$/;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -83,6 +87,15 @@ export async function verifyTenantActor(
   ) {
     return { status: 401, error: "unauthorized" };
   }
+  const authority = session.opaqueSessionAuthority;
+  if (
+    authority !== undefined &&
+    (!SESSION_HASH_RE.test(authority.tokenSha256) ||
+      !SESSION_LABEL_RE.test(authority.issuer) ||
+      !SESSION_LABEL_RE.test(authority.audience))
+  ) {
+    return { status: 401, error: "unauthorized" };
+  }
   if (pathTenantId !== session.tenantId) {
     return { status: 403, error: "forbidden" };
   }
@@ -91,6 +104,7 @@ export async function verifyTenantActor(
       identityId: session.identityId,
       tenantId: session.tenantId,
       correlationId: randomUUID(),
+      ...(authority ? { opaqueSessionAuthority: { ...authority } } : {}),
     },
   };
 }
