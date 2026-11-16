@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { createCookieUiApi } from "./lib/api";
-  import { localDay, longDate, money, upcomingWeekday } from "./lib/dates";
+  import { localDay, upcomingWeekday } from "./lib/dates";
   import { UiFailure } from "./lib/model";
   import type { BookingView, DemoSnapshot, SlotView, ViewState } from "./lib/model";
   import type { Screen } from "./lib/navigation";
@@ -11,13 +11,14 @@
   import OnboardingHeader from "./lib/ui/OnboardingHeader.svelte";
   import OnboardingScreen from "./lib/ui/OnboardingScreen.svelte";
   import OwnerOverview from "./lib/ui/OwnerOverview.svelte";
+  import OwnerServicesPage from "./lib/ui/OwnerServicesPage.svelte";
+  import OwnerStaffPage from "./lib/ui/OwnerStaffPage.svelte";
+  import OwnerSchedulePage from "./lib/ui/OwnerSchedulePage.svelte";
+  import OwnerLocationsPage from "./lib/ui/OwnerLocationsPage.svelte";
+  import BookingConfirmation from "./lib/ui/BookingConfirmation.svelte";
+  import DemoState from "./lib/ui/DemoState.svelte";
   import CalendarView from "./lib/ui/CalendarView.svelte";
   import BookingForm from "./lib/ui/BookingForm.svelte";
-  import ServiceForm from "./lib/ui/ServiceForm.svelte";
-  import StaffForm from "./lib/ui/StaffForm.svelte";
-  import ScheduleForm from "./lib/ui/ScheduleForm.svelte";
-  import LocationForm from "./lib/ui/LocationForm.svelte";
-  import { weekdays } from "./lib/weekdays";
   import "./styles.css";
   import "./visual-system.css";
 
@@ -234,11 +235,11 @@
       {#if initializing || busy}
         <div class="loading-card" role="status"><div class="spinner"></div><span>{initializing ? "Загружаем демо-пространство…" : "Обновляем данные в браузерной сессии…"}</span></div>
       {:else if preview === "error"}
-        <section class="state-card" role="alert"><span class="state-illustration">!</span><h2>Демо: ошибка загрузки</h2><p>Пример состояния при недоступном API. Изменения не выполнялись.</p><button class="btn btn-primary" onclick={() => preview = "normal"}>Повторить просмотр</button></section>
+        <DemoState kind="error" onPrimary={() => preview = "normal"} />
       {:else if preview === "forbidden"}
-        <section class="state-card" role="status"><span class="state-illustration">⊘</span><h2>Демо: недостаточно прав</h2><p>Эту операцию должен разрешать backend с учётом роли и филиала. Здесь только UX-состояние.</p><button class="btn btn-secondary" onclick={() => preview = "normal"}>Вернуться</button></section>
+        <DemoState kind="forbidden" onPrimary={() => preview = "normal"} />
       {:else if preview === "empty"}
-        <section class="state-card" role="status"><span class="state-illustration">◇</span><h2>Демо: ничего не найдено</h2><p>Здесь будет сообщение о пустом списке, доступном действии и способе вернуться назад.</p><button class="btn btn-secondary" onclick={() => preview = "normal"}>Показать данные</button></section>
+        <DemoState kind="empty" onPrimary={() => preview = "normal"} />
       {:else if screen === "home"}
         {#if !org}
           <OnboardingScreen
@@ -259,77 +260,44 @@
           />
         {/if}
       {:else if !org}
-        <section class="state-card"><span class="state-illustration">✳</span><h2>Сначала создайте тестовый салон</h2><p>После этого откроются услуги, команда, графики и календарь.</p><button class="btn btn-primary" onclick={() => goto("home")}>К созданию салона →</button></section>
+        <DemoState kind="setup" onPrimary={() => goto("home")} />
       {:else if screen === "services"}
-        <div class="section-head"><div><span class="eyebrow">КАТАЛОГ САЛОНА</span><h1>Услуги и цены</h1><p>Единая длительность и базовая цена на уровне организации.</p></div><span class="counter-pill">{data.services.length} услуг</span></div>
-        <div class="workspace-grid"><section class="card"><div class="card-title"><div><span class="eyebrow">КАТАЛОГ</span><h2>Ваши услуги</h2></div></div>
-          {#if data.services.length === 0}<div class="empty-mini"><span>◇</span><strong>Здесь появятся услуги</strong><p>Добавьте услугу через форму создания.</p></div>{:else}
-            <div class="list-items">{#each data.services as service}<div class="entity-row"><span class="service-tile">✳</span><div class="entity-text"><strong>{service.name}</strong><small>{service.durationMinutes} мин · единая длительность</small></div><strong class="price-label">{money(service.basePriceRub)}</strong></div>{/each}</div>
-          {/if}
-        </section>
-        <ServiceForm
-            {serviceName}
-            {serviceDuration}
-            {servicePrice}
-            onNameChange={(value) => serviceName = value}
-            onDurationChange={(value) => serviceDuration = value}
-            onPriceChange={(value) => servicePrice = value}
-            onSubmit={() => void createService()}
-          /></div>
+        <OwnerServicesPage
+          {data} {serviceName} {serviceDuration} {servicePrice}
+          onNameChange={(value) => serviceName = value}
+          onDurationChange={(value) => serviceDuration = value}
+          onPriceChange={(value) => servicePrice = value}
+          onSubmit={() => void createService()}
+        />
       {:else if screen === "staff"}
-        <div class="section-head"><div><span class="eyebrow">ВАША КОМАНДА</span><h1>Мастера</h1><p>Профили и услуги мастеров. Доступы и права здесь не назначаются.</p></div><span class="counter-pill">{data.staff.length} специалистов</span></div>
-        <div class="workspace-grid"><section class="card"><span class="eyebrow">КОМАНДА</span><h2>Специалисты салона</h2>
-          {#if data.staff.length === 0}<div class="empty-mini"><span>♧</span><strong>Команда пока пуста</strong><p>Добавьте мастера с синтетическим именем.</p></div>{:else}
-            <div class="list-items">{#each data.staff as member}<div class="entity-row"><span class="staff-avatar">{member.displayName.slice(0, 1)}</span><div class="entity-text"><strong>{member.displayName}</strong><small>{member.positionTitle} · {member.serviceIds.map(getService).join(", ")}</small></div><span class="status-pill">Демо</span></div>{/each}</div>
-          {/if}
-        </section>
-        <StaffForm
-            services={data.services}
-            {staffName}
-            {staffTitle}
-            {staffService}
-            onNameChange={(value) => staffName = value}
-            onTitleChange={(value) => staffTitle = value}
-            onServiceChange={(value) => staffService = value}
-            onOpenServices={() => goto("services")}
-            onSubmit={() => void createStaff()}
-          /></div>
+        <OwnerStaffPage
+          {data} {staffName} {staffTitle} {staffService}
+          getService={getService}
+          onNameChange={(value) => staffName = value}
+          onTitleChange={(value) => staffTitle = value}
+          onServiceChange={(value) => staffService = value}
+          onOpenServices={() => goto("services")}
+          onSubmit={() => void createStaff()}
+        />
       {:else if screen === "schedule"}
-        <div class="section-head"><div><span class="eyebrow">РАБОЧЕЕ ВРЕМЯ</span><h1>Расписание</h1><p>Настройка шаблона рабочих дней для тестового мастера и филиала.</p></div></div>
-        <div class="workspace-grid"><section class="card"><span class="eyebrow">ТЕКУЩИЕ ГРАФИКИ</span><h2>Рабочие недели</h2>
-          {#if data.schedules.length === 0}<div class="empty-mini"><span>◷</span><strong>График не задан</strong><p>Добавьте расписание, чтобы появились демо-слоты.</p></div>{:else}
-            {#each data.schedules as schedule}<div class="schedule-summary"><div class="schedule-icon">◷</div><div><strong>{getStaff(schedule.staffId)}</strong><p>{getLocation(schedule.locationId)} · {schedule.startsAt}–{schedule.endsAt}</p><div class="weekday-chips">{#each weekdays as day}<span class:chosen={schedule.weekdays.includes(day.number)}>{day.name}</span>{/each}</div></div></div>{/each}
-          {/if}
-          <div class="inline-note">Изменения расписания не пересчитывают существующие записи. В production конфликты, права и занятость проверяет сервер.</div>
-        </section>
-        <ScheduleForm
-            staff={data.staff}
-            locations={data.locations}
-            {scheduleStaff}
-            {scheduleLocation}
-            {scheduleDays}
-            {scheduleStart}
-            {scheduleEnd}
-            onStaffChange={(value) => scheduleStaff = value}
-            onLocationChange={(value) => scheduleLocation = value}
-            onToggleWeekday={toggleWeekday}
-            onStartChange={(value) => scheduleStart = value}
-            onEndChange={(value) => scheduleEnd = value}
-            onOpenStaff={() => goto("staff")}
-            onSubmit={() => void saveSchedule()}
-          /></div>
+        <OwnerSchedulePage
+          {data} {scheduleStaff} {scheduleLocation} {scheduleDays} {scheduleStart} {scheduleEnd}
+          getStaff={getStaff} getLocation={getLocation}
+          onStaffChange={(value) => scheduleStaff = value}
+          onLocationChange={(value) => scheduleLocation = value}
+          onToggleWeekday={toggleWeekday}
+          onStartChange={(value) => scheduleStart = value}
+          onEndChange={(value) => scheduleEnd = value}
+          onOpenStaff={() => goto("staff")}
+          onSubmit={() => void saveSchedule()}
+        />
       {:else if screen === "locations"}
-        <div class="section-head"><div><span class="eyebrow">СТРУКТУРА САЛОНА</span><h1>Филиалы</h1><p>Синтетические адреса для демонстрации переключения локаций.</p></div></div>
-        <div class="workspace-grid"><section class="card"><span class="eyebrow">ЛОКАЦИИ</span><h2>Филиалы организации</h2>
-          <div class="list-items">{#each data.locations as location}<div class="entity-row"><span class="service-tile">⌂</span><div class="entity-text"><strong>{location.name}</strong><small>{location.address}</small></div><span class="status-pill">Демо</span></div>{/each}</div>
-        </section>
-        <LocationForm
-            {locationName}
-            {locationAddress}
-            onNameChange={(value) => locationName = value}
-            onAddressChange={(value) => locationAddress = value}
-            onSubmit={() => void createLocation()}
-          /></div>
+        <OwnerLocationsPage
+          {data} {locationName} {locationAddress}
+          onNameChange={(value) => locationName = value}
+          onAddressChange={(value) => locationAddress = value}
+          onSubmit={() => void createLocation()}
+        />
       {:else if screen === "calendar"}
         <CalendarView
           bookings={data.bookings}
@@ -355,10 +323,13 @@
           </div>
         </section>
         {#if createdBooking}
-          <section class="card success-screen"><div class="success-symbol">✓</div><span class="eyebrow">ЗАПИСЬ СОЗДАНА ЛОКАЛЬНО</span><h2>Готово! Это демо-запись.</h2><p>Запись сохранена только в браузерной сессии. Она <strong>не подтверждена backend</strong> и не резервирует время у мастера.</p>
-            <div class="success-receipt"><div><span>Услуга</span><strong>{getService(createdBooking.serviceId)}</strong></div><div><span>Дата и время</span><strong>{longDate(createdBooking.date)}, {createdBooking.time}</strong></div><div><span>Мастер</span><strong>{getStaff(createdBooking.staffId)}</strong></div><div><span>Демо-ID</span><strong class="mono">{createdBooking.id.slice(0, 8)}</strong></div></div>
-            <div class="button-row"><button class="btn btn-primary" onclick={() => { calendarDate = createdBooking!.date; goto("calendar"); }}>Посмотреть в календаре →</button><button class="btn btn-secondary" onclick={() => goto("booking")}>Ещё одна демо-запись</button></div>
-          </section>
+          <BookingConfirmation
+            booking={createdBooking}
+            serviceName={getService}
+            staffName={getStaff}
+            onOpenCalendar={() => { calendarDate = createdBooking!.date; goto("calendar"); }}
+            onCreateAnother={() => goto("booking")}
+          />
         {:else}
           <BookingForm
             {data}

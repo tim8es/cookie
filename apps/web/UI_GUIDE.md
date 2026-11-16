@@ -11,6 +11,8 @@
 | Public appointment layout and appointment-pass style | `src/styles/booking.css`; `src/lib/ui/BookingForm.svelte`, `BookingSummary.svelte`, `PublicHeader.svelte` |
 | First-run split hero and form | `src/styles/onboarding.css`, `src/styles/first-run.css`, `src/lib/ui/OnboardingScreen.svelte` |
 | Owner shell, sidebar, topbar, shared UI helpers | `src/styles/foundation.css`; `src/lib/ui/Sidebar.svelte`, `Topbar.svelte` |
+| Owner page composition (lists + editor) | `src/lib/ui/OwnerServicesPage.svelte`, `OwnerStaffPage.svelte`, `OwnerSchedulePage.svelte`, `OwnerLocationsPage.svelte`; form styles in `styles/owner-forms.css` |
+| Confirmation & demo UI states | `src/styles/feedback.css`, `src/lib/ui/BookingConfirmation.svelte`, `DemoState.svelte` |
 | Owner dashboard and stats | `src/styles/ledger.css`; `src/lib/ui/OwnerOverview.svelte` |
 | Owner editor forms (services, staff, schedule, branches) | `src/styles/owner-forms.css`; `src/lib/ui/OwnerFormHeader.svelte` and the four `*Form.svelte` components |
 | Calendar, week/day view, booking details dialog | `src/styles/calendar.css`; `src/lib/ui/CalendarView.svelte`, `BookingDetail.svelte` |
@@ -40,7 +42,7 @@ Use explicit, typed props and callbacks across screen boundaries. Do not import 
 2. Modify that component and its tokens; do not append more rules to `styles.css` or reintroduce a giant `App.svelte` view.
 3. Run `pnpm install --frozen-lockfile`, `pnpm check:ui`, `pnpm --filter @cookie/web check`, `pnpm --filter @cookie/web build`.
 4. Run `node apps/web/scripts/browser-smoke.mjs` (uses built dist, Chrome/Chromium), review full screenshots from 1280×800, 375×812 and 320×568.
-5. Pay particular attention to mobile overflow, readable form labels, focus restore, 33 synthetic screenshot states, browser-local data and the absence of external requests.
+5. Pay particular attention to mobile overflow, readable form labels, focus restore, 39 synthetic screenshot states, browser-local data and the absence of external requests.
 6. Add an isolated Draft PR, stacked on the previous frontend feature branch. **No merging without owner approval.**
 
 ### Non-negotiable product boundaries

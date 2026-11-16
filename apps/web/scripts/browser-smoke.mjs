@@ -369,9 +369,13 @@ async function scenario(cdp, origin, width, height) {
 
   await fill(cdp, ".preview-control select", "error", "change");
   await requireDom(cdp, name + " error preview", "document.querySelector('.state-card')?.textContent.includes('ошибка загрузки')");
+  await checkLabeledControls(cdp, name + " error preview");
+  await captureEvidence(cdp, name, "12-error-preview");
   await click(cdp, ".state-card button");
   await fill(cdp, ".preview-control select", "forbidden", "change");
   await requireDom(cdp, name + " forbidden preview", "document.querySelector('.state-card')?.textContent.includes('недостаточно прав')");
+  await checkLabeledControls(cdp, name + " forbidden preview");
+  await captureEvidence(cdp, name, "13-forbidden-preview");
   await click(cdp, ".state-card button");
 
   await click(cdp, ".footer button");
@@ -449,11 +453,11 @@ async function main() {
       backend: "not connected",
       chromium: "headless",
       viewports: ["1280x800", "375x812", "320x568"],
-      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations"],
+      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "error-preview", "forbidden-preview"],
       checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "no external requests"],
       externalRequests: externalUrls.length,
     }, null, 2) + "\n");
-    console.log("PASS evidence: 33 PNG screenshots and manifest; external requests =", externalUrls.length);
+    console.log("PASS evidence: 39 PNG screenshots and manifest; external requests =", externalUrls.length);
   } catch (error) {
     if (cdp) {
       try {
