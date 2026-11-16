@@ -21,7 +21,13 @@
   import DemoNotices from "./lib/ui/DemoNotices.svelte";
   import BookingSetupHint from "./lib/ui/BookingSetupHint.svelte";
   import DemoState from "./lib/ui/DemoState.svelte";
-  import ApiDisconnected from "./lib/ui/ApiDisconnected.svelte";
+  import OwnerAuthGate from "./lib/ui/OwnerAuthGate.svelte";
+  import {
+    authenticateTelegramOwner,
+    readTelegramInitData,
+    revokeTelegramOwnerSession,
+    type VerifiedOwnerSession,
+  } from "./lib/owner-auth";
   import CalendarView from "./lib/ui/CalendarView.svelte";
   import BookingForm from "./lib/ui/BookingForm.svelte";
   import "./styles.css";
@@ -36,6 +42,8 @@
   let data: DemoSnapshot = blank;
   let initializing = true;
   let apiDisconnected = false;
+  let ownerSession: VerifiedOwnerSession | null = null;
+  let ownerAuthPhase: "unavailable" | "loading" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" = "unavailable";
   let busy = false;
   let busySlots = false;
   let error = "";
@@ -77,7 +85,41 @@
     !data.staff.length ? "staff" : !data.schedules.length ? "schedule" :
     !data.bookings.length ? "booking" : "complete";
 
-  onMount(() => { void reload(); });
+  onMount(() => {
+    void reload();
+    if (api.mode === "api") void authenticateOwner();
+  });
+
+  async function authenticateOwner(): Promise<void> {
+    const initData = readTelegramInitData(window);
+    if (!initData) {
+      ownerAuthPhase = "unavailable";
+      return;
+    }
+    ownerAuthPhase = "loading";
+    try {
+      ownerSession = await authenticateTelegramOwner(initData);
+      ownerAuthPhase = "verified";
+    } catch {
+      ownerSession = null;
+      ownerAuthPhase = "error";
+    }
+  }
+
+  async function logoutOwner(): Promise<void> {
+    const session = ownerSession;
+    if (!session || ownerAuthPhase !== "verified") return;
+    // Discard the bearer immediately; even failed remote revocation cannot
+    // restore any owner permissions in the current browser session.
+    ownerSession = null;
+    ownerAuthPhase = "signing-out";
+    try {
+      await revokeTelegramOwnerSession(session);
+      ownerAuthPhase = "signed-out";
+    } catch {
+      ownerAuthPhase = "logout-failed";
+    }
+  }
 
   function describe(errorValue: unknown): string {
     return errorValue instanceof Error ? errorValue.message : "Не удалось выполнить действие. Повторите попытку.";
@@ -251,7 +293,7 @@
 </script>
 
 <svelte:head>
-  <title>{apiDisconnected ? "Cookie — API не подключён" : screen === "booking" ? "Cookie — онлайн-запись · демо" : "Cookie — кабинет салона · демо"}</title>
+  <title>{apiDisconnected ? "Cookie — вход владельца" : screen === "booking" ? "Cookie — онлайн-запись · демо" : "Cookie — кабинет салона · демо"}</title>
   <meta name="description" content={api.mode === "api" ? "Cookie: тестовое подключение Backend API пока недоступно." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
@@ -276,7 +318,7 @@
         onDismissNotice={() => notice = ""}
       />
       {#if apiDisconnected}
-        <ApiDisconnected />
+        <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
       {:else if initializing || busy}
         <div class="loading-card" role="status"><div class="spinner"></div><span>{initializing ? "Загружаем демо-пространство…" : "Обновляем данные в браузерной сессии…"}</span></div>
       {:else if preview === "error"}
