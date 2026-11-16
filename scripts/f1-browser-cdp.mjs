@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
+import { startChromiumWithRetry } from "./f1-chromium-startup.mjs";
+
 function browserBinary() {
   const choices = [
     process.env.COOKIE_BROWSER_BINARY,
@@ -22,6 +24,23 @@ function browserBinary() {
     if (existsSync(candidate)) return candidate;
   }
   throw new Error("Chromium binary is required for F1 browser-to-PostgreSQL QA");
+}
+
+// A profile cannot be deleted while an unreaped browser still owns it.
+// Fail the test if even SIGKILL cannot reap the child: do not launch a
+// second process against a potentially still-running first attempt.
+async function stopChrome(chrome) {
+  if (!chrome || chrome.exitCode !== null || chrome.signalCode !== null) return;
+  const closed = new Promise((resolve) => chrome.once("close", resolve));
+  chrome.kill("SIGTERM");
+  await Promise.race([closed, sleep(800)]);
+  if (chrome.exitCode === null && chrome.signalCode === null) {
+    chrome.kill("SIGKILL");
+    await Promise.race([closed, sleep(800)]);
+  }
+  if (chrome.exitCode === null && chrome.signalCode === null) {
+    throw new Error("Chromium child could not be reaped");
+  }
 }
 
 function getLocal(url) {
@@ -123,35 +142,69 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
   assert.equal(page.hostname, "127.0.0.1");
   assert.ok(!page.searchParams.has("syntheticBearer"), "Test bearer must not be in URL");
   assert.equal(syntheticBearer, "synthetic-owner");
-  const browserDataDir = mkdtempSync(join(tmpdir(), "cookie-f1-pg-browser-"));
-  const chromeLogs = [];
+  let browserDataDir;
+  let chromeLogs = [];
   const runtimeErrors = [];
   const networkFailures = [];
   let chrome;
   let cdp;
   try {
-    chrome = spawn(browserBinary(), [
-      "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
-      "--disable-background-networking", "--no-first-run",
-      "--remote-debugging-address=127.0.0.1",
-      "--remote-debugging-port=0",
-      "--user-data-dir=" + browserDataDir, "about:blank",
-    ], { stdio: ["ignore", "pipe", "pipe"] });
-    chrome.stderr.on("data", (chunk) => chromeLogs.push(String(chunk).slice(0, 500)));
-    // Chromium itself binds an available loopback debugging port and writes
-    // DevToolsActivePort atomically. Avoid reserving/releasing guessed ports.
-    const chromePort = await poll("Chrome DevToolsActivePort", async () => {
-      const portFile = join(browserDataDir, "DevToolsActivePort");
-      if (!existsSync(portFile)) return null;
-      const firstLine = readFileSync(portFile, "utf8").split(/\r?\n/)[0];
-      const port = Number(firstLine);
-      return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
-    }, 20000);
-    const target = await poll("Chrome DevTools", async () => {
-      const result = await getLocal("http://127.0.0.1:" + chromePort + "/json/list");
-      return JSON.parse(result.body).find((x) => x.type === "page" && x.webSocketDebuggerUrl);
+    const executable = browserBinary();
+    // Bounded retry covers Chrome launch + CDP discovery ONLY. Once a
+    // WebSocket is returned, every Svelte/UI/API/DB assertion runs once.
+    const started = await startChromiumWithRetry({
+      attempts: 2,
+      startupTimeoutMs: 12000,
+      intervalMs: 100,
+      startAttempt: async () => {
+        const dir = mkdtempSync(join(tmpdir(), "cookie-f1-pg-browser-"));
+        let process;
+        try {
+          process = spawn(executable, [
+            "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
+            "--disable-background-networking", "--no-first-run",
+            "--remote-debugging-address=127.0.0.1",
+            "--remote-debugging-port=0",
+            "--user-data-dir=" + dir, "about:blank",
+          ], { stdio: ["ignore", "ignore", "pipe"] });
+        } catch (error) {
+          rmSync(dir, { recursive: true, force: true });
+          throw error;
+        }
+        const handle = { chrome: process, dir, logs: [], startupError: null };
+        process.stderr.on("data", (chunk) => {
+          handle.logs.push(String(chunk).slice(0, 500));
+          if (handle.logs.length > 20) handle.logs.shift();
+        });
+        process.on("error", (error) => { handle.startupError = error.message; });
+        return handle;
+      },
+      probe: async ({ dir }) => {
+        // Chrome owns the ephemeral port and writes DevToolsActivePort;
+        // never reserve/release a guessed port in this test process.
+        const portFile = join(dir, "DevToolsActivePort");
+        if (!existsSync(portFile)) return null;
+        const firstLine = readFileSync(portFile, "utf8").split(/\\r?\\n/)[0];
+        const port = Number(firstLine);
+        if (!Number.isInteger(port) || port <= 0 || port >= 65536) return null;
+        const result = await getLocal("http://127.0.0.1:" + port + "/json/list");
+        if (result.code !== 200) return null;
+        return JSON.parse(result.body).find(
+          (x) => x.type === "page" && x.webSocketDebuggerUrl,
+        );
+      },
+      disposeAttempt: async ({ chrome: child, dir }) => {
+        try {
+          await stopChrome(child);
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      },
     });
-    cdp = connect(target.webSocketDebuggerUrl);
+    chrome = started.handle.chrome;
+    chromeLogs = started.handle.logs;
+    browserDataDir = started.handle.dir;
+    cdp = connect(started.ready.webSocketDebuggerUrl);
     await cdp.ready;
     await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
       source:
@@ -297,8 +350,10 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
     throw error;
   } finally {
     cdp?.close();
-    if (chrome && !chrome.killed) chrome.kill("SIGTERM");
-    await sleep(250);
-    rmSync(browserDataDir, { recursive: true, force: true });
+    try {
+      await stopChrome(chrome);
+    } finally {
+      if (browserDataDir) rmSync(browserDataDir, { recursive: true, force: true });
+    }
   }
 }
