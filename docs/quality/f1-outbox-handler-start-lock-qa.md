@@ -38,3 +38,7 @@ No random sleeps. The lock timeout only bounds the rival SQL attempt after expli
 ## Parent branch moved after first PASS
 
 The parent implementation [PR #166](https://github.com/tim8es/cookie/pull/166) advanced from `426f1cbb9ac04c56c6c12e8b15d0780e03b99bfe` to `8f1136a78da30b49893ebb43111d9a38f13d53c9` after the initial QA test was authored. Its intervening commit removes a duplicate 133-line positive-path test from the parent's `worker-dispatch-authority-lock.integration.test.ts`, not this independent QA test. Revalidate this child against the latest parent branch before review/merge; the prior green run proves only the code composition actually executed in that run. The child changes must remain limited to its QA test and evidence file.
+
+## Final parent integration check (2026-11-16)
+
+QA #167 now targets the canonical final source #166 at `8f1136a78da30b49893ebb43111d9a38f13d53c9`, instead of the older duplicate-test parent. The independent positive handler-start PostgreSQL lock assertion and its original source remain **unchanged**. The exact new head must pass all F1 checks again before QA source can be folded into #166. No production provider or deployment is authorized.
