@@ -137,7 +137,9 @@ export class MockCookieApi implements CookieUiPort {
       introduction.length === 0 ||
       introduction.length > 120
     ) {
-      throw invalid("Выберите тему и введите текст приглашения до 120 символов.");
+      throw invalid(
+        "Выберите тему и введите текст приглашения до 120 символов.",
+      );
     }
     const saved: SalonAppearance = { theme: appearance.theme, introduction };
     this.snapshot.appearance = saved;
