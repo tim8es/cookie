@@ -43,11 +43,6 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
-      - name: Diagnostic canonical formatting diff (temporary QA)
-        run: |
-          pnpm exec prettier --write apps/api/test/schedule-draft-create-review-race-qa.integration.test.ts
-          git diff -- apps/api/test/schedule-draft-create-review-race-qa.integration.test.ts
-          git diff --exit-code -- apps/api/test/schedule-draft-create-review-race-qa.integration.test.ts
       - name: Check source formatting
         run: pnpm format:check
       - name: Check kernel and contract module boundaries
