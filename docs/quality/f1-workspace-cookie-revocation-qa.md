@@ -31,3 +31,7 @@ Refs [#165](https://github.com/tim8es/cookie/issues/165), [#175](https://github.
 ## Evidence refresh
 
 This QA document update does not change the test source or assertions. The test-code SHA above is proven GREEN by [F1 run #43922036718](https://github.com/tim8es/cookie/actions/runs/43922036718), including the explicit integration line `Cookie bearer, expiry and Telegram unlink revoke protected Workspace reads before transaction` (PASS). Full F1 CI must also pass on the final documentation-only HEAD; do not infer that from the previous SHA. Keep this QA PR Draft and unmerged pending combined backend review and #165/#175 release gates.
+
+## Independent latest-main extraction (2026-11-16)
+
+The original #183 source test is preserved **byte-for-byte** (Git blob `e8ae9fede2087a587084f902295d59571b6ac544`) in this new clean branch from `main` `53de65ae8e7b833e1fc7ff756943c78430ca216e`. The old #183 branch inherited #179's **unapproved strict role-read implementation**, which conflicts with current main and with the unresolved policy choice #175. Only this bearer/session/link revoke-before protected Workspace GET test and its evidence document are moved; no role-read implementation or synthetic API behavior changes. Previous green CI #43922612156 was on the older #179 stack and is not PASS evidence for this clean main extraction. Run exact-head full F1 CI again before merge; no production deployment or PII.
