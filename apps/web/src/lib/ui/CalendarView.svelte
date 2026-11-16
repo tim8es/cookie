@@ -75,6 +75,8 @@
   </div>
 
   {#if calendarMode === "week"}
+    <!-- A scrollable region needs keyboard focus at narrow widths; the Svelte warning does not account for overflow scrolling. -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div class="calendar-week-scroller" role="region" aria-label="Неделя, прокручиваемая горизонтально при узком экране" tabindex="0">
       <div class="week-grid">
         {#each weekDates as day (day)}
