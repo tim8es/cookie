@@ -30,3 +30,7 @@ External idempotency/authorization, provider consent, real PII, backups,
 RPO/RTO and production release gates remain **OPEN**. Issue #154's
 separate ordinary queue portion is tracked in PR #159; HIGH issue
 #150 / QA #157 remains unaddressed by this change.
+
+## Final main-branch reconciliation (2026-11-16)
+
+This PR now targets `main` including the reviewed synthetic Cookie session security fix #173 (commit `a3f498a222fe43d0484389e93e5097cd0a76e7ae`). It contains BOTH the original SKIP LOCKED isolation change and the bounded expired-lease maintenance follow-up. No test assertions or runtime implementation have been altered in this retargeting commit. A new exact-HEAD GitHub F1 CI run is required before merging; previous green results on the older stacked base cannot substitute for current-main integration. No external provider, real messages or production rollout is enabled.
