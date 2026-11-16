@@ -38,3 +38,7 @@ Telegram provider. A raw token must never be logged or exposed.
 Do not convert FK RESTRICT to CASCADE or activate cleanup without
 separate security/legal/operational review. Issues #153, #113 and
 #144 and F2 production gates remain open.
+
+## Latest-main integration recheck
+
+After the clean full [CI #43927313473](https://github.com/tim8es/cookie/actions/runs/43927313473) passed 26/26 steps on `d7ea3e04`, `main` gained three non-overlapping QA-only merges: [#187](https://github.com/tim8es/cookie/pull/187) role/tenant revocation, [#188](https://github.com/tim8es/cookie/pull/188) Cookie revoke before Cancel/Reschedule and [#190](https://github.com/tim8es/cookie/pull/190) Cookie revoke before Workspace GET. This two-parent integration commit preserves their latest-main test files while retaining the original #160 source blobs and the new trusted-link FK regression. Full exact-head CI must rerun on this combined state; earlier passes do not establish this latest-main result.
