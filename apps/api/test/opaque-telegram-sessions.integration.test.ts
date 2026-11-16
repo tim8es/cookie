@@ -61,7 +61,8 @@ test(
     ) => {
       lookups++;
       if (breakLink) throw new Error("SYNTHETIC_LINK_RESOLVER_FAILURE");
-      if (!allowLink || proof.telegramUserId !== String(TELEGRAM_ID)) return null;
+      if (!allowLink || proof.telegramUserId !== String(TELEGRAM_ID))
+        return null;
       return { tenantId, identityId };
     };
     const sessions = new PostgresOpaqueTelegramSessions({
@@ -108,10 +109,20 @@ test(
       );
 
       assert.equal(await sessions.exchangeTelegramInitData(undefined), null);
-      assert.equal(await sessions.exchangeTelegramInitData("forged=bad&hash=bad"), null);
+      assert.equal(
+        await sessions.exchangeTelegramInitData("forged=bad&hash=bad"),
+        null,
+      );
       assert.equal(lookups, 0, "invalid proof cannot reach Identity resolver");
-      assert.equal(await sessions.exchangeTelegramInitData(signedInitData("unknown", 123)), null);
-      assert.equal(lookups, 1, "valid proof goes to explicit link resolver only");
+      assert.equal(
+        await sessions.exchangeTelegramInitData(signedInitData("unknown", 123)),
+        null,
+      );
+      assert.equal(
+        lookups,
+        1,
+        "valid proof goes to explicit link resolver only",
+      );
 
       const originalRaw = signedInitData("first-launch");
       breakLink = true;
@@ -121,7 +132,12 @@ test(
       );
       breakLink = false;
       assert.equal(
-        (await pool.query("SELECT count(*)::int AS n FROM cookie_identity.opaque_sessions WHERE tenant_id=$1", [tenantId])).rows[0]?.n,
+        (
+          await pool.query(
+            "SELECT count(*)::int AS n FROM cookie_identity.opaque_sessions WHERE tenant_id=$1",
+            [tenantId],
+          )
+        ).rows[0]?.n,
         0,
         "failing trusted resolver must not consume proof or create session",
       );
@@ -130,14 +146,18 @@ test(
       assert.ok(created);
       assert.match(created.bearerToken, /^cs_[A-Za-z0-9_-]{43}$/);
       assert.ok(created.expiresAtUnixSeconds > Date.now() / 1_000);
-      const authenticated = await sessions.verifyBearerToken(created.bearerToken);
+      const authenticated = await sessions.verifyBearerToken(
+        created.bearerToken,
+      );
       assert.deepEqual(authenticated, {
         tenantId,
         identityId,
         expiresAtUnixSeconds: created.expiresAtUnixSeconds,
       });
 
-      const rawDigest = createHash("sha256").update(created.bearerToken).digest("hex");
+      const rawDigest = createHash("sha256")
+        .update(created.bearerToken)
+        .digest("hex");
       const recorded = await pool.query<{
         hash: string;
         issuer: string;
@@ -158,28 +178,51 @@ test(
       assert.notEqual(recorded.rows[0]?.consumed, rawDigest);
       assert.equal(await sessions.exchangeTelegramInitData(originalRaw), null);
       assert.equal(
-        await sessions.exchangeTelegramInitData(originalRaw.split("&").reverse().join("&")),
+        await sessions.exchangeTelegramInitData(
+          originalRaw.split("&").reverse().join("&"),
+        ),
         null,
         "reordering a valid Telegram query may not reuse a consumed proof",
       );
 
       assert.equal(await sessions.verifyBearerToken("fake"), null);
-      assert.equal(await sessions.verifyBearerToken("cs_" + "f".repeat(43)), null);
-      assert.equal(await wrongAudience.verifyBearerToken(created.bearerToken), null);
-      assert.equal(await wrongIssuer.verifyBearerToken(created.bearerToken), null);
-      assert.equal(await wrongAudience.revokeBearerToken(created.bearerToken), false);
+      assert.equal(
+        await sessions.verifyBearerToken("cs_" + "f".repeat(43)),
+        null,
+      );
+      assert.equal(
+        await wrongAudience.verifyBearerToken(created.bearerToken),
+        null,
+      );
+      assert.equal(
+        await wrongIssuer.verifyBearerToken(created.bearerToken),
+        null,
+      );
+      assert.equal(
+        await wrongAudience.revokeBearerToken(created.bearerToken),
+        false,
+      );
       const forbidden = await verifyTenantActor(
         "Bearer " + created.bearerToken,
         outsiderTenantId,
         sessions,
       );
-      assert.equal(forbidden.status, 403, "path tenant cannot override verified session");
+      assert.equal(
+        forbidden.status,
+        403,
+        "path tenant cannot override verified session",
+      );
 
       assert.equal(await sessions.revokeBearerToken(created.bearerToken), true);
-      assert.equal(await sessions.revokeBearerToken(created.bearerToken), false);
+      assert.equal(
+        await sessions.revokeBearerToken(created.bearerToken),
+        false,
+      );
       assert.equal(await sessions.verifyBearerToken(created.bearerToken), null);
 
-      const next = await sessions.exchangeTelegramInitData(signedInitData("second-launch"));
+      const next = await sessions.exchangeTelegramInitData(
+        signedInitData("second-launch"),
+      );
       assert.ok(next);
       assert.ok(await sessions.verifyBearerToken(next.bearerToken));
       await pool.query(
@@ -189,7 +232,9 @@ test(
       );
       assert.equal(await sessions.verifyBearerToken(next.bearerToken), null);
       assert.equal(
-        await sessions.exchangeTelegramInitData(signedInitData("disabled-membership")),
+        await sessions.exchangeTelegramInitData(
+          signedInitData("disabled-membership"),
+        ),
         null,
         "active tenant membership must be checked before token mint",
       );
@@ -203,7 +248,9 @@ test(
         null,
         "re-enabled membership must not resurrect an earlier bearer",
       );
-      const third = await sessions.exchangeTelegramInitData(signedInitData("third-launch"));
+      const third = await sessions.exchangeTelegramInitData(
+        signedInitData("third-launch"),
+      );
       assert.ok(third);
 
       // This is a DB clock expiry check, not a caller-controlled JWT exp claim.
@@ -216,12 +263,32 @@ test(
       );
       assert.equal(await sessions.verifyBearerToken(third.bearerToken), null);
       allowLink = false;
-      assert.equal(await sessions.exchangeTelegramInitData(signedInitData("unlinked")), null);
+      assert.equal(
+        await sessions.exchangeTelegramInitData(signedInitData("unlinked")),
+        null,
+      );
     } finally {
-      await pool.query("DELETE FROM cookie_identity.opaque_sessions WHERE tenant_id=$1", [tenantId]).catch(() => undefined);
-      await pool.query("DELETE FROM cookie_identity.memberships WHERE tenant_id=$1", [tenantId]).catch(() => undefined);
-      await pool.query("DELETE FROM cookie_tenancy.organizations WHERE id=$1", [tenantId]).catch(() => undefined);
-      await pool.query("DELETE FROM cookie_identity.identities WHERE id=$1", [identityId]).catch(() => undefined);
+      await pool
+        .query(
+          "DELETE FROM cookie_identity.opaque_sessions WHERE tenant_id=$1",
+          [tenantId],
+        )
+        .catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_identity.memberships WHERE tenant_id=$1", [
+          tenantId,
+        ])
+        .catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1", [
+          tenantId,
+        ])
+        .catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_identity.identities WHERE id=$1", [
+          identityId,
+        ])
+        .catch(() => undefined);
       await pool.end();
     }
   },

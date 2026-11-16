@@ -91,7 +91,9 @@ export class PostgresOpaqueTelegramSessions {
    * No direct public endpoint, Cookie↔Customer link, cookies or sessions are
    * enabled until F1 #18/#66 authorization and production policies are signed.
    */
-  async exchangeTelegramInitData(rawInitData: unknown): Promise<IssuedCookieSession | null> {
+  async exchangeTelegramInitData(
+    rawInitData: unknown,
+  ): Promise<IssuedCookieSession | null> {
     const proof = this.deps.telegramProofVerifier.verify(rawInitData);
     if (!proof || typeof rawInitData !== "string") return null;
 
@@ -110,7 +112,11 @@ export class PostgresOpaqueTelegramSessions {
       await client.query("BEGIN");
       active = true;
       const linked = await this.deps.resolveVerifiedTelegramLink(client, proof);
-      if (!linked || !UUID.test(linked.tenantId) || !UUID.test(linked.identityId)) {
+      if (
+        !linked ||
+        !UUID.test(linked.tenantId) ||
+        !UUID.test(linked.identityId)
+      ) {
         await client.query("ROLLBACK");
         active = false;
         return null;
@@ -170,8 +176,11 @@ export class PostgresOpaqueTelegramSessions {
    * Structural BearerSessionVerifier implementation for opt-in F1 adapters.
    * A valid token is still subject to separate tenant and resource AuthZ.
    */
-  async verifyBearerToken(bearerToken: string): Promise<ResolvedCookieSession | null> {
-    if (typeof bearerToken !== "string" || !BEARER.test(bearerToken)) return null;
+  async verifyBearerToken(
+    bearerToken: string,
+  ): Promise<ResolvedCookieSession | null> {
+    if (typeof bearerToken !== "string" || !BEARER.test(bearerToken))
+      return null;
     const result = await this.deps.pool.query<SessionRow>(
       `SELECT s.tenant_id::text AS tenant_id,
               s.identity_id::text AS identity_id,s.expires_at
@@ -186,7 +195,11 @@ export class PostgresOpaqueTelegramSessions {
       [tokenDigest(bearerToken), this.deps.issuer, this.deps.audience],
     );
     const value = result.rows[0];
-    if (!value || !UUID.test(value.tenant_id) || !UUID.test(value.identity_id)) {
+    if (
+      !value ||
+      !UUID.test(value.tenant_id) ||
+      !UUID.test(value.identity_id)
+    ) {
       return null;
     }
     return {
@@ -198,7 +211,8 @@ export class PostgresOpaqueTelegramSessions {
 
   /** Bearer possession is sufficient to revoke that exact session only. */
   async revokeBearerToken(bearerToken: string): Promise<boolean> {
-    if (typeof bearerToken !== "string" || !BEARER.test(bearerToken)) return false;
+    if (typeof bearerToken !== "string" || !BEARER.test(bearerToken))
+      return false;
     const result = await this.deps.pool.query(
       `UPDATE cookie_identity.opaque_sessions
           SET revoked_at=clock_timestamp()
