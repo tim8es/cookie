@@ -1,6 +1,6 @@
 // Test-only Vite entrypoint, never imported from the shipping web application.
 // Resolve Svelte runtime from the existing @cookie/web workspace dependency.
-import { mount } from "../../apps/web/node_modules/svelte/src/index-client.js";
+import { mount } from "svelte";
 import "../../apps/web/src/ui-theme.css";
 import "../../apps/web/src/styles.css";
 import "../../apps/web/src/visual-system.css";
