@@ -26,7 +26,11 @@ try {
   const identityId = env.COOKIE_OWNER_IDENTITY_ID ?? "";
   // Identity creation is restricted to this DB-privileged operator command.
   // Never make this step available to caller-supplied HTTP identity IDs.
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identityId)) {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      identityId,
+    )
+  ) {
     throw new OwnerWorkspaceProvisionError("INVALID_INPUT");
   }
   await pool.query(
@@ -40,13 +44,15 @@ try {
     locationName: env.COOKIE_OWNER_LOCATION ?? "",
     timeZone: env.COOKIE_OWNER_TIME_ZONE ?? "",
   });
-  process.stdout.write(JSON.stringify({
-    identityId,
-    tenantId: result.tenantId,
-    locationId: result.locationId,
-    replayed: result.replayed,
-    note: "Operator provisioning only: no account login or customer Booking API",
-  }) + "\n");
+  process.stdout.write(
+    JSON.stringify({
+      identityId,
+      tenantId: result.tenantId,
+      locationId: result.locationId,
+      replayed: result.replayed,
+      note: "Operator provisioning only: no account login or customer Booking API",
+    }) + "\n",
+  );
 } catch (error) {
   const code =
     error instanceof OwnerWorkspaceProvisionError ? error.code : "SETUP_FAILED";
