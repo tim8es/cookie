@@ -84,6 +84,8 @@ jobs:
       - name: Synthetic browser onboarding and booking smoke
         id: browser_smoke
         run: node apps/web/scripts/browser-smoke.mjs
+      - name: Validate synthetic browser evidence completeness
+        run: node scripts/ci-visual-evidence-check.mjs
       - name: Attach synthetic visual evidence for review
         if: ${{ always() && steps.browser_smoke.outcome != 'skipped' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
