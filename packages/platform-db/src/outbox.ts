@@ -198,7 +198,9 @@ export async function claimOutbox(
   // Expired final-attempt rows are best-effort maintenance. A concurrent
   // transaction holding one such row must not block claims of unrelated due
   // work (possibly belonging to another tenant). A later claim can sweep the
-  // skipped row after its lock is released.
+  // skipped row after its lock is released. Cap maintenance at 25 rows per
+  // claim: a large dead-letter backlog must not monopolize a ready-work poll.
+  // Skipped expired leases remain eligible for future bounded sweeps.
   await pool.query(
     `WITH expired AS (
        SELECT id FROM cookie_jobs.outbox_events
@@ -206,6 +208,7 @@ export async function claimOutbox(
          AND attempts >= max_attempts
          AND ($1::text IS NULL OR topic = $1)
        ORDER BY lease_until, id
+       LIMIT 25
        FOR UPDATE SKIP LOCKED
      )
      UPDATE cookie_jobs.outbox_events AS event
