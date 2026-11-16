@@ -105,14 +105,17 @@ test("untrusted error JSON is available only to a future domain validator", asyn
   const transport = createJsonTransport(async () => {
     return Response.json(fixture, { status: 409 });
   });
-  await assert.rejects(transport.request("/not-a-real-endpoint"), (value: unknown) => {
-    assert.ok(value instanceof TransportFailure);
-    assert.equal(value.kind, "conflict");
-    assert.equal(value.status, 409);
-    assert.deepEqual(value.responseBody, fixture);
-    assert.equal(value.message.includes("not-for-UI"), false);
-    return true;
-  });
+  await assert.rejects(
+    transport.request("/not-a-real-endpoint"),
+    (value: unknown) => {
+      assert.ok(value instanceof TransportFailure);
+      assert.equal(value.kind, "conflict");
+      assert.equal(value.status, 409);
+      assert.deepEqual(value.responseBody, fixture);
+      assert.equal(value.message.includes("not-for-UI"), false);
+      return true;
+    },
+  );
 
   const malformed = createJsonTransport(async () => {
     return new Response("{", {
@@ -120,9 +123,12 @@ test("untrusted error JSON is available only to a future domain validator", asyn
       headers: { "content-type": "application/problem+json" },
     });
   });
-  await assert.rejects(malformed.request("/not-a-real-endpoint"), (value: unknown) => {
-    assert.ok(value instanceof TransportFailure);
-    assert.equal(value.responseBody, undefined);
-    return true;
-  });
+  await assert.rejects(
+    malformed.request("/not-a-real-endpoint"),
+    (value: unknown) => {
+      assert.ok(value instanceof TransportFailure);
+      assert.equal(value.responseBody, undefined);
+      return true;
+    },
+  );
 });
