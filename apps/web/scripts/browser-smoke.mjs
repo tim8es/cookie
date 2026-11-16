@@ -356,6 +356,15 @@ async function scenario(cdp, origin, width, height) {
   await fill(cdp, ".welcome-form input", "Студия Smoke " + name);
   await submitValidForm(cdp, ".welcome-form");
   await requireDom(cdp, name + " services", "document.querySelector('.section-head h1')?.textContent === 'Услуги и цены'");
+  // Incomplete business setup is a neutral guest state, not a link into owner forms.
+  await click(cdp, ".nav-links button:last-child");
+  await requireDom(cdp, name + " unavailable booking state", "document.querySelector('.booking-unavailable[role=status]')?.textContent.includes('Онлайн-запись пока недоступна')");
+  await requireDom(cdp, name + " no owner setup in public", "!document.querySelector('.setup-shortcut button, .booking-form, .booking-unavailable button')");
+  await checkWidth(cdp, name + " unavailable booking");
+  await captureEvidence(cdp, name, "16-unavailable-booking");
+  await click(cdp, ".public-demo-back");
+  await click(cdp, ".nav-links button:nth-child(3)");
+  await requireDom(cdp, name + " returned to owner services", "document.querySelector('.section-head h1')?.textContent === 'Услуги и цены'");
   await checkWidth(cdp, name + " services");
   await checkLabeledControls(cdp, name + " services");
   await checkMobileOwnerFormFirst(cdp, name + " services", width);
@@ -381,6 +390,12 @@ async function scenario(cdp, origin, width, height) {
   if (width <= 375) await checkEmbeddedClientInsets(cdp, name);
   await requireDom(cdp, name + " modular public hero", "document.querySelector('section.booking-hero .booking-hero-studio strong')?.textContent.includes('Студия Smoke')");
   await requireDom(cdp, name + " primary salon header", "document.querySelector('.public-header .salon-name')?.textContent.includes('Студия Smoke')");
+  await requireDom(cdp, name + " salon identity mark", "document.querySelector('.public-header .salon-monogram')?.textContent.trim() === 'С'");
+  await requireDom(cdp, name + " client header excludes owner navigation", "!document.querySelector('.public-header .public-back, .public-header .sidebar, .public-header .brand-seal')");
+  await requireDom(cdp, name + " demo-only workspace escape", "document.querySelector('.public-demo-notice .public-demo-back')?.textContent.includes('тестовый кабинет')");
+  await requireDom(cdp, name + " discreet public attribution", "document.querySelectorAll('.public-attribution').length === 1 && document.querySelector('.public-attribution')?.textContent.includes('Работает на Cookie')");
+  await requireDom(cdp, name + " hero not branded Cookie", "!document.querySelector('.booking-hero')?.textContent.includes('Cookie / запись')");
+
   await requireDom(cdp, name + " location with address in booking receipt", "document.querySelector('.booking-summary .ticket-location-address')?.textContent.includes('Демонстрационный адрес')");
   if (width <= 680) {
     await requireDom(cdp, name + " expandable mobile receipt", "document.querySelector('.booking-summary-toggle[aria-expanded=false]')");
@@ -389,15 +404,70 @@ async function scenario(cdp, origin, width, height) {
     await click(cdp, ".booking-summary-toggle");
   }
   await requireDom(cdp, name + " upfront base price", "document.querySelector('.booking-checkout-summary strong')?.textContent.includes('₽')");
+  await requireDom(cdp, name + " service choices expose their catalog cost", "Array.from(document.querySelectorAll('.booking-form .booking-fields > label.field select option')).filter(item => item.value).every(item => item.textContent.includes('₽'))");
+  await requireDom(cdp, name + " first selection shows duration and preliminary price", "document.querySelector('.booking-service-meta')?.textContent.includes('60 мин') && document.querySelector('.booking-service-meta')?.textContent.replaceAll(String.fromCharCode(160), ' ').includes('1 500 ₽')");
+  await requireDom(cdp, name + " preliminary price appears before staff picker", "(() => { const meta = document.querySelector('.booking-service-meta'); const staff = document.querySelector('.booking-form .form-pair'); return meta && staff && Boolean(meta.compareDocumentPosition(staff) & Node.DOCUMENT_POSITION_FOLLOWING); })()");
+  await requireDom(cdp, name + " summary prioritizes visit data", "document.querySelector('.ticket-top h2')?.textContent.trim() === 'Ваш визит' && !document.querySelector('.booking-summary .ticket-mark')");
+
+  // Force a genuinely empty synthetic Sunday. An empty result must not be
+  // mistaken for missing prerequisites or a transport failure.
+  const previousBookingDate = await evaluate(cdp, "document.querySelector('.booking-form input[type=date]')?.value");
+  const closedSunday = await evaluate(cdp, `(() => {
+    const raw = document.querySelector('.booking-form input[type=date]').value;
+    const [y, m, d] = raw.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    date.setDate(date.getDate() + ((7 - date.getDay()) % 7 || 7));
+    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')].join('-');
+  })()`);
+  await fill(cdp, ".booking-form input[type=date]", closedSunday, "change");
+  await requireDom(cdp, name + " guest no-slots message", "document.querySelector('.slot-feedback-empty strong')?.textContent.includes('нет свободного времени') && !document.querySelector('.slot-feedback-empty')?.textContent.includes('настройте график')");
+  await requireDom(cdp, name + " no-slots blocks confirmation", "document.querySelector('.booking-form .book-submit')?.disabled && !document.querySelector('.booking-form .slot-grid button')");
+  await checkWidth(cdp, name + " empty availability");
+  await checkLabeledControls(cdp, name + " empty availability");
+  await captureEvidence(cdp, name, "18-sunday-unavailable");
+
+  const followingMonday = new Date(closedSunday + "T12:00:00Z");
+  followingMonday.setUTCDate(followingMonday.getUTCDate() + 1);
+  const nextDate = followingMonday.toISOString().slice(0, 10);
+  await click(cdp, ".slot-feedback-empty button");
+  await requireDom(cdp, name + " next-day lookup recovered", "document.querySelector('.booking-form input[type=date]')?.value === " + JSON.stringify(nextDate) + " && !!document.querySelector('.booking-form .slot-grid button')");
+  await requireDom(cdp, name + " no arbitrary auto booking after recovery", "document.querySelector('.booking-form .book-submit')?.disabled && !document.querySelector('.booking-form .slot-grid button[aria-pressed=true]')");
+  await checkWidth(cdp, name + " recovered availability");
+  await captureEvidence(cdp, name, "19-next-day-recovery");
+
+  // One-shot synthetic fault: only browser-smoke mode can read this flag.
+  // Real API mode and ordinary mock sessions never honor it.
+  await evaluate(cdp, "sessionStorage.setItem('cookie.frontend-demo.smoke.fail-next-slots', '1')");
+  await fill(cdp, ".booking-form input[type=date]", previousBookingDate, "change");
+  await requireDom(cdp, name + " inline failed slot lookup", "document.querySelector('.slot-feedback-error[role=alert] strong')?.textContent.includes('Не удалось проверить время')");
+  await requireDom(cdp, name + " error is distinct from no availability", "!document.querySelector('.slot-feedback-empty') && !document.querySelector('.booking-form .slot-grid button')");
+  await requireDom(cdp, name + " previous time cleared on error", "document.querySelector('.booking-form .book-submit')?.disabled && !document.querySelector('.slot-feedback-error')?.textContent.includes('SYNTHETIC_SMOKE')");
+  await requireDom(cdp, name + " one-shot failure consumed", "sessionStorage.getItem('cookie.frontend-demo.smoke.fail-next-slots') === null");
+  await checkWidth(cdp, name + " failed lookup");
+  await checkLabeledControls(cdp, name + " failed lookup");
+  await captureEvidence(cdp, name, "20-slot-lookup-error");
+
+  await click(cdp, ".slot-feedback-error button");
+  await requireDom(cdp, name + " retry restores synthetic slots", "!!document.querySelector('.booking-form .slot-grid button') && !document.querySelector('.slot-feedback-error')");
+  await requireDom(cdp, name + " retry preserves selection without choosing a slot", "document.querySelector('.booking-form input[type=date]')?.value === " + JSON.stringify(previousBookingDate) + " && document.querySelector('.booking-form .book-submit')?.disabled && !document.querySelector('.booking-form .slot-grid button[aria-pressed=true]')");
+  await checkWidth(cdp, name + " retried lookup");
+  await checkLabeledControls(cdp, name + " retried lookup");
+  await captureEvidence(cdp, name, "21-retry-restored");
   await captureEvidence(cdp, name, "02-booking");
   await click(cdp, ".booking-form .slot-grid button");
   await requireDom(cdp, name + " selected slot", "document.querySelector('.booking-form .slot-grid button[aria-pressed=true]')");
   await submitValidForm(cdp, ".booking-form");
   await requireDom(cdp, name + " synthetic success", "document.querySelector('.success-screen')?.textContent.includes('не подтверждена backend')");
   await requireDom(cdp, name + " extracted confirmation", "document.querySelector('.booking-confirmation .confirmation-receipt')");
+  await requireDom(cdp, name + " no customer-to-owner calendar CTA", "!Array.from(document.querySelectorAll('.booking-confirmation button')).some(item => item.textContent.includes('календар'))");
+  await requireDom(cdp, name + " explicit customer next action", "document.querySelector('.confirmation-primary')?.textContent.includes('Ещё одна демо-запись')");
+  await requireDom(cdp, name + " salon identity on receipt", "document.querySelector('.confirmation-edition')?.textContent.includes('Студия Smoke')");
   await captureEvidence(cdp, name, "03-confirmation");
 
-  await click(cdp, ".success-screen .btn-primary");
+  // The owner calendar is reached only by leaving the clearly marked synthetic demo shell.
+  await click(cdp, ".public-demo-back");
+  await click(cdp, ".nav-links button:nth-child(2)");
   if (width <= 900) await click(cdp, ".segmented button:nth-child(2)");
   await requireDom(cdp, name + " calendar event", "document.querySelector('.calendar-event')");
   await requireDom(cdp, name + " shared calendar card", "document.querySelector('.calendar-surface[data-slot=card]')");
@@ -467,6 +537,32 @@ async function scenario(cdp, origin, width, height) {
   await checkWidth(cdp, name + " restored home");
   await checkLabeledControls(cdp, name + " workspace");
   await captureEvidence(cdp, name, "07-workspace");
+
+  // Appearance edits stay synthetic, persist in this tab, and theme the same public UI.
+  await click(cdp, ".nav-links button:nth-child(7)");
+  await requireDom(cdp, name + " appearance editor", "document.querySelector('.section-head h1')?.textContent === 'Оформление'");
+  await checkWidth(cdp, name + " appearance");
+  await checkLabeledControls(cdp, name + " appearance");
+  await click(cdp, ".appearance-presets button:nth-child(2)");
+  await fill(cdp, ".appearance-introduction-field textarea", "Добро пожаловать на запись", "input");
+  await requireDom(cdp, name + " live appearance preview", "getComputedStyle(document.querySelector('.appearance-preview-hero')).backgroundColor === 'rgb(36, 72, 59)'");
+  await requireDom(cdp, name + " unsaved theme identified", "document.querySelector('.appearance-preview-badge')?.textContent.includes('Не сохранено') && document.querySelector('.appearance-open')?.disabled && !document.querySelector('.appearance-save')?.disabled");
+  await captureEvidence(cdp, name, "14-appearance-preview");
+  await submitValidForm(cdp, ".appearance-editor form");
+  await requireDom(cdp, name + " persisted synthetic appearance", "JSON.parse(sessionStorage.getItem('cookie.frontend-demo.v1')).appearance?.theme === 'forest'");
+  await requireDom(cdp, name + " saved theme identified", "document.querySelector('.appearance-preview-badge')?.textContent.includes('Сохранено') && !document.querySelector('.appearance-open')?.disabled && document.querySelector('.appearance-save')?.disabled");
+  await click(cdp, ".appearance-open");
+  await requireDom(cdp, name + " themed booking", "document.querySelector('.public-shell.salonThemeForest .booking-hero-copy p')?.textContent.includes('Добро пожаловать на запись')");
+  await requireDom(cdp, name + " theme applied to public hero", "getComputedStyle(document.querySelector('.public-content .booking-hero')).backgroundColor === 'rgb(36, 72, 59)'");
+  await requireDom(cdp, name + " themed booking retains upfront price", "document.querySelector('.booking-service-meta .booking-service-price')?.textContent.replaceAll(String.fromCharCode(160), ' ').includes('1 500 ₽')");
+  await captureEvidence(cdp, name, "15-themed-booking");
+  await click(cdp, ".booking-form .slot-grid button");
+  await submitValidForm(cdp, ".booking-form");
+  await requireDom(cdp, name + " themed salon receipt", "document.querySelector('.confirmation-edition')?.textContent.includes('Студия Smoke') && getComputedStyle(document.querySelector('.confirmation-top')).backgroundColor === 'rgb(49, 86, 70)'");
+  await requireDom(cdp, name + " no themed calendar action", "!Array.from(document.querySelectorAll('.booking-confirmation button')).some(item => item.textContent.includes('календар'))");
+  await captureEvidence(cdp, name, "17-themed-confirmation");
+  await click(cdp, ".public-demo-back");
+  await requireDom(cdp, name + " returned to demo workspace", "document.querySelector('.section-head h1')?.textContent !== 'Оформление'");
   // Owner forms remain screen-local and never call the actual booking API.
   await click(cdp, ".nav-links button:nth-child(6)");
   await requireDom(cdp, name + " locations", "document.querySelector('.section-head h1')?.textContent === 'Филиалы'");
@@ -491,7 +587,7 @@ async function scenario(cdp, origin, width, height) {
   await requireDom(cdp, name + " reset", "document.querySelector('.welcome-form')");
   assert.equal(await evaluate(cdp, "sessionStorage.getItem('cookie.frontend-demo.v1')"), null);
 
-  console.log("PASS browser viewport " + name + ": onboarding → booking → move → cancel → history → reload → preview → reset");
+  console.log("PASS browser viewport " + name + ": onboarding → booking → move → cancel → history → appearance → themed booking → reset");
 }
 
 async function main() {
@@ -563,11 +659,11 @@ async function main() {
       backend: "not connected",
       chromium: "headless",
       viewports: ["1280x800", "375x812", "320x568"],
-      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "error-preview", "forbidden-preview"],
+      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "appearance-preview", "themed-booking", "themed-confirmation", "unavailable-booking", "sunday-unavailable", "next-day-recovery", "slot-lookup-error", "retry-restored", "error-preview", "forbidden-preview"],
       checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "simulated embedded safe-area CSS", "no external requests", "zero uncaught page exceptions"],
       externalRequests: externalUrls.length,
     }, null, 2) + "\n");
-    console.log("PASS evidence: 39 PNG screenshots and manifest; external requests =", externalUrls.length);
+    console.log("PASS evidence: 21 captures per viewport and manifest; external requests =", externalUrls.length);
   } catch (error) {
     if (cdp) {
       try {
