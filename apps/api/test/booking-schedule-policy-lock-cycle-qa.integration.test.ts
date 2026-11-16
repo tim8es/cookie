@@ -46,7 +46,11 @@ test(
   { skip: !process.env.TEST_DATABASE_URL },
   async () => {
     const config = { connectionString: process.env.TEST_DATABASE_URL };
-    const setup = new Pool({ ...config, max: 3, application_name: "qa-cycle-setup" });
+    const setup = new Pool({
+      ...config,
+      max: 3,
+      application_name: "qa-cycle-setup",
+    });
     const schedulePool = new Pool({
       ...config,
       max: 2,
@@ -89,9 +93,10 @@ test(
 
     try {
       await runMigrations(setup, resolve(process.cwd(), "db/migrations"));
-      await setup.query("INSERT INTO cookie_identity.identities(id) VALUES ($1)", [
-        identity,
-      ]);
+      await setup.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES ($1)",
+        [identity],
+      );
       await setup.query(
         `INSERT INTO cookie_tenancy.organizations
            (id,owner_identity_id,display_name)
@@ -341,9 +346,7 @@ test(
         "cookie_tenancy.locations",
       ]) {
         await setup
-          .query("DELETE FROM " + table + " WHERE tenant_id=$1::uuid", [
-            tenant,
-          ])
+          .query("DELETE FROM " + table + " WHERE tenant_id=$1::uuid", [tenant])
           .catch(() => undefined);
       }
       await setup
