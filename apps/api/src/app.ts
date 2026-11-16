@@ -16,6 +16,7 @@ import {
   registerSyntheticWorkspaceReads,
   type SyntheticWorkspaceReadDependencies,
 } from "./workspace-http.js";
+import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
 import {
   registerProtectedSessionContext,
   type ProtectedSessionDependencies,
@@ -31,6 +32,9 @@ export function createApp(
   options: {
     readonly logger?: boolean;
     readonly sessionRoutes?: ProtectedSessionDependencies;
+    readonly telegramAuthRoutes?: {
+      readonly sessions: import("../../../packages/platform-identity/src/opaque-sessions.js").PostgresOpaqueTelegramSessions;
+    };
     readonly syntheticBookingRoutes?: SyntheticBookingHttpDependencies;
     readonly syntheticBookingMutations?: SyntheticBookingMutationDependencies;
     readonly syntheticWorkspaceReads?: SyntheticWorkspaceReadDependencies;
@@ -64,6 +68,11 @@ export function createApp(
   // No session verifier is installed in the normal API bootstrap: fail closed.
   if (options.sessionRoutes)
     registerProtectedSessionContext(app, options.sessionRoutes);
+
+  // One-time Telegram proof exchange only when configured with real HMAC,
+  // a database-resolved trusted link and HTTPS origin. No Booking enabled.
+  if (options.telegramAuthRoutes)
+    registerTelegramAuthExchange(app, options.telegramAuthRoutes.sessions);
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.
