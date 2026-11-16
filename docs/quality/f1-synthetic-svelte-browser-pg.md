@@ -21,4 +21,4 @@ The synthetic PostgreSQL integration creates an additional UTC shift, starts the
 - All HTTP requests to booking backend are via Vite's local same-origin `/v1` proxy and local Fastify. No remote origins, real PII, payments, SMS, Telegram, OAuth or external systems.
 - This is **real Svelte component → browser fetch → local HTTP → PG**, but **not the shipping `App.svelte` flow** and not full F1 acceptance #23. It is a technical integration test of UI components/adapter composition.
 - No true lost PostgreSQL COMMIT acknowledgment/TCP fault injection, production AuthN, customer ownership, entitlements, cancellation deadlines, F2 quote/promotions or mobile physical-device testing.
-- CI lint, typecheck, PostgreSQL 16 integration, browser actions, ordinary Svelte build and existing mock browser smoke must all pass. PR stays Draft; no merge or deployment without explicit owner review.
+- CI lint, typecheck, PostgreSQL 16 integration, browser actions, ordinary Svelte build and existing mock browser smoke must all pass. PR is ready for review after green CI; merge still requires explicit owner review. No deployment approval is implied.
