@@ -286,8 +286,10 @@ export async function requireTenantPermission(
   permission: string,
 ): Promise<void> {
   const request: AuthorizationRequest = { actor, resource, permission };
-  await assertActiveOpaqueSession(client, actor);
+  // Lock membership/policy first: membership-disable triggers update
+  // sessions, so taking a session lock before membership can deadlock.
   await lockPolicyRows(client, actor);
+  await assertActiveOpaqueSession(client, actor);
   const snapshot = await loadPolicySnapshot(client, actor);
   await requireSensitiveAuthorization(
     request,

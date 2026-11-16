@@ -36,11 +36,13 @@ receipt and Outbox. For a Cookie bearer that guard first performs an
 unlocked discovery of the optional Telegram link (not authoritative), then
 obtains a SHARE lock on the active, verified/consented link, **before**
 obtaining a SHARE lock on the exact non-revoked and unexpired opaque session.
-The fixed link→session lock order matches the unlink trigger's UPDATE
-order and avoids lock inversion. Under PostgreSQL READ COMMITTED, the final
-session check is re-evaluated after any concurrent revoke; all obtained locks
-are held until Booking COMMIT/ROLLBACK. The policy guard then acquires its
-existing organization/membership/assignment/role locks. A successful
+The guard first acquires the established organization → membership →
+assignment → role locks, then the fixed Telegram link → session locks.
+This also matches the membership-disable trigger's membership → session
+UPDATE order and avoids lock inversion against both revocation triggers.
+Under PostgreSQL READ COMMITTED, the final session check is re-evaluated
+after any concurrent revoke; all locks survive Booking COMMIT/ROLLBACK.
+A successful
 revoke-first COMMIT denies the transaction before any Booking write or
 receipt. In the command-first order, revoke must wait for commit.
 
