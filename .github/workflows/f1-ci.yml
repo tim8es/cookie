@@ -43,11 +43,6 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
-      - name: Temporary QA Prettier diff for policy lock cycle
-        run: |
-          pnpm exec prettier --write apps/api/test/booking-schedule-policy-lock-cycle-qa.integration.test.ts
-          git diff -- apps/api/test/booking-schedule-policy-lock-cycle-qa.integration.test.ts
-          git diff --exit-code -- apps/api/test/booking-schedule-policy-lock-cycle-qa.integration.test.ts
       - name: Check source formatting
         run: pnpm format:check
       - name: Check kernel and contract module boundaries
