@@ -52,7 +52,9 @@ test(
                 if (
                   !intercepted &&
                   typeof sql === "string" &&
-                  sql.includes("LEFT JOIN cookie_identity.role_assignments AS ra")
+                  sql.includes(
+                    "LEFT JOIN cookie_identity.role_assignments AS ra",
+                  )
                 ) {
                   intercepted = true;
                   reachPolicyRead();
@@ -92,9 +94,10 @@ test(
 
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
-      await pool.query("INSERT INTO cookie_identity.identities(id) VALUES($1)", [
-        identityId,
-      ]);
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1)",
+        [identityId],
+      );
       await pool.query(
         `INSERT INTO cookie_tenancy.organizations(id,owner_identity_id,display_name)
          VALUES($1,$2,$3)`,
@@ -177,7 +180,10 @@ test(
         assert.ok(!response.body.includes(organizationName));
         assert.ok(!response.body.includes(locationName));
       } else {
-        assert.equal(response.json().organization.displayName, organizationName);
+        assert.equal(
+          response.json().organization.displayName,
+          organizationName,
+        );
       }
 
       // Sequential revocation is a separate control; it must still deny.
