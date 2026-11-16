@@ -197,8 +197,12 @@ async function lockOpaqueSessionAuthority(
   const authority = actor.opaqueSessionAuthority;
   // Other synthetic verifier providers keep their existing explicitly opt-in
   // boundary. A live opaque Cookie provider MUST return this provenance.
-  if (!authority) return;
+  if (authority === undefined) return;
   if (
+    !authority ||
+    typeof authority.tokenSha256 !== "string" ||
+    typeof authority.issuer !== "string" ||
+    typeof authority.audience !== "string" ||
     !/^[0-9a-f]{64}$/i.test(authority.tokenSha256) ||
     !/^[a-zA-Z0-9._:/-]{1,128}$/.test(authority.issuer) ||
     !/^[a-zA-Z0-9._:/-]{1,128}$/.test(authority.audience)
