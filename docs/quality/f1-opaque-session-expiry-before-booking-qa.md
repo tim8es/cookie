@@ -1,6 +1,6 @@
 # F1 independent QA — opaque session expiry before Booking commit
 
-**Status: UNVERIFIED** on this separate QA-only stacked branch until exact-head PostgreSQL 16 CI confirms the expected result. This is an extension of the two-mode [QA PR #162](https://github.com/tim8es/cookie/pull/162), not a production endpoint or an independent provider.
+**Status: CONFIRMED RED (Critical/P0)** at QA test head `6ed92e076eff441d20df1681e8c914140063196d`, [PostgreSQL 16 CI #43911338131](https://github.com/tim8es/cookie/actions/runs/43911338131). 100/100 unit PASS, 44/45 real PostgreSQL integration PASS, one expected security assertion FAIL; lint, Prettier and TypeScript PASS. This is an extension of the two-mode [QA PR #162](https://github.com/tim8es/cookie/pull/162), not a production endpoint or an independent provider.
 
 ## Invariant and distinction
 
@@ -25,6 +25,7 @@ A successful session verification outside a Booking transaction is not by itself
 - Node 26 / pnpm 10.24.0 / real PostgreSQL 16.
 - Targeted: `TEST_DATABASE_URL=postgresql://cookie_ci:cookie_ci@127.0.0.1:5432/cookie_ci pnpm exec tsx --test --test-concurrency=1 apps/api/test/opaque-session-booking-revocation-qa.integration.test.ts`.
 - Full: `pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm test:integration`; normal F1 CI also includes restore, worker, web, browser.
-- Record exact tested SHA, CI link and actual per-mode outcome after execution. Parent #162's already-confirmed RED is not evidence that this new expiry mode executed.
+- Actual CI output for tested SHA: bearer revoked: `denied=false`, cumulative Booking/receipt/Outbox = 1/1/1; session expired: `denied=false`, cumulative 2/2/2; Telegram link unlinked: `denied=false`, cumulative 3/3/3. Expected denied=true and zero rows in all three modes. Test failed specifically at the final deepStrictEqual security assertion, not due to formatting/fixture error. Targeted mode execution is proven by the recorded `session-expiry` mismatch.
+- No bypass, skip or assertion relaxation. A future backend/Identity fix must make the unchanged test GREEN, and review must verify the reverse interleaving, protected reads, tenant scope and SQL lock ordering.
 
 No backend repair by QA; no real users, real Telegram bot, credentials, deployment, payment or commercial pilot. Related #165, #113, #18, #22, #66.
