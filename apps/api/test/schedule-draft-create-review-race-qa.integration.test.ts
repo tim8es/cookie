@@ -191,7 +191,9 @@ test(
         },
       ];
       const settled = await Promise.allSettled(
-        attempts.map((input) => reviewShiftDraftCreateInternal(pool, input, allow)),
+        attempts.map((input) =>
+          reviewShiftDraftCreateInternal(pool, input, allow),
+        ),
       );
       assert.equal(
         settled.filter((item) => item.status === "fulfilled").length,
