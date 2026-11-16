@@ -184,7 +184,7 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
         // never reserve/release a guessed port in this test process.
         const portFile = join(dir, "DevToolsActivePort");
         if (!existsSync(portFile)) return null;
-        const firstLine = readFileSync(portFile, "utf8").split(/\\r?\\n/)[0];
+        const firstLine = readFileSync(portFile, "utf8").split(/\r?\n/)[0];
         const port = Number(firstLine);
         if (!Number.isInteger(port) || port <= 0 || port >= 65536) return null;
         const result = await getLocal("http://127.0.0.1:" + port + "/json/list");
