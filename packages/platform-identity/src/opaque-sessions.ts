@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
+import type { OpaqueSessionAuthority } from "./authorization.js";
 import type {
   TelegramMiniAppProofVerifier,
   VerifiedTelegramMiniAppProof,
@@ -49,6 +50,7 @@ export interface ResolvedCookieSession {
   readonly tenantId: string;
   readonly identityId: string;
   readonly expiresAtUnixSeconds: number;
+  readonly opaqueSessionAuthority: OpaqueSessionAuthority;
 }
 
 interface SessionRow extends QueryResultRow {
@@ -242,6 +244,11 @@ export class PostgresOpaqueTelegramSessions {
       tenantId: value.tenant_id,
       identityId: value.identity_id,
       expiresAtUnixSeconds: Math.floor(value.expires_at.getTime() / 1_000),
+      opaqueSessionAuthority: {
+        tokenSha256: tokenDigest(bearerToken).toString("hex"),
+        issuer: this.deps.issuer,
+        audience: this.deps.audience,
+      },
     };
   }
 
