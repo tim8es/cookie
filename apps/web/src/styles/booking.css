@@ -86,6 +86,14 @@
 .booking-form .field input:focus-visible,.booking-form .field select:focus-visible {
   border-color: #8b6994; outline: 3px solid #eadfee; outline-offset: 1px;
 }
+.booking-service-meta {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: 6px 13px; margin: -8px 0 16px; padding: 0 2px;
+  color: #706278; font-size: 12px; line-height: 1.5;
+}
+.booking-service-meta > span { display: inline-flex; gap: 6px; align-items: center; }
+.booking-service-meta svg { color: #87718f; flex-shrink: 0; }
+.booking-service-meta strong { font-size: 13px; font-weight: 750; color: #423047; white-space: nowrap; }
 .booking-form .form-pair { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
 .booking-form .slot-field { margin: 12px 0 18px; }
 .booking-form .slot-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
@@ -120,18 +128,13 @@
 .ticket-top {
   position: relative; overflow: hidden; color: var(--cookie-surface);
   border-radius: var(--cookie-radius-surface) 14px 0 0; background: var(--cookie-ticket);
-  padding: 24px 28px 27px;
+  padding: 23px 28px 22px;
 }
 .ticket-topline { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 11px; color: #ddd2e1; }
 .ticket-demo { font-size: 9px; letter-spacing: .08em; border: 1px solid #a18ba6; padding: 4px 8px; border-radius: 99px; color: #f1ebf2; }
-.ticket-mark { position: relative; width: 42px; height: 42px; margin: 27px 0 10px; }
-.ticket-mark span { position: absolute; left: 17px; top: 0; width: 9px; height: 16px; border-radius: 100% 100% 30% 30%; background: #e0f5a5; transform-origin: 4.5px 20px; }
-.ticket-mark span:nth-child(2) { transform: rotate(90deg); }
-.ticket-mark span:nth-child(3) { transform: rotate(180deg); }
-.ticket-mark span:nth-child(4) { transform: rotate(270deg); }
 .ticket-top h2 {
   color: var(--cookie-surface); font-weight: 400; font-family: var(--cookie-font-editorial);
-  line-height: 1.13; font-size: 26px; letter-spacing: -.045em; margin: 15px 0 9px;
+  line-height: 1.13; font-size: 27px; letter-spacing: -.045em; margin: 18px 0 8px;
 }
 .ticket-top p { color: #d4c4d9; font-size: 11px; line-height: 1.55; margin: 0; }
 .ticket-stitch { position: relative; height: 1px; border-top: 1px dashed #c9b8ce; background: #eee8f1; }
@@ -253,7 +256,6 @@
   background: var(--salon-monogram-bg); color: var(--salon-monogram-ink);
 }
 .public-shell .ticket-top { background: var(--salon-ticket); }
-.public-shell .ticket-mark span { background: var(--salon-accent); }
 .public-shell .slot-grid button[data-slot=button].selected {
   background: var(--salon-action); border-color: var(--salon-action);
 }
