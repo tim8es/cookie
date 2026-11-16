@@ -4,7 +4,13 @@ on:
   pull_request:
   push:
     branches:
-      - feature/f1-bootstrap-20261114
+      - main
+
+# Superseded PR runs should not consume minutes or appear as current evidence.
+# The release branch must always complete its post-merge verification.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -32,13 +38,17 @@ jobs:
       TEST_DATABASE_URL: postgresql://cookie_ci:cookie_ci@127.0.0.1:5432/cookie_ci
       CI: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.24.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "26"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - name: Install pinned direct dependencies
         run: pnpm install --frozen-lockfile
       - name: Lint
@@ -59,25 +69,36 @@ jobs:
         run: bash scripts/ci-restore-smoke.sh
       - name: Build API and migration CLI
         run: pnpm build
-      - name: Synthetic worker process launch and SIGTERM smoke
-        run: |
-          COOKIE_SYNTHETIC_WORKER=enabled DATABASE_URL="$TEST_DATABASE_URL" node --import tsx apps/api/src/synthetic-worker-main.ts &
-          worker_pid=$!
-          trap 'kill -TERM "$worker_pid" 2>/dev/null || true' EXIT
-          sleep 1
-          kill -TERM "$worker_pid"
-          wait "$worker_pid"
+      - name: Compiled synthetic worker fail-closed and SIGTERM smoke
+        run: bash scripts/ci-compiled-synthetic-worker-smoke.sh
       - name: Check and build Svelte static app
         run: |
           pnpm --filter @cookie/web check
           pnpm --filter @cookie/web build
       - name: Synthetic browser onboarding and booking smoke
+        id: browser_smoke
         run: node apps/web/scripts/browser-smoke.mjs
+      - name: Validate synthetic browser evidence completeness
+        run: node scripts/ci-visual-evidence-check.mjs
       - name: Attach synthetic visual evidence for review
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        if: ${{ always() && steps.browser_smoke.outcome != 'skipped' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: cookie-frontend-visual-smoke
           path: apps/web/artifacts/visual-smoke/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
+      - name: Report exact commit and smoke result
+        if: ${{ always() }}
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TESTED_SHA: ${{ github.sha }}
+          BROWSER_SMOKE_RESULT: ${{ steps.browser_smoke.outcome }}
+        run: |
+          {
+            echo '### F1 CI evidence'
+            echo "Source head: \`$PR_HEAD_SHA\`"
+            echo "Workflow tested: \`$TESTED_SHA\`"
+            echo "Browser smoke: \`$BROWSER_SMOKE_RESULT\`"
+            echo 'Includes lint, formatting, boundaries, API/web tests, migrations, synthetic restore, build and browser checks.'
+          } >> "$GITHUB_STEP_SUMMARY"
