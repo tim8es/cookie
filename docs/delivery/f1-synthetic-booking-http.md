@@ -26,8 +26,10 @@ credential, session/tenant binding, expiry and revocation before returning
 Do not use hardcoded bearer tokens, request header identity IDs, customer IDs or
 tenant IDs as proof. The sample above is a type-level illustration, not a
 production setup recipe. No test endpoint is enabled by environment variable,
-no public listener is started, and the mock tokens in CI have no credential
-meaning outside `Fastify.inject`.
+no public listener is started. CI also starts a short-lived listener on
+`127.0.0.1:0` (an ephemeral local-only port) using that **same isolated test
+app**. Its synthetic bearer values have no credential meaning outside that
+controlled test process and MUST never be accepted by a deployed service.
 
 The mandatory `assertEntitled` callback is executed by the internal
 `createBookingInternal` within its PostgreSQL transaction, for new creates.
@@ -121,9 +123,15 @@ The synthetic HTTP integration test must prove catalog→availability→create
 (Confirmed + bookingId)→admin read/calendar, concurrent duplicate slot
 conflict, same-key retry after lost client response simulation, reuse with
 changed payload, cross-branch staff overlap, scoped admin denial, outsider
-denial, revocation, and one Booking+receipt+Outbox. Existing internal domain
-test suites remain the authoritative atomic rollback/mutation proof. Actual
-TCP lost-COMMIT/real AuthN/load/production concurrency remain unverified.
+denial, revocation, and one Booking+receipt+Outbox. The integration test now exercises actual
+loopback HTTP over a transient local TCP listener: catalog, availability,
+concurrent CreateBooking requests, idempotent replay, read and calendar;
+a successful replay response body is deliberately discarded before retrying
+with the same key. This validates a client not retaining its reply, **not**
+a forced TCP reset or a lost PostgreSQL COMMIT acknowledgement. Existing
+internal domain test suites remain the authoritative atomic rollback/mutation
+proof. Forced TCP post-COMMIT loss, real AuthN, load and production concurrency
+remain unverified.
 
 Not yet exposed: protected CancelBooking/RescheduleBooking HTTP adapters,
 customer linking, real entitlements, schedule publishing guards,
