@@ -643,14 +643,17 @@ test(
       // Vite/bundler resolution. Import the ORIGINAL local TS modules at
       // runtime so their extensionless internal imports remain untouched;
       // this does not build a second frontend adapter or start a browser.
+      const frontendAdapterModuleUrl = new URL(
+        "../../web/src/lib/proposed-f1-synthetic-loopback.ts",
+        import.meta.url,
+      ).href;
+      const frontendAttemptModuleUrl = new URL(
+        "../../web/src/lib/booking-attempt.ts",
+        import.meta.url,
+      ).href;
       const frontendModules = await Promise.all([
-        import(
-          new URL(
-            "../../web/src/lib/proposed-f1-synthetic-loopback.ts",
-            import.meta.url,
-          ).href
-        ),
-        import(new URL("../../web/src/lib/booking-attempt.ts", import.meta.url).href),
+        import(frontendAdapterModuleUrl),
+        import(frontendAttemptModuleUrl),
       ]);
       const createProposedF1SyntheticLoopbackClient =
         frontendModules[0].createProposedF1SyntheticLoopbackClient;
