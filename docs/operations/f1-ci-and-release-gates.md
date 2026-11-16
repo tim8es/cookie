@@ -16,7 +16,7 @@
 
 1. Run the same gate for all PRs, plus post-merge pushes to `main`; remove the obsolete bootstrap branch push trigger. No `pull_request_target` and no workflows with write tokens.
 2. Cancel outdated runs of the **same PR** on new commits, but do not cancel `main` runs. Treat a passing run only as evidence for the specific PR **head SHA** shown in the summary, as tested using GitHub's PR merge ref.
-3. Pin third-party GitHub Actions to verified immutable commit SHAs: checkout, pnpm setup, Node setup and artifact upload; manually review future upgrades.
+3. Pin third-party GitHub Actions to verified immutable commit SHAs: checkout, pnpm setup, Node setup and artifact upload; disable persisted checkout credentials in untrusted PR test environments; manually review future upgrades.
 4. Cache **pnpm's package store**, keyed through `pnpm-lock.yaml` by setup-node; continue `pnpm install --frozen-lockfile`. Do not cache `node_modules` or share PostgreSQL state.
 5. If a browser smoke actually ran, missing visual evidence must fail the upload step. Preserve evidence after a browser-smoke failure when produced. Append tested/source SHAs and smoke outcome to the run's job summary.
 6. Keep one workflow/job and all existing mandatory test commands; no skip/path filter or CI bypass introduced.
@@ -41,7 +41,7 @@
 On Node 26 with pnpm 10.24.0:
 
 ```sh
-corepack enable
+npm install --global pnpm@10.24.0
 pnpm install --frozen-lockfile
 pnpm lint
 pnpm format:check
@@ -79,6 +79,6 @@ To debug a PR: open **Actions → F1 quality gates**, select the run associated 
 
 ## Measured performance / open risks
 
-Baseline run [43889327565](https://github.com/tim8es/cookie/actions/runs/43889327565): **117 seconds**. The first PR run with the new cache may miss and populate it; compare both the first and next successful **same-PR** runs, including cache hit/miss logs, before claiming a saved time. There is no reliable before/after measurement yet.
+Baseline run [43889327565](https://github.com/tim8es/cookie/actions/runs/43889327565): **117 seconds**. First post-change run [43890432409](https://github.com/tim8es/cookie/actions/runs/43890432409): **128 seconds**, successful, full visual evidence present; the initial cache was populated (254 packages downloaded; store cache saved under the lockfile key). This cold run was **11 seconds slower** than the unrelated PR baseline; do not mislabel it as an optimization. Compare a subsequent same-PR cache-hit run before claiming any speedup.
 
 Known risks: unprotected `main`, no enforced mandatory status contexts, action SHAs need periodic review, mutable PostgreSQL 16 Alpine image, no dedicated supply-chain/license vulnerability gate, test coverage is bounded by implemented F1 functionality, and visual screenshots may contain synthetic-only test data but still require review before public sharing. This pipeline does not prove production readiness.
