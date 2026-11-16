@@ -25,6 +25,12 @@ This is **a hypothesis until the actual CI integration result is inspected**. A 
 
 No production code, migrations, or workflow changes are included in this independent QA PR. Failures must be classified as actual deadlock vs harness synchronization vs environmental timeout before making a product-security claim.
 
+## Verified CI outcome (2026-11-16)
+
+**PASS:** [GitHub Actions run 43872764301](https://github.com/tim8es/cookie/actions/runs/43872764301) at head `a300dd67ea95d8b50ed9dd8df020f501b6d7a3e0`. The test appears explicitly in the real PostgreSQL 16 integration log as `✔ booking, published-shift edit and owner policy change cannot form a PostgreSQL deadlock` (241.9 ms). It confirmed that the Booking waited for the staff lock and the owner-mode change waited for the Booking's Organization lock before releasing the schedule command; **all three domain commands completed and no PostgreSQL 40P01 occurred**. Booking remained Confirmed and the published shift revision advanced.
+
+This falsifies the *specific orchestrated three-way deadlock hypothesis* in the current PostgreSQL lock-wait behavior; it does **not** prove the absence of all deadlocks under different interleavings, multi-role transitions, maintenance operations or elevated concurrency. Preserve the test as a regression, and review lock order across other scheduling/admin mutation handlers before release.
+
 ## Resolution requirements if red
 
 Document and unify mutation lock ordering across Booking, Scheduling and the owner policy-mode editor. Avoid weakening revocation serialization (#113), occupancy/exclusion guarantees (#21), schedule protection (#20) or access-control scope (#18). Prove the fix using the unchanged test; re-run broader PostgreSQL concurrency suite and consider lock-contention metrics/timeout policies before a release.
