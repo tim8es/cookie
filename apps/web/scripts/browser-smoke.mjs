@@ -435,6 +435,34 @@ async function scenario(cdp, origin, width, height) {
   await captureEvidence(cdp, name, "13-forbidden-preview");
   await click(cdp, ".state-card button");
 
+  // Reload in a Telegram-sized preview shell without changing the synthetic
+  // booking port. This is not a Telegram SDK or identity integration test.
+  await cdp.send("Page.navigate", {
+    url: origin + "?surface=telegram-preview&browser-smoke=" + name,
+  });
+  await requireDom(
+    cdp, name + " preview restored owner navigation",
+    "document.querySelector('.nav-links button:last-child') && document.querySelector('.mobile-nav button:nth-child(3)')",
+  );
+  await click(
+    cdp,
+    width <= 680 ? ".mobile-nav button:nth-child(3)" : ".nav-links button:last-child",
+  );
+  await requireDom(
+    cdp, name + " Telegram preview shared booking form",
+    "document.querySelector('.app-shell.telegramPreview.public-shell .booking-form')",
+  );
+  await requireDom(
+    cdp, name + " Telegram preview visibly synthetic",
+    "document.querySelector('.public-demo-notice')?.textContent.includes('Тестовая запись')",
+  );
+  await checkLabeledControls(cdp, name + " Telegram preview");
+  await checkWidth(cdp, name + " Telegram preview");
+  if (width <= 375) await checkEmbeddedClientInsets(cdp, name + " Telegram preview");
+  await captureEvidence(cdp, name, "14-telegram-preview");
+  await click(cdp, ".public-header .public-back");
+  await requireDom(cdp, name + " owner after preview", "document.querySelector('.footer button')");
+
   await click(cdp, ".footer button");
   await requireDom(cdp, name + " reset", "document.querySelector('.welcome-form')");
   assert.equal(await evaluate(cdp, "sessionStorage.getItem('cookie.frontend-demo.v1')"), null);
@@ -511,11 +539,11 @@ async function main() {
       backend: "not connected",
       chromium: "headless",
       viewports: ["1280x800", "375x812", "320x568"],
-      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "error-preview", "forbidden-preview"],
-      checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "simulated embedded safe-area CSS", "no external requests", "zero uncaught page exceptions"],
+      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "error-preview", "forbidden-preview", "telegram-preview"],
+      checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "simulated embedded safe-area CSS", "Telegram preview shared booking UI", "no external requests", "zero uncaught page exceptions"],
       externalRequests: externalUrls.length,
     }, null, 2) + "\n");
-    console.log("PASS evidence: 39 PNG screenshots and manifest; external requests =", externalUrls.length);
+    console.log("PASS evidence: 42 PNG screenshots and manifest; external requests =", externalUrls.length);
   } catch (error) {
     if (cdp) {
       try {
