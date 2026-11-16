@@ -22,7 +22,7 @@ assert.deepEqual(manifest.captures, captures, "All browser scenes are mandatory"
 
 const expected = new Set(["manifest.json"]);
 for (const viewport of viewports) {
-  const width = Number(viewport.split("x")[0]);
+  const [width, height] = viewport.split("x").map(Number);
   for (let i = 0; i < captures.length; i++) {
     const stage = String(i + 1).padStart(2, "0") + "-" + captures[i];
     const filename = viewport + "-" + stage + ".png";
@@ -33,7 +33,15 @@ for (const viewport of viewports) {
     assert.ok(png.length > 1500, filename + ": image unexpectedly small");
     assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", filename + ": invalid PNG header");
     assert.equal(png.readUInt32BE(16), width, filename + ": wrong viewport width");
-    assert.ok(png.readUInt32BE(20) > 0, filename + ": empty viewport height");
+    // The browser captures full document height except the detail screen,
+    // which intentionally clips to the viewport. Never accept a truncated
+    // screenshot shorter than its declared emulated viewport.
+    const imageHeight = png.readUInt32BE(20);
+    if (stage === "05-detail") {
+      assert.equal(imageHeight, height, filename + ": wrong detail viewport height");
+    } else {
+      assert.ok(imageHeight >= height, filename + ": screenshot shorter than viewport");
+    }
   }
 }
 assert.deepEqual(new Set(readdirSync(directory)), expected, "Unexpected/missing synthetic evidence");
