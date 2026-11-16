@@ -129,6 +129,8 @@ export async function runF1BrowserBooking(url) {
   const chromePort = await freePort();
   const browserDataDir = mkdtempSync(join(tmpdir(), "cookie-f1-pg-browser-"));
   const chromeLogs = [];
+  const runtimeErrors = [];
+  const networkFailures = [];
   let chrome;
   let cdp;
   try {
@@ -149,11 +151,17 @@ export async function runF1BrowserBooking(url) {
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
     await cdp.send("Network.enable");
-    const errors = [];
     const external = [];
     let bookingPosts = 0;
     cdp.on("Runtime.exceptionThrown", (event) => {
-      errors.push(event?.exceptionDetails?.exception?.description ?? event?.exceptionDetails?.text);
+      runtimeErrors.push(event?.exceptionDetails?.exception?.description ?? event?.exceptionDetails?.text);
+    });
+    cdp.on("Network.loadingFailed", (event) => {
+      networkFailures.push(event?.errorText ?? "unknown request failure");
+    });
+    cdp.on("Network.responseReceived", ({ response }) => {
+      if (response?.status >= 400)
+        networkFailures.push(response.status + " " + response.url);
     });
     cdp.on("Network.requestWillBeSent", ({ request }) => {
       if (!request?.url?.startsWith("http")) return;
@@ -201,7 +209,7 @@ export async function runF1BrowserBooking(url) {
     assert.ok(receipt.includes("13.04.2027, 10:00 UTC"), "UI must display backend-confirmed UTC start");
     assert.ok(bookingPosts === 1, "Exactly one browser-originated CreateBooking POST");
     assert.deepEqual(external, [], "Test browser must not request external hosts");
-    assert.deepEqual(errors, [], "Browser must not emit uncaught Svelte exceptions");
+    assert.deepEqual(runtimeErrors, [], "Browser must not emit uncaught Svelte exceptions");
     const layout = await evaluate(cdp, "({width:innerWidth, scrollWidth:document.documentElement.scrollWidth})");
     assert.ok(layout.scrollWidth <= layout.width + 1, "Svelte synthetic form overflows mobile viewport");
     return { bookingId, receipt, requests: bookingPosts };
@@ -212,6 +220,8 @@ export async function runF1BrowserBooking(url) {
         console.error("F1 SYNTHETIC BROWSER", JSON.stringify(diagnostics));
       } catch {}
     }
+    console.error("F1 RUNTIME ERRORS", JSON.stringify(runtimeErrors.slice(0, 10)));
+    console.error("F1 NETWORK FAILURES", JSON.stringify(networkFailures.slice(0, 20)));
     console.error("F1 CHROME", chromeLogs.join("").slice(-1200));
     throw error;
   } finally {
