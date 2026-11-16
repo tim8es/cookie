@@ -24,7 +24,7 @@
   import OwnerAuthGate from "./lib/ui/OwnerAuthGate.svelte";
   import {
     authenticateTelegramOwner,
-    readTelegramInitData,
+    loadTelegramInitData,
     revokeTelegramOwnerSession,
     type VerifiedOwnerSession,
   } from "./lib/owner-auth";
@@ -91,12 +91,12 @@
   });
 
   async function authenticateOwner(): Promise<void> {
-    const initData = readTelegramInitData(window);
+    ownerAuthPhase = "loading";
+    const initData = await loadTelegramInitData(window, document);
     if (!initData) {
       ownerAuthPhase = "unavailable";
       return;
     }
-    ownerAuthPhase = "loading";
     try {
       ownerSession = await authenticateTelegramOwner(initData);
       ownerAuthPhase = "verified";
