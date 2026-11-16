@@ -8,7 +8,7 @@ Previous green [#121](https://github.com/tim8es/cookie/pull/121) and canonical r
 
 ## Harness boundaries
 
-This Draft PR is stacked directly on canonical [#124](https://github.com/tim8es/cookie/pull/124). It adds a **separate test-only Vite root** under `tests/f1-browser/`, using existing `apps/web/src/lib/ui/BookingForm.svelte`, `BookingAttemptStatus.svelte`, frontend `BookingAttempt` and `createProposedF1SyntheticLoopbackClient`; no shipping `App.svelte`, `api.ts`, frontend import graph, build entrypoint or `apps/web/**` source is modified.
+This Draft PR is based on **current `main` after canonical [#125](https://github.com/tim8es/cookie/pull/125), QA [#126](https://github.com/tim8es/cookie/pull/126), typed import fix [#128](https://github.com/tim8es/cookie/pull/128) and mock booking UX [#129](https://github.com/tim8es/cookie/pull/129)**. It ports the previously CI-green browser fixture from standalone [#127](https://github.com/tim8es/cookie/pull/127) without replacing any updated main API tests/imports. It adds a **separate test-only Vite root** under `tests/f1-browser/`, using existing `apps/web/src/lib/ui/BookingForm.svelte`, `BookingAttemptStatus.svelte`, frontend `BookingAttempt` and `createProposedF1SyntheticLoopbackClient`; no shipping `App.svelte`, `api.ts`, frontend import graph, build entrypoint or `apps/web/**` source is modified.
 
 The synthetic PostgreSQL integration creates an additional UTC shift, starts the existing injected test-only Fastify application bound to ephemeral `127.0.0.1`, and starts a separate Vite *development-only* browser fixture bound to another ephemeral loopback port. Vite proxies only `/v1` requests to the local Fastify listener; the page's API calls remain same-origin.
 
