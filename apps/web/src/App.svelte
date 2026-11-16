@@ -8,6 +8,7 @@
   import Sidebar from "./lib/ui/Sidebar.svelte";
   import Topbar from "./lib/ui/Topbar.svelte";
   import PublicHeader from "./lib/ui/PublicHeader.svelte";
+  import PublicAttribution from "./lib/ui/PublicAttribution.svelte";
   import OnboardingHeader from "./lib/ui/OnboardingHeader.svelte";
   import OnboardingScreen from "./lib/ui/OnboardingScreen.svelte";
   import OwnerOverview from "./lib/ui/OwnerOverview.svelte";
@@ -251,7 +252,7 @@
 </script>
 
 <svelte:head>
-  <title>{apiDisconnected ? "Cookie — API не подключён" : screen === "booking" ? "Cookie — онлайн-запись · демо" : "Cookie — кабинет салона · демо"}</title>
+  <title>{apiDisconnected ? "Cookie — API не подключён" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
   <meta name="description" content={api.mode === "api" ? "Cookie: тестовое подключение Backend API пока недоступно." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
@@ -262,7 +263,7 @@
 
   <div class="main-area">
     {#if screen === "booking"}
-      <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} onBack={() => goto("home")} />
+      <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} demoMode={api.mode === "mock"} onBack={() => goto("home")} />
     {:else if screen === "home" && !org}
       <OnboardingHeader apiMode={apiDisconnected} />
     {:else}
@@ -399,8 +400,10 @@
         {/if}
       {/if}
 
-      {#if !initializing && api.mode === "mock"}
-        <DemoFooter showReset={screen !== "booking"} {busy} onReset={() => void resetDemo()} />
+      {#if screen === "booking"}
+        <PublicAttribution />
+      {:else if !initializing && api.mode === "mock"}
+        <DemoFooter showReset={true} {busy} onReset={() => void resetDemo()} />
       {/if}
     </main>
   </div>
