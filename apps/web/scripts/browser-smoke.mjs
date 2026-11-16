@@ -356,6 +356,15 @@ async function scenario(cdp, origin, width, height) {
   await fill(cdp, ".welcome-form input", "Студия Smoke " + name);
   await submitValidForm(cdp, ".welcome-form");
   await requireDom(cdp, name + " services", "document.querySelector('.section-head h1')?.textContent === 'Услуги и цены'");
+  // Incomplete business setup is a neutral guest state, not a link into owner forms.
+  await click(cdp, ".nav-links button:last-child");
+  await requireDom(cdp, name + " unavailable booking state", "document.querySelector('.booking-unavailable[role=status]')?.textContent.includes('Онлайн-запись пока недоступна')");
+  await requireDom(cdp, name + " no owner setup in public", "!document.querySelector('.setup-shortcut button, .booking-form, .booking-unavailable button')");
+  await checkWidth(cdp, name + " unavailable booking");
+  await captureEvidence(cdp, name, "16-unavailable-booking");
+  await click(cdp, ".public-demo-back");
+  await click(cdp, ".nav-links button:nth-child(3)");
+  await requireDom(cdp, name + " returned to owner services", "document.querySelector('.section-head h1')?.textContent === 'Услуги и цены'");
   await checkWidth(cdp, name + " services");
   await checkLabeledControls(cdp, name + " services");
   await checkMobileOwnerFormFirst(cdp, name + " services", width);
@@ -401,9 +410,14 @@ async function scenario(cdp, origin, width, height) {
   await submitValidForm(cdp, ".booking-form");
   await requireDom(cdp, name + " synthetic success", "document.querySelector('.success-screen')?.textContent.includes('не подтверждена backend')");
   await requireDom(cdp, name + " extracted confirmation", "document.querySelector('.booking-confirmation .confirmation-receipt')");
+  await requireDom(cdp, name + " no customer-to-owner calendar CTA", "!Array.from(document.querySelectorAll('.booking-confirmation button')).some(item => item.textContent.includes('календар'))");
+  await requireDom(cdp, name + " explicit customer next action", "document.querySelector('.confirmation-primary')?.textContent.includes('Ещё одна демо-запись')");
+  await requireDom(cdp, name + " salon identity on receipt", "document.querySelector('.confirmation-edition')?.textContent.includes('Студия Smoke')");
   await captureEvidence(cdp, name, "03-confirmation");
 
-  await click(cdp, ".success-screen .btn-primary");
+  // The owner calendar is reached only by leaving the clearly marked synthetic demo shell.
+  await click(cdp, ".public-demo-back");
+  await click(cdp, ".nav-links button:nth-child(2)");
   if (width <= 900) await click(cdp, ".segmented button:nth-child(2)");
   await requireDom(cdp, name + " calendar event", "document.querySelector('.calendar-event')");
   await requireDom(cdp, name + " shared calendar card", "document.querySelector('.calendar-surface[data-slot=card]')");
@@ -491,6 +505,11 @@ async function scenario(cdp, origin, width, height) {
   await requireDom(cdp, name + " themed booking", "document.querySelector('.public-shell.salonThemeForest .booking-hero-copy p')?.textContent.includes('Добро пожаловать на запись')");
   await requireDom(cdp, name + " theme applied to public hero", "getComputedStyle(document.querySelector('.public-content .booking-hero')).backgroundColor === 'rgb(36, 72, 59)'");
   await captureEvidence(cdp, name, "15-themed-booking");
+  await click(cdp, ".booking-form .slot-grid button");
+  await submitValidForm(cdp, ".booking-form");
+  await requireDom(cdp, name + " themed salon receipt", "document.querySelector('.confirmation-edition')?.textContent.includes('Студия Smoke') && getComputedStyle(document.querySelector('.confirmation-top')).backgroundColor === 'rgb(49, 86, 70)'");
+  await requireDom(cdp, name + " no themed calendar action", "!Array.from(document.querySelectorAll('.booking-confirmation button')).some(item => item.textContent.includes('календар'))");
+  await captureEvidence(cdp, name, "17-themed-confirmation");
   await click(cdp, ".public-demo-back");
   await requireDom(cdp, name + " returned to demo workspace", "document.querySelector('.section-head h1')?.textContent !== 'Оформление'");
   // Owner forms remain screen-local and never call the actual booking API.
@@ -589,7 +608,7 @@ async function main() {
       backend: "not connected",
       chromium: "headless",
       viewports: ["1280x800", "375x812", "320x568"],
-      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "appearance-preview", "themed-booking", "error-preview", "forbidden-preview"],
+      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "appearance-preview", "themed-booking", "themed-confirmation", "unavailable-booking", "error-preview", "forbidden-preview"],
       checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "simulated embedded safe-area CSS", "no external requests", "zero uncaught page exceptions"],
       externalRequests: externalUrls.length,
     }, null, 2) + "\n");
