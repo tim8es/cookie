@@ -44,7 +44,7 @@ are approved/tested.
 | HTTP | Response | Guard |
 | --- | --- | --- |
 | `GET /v1/organizations/:tenantId/locations/:locationId/catalog` | `{offers:[{serviceId,serviceName,staffId,staffName,durationMinutes,postServiceBufferMinutes,priceKopecks,timeZone}]}` | `booking.create` for location |
-| `GET /v1/organizations/:tenantId/locations/:locationId/availability?serviceId=&staffId=&date=YYYY-MM-DD` | `{slots:[{startAt,endAt,occupiedUntil}]}` | `booking.create` for staff+location |
+| `GET /v1/organizations/:tenantId/locations/:locationId/availability?serviceId=&staffId=&date=YYYY-MM-DD` | `{priceKopecks,slots:[{startAt,endAt,occupiedUntil}]}` | `booking.create` for staff+location |
 | `POST /v1/organizations/:tenantId/bookings` | HTTP 201 `{bookingId,status:"Confirmed",startAt,endAt,occupiedUntil,priceKopecks}` | internal `createBookingInternal` with live DB permission |
 | `GET /v1/organizations/:tenantId/bookings/:bookingId` | persisted booking snapshot | `booking.read` scoped to actual location/staff |
 | `GET /v1/organizations/:tenantId/locations/:locationId/calendar?from=&to=` | `{bookings:[...]}` | `booking.read` for location, UTC half-open 7-day max, 200-row bound |
@@ -54,6 +54,14 @@ the injected test harness*. Path tenant MUST equal the tenant bound by verifier.
 No tenant, actor, correlation, trust, quote, price or status from JSON is used
 as authoritative context. Errors have `{ "error": { "code": "..." } }`.
 GET is read-side only; availability may become stale at any instant.
+The availability response also includes `priceKopecks: string | null`
+representing the **current server-side Service base price** at the time of
+reading active staff/service settings. If the assignment is absent/inactive,
+`slots=[]` and `priceKopecks=null`. No caller price is accepted. This is NOT
+a committed Quote: F2 staff/location overrides or promotions are not supported,
+and a price update between availability and CreateBooking means the latter may
+commit a different server-side current base price. The frontend MUST display
+the actual returned CreateBooking receipt price in its final confirmation.
 
 Create requires header `Idempotency-Key` (1–128 ASCII-compatible key chars
 as currently enforced by internal command) and JSON **exactly**:
