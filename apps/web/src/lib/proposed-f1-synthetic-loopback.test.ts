@@ -81,7 +81,10 @@ test("synthetic POST sends the exact proposed payload and injected test credenti
     "300 ₽",
   );
   assert.equal(requests.length, 1);
-  assert.equal(requests[0].url, origin + "/v1/organizations/" + tenantId + "/bookings");
+  assert.equal(
+    requests[0].url,
+    origin + "/v1/organizations/" + tenantId + "/bookings",
+  );
   assert.equal(requests[0].init.method, "POST");
   const headers = new Headers(requests[0].init.headers);
   assert.equal(headers.get("Authorization"), "Bearer synthetic-test-token");
@@ -112,11 +115,20 @@ test("availability is non-reserving, uses local date, and never fixes final rece
   assert.deepEqual(available.slots, [slot]);
   assert.equal(
     requests[0],
-    "/v1/organizations/" + tenantId + "/locations/" + locationId +
-      "/availability?serviceId=" + serviceId + "&staffId=" + staffId +
+    "/v1/organizations/" +
+      tenantId +
+      "/locations/" +
+      locationId +
+      "/availability?serviceId=" +
+      serviceId +
+      "&staffId=" +
+      staffId +
       "&date=2027-04-12",
   );
-  const state = await new BookingAttempt(client.port, () => "new-attempt").submit(selection);
+  const state = await new BookingAttempt(
+    client.port,
+    () => "new-attempt",
+  ).submit(selection);
   assert.equal(state.phase, "confirmed");
   assert.equal(
     state.phase === "confirmed" ? state.receipt.finalPriceText : "",
@@ -186,22 +198,28 @@ test("after unknown network outcome an explicit retry uses identical key and bod
 });
 
 test("authorization failures and malformed availability fail closed", async () => {
-  const denied = harness(async () => Response.json(
-    { error: { code: "ACCESS_DENIED" } },
-    { status: 403 },
-  ));
-  const state = await new BookingAttempt(denied.port, () => "test-key").submit(selection);
+  const denied = harness(async () =>
+    Response.json({ error: { code: "ACCESS_DENIED" } }, { status: 403 }),
+  );
+  const state = await new BookingAttempt(denied.port, () => "test-key").submit(
+    selection,
+  );
   assert.deepEqual(state, { phase: "denied", reason: "forbidden" });
 
-  const malformed = harness(async () => Response.json({
-    priceKopecks: 15000,
-    slots: [slot],
-  }));
-  await assert.rejects(malformed.readAvailability(selection), (reason: unknown) => {
-    assert.ok(reason instanceof TransportFailure);
-    assert.equal(reason.kind, "invalid-response");
-    return true;
-  });
+  const malformed = harness(async () =>
+    Response.json({
+      priceKopecks: 15000,
+      slots: [slot],
+    }),
+  );
+  await assert.rejects(
+    malformed.readAvailability(selection),
+    (reason: unknown) => {
+      assert.ok(reason instanceof TransportFailure);
+      assert.equal(reason.kind, "invalid-response");
+      return true;
+    },
+  );
 });
 
 test("invalid IDs, impossible times and invalid attempt keys cannot reach fetch", async () => {
@@ -217,7 +235,10 @@ test("invalid IDs, impossible times and invalid attempt keys cannot reach fetch"
     { ...selection, localDate: "2027-02-30" },
   ]) {
     await assert.rejects(client.readAvailability(input));
-    const state = await new BookingAttempt(client.port, () => "test-key").submit(input);
+    const state = await new BookingAttempt(
+      client.port,
+      () => "test-key",
+    ).submit(input);
     assert.deepEqual(state, {
       phase: "error",
       reason: "unexpected",

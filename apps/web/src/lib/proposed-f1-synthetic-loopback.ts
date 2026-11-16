@@ -58,7 +58,9 @@ function utcMinute(value: string): boolean {
 function localDate(value: string): boolean {
   if (!LOCAL_DATE.test(value)) return false;
   const date = new Date(value + "T00:00:00Z");
-  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  return (
+    Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
+  );
 }
 
 function checkUuid(value: string, description: string): void {
@@ -78,13 +80,17 @@ function checkSelection(value: ProposedF1SyntheticSelection): void {
  * Explicitly refuses remote origins, paths, query credentials or fragments.
  * This test-only safety gate is not an alternative to production AuthN.
  */
-export function createProposedF1SyntheticLoopbackClient(config: ProposedF1SyntheticHarness): {
+export function createProposedF1SyntheticLoopbackClient(
+  config: ProposedF1SyntheticHarness,
+): {
   port: BookingAttemptPort<
     ProposedF1SyntheticSelection,
     ConfirmedBookingReceiptView,
     ProposedF1AvailableSlot
   >;
-  readAvailability(selection: ProposedF1SyntheticSelection): Promise<ProposedF1Availability>;
+  readAvailability(
+    selection: ProposedF1SyntheticSelection,
+  ): Promise<ProposedF1Availability>;
 } {
   const origin = new URL(config.origin);
   if (
@@ -97,7 +103,9 @@ export function createProposedF1SyntheticLoopbackClient(config: ProposedF1Synthe
     origin.username ||
     origin.password
   ) {
-    throw new Error("Synthetic F1 transport requires an ephemeral 127.0.0.1 HTTP origin");
+    throw new Error(
+      "Synthetic F1 transport requires an ephemeral 127.0.0.1 HTTP origin",
+    );
   }
   checkUuid(config.tenantId, "tenant");
   checkUuid(config.syntheticCustomerId, "customer");
