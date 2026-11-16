@@ -9,12 +9,7 @@ worker="dist/apps/api/src/synthetic-worker-main.js"
 [[ -f "$worker" ]] || { echo "Built synthetic worker entrypoint is missing"; exit 1; }
 
 log="$(mktemp)"
-worker_pid=""
 cleanup() {
-  if [[ -n "$worker_pid" ]]; then
-    kill -TERM "$worker_pid" 2>/dev/null || true
-    wait "$worker_pid" 2>/dev/null || true
-  fi
   rm -f "$log"
 }
 trap cleanup EXIT
