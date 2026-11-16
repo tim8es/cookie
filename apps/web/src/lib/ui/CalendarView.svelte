@@ -5,10 +5,12 @@
   import * as Card from "../components/ui/card/index.js";
   import { bookingsForDay } from "../calendar";
   import { localDay, longDate, mondayOf, offsetDay, parseDay, shortDate } from "../dates";
-  import type { BookingView } from "../model";
+  import type { BookingView, Service, StaffMember } from "../model";
   import BookingDetail from "./BookingDetail.svelte";
 
   export let bookings: BookingView[];
+  export let services: Service[];
+  export let staff: StaffMember[];
   export let calendarDate: string;
   export let calendarMode: "day" | "week";
   export let serviceName: (id: string) => string;
@@ -23,6 +25,26 @@
   );
   $: dayBookings = bookingsForDay(bookings, calendarDate);
   $: chosenBooking = bookings.find((item) => item.id === selectedBookingId);
+
+  // A visual schedule of existing synthetic bookings, NOT live availability.
+  const hourHeight = 56;
+  function startMinutes(time: string): number {
+    const [hours = 0, minutes = 0] = time.split(":").map(Number);
+    return hours * 60 + minutes;
+  }
+  function bookingDuration(serviceId: string): number {
+    return services.find((item) => item.id === serviceId)?.durationMinutes ?? 60;
+  }
+  $: bookedStaff = staff.filter((member) => dayBookings.some((booking) => booking.staffId === member.id));
+  $: dayStartHour = dayBookings.length
+    ? Math.max(6, Math.min(9, Math.floor(Math.min(...dayBookings.map((item) => startMinutes(item.time))) / 60) - 1))
+    : 8;
+  $: dayEndHour = dayBookings.length
+    ? Math.min(24, Math.max(dayStartHour + 5, Math.ceil(Math.max(...dayBookings.map((item) =>
+        startMinutes(item.time) + bookingDuration(item.serviceId))) / 60) + 1))
+    : 18;
+  $: hourLabels = Array.from({ length: dayEndHour - dayStartHour }, (_, index) => dayStartHour + index);
+  $: boardHeight = (dayEndHour - dayStartHour) * hourHeight;
 
   function changePeriod(delta: number): void {
     calendarDate = offsetDay(calendarDate, calendarMode === "week" ? 7 * delta : delta);
@@ -124,6 +146,36 @@
           <span>{longDate(calendarDate)}</span>
           <Badge variant="secondary">{dayBookings.length} демо-зап.</Badge>
         </div>
+        <div class="calendar-day-board" role="region" aria-label="Записи по мастерам и времени" tabindex="0">
+          <div class="resource-time-column" aria-hidden="true">
+            <span class="resource-column-heading">Время</span>
+            <div class="resource-time-ticks" style:height={boardHeight + "px"}>
+              {#each hourLabels as hour (hour)}
+                <span style:top={(hour - dayStartHour) * hourHeight + "px"}>{String(hour).padStart(2, "0")}:00</span>
+              {/each}
+            </div>
+          </div>
+          {#each bookedStaff as member (member.id)}
+            <section class="resource-staff-column" aria-label={"Записи мастера " + member.displayName}>
+              <h3 class="resource-column-heading">{member.displayName}</h3>
+              <div class="resource-time-lane" style:height={boardHeight + "px"}>
+                {#each dayBookings.filter((item) => item.staffId === member.id) as booking (booking.id)}
+                  <button type="button" class="resource-visit"
+                    style:top={((startMinutes(booking.time) - dayStartHour * 60) / 60) * hourHeight + "px"}
+                    style:height={Math.max(42, bookingDuration(booking.serviceId) / 60 * hourHeight - 4) + "px"}
+                    aria-label={"Открыть демо-запись: " + booking.time + ", " + serviceName(booking.serviceId) + ", " + member.displayName}
+                    onclick={() => selectedBookingId = booking.id}>
+                    <span>{booking.time} · {bookingDuration(booking.serviceId)} мин</span>
+                    <strong>{serviceName(booking.serviceId)}</strong>
+                    <small>{booking.clientAlias}</small>
+                  </button>
+                {/each}
+              </div>
+            </section>
+          {/each}
+        </div>
+        <p class="calendar-board-note">Показаны только демо-записи, не реальные свободные окна.</p>
+        <div class="calendar-day-list">
         {#each dayBookings as booking (booking.id)}
           <button type="button" class="timeline-entry"
             aria-label={"Открыть демо-запись " + booking.time + ", " + serviceName(booking.serviceId)}
@@ -137,6 +189,7 @@
             <ArrowUpRight size={17} class="timeline-arrow" aria-hidden="true" />
           </button>
         {/each}
+        </div>
       {/if}
     </div>
   {/if}

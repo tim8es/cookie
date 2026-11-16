@@ -308,6 +308,8 @@
       {:else if screen === "calendar"}
         <CalendarView
           bookings={data.bookings}
+          services={data.services}
+          staff={data.staff}
           bind:calendarDate
           bind:calendarMode
           serviceName={getService}
