@@ -5,6 +5,10 @@ import {
   type HealthResponse,
 } from "../../../packages/contracts/src/index.js";
 import {
+  registerSyntheticBookingMutations,
+  type SyntheticBookingMutationDependencies,
+} from "./booking-http-mutations.js";
+import {
   registerSyntheticBookingHttp,
   type SyntheticBookingHttpDependencies,
 } from "./booking-http.js";
@@ -24,6 +28,7 @@ export function createApp(
     readonly logger?: boolean;
     readonly sessionRoutes?: ProtectedSessionDependencies;
     readonly syntheticBookingRoutes?: SyntheticBookingHttpDependencies;
+    readonly syntheticBookingMutations?: SyntheticBookingMutationDependencies;
   } = {},
 ): FastifyInstance {
   const app = Fastify({
@@ -59,6 +64,11 @@ export function createApp(
   // synthetic entitlement callback, so these booking routes stay absent.
   if (options.syntheticBookingRoutes)
     registerSyntheticBookingHttp(app, options.syntheticBookingRoutes);
+
+  // Business-side cancel/reschedule is also explicitly test-only. Both
+  // mandatory transactional policy ports must be injected by the harness.
+  if (options.syntheticBookingMutations)
+    registerSyntheticBookingMutations(app, options.syntheticBookingMutations);
 
   app.setNotFoundHandler((_request, reply) =>
     reply.code(404).send({ error: "not-found" }),
