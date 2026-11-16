@@ -12,18 +12,17 @@ COPY packages/platform-db/package.json packages/platform-db/package.json
 RUN pnpm install --frozen-lockfile
 COPY . .
 # Fail closed by default: no sessionStorage demo in the staged web build.
-RUN pnpm build && VITE_COOKIE_DATA_MODE=api pnpm build:web
+RUN pnpm build:runtime
 
 FROM node:26-trixie-slim AS api
 WORKDIR /workspace
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 COOKIE_WEB_DIST=/workspace/apps/web/dist
 COPY --from=builder /workspace/package.json ./package.json
 COPY --from=builder /workspace/node_modules ./node_modules
 COPY --from=builder /workspace/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /workspace/dist ./dist
+COPY --from=builder /workspace/apps/web/dist ./apps/web/dist
 COPY --from=builder /workspace/db/migrations ./db/migrations
-# pnpm's Fastify link is in apps/api/node_modules; compiled output lives in dist.
-RUN ln -s ../../../apps/api/node_modules /workspace/dist/apps/api/node_modules
 USER node
 EXPOSE 3000
 CMD ["node", "dist/apps/api/src/main.js"]

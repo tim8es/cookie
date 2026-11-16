@@ -32,6 +32,8 @@ for attempt in $(seq 1 90); do
   sleep 2
 done
 grep -q '"status":"ready"' /tmp/cookie-staging-ready.json
+# The compiled API serves the same static web directly for one-app Altare hosting.
+"${compose[@]}" exec -T api node -e "fetch('http://127.0.0.1:3000/').then(async (r) => { if (!r.ok || !(await r.text()).includes('<html')) process.exitCode=1 }).catch(() => process.exitCode=1)"
 curl --silent --fail "http://127.0.0.1:$COOKIE_HTTP_PORT/" | grep -qi '<html'
 status="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:$COOKIE_HTTP_PORT/v1/organizations/00000000-0000-4000-8000-000000000000/bookings")"
 [[ "$status" == "404" ]] || { echo "Unapproved booking route became public (HTTP $status)"; exit 1; }
