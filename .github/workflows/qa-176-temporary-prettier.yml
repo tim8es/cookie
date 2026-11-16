@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - qa/f1-workspace-role-revoke-read-race-20261116
+  pull_request:
+    branches:
+      - feature/f1-opaque-revocation-transaction-guard-20261116
 permissions:
   contents: read
 jobs:
