@@ -16,8 +16,27 @@ test("allows local imports and published contracts without grandfathering", () =
   assert.deepEqual(result.failures, []);
 });
 
+test("allows only a declared public index.js path for cross-package imports", () => {
+  const valid = report("import { enqueueOutbox } from '../../platform-db/src/index.js';");
+  assert.deepEqual(valid.failures, []);
+  const invalid = report("import { enqueueOutbox } from '../../platform-db/src/outbox.js';");
+  assert.equal(invalid.failures.length, 1);
+});
+
+test("prevents kernel and contracts importing even public business or platform entrypoints", () => {
+  for (const module of ["kernel", "contracts"]) {
+    const source = join(root, "packages", module, "src/index.ts");
+    const result = checkFileImports({
+      root,
+      file: source,
+      content: "import '../../platform-db/src/index.js';",
+    });
+    assert.equal(result.failures.length, 1);
+  }
+});
+
 test("rejects new deep imports of another domain and platform implementation", () => {
-  const result = report("import '../../platform-db/src/worker.js'; import '../../domain-scheduling/src/index.js';");
+  const result = report("import '../../platform-db/src/worker.js'; import '../../domain-scheduling/src/approval.js';");
   assert.equal(result.failures.length, 2);
 });
 
