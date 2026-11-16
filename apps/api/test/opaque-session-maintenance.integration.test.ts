@@ -308,6 +308,27 @@ test(
         ].join("\n"),
         [tenantId, identityId],
       );
+      // A disabled member can have many retained session rows; this path
+      // must respect the same batch cap as ordinary maintenance, even when
+      // a restrictive FK ultimately prevents membership deletion.
+      for (const suffix of ["old-a", "old-b"]) {
+        await pool.query(
+          `INSERT INTO cookie_identity.opaque_sessions
+           (token_sha256,telegram_exchange_sha256,tenant_id,identity_id,
+            issuer,audience,issued_at,expires_at,revoked_at)
+           VALUES ($1::bytea,$2::bytea,$3::uuid,$4::uuid,
+                   'synthetic','booking',
+                   clock_timestamp()-interval '4 hours',
+                   clock_timestamp()-interval '3 hours',
+                   clock_timestamp()-interval '3 hours')`,
+          [
+            createHash("sha256").update(tenantId + suffix).digest(),
+            createHash("sha256").update(identityId + suffix).digest(),
+            tenantId,
+            identityId,
+          ],
+        );
+      }
       await pool.query(
         "INSERT INTO cookie_identity.roles(tenant_id,id,base_type,display_name) VALUES($1,$2,'client','Synthetic')",
         [tenantId, roleId],
@@ -315,6 +336,21 @@ test(
       await pool.query(
         "INSERT INTO cookie_identity.role_assignments(tenant_id,id,identity_id,role_id) VALUES($1,$2,$3,$4)",
         [tenantId, assignmentId, identityId, roleId],
+      );
+      assert.deepEqual(
+        await maintenance.deleteInactiveMembership(tenantId, identityId),
+        { status: "retained", deletedSessions: 2 },
+        "the membership cleanup must be bounded to the configured batch size",
+      );
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT 1 FROM cookie_identity.opaque_sessions WHERE tenant_id=$1",
+            [tenantId],
+          )
+        ).rowCount,
+        1,
+        "one old session remains for a subsequent bounded pass",
       );
       assert.deepEqual(
         await maintenance.deleteInactiveMembership(tenantId, identityId),
@@ -328,7 +364,7 @@ test(
           )
         ).rowCount,
         1,
-        "FK failure rolls back any session deletion",
+        "FK failure rolls back the final batch of session deletion",
       );
       await pool.query(
         "DELETE FROM cookie_identity.role_assignments WHERE tenant_id=$1 AND id=$2",
