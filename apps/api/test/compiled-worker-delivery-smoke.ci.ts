@@ -199,7 +199,10 @@ async function main(): Promise<void> {
       }
       await sleep(75);
     }
-    assert.ok(delivered, "Compiled worker did not ACK its event before deadline");
+    assert.ok(
+      delivered,
+      "Compiled worker did not ACK its event before deadline",
+    );
     assert.deepEqual(delivered, {
       status: "delivered",
       attempts: 1,
@@ -219,7 +222,11 @@ async function main(): Promise<void> {
       10_000,
       "compiled worker graceful shutdown",
     );
-    assert.equal(shutdown.code, 0, "Compiled worker must exit cleanly on SIGTERM");
+    assert.equal(
+      shutdown.code,
+      0,
+      "Compiled worker must exit cleanly on SIGTERM",
+    );
     assert.deepEqual(await snapshot(eventId), delivered);
     assert.deepEqual(await snapshot(unrelatedId), {
       status: "pending",
