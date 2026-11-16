@@ -9,12 +9,7 @@ worker="dist/apps/api/src/synthetic-worker-main.js"
 [[ -f "$worker" ]] || { echo "Built synthetic worker entrypoint is missing"; exit 1; }
 
 log="$(mktemp)"
-worker_pid=""
 cleanup() {
-  if [[ -n "$worker_pid" ]]; then
-    kill -TERM "$worker_pid" 2>/dev/null || true
-    wait "$worker_pid" 2>/dev/null || true
-  fi
   rm -f "$log"
 }
 trap cleanup EXIT
@@ -36,15 +31,7 @@ assert_rejected env -u COOKIE_SYNTHETIC_WORKER DATABASE_URL="$TEST_DATABASE_URL"
 assert_rejected env COOKIE_SYNTHETIC_WORKER=enabled DATABASE_URL="postgresql://cookie_ci:cookie_ci@not-local.invalid:5432/cookie_ci" node "$worker"
 assert_rejected env COOKIE_SYNTHETIC_WORKER=enabled TEST_DATABASE_URL="postgresql://cookie_ci:cookie_ci@127.0.0.1:5432/not_cookie_ci" DATABASE_URL="$TEST_DATABASE_URL" node "$worker"
 
-COOKIE_SYNTHETIC_WORKER=enabled DATABASE_URL="$TEST_DATABASE_URL" node "$worker" >"$log" 2>&1 &
-worker_pid=$!
-sleep 1
-if ! kill -0 "$worker_pid" 2>/dev/null; then
-  echo "Compiled synthetic worker terminated before SIGTERM"
-  wait "$worker_pid" || true
-  exit 1
-fi
-kill -TERM "$worker_pid"
-wait "$worker_pid"
-worker_pid=""
-echo "Compiled synthetic worker: three fail-closed cases and SIGTERM shutdown passed."
+# The fixture harness uses tsx only to seed/check isolated PostgreSQL rows.
+# The process under test is always the compiled dist/ JavaScript entrypoint.
+pnpm exec tsx apps/api/test/compiled-worker-delivery-smoke.ci.ts
+echo "Compiled synthetic worker: configuration guards and actual PostgreSQL delivery passed."
