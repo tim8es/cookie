@@ -13,9 +13,19 @@ export type BookingAttemptState<Receipt, Slot> =
   | { phase: "denied"; reason: "unauthenticated" | "forbidden" }
   | {
       phase: "error";
-      reason: TransportFailureKind | "unverified-response" | "unexpected";
+      reason:
+        | TransportFailureKind
+        | "unverified-response"
+        | "unverified-conflict"
+        | "idempotency-key-reused"
+        | "unexpected";
       retryable: boolean;
     };
+
+export type VerifiedBookingConflict =
+  | "slot-unavailable"
+  | "idempotency-key-reused"
+  | "unknown";
 
 export interface BookingAttemptPort<Selection, Receipt, Slot> {
   /**
@@ -25,7 +35,14 @@ export interface BookingAttemptPort<Selection, Receipt, Slot> {
   create(selection: Selection, idempotencyKey: string): Promise<unknown>;
   /** Return null for anything other than a schema-validated Confirmed reply. */
   verifyConfirmed(response: unknown): Receipt | null;
-  /** Fetch server availability again only after an actual conflict. */
+  /**
+   * A generic HTTP 409 is not enough: the reviewed backend contract may use
+   * 409 both for BOOKING_CONFLICT and IDEMPOTENCY_KEY_REUSED. Only a verified
+   * slot-unavailable error may trigger an availability refresh.
+   * If not implemented or if verification throws, fail closed.
+   */
+  classifyConflict?(error: unknown): VerifiedBookingConflict;
+  /** Fetch server availability again only after a verified slot conflict. */
   refreshSlots(selection: Selection): Promise<readonly Slot[]>;
 }
 
@@ -76,7 +93,14 @@ export class BookingAttempt<Selection, Receipt, Slot> {
    */
   reset(): boolean {
     if (this.running) return false;
-    if (this.state.phase === "error" && this.state.retryable) return false;
+    if (
+      this.state.phase === "error" &&
+      (this.state.retryable ||
+        this.state.reason === "unverified-conflict" ||
+        this.state.reason === "idempotency-key-reused")
+    ) {
+      return false;
+    }
     this.active = null;
     this.state = { phase: "idle" };
     return true;
@@ -117,14 +141,31 @@ export class BookingAttempt<Selection, Receipt, Slot> {
           : { phase: "confirmed", receipt: verified };
     } catch (reason) {
       if (reason instanceof TransportFailure && reason.kind === "conflict") {
-        let slots: readonly Slot[] = [];
-        let refreshFailed = false;
+        let classification: VerifiedBookingConflict = "unknown";
         try {
-          slots = await this.port.refreshSlots(attempt.selection);
+          classification = this.port.classifyConflict?.(reason) ?? "unknown";
         } catch {
-          refreshFailed = true;
+          // A malformed or unsupported error body is not a verified slot conflict.
         }
-        this.state = { phase: "conflict", slots, refreshFailed };
+        if (classification === "slot-unavailable") {
+          let slots: readonly Slot[] = [];
+          let refreshFailed = false;
+          try {
+            slots = await this.port.refreshSlots(attempt.selection);
+          } catch {
+            refreshFailed = true;
+          }
+          this.state = { phase: "conflict", slots, refreshFailed };
+        } else {
+          this.state = {
+            phase: "error",
+            reason:
+              classification === "idempotency-key-reused"
+                ? "idempotency-key-reused"
+                : "unverified-conflict",
+            retryable: false,
+          };
+        }
       } else if (
         reason instanceof TransportFailure &&
         (reason.kind === "unauthenticated" || reason.kind === "forbidden")
