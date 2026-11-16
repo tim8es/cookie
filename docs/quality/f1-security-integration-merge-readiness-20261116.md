@@ -16,7 +16,7 @@
 
 These are **F1 synthetic engineering proofs**, not public production AuthN, operational delivery guarantees or real-customer acceptance. Existing open P0 issues remain independently release-blocking.
 
-## 2. BLOCKER: strict Workspace policy candidate #179 must be re-based without coverage loss
+## 2. Historical #179 coverage BLOCKER resolved by clean Draft #200; policy still undecided
 
 [Draft PR #179](https://github.com/tim8es/cookie/pull/179) current reviewed HEAD `cd689f6e80686de1a75489a75e804b83bdcde41b` (reviewed against `main` `3833803c554c4e4cd5593e215ed7bb12c494ea77`) advertises **15 changed paths** because it was built on an older session/identity stack before being retargeted to main. **Most old source and test blobs are identical to main**, so it is inaccurate to treat every listed path as a new runtime change.
 
@@ -27,7 +27,7 @@ The actual distinct runtime policy proposal is:
 
 **Concrete coverage regression in retargeted #179:** `apps/api/test/opaque-session-booking-revocation-qa.integration.test.ts` in current main has blob **`94d9b3999d36f36da6554b7d1a809f0cc47c1f1f`**, **336 lines / three modes** (bearer revoked, **expired**, Telegram unlink). #179 HEAD instead has the older blob **`e4ac865f55cd536af38067a175788dfe8b0fcda7`**, **306 lines / two modes**, omitting expiry and its negative side-effect checks. This is a **test-coverage downgrade if merged without reconciliation**, not proof of a new backend exploit. A blocking review comment is posted to #179.
 
-**Required correction:** reconstruct the strict candidate on **the current exact main** without replacing the merged three-mode #165 test; include only the two actual source changes, the original strict-role QA and relevant review docs. Verify diff, blob provenance, and exact merged-tree full F1 CI. Do **not** merge both obsolete combined Draft #182 and #179, and do not resurrect old #171 or #183 branches.
+**Resolution after review:** the old #179 was **closed without merging**. Replacement [Draft #200](https://github.com/tim8es/cookie/pull/200), reviewed HEAD `5476459b610f190c9c17cc1f80890f8125fc420c`, base `main` `59225edc69e190a9e189322e01f1eab0dfac64f5`, has **exactly five files**: the two source changes, the original strict-role regression (verified exact blob `342302318473e08746676cd9c475c1944856d7e1`), and two QA/decision documents. It does **not** replace `apps/api/test/opaque-session-booking-revocation-qa.integration.test.ts`, so the three-mode main coverage is preserved in its reviewed PR delta. [Full F1 CI #43932202389](https://github.com/tim8es/cookie/actions/runs/43932202389) **SUCCESS**: 103/103 unit, **66/66 real PG16 integration**, 46/46 web, including original unchanged strict-role regression PASS (~493 ms). This clears the **branch ancestry and coverage regression risk in #179** but does **not** accept the stricter policy or validate the final main merge after #193. Do not merge both obsolete combined Draft #182 and #179, nor resurrect old #171/#183.
 
 **Owner/security decision [#175](https://github.com/tim8es/cookie/issues/175) remains OPEN.** Strict transaction-scoped read serialization and documented MVCC snapshot/read-first are both viable policy choices; green tests on a candidate do not silently accept the stronger option. Explicitly record the semantics for Membership, RoleAssignment, Role and per-Location scope changes before implementation merge. Cover frontend capability/client-metadata invalidation on 403 and Organization/Location switches as a separate acceptance requirement [#66](https://github.com/tim8es/cookie/issues/66). The Workspace route exercised here is opt-in/synthetic, **not** mounted in the public production bootstrap.
 
@@ -41,15 +41,15 @@ The retry proves an earlier exact-HEAD green result **for the tested base**; it 
 
 | Gate | Required observable evidence | Status |
 | --- | --- | --- |
-| No security-regression coverage loss | Confirm three-mode bearer/expiry/unlink test retained byte-for-byte in final merge tree; review exact file delta for #179 | **BLOCKED** for old #179 branch |
+| No security-regression coverage loss | Old #179 closed; new #200 touches only five scoped files and retains all current three-mode bearer/expiry/unlink QA; verify final merge tree | **Candidate corrected in Draft #200; final merge still pending** |
 | Owner selects Workspace role snapshot contract | Accepted choice recorded in issue #175, including concurrency order + forbidden-cache behavior | **OPEN** |
-| Main+candidate combined CI | On **the final integrated head**, lint, Prettier, boundaries, typecheck, unit, real PG16 migration/integration and isolation/race, restore, compiled worker, Svelte/web, Chromium HTTP and browser evidence | **PENDING** for strict #179 candidate and all downstream merges; #193 itself is merged |
+| Main+candidate combined CI | On **the final integrated head**, lint, Prettier, boundaries, typecheck, unit, real PG16 migration/integration and isolation/race, restore, compiled worker, Svelte/web, Chromium HTTP and browser evidence | **#200 exact-head green** (#43932202389); **pending final integration on main after #193 and owner decision** |
 | Role/Booking security review | Reconcile [#113](https://github.com/tim8es/cookie/issues/113) P0 and [#165](https://github.com/tim8es/cookie/issues/165) P0 acceptance with the merged guards, independent reviewer and race matrix; do not mark PASS only from mock/synthetic production claims | **OPEN** |
 | Mandatory protected `main` quality gates | Verify that PR review and exact commit required checks are **enforced by repository settings**. Issue [#144](https://github.com/tim8es/cookie/issues/144) documents previous `protected:false` and inaccessible ruleset endpoint. An Actions workflow alone **cannot enforce PR-only merges**. | **OPEN / current account settings not reverified** |
 | CI launch reliability | [#164](https://github.com/tim8es/cookie/issues/164) intermittent Chromium CDP/DevToolsActivePort; isolate launcher lifecycle/health check, do not broadly retry/skip security assertions | **OPEN** |
 | F1 real delivery / legal gates | Real providers, customer PII, payment flows, commercial pilot, production deployment, full retention and consent policy | **NOT AUTHORIZED** |
 
-**Order:** (1) preserve merged main and block #179's stale QA replacement; (2) obtain #175 decision; (3) clean strict candidate only if accepted (otherwise document/test snapshot contract); (4) retain merged #193 and other existing proofs, adding only the approved policy implementation to a frozen current main; (5) get independent security review + fully green exact-merge CI and protected-main settings; (6) then consider closure of #113/#165. No production/pilot inference at any stage.
+**Order:** (1) preserve merged main and keep old #179 closed; use only clean #200 **if strict semantics are approved**; (2) obtain #175 decision; (3) accept and revalidate #200 only if strict option selected (otherwise document/test snapshot contract); (4) retain merged #193 and other existing proofs, adding only the approved policy implementation to a frozen current main; (5) get independent security review + fully green exact-merge CI and protected-main settings; (6) then consider closure of #113/#165. No production/pilot inference at any stage.
 
 ## Evidence discipline
 
