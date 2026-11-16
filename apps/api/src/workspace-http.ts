@@ -126,8 +126,12 @@ export function registerSyntheticWorkspaceReads(
       if (!actor) return reply;
       try {
         const result = await readTransaction(pool, async (client) => {
-          // Authenticated Cookie bearer and Telegram link must stay valid
-          // for this entire protected workspace read transaction.
+          // This response grants either booking.read or booking.create
+          // at each location; lock ALL contributing policy rows, rather than
+          // requiring one global permission, before evaluating the snapshot.
+          // Keep Membership/Role -> Telegram link -> Cookie session lock
+          // order consistent with mutating commands and revocation triggers.
+          await lockPolicyRows(client, actor);
           await assertActiveOpaqueSession(client, actor);
           // PoolClient is a single PostgreSQL connection: issue reads
           // sequentially to avoid overlapping queries on one client.
