@@ -315,7 +315,7 @@ async function scenario(cdp, origin, width, height) {
   await requireDom(cdp, name + " synthetic slots", "document.querySelector('.booking-form .slot-grid button')");
   await checkWidth(cdp, name + " booking");
   await checkLabeledControls(cdp, name + " booking");
-  await requireDom(cdp, name + " modular public hero", "document.querySelector('section.booking-hero .booking-hero-studio strong')?.textContent.includes('Студия Cookie')");
+  await requireDom(cdp, name + " modular public hero", "document.querySelector('section.booking-hero .booking-hero-studio strong')?.textContent.includes('Студия Smoke')");
   await captureEvidence(cdp, name, "02-booking");
   await click(cdp, ".booking-form .slot-grid button");
   await requireDom(cdp, name + " selected slot", "document.querySelector('.booking-form .slot-grid button[aria-pressed=true]')");
