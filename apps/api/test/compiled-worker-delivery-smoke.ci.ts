@@ -51,7 +51,7 @@ function startCompiledWorker(sslMode: "require" | "disable"): RunningWorker {
     output = (output + chunk.toString("utf8")).slice(-2_048);
   });
   const done = new Promise<ExitStatus>((finish) => {
-    child.once("exit", (code, signal) => finish({ code, signal }));
+    child.once("close", (code, signal) => finish({ code, signal }));
     child.once("error", () => finish({ code: -1, signal: null }));
   });
   return { child, done, stderr: () => output };
