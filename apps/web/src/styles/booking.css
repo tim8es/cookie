@@ -209,3 +209,57 @@
   .booking-summary-container.expanded .booking-summary-content { margin-top: 9px; }
   .booking-single-location { font-size: 12px; padding: 8px 10px; }
 }
+
+/* Curated presentation themes: synthetic organization appearance, never URL-sourced CSS. */
+.public-shell {
+  --salon-hero: #3d2a48;
+  --salon-ticket: #4e345a;
+  --salon-accent: #e0f2a5;
+  --salon-action: #4c3358;
+  --salon-action-hover: #35243f;
+  --salon-monogram-bg: #ede5ef;
+  --salon-monogram-ink: #4a3153;
+}
+.public-shell.salonThemeForest {
+  --salon-hero: #24483b;
+  --salon-ticket: #315646;
+  --salon-accent: #e4eeb9;
+  --salon-action: #275144;
+  --salon-action-hover: #19392e;
+  --salon-monogram-bg: #e3efe6;
+  --salon-monogram-ink: #275144;
+}
+.public-shell.salonThemeOcean {
+  --salon-hero: #23455e;
+  --salon-ticket: #30556d;
+  --salon-accent: #cce8f2;
+  --salon-action: #28516e;
+  --salon-action-hover: #1a394d;
+  --salon-monogram-bg: #e5eef5;
+  --salon-monogram-ink: #23455e;
+}
+.public-shell.salonThemeClay {
+  --salon-hero: #704234;
+  --salon-ticket: #805344;
+  --salon-accent: #f1dfa9;
+  --salon-action: #784736;
+  --salon-action-hover: #553025;
+  --salon-monogram-bg: #f4e9e2;
+  --salon-monogram-ink: #784736;
+}
+.public-shell .public-content .booking-head.booking-hero { background: var(--salon-hero); }
+.public-shell .public-content .booking-hero h1 em { color: var(--salon-accent); }
+.public-shell .public-header .salon-monogram {
+  background: var(--salon-monogram-bg); color: var(--salon-monogram-ink);
+}
+.public-shell .ticket-top { background: var(--salon-ticket); }
+.public-shell .ticket-mark span { background: var(--salon-accent); }
+.public-shell .slot-grid button[data-slot=button].selected {
+  background: var(--salon-action); border-color: var(--salon-action);
+}
+.public-shell .public-content button.book-submit[data-slot=button] {
+  background: var(--salon-action);
+}
+.public-shell .public-content button.book-submit[data-slot=button]:hover:not(:disabled) {
+  background: var(--salon-action-hover);
+}
