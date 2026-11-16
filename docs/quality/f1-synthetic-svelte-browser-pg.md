@@ -16,7 +16,7 @@ The synthetic PostgreSQL integration creates an additional UTC shift, starts the
 
 ## Guardrails and limitations
 
-- Form fields are synthetic and local. The browser test passes a synthetic owner bearer token via its localhost test-only fixture URL. This is **never** a safe way to deliver production tokens; normal production startup injects no verifier and Svelte's regular `api` mode continues to fail closed.
+- Form fields are synthetic and local. The browser test supplies its **synthetic-only bearer** through a Chrome DevTools `Page.addScriptToEvaluateOnNewDocument` injection before the test page loads; the token is never placed in the URL, browser history, referrer or test diagnostics. The fixture rejects a `syntheticBearer` query parameter; the browser driver also checks requests for token leakage in URLs. This CDP mechanism is **test-only** and not a pattern for production credentials. Normal production startup injects no verifier and Svelte's regular `api` mode continues to fail closed.
 - The borrowed `BookingForm` retains DEMO copy and preview price; this isolated harness is explicitly marked as a database-writing *test fixture* in its own header. Do not mistake the fixture for a live customer reservation page or expose it as a public route.
 - All HTTP requests to booking backend are via Vite's local same-origin `/v1` proxy and local Fastify. No remote origins, real PII, payments, SMS, Telegram, OAuth or external systems.
 - This is **real Svelte component → browser fetch → local HTTP → PG**, but **not the shipping `App.svelte` flow** and not full F1 acceptance #23. It is a technical integration test of UI components/adapter composition.
