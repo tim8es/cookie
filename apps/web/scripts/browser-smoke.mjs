@@ -415,7 +415,11 @@ async function scenario(cdp, origin, width, height) {
   await requireDom(cdp, name + " dialog initial focus", "document.activeElement?.classList.contains('close-button')");
   await captureEvidence(cdp, name, "05-detail");
   await keyboard(cdp, "Tab", 9);
-  await requireDom(cdp, name + " dialog focus second action", "document.activeElement?.classList.contains('btn-wide')");
+  await requireDom(cdp, name + " dialog reschedule action", "document.activeElement?.classList.contains('calendar-demo-reschedule')");
+  await keyboard(cdp, "Tab", 9);
+  await requireDom(cdp, name + " dialog cancel action", "document.activeElement?.classList.contains('calendar-demo-cancel')");
+  await keyboard(cdp, "Tab", 9);
+  await requireDom(cdp, name + " dialog last action", "document.activeElement?.classList.contains('btn-wide')");
   await keyboard(cdp, "Tab", 9);
   await requireDom(cdp, name + " dialog Tab wrapped", "document.activeElement?.classList.contains('close-button')");
   await keyboard(cdp, "Tab", 9, 8);
@@ -425,11 +429,33 @@ async function scenario(cdp, origin, width, height) {
     !(await evaluate(cdp, "Boolean(document.querySelector('[role=dialog]'))")));
   await requireDom(cdp, name + " dialog focus restored", "document.activeElement?.classList.contains('calendar-event')");
 
+  // A real interactive owner workflow in mock mode: reschedule the existing
+  // session-local record; never claim an actual HTTP reservation.
+  await click(cdp, ".calendar-event");
+  await click(cdp, ".calendar-demo-reschedule");
+  await requireDom(cdp, name + " move UI", "document.querySelector('.calendar-move-form select')");
+  await requireDom(cdp, name + " move fixture options", "document.querySelector('.calendar-move-form select option[value=\"12:00\"]')");
+  await checkWidth(cdp, name + " move UI");
+  await fill(cdp, ".calendar-move-form select", "12:00", "change");
+  await click(cdp, ".calendar-move-save");
+  await requireDom(cdp, name + " rescheduled event", "document.querySelector('.calendar-event .calendar-event-time')?.textContent.includes('12:00')");
+  await requireDom(cdp, name + " rescheduled storage", "JSON.parse(sessionStorage.getItem('cookie.frontend-demo.v1')).bookings[0].time === '12:00'");
+
   await click(cdp, ".segmented button:first-child");
   await requireDom(cdp, name + " calendar day", "document.querySelector('.day-timeline .timeline-entry')");
   await requireDom(cdp, name + " staff-time day board", "document.querySelector('.calendar-day-board .resource-visit')");
 
   await captureEvidence(cdp, name, "06-calendar-day");
+  // Two-step demo cancellation releases the fixture event and leaves audit-like
+  // session history visible. This is deliberately not a backend operation.
+  await click(cdp, width <= 900 ? ".calendar-day-list .timeline-entry" : ".calendar-day-board .resource-visit");
+  await click(cdp, ".calendar-demo-cancel");
+  await requireDom(cdp, name + " cancellation confirm", "document.querySelector('.calendar-cancel-confirm')?.textContent.includes('Отменить')");
+  await click(cdp, ".calendar-confirm-cancel");
+  await requireDom(cdp, name + " cancelled history", "document.querySelector('.calendar-cancelled-history .calendar-cancelled-entry')?.textContent.includes('Отменена')");
+  await requireDom(cdp, name + " active visit cleared", "document.querySelectorAll('.calendar-event, .calendar-day-board .resource-visit').length === 0");
+  await requireDom(cdp, name + " persisted cancellation", "JSON.parse(sessionStorage.getItem('cookie.frontend-demo.v1')).bookings[0].status === 'demo-cancelled'");
+  await checkWidth(cdp, name + " cancellation history");
   await cdp.send("Page.reload", { ignoreCache: true });
   await requireDom(cdp, name + " restored synthetic booking", "(() => { const saved = sessionStorage.getItem('cookie.frontend-demo.v1'); return !!saved && JSON.parse(saved).bookings?.length === 1; })()");
   if (width <= 680) {
@@ -465,7 +491,7 @@ async function scenario(cdp, origin, width, height) {
   await requireDom(cdp, name + " reset", "document.querySelector('.welcome-form')");
   assert.equal(await evaluate(cdp, "sessionStorage.getItem('cookie.frontend-demo.v1')"), null);
 
-  console.log("PASS browser viewport " + name + ": onboarding → booking → calendar → dialog → reload → preview → reset");
+  console.log("PASS browser viewport " + name + ": onboarding → booking → move → cancel → history → reload → preview → reset");
 }
 
 async function main() {
