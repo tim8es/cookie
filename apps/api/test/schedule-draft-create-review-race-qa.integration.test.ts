@@ -199,6 +199,8 @@ test(
       const winnerIndex = settled.findIndex((item) => item.status === "fulfilled");
       const winner = settled[winnerIndex];
       const loser = settled[1 - winnerIndex];
+      assert.ok(winner);
+      assert.ok(loser);
       assert.equal(winner.status, "fulfilled");
       assert.equal(loser.status, "rejected");
       if (winner.status !== "fulfilled" || loser.status !== "rejected") {
@@ -208,13 +210,17 @@ test(
         (loser.reason as { code?: string }).code,
         "DRAFT_CREATE_APPROVAL_ALREADY_DECIDED",
       );
+      const winningInput = attempts[winnerIndex];
+      const losingInput = attempts[1 - winnerIndex];
+      assert.ok(winningInput);
+      assert.ok(losingInput);
       assert.deepEqual(
-        await reviewShiftDraftCreateInternal(pool, attempts[winnerIndex], allow),
+        await reviewShiftDraftCreateInternal(pool, winningInput, allow),
         winner.value,
         "the winning decision must replay the identical persisted receipt",
       );
       await assert.rejects(
-        reviewShiftDraftCreateInternal(pool, attempts[1 - winnerIndex], allow),
+        reviewShiftDraftCreateInternal(pool, losingInput, allow),
         { code: "DRAFT_CREATE_APPROVAL_ALREADY_DECIDED" },
       );
 
