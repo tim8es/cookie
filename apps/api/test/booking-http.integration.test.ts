@@ -38,28 +38,41 @@ test(
       startAt: "2027-04-12T10:00:00Z",
     };
     let entitlementChecks = 0;
+    let cancellationDenied = false;
+    let rescheduleDenied = false;
+    const verifier = {
+      verifyBearerToken: async (token: string) => {
+        const identities: Record<string, string> = {
+          "synthetic-owner": owner,
+          "synthetic-admin": admin,
+          "synthetic-outsider": outsider,
+        };
+        const identityId = identities[token];
+        return identityId
+          ? {
+              identityId,
+              tenantId: tenant,
+              expiresAtUnixSeconds: Math.floor(Date.now() / 1000) + 120,
+            }
+          : null;
+      },
+    };
     const app = createApp(pool, {
       syntheticBookingRoutes: {
         pool,
-        verifier: {
-          verifyBearerToken: async (token) => {
-            const identities: Record<string, string> = {
-              "synthetic-owner": owner,
-              "synthetic-admin": admin,
-              "synthetic-outsider": outsider,
-            };
-            const identityId = identities[token];
-            return identityId
-              ? {
-                  identityId,
-                  tenantId: tenant,
-                  expiresAtUnixSeconds: Math.floor(Date.now() / 1000) + 120,
-                }
-              : null;
-          },
-        },
+        verifier,
         assertEntitled: async () => {
           entitlementChecks++;
+        },
+      },
+      syntheticBookingMutations: {
+        pool,
+        verifier,
+        assertMayCancel: async () => {
+          if (cancellationDenied) throw new Error("Synthetic cutoff denied");
+        },
+        assertMayReschedule: async () => {
+          if (rescheduleDenied) throw new Error("Synthetic cutoff denied");
         },
       },
     });
@@ -311,10 +324,116 @@ test(
         receipts: "1",
         events: "1",
       });
+
+      // Mutations are an independent opt-in business-side surface. Their
+      // deadlines are intentionally injected synthetic policies, not defaults.
+      const move = (
+        key: string,
+        body: unknown = { newStartAt: "2027-04-12T14:00:00Z" },
+        token = "synthetic-owner",
+      ) =>
+        app.inject({
+          method: "POST",
+          url: `${base}/bookings/${receipt.bookingId}/reschedule`,
+          headers: {
+            authorization: `Bearer ${token}`,
+            "idempotency-key": key,
+          },
+          payload: body,
+        });
+      const cancel = (
+        key: string,
+        body: unknown = {},
+        token = "synthetic-owner",
+      ) =>
+        app.inject({
+          method: "POST",
+          url: `${base}/bookings/${receipt.bookingId}/cancel`,
+          headers: {
+            authorization: `Bearer ${token}`,
+            "idempotency-key": key,
+          },
+          payload: body,
+        });
+
+      assert.equal((await move("no-id-reassignment", { newStartAt: "2027-04-12T14:00:00Z", staffId: staff })).statusCode, 400);
+      assert.equal((await cancel("no-body-price", { priceKopecks: "0" })).statusCode, 400);
+      assert.equal((await move("scoped-admin", undefined, "synthetic-admin")).statusCode, 403);
+      assert.equal((await cancel("scoped-admin", undefined, "synthetic-admin")).statusCode, 403);
+
+      rescheduleDenied = true;
+      const deniedMove = await move("denied-move");
+      assert.equal(deniedMove.statusCode, 403);
+      assert.equal(deniedMove.json().error.code, "RESCHEDULE_POLICY_DENIED");
+      rescheduleDenied = false;
+
+      const outsideSchedule = await move("outside-shift", { newStartAt: "2027-04-12T20:00:00Z" });
+      assert.equal(outsideSchedule.statusCode, 409);
+      assert.equal(outsideSchedule.json().error.code, "BOOKING_CONFLICT");
+      const intact = await app.inject({ method: "GET", url: `${base}/bookings/${receipt.bookingId}`, headers: ownerHeader });
+      assert.equal(intact.json().startAt, receipt.startAt);
+
+      const moved = await move("successful-move");
+      assert.equal(moved.statusCode, 200);
+      assert.equal(moved.json().bookingId, receipt.bookingId);
+      assert.equal(moved.json().status, "Confirmed");
+      assert.equal(moved.json().startAt, "2027-04-12T14:00:00.000Z");
+      assert.equal(moved.json().priceKopecks, "150000");
+      assert.deepEqual((await move("successful-move")).json(), moved.json());
+      assert.equal(
+        (await move("successful-move", { newStartAt: "2027-04-12T15:00:00Z" })).json().error.code,
+        "IDEMPOTENCY_KEY_REUSED",
+      );
+
+      cancellationDenied = true;
+      const deniedCancel = await cancel("denied-cancel");
+      assert.equal(deniedCancel.statusCode, 403);
+      assert.equal(deniedCancel.json().error.code, "CANCELLATION_POLICY_DENIED");
+      cancellationDenied = false;
+
+      const cancelled = await cancel("successful-cancel");
+      assert.equal(cancelled.statusCode, 200);
+      assert.equal(cancelled.json().status, "CancelledByBusiness");
+      assert.deepEqual((await cancel("successful-cancel")).json(), cancelled.json());
+      const afterCancel = await app.inject({ method: "GET", url: `${base}/bookings/${receipt.bookingId}`, headers: ownerHeader });
+      assert.equal(afterCancel.json().status, "CancelledByBusiness");
+      // Historical create receipt never resurrects an already-cancelled booking.
+      assert.deepEqual((await create(winningKey)).json(), receipt);
+      assert.equal((await cancel("new-cancel-key")).json().error.code, "BOOKING_NOT_CONFIRMED");
+
+      // The successful cancellation releases the staff's protected range.
+      const rebook = await create("after-cancel-new-create", { ...createBody, startAt: "2027-04-12T14:00:00Z" });
+      assert.equal(rebook.statusCode, 201);
+      assert.notEqual(rebook.json().bookingId, receipt.bookingId);
+      const mutationLedger = await pool.query<{
+        bookings: string;
+        receipts: string;
+        events: string;
+        cancels: string;
+        reschedules: string;
+      }>(
+        `SELECT
+          (SELECT count(*)::text FROM cookie_booking.bookings WHERE tenant_id=$1) AS bookings,
+          (SELECT count(*)::text FROM cookie_booking.command_receipts WHERE tenant_id=$1) AS receipts,
+          (SELECT count(*)::text FROM cookie_jobs.outbox_events WHERE tenant_id=$1) AS events,
+          (SELECT count(*)::text FROM cookie_booking.booking_state_audit WHERE tenant_id=$1) AS cancels,
+          (SELECT count(*)::text FROM cookie_booking.time_change_audit WHERE tenant_id=$1) AS reschedules`,
+        [tenant],
+      );
+      assert.deepEqual(mutationLedger.rows[0], {
+        bookings: "2",
+        receipts: "4",
+        events: "4",
+        cancels: "1",
+        reschedules: "1",
+      });
+
     } finally {
       await app.close();
       const tables = [
         "cookie_booking.command_receipts",
+        "cookie_booking.booking_state_audit",
+        "cookie_booking.time_change_audit",
         "cookie_jobs.outbox_events",
         "cookie_booking.bookings",
         "cookie_identity.authorization_audit",
