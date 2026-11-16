@@ -33,3 +33,8 @@ No random sleeps. The lock timeout only bounds the rival SQL attempt after expli
 - #165 remains confirmed RED on [QA PR #162](https://github.com/tim8es/cookie/pull/162) with [real PostgreSQL 16 CI](https://github.com/tim8es/cookie/actions/runs/43905245695).
 - #113 remains open for full authorization and session-revocation safety. #144 remains a branch-governance blocker.
 - No production rollout, commercial pilot, real PII, real channel, or payments authorized.
+
+
+## Parent branch moved after first PASS
+
+The parent implementation [PR #166](https://github.com/tim8es/cookie/pull/166) advanced from `426f1cbb9ac04c56c6c12e8b15d0780e03b99bfe` to `8f1136a78da30b49893ebb43111d9a38f13d53c9` after the initial QA test was authored. Its intervening commit removes a duplicate 133-line positive-path test from the parent's `worker-dispatch-authority-lock.integration.test.ts`, not this independent QA test. Revalidate this child against the latest parent branch before review/merge; the prior green run proves only the code composition actually executed in that run. The child changes must remain limited to its QA test and evidence file.
