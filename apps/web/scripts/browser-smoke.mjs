@@ -473,6 +473,24 @@ async function scenario(cdp, origin, width, height) {
   await checkWidth(cdp, name + " restored home");
   await checkLabeledControls(cdp, name + " workspace");
   await captureEvidence(cdp, name, "07-workspace");
+
+  // Appearance edits stay synthetic, persist in this tab, and theme the same public UI.
+  await click(cdp, ".nav-links button:nth-child(7)");
+  await requireDom(cdp, name + " appearance editor", "document.querySelector('.section-head h1')?.textContent === 'Оформление'");
+  await checkWidth(cdp, name + " appearance");
+  await checkLabeledControls(cdp, name + " appearance");
+  await click(cdp, ".appearance-presets button:nth-child(2)");
+  await fill(cdp, ".appearance-introduction-field textarea", "Добро пожаловать на запись", "input");
+  await requireDom(cdp, name + " live appearance preview", "getComputedStyle(document.querySelector('.appearance-preview-hero')).backgroundColor === 'rgb(36, 72, 59)'");
+  await captureEvidence(cdp, name, "14-appearance-preview");
+  await submitValidForm(cdp, ".appearance-editor form");
+  await requireDom(cdp, name + " persisted synthetic appearance", "JSON.parse(sessionStorage.getItem('cookie.frontend-demo.v1')).appearance?.theme === 'forest'");
+  await click(cdp, ".appearance-open");
+  await requireDom(cdp, name + " themed booking", "document.querySelector('.public-shell.salonThemeForest .booking-hero-copy p')?.textContent.includes('Добро пожаловать на запись')");
+  await requireDom(cdp, name + " theme applied to public hero", "getComputedStyle(document.querySelector('.public-content .booking-hero')).backgroundColor === 'rgb(36, 72, 59)'");
+  await captureEvidence(cdp, name, "15-themed-booking");
+  await click(cdp, ".public-demo-back");
+  await requireDom(cdp, name + " returned to demo workspace", "document.querySelector('.section-head h1')?.textContent !== 'Оформление'");
   // Owner forms remain screen-local and never call the actual booking API.
   await click(cdp, ".nav-links button:nth-child(6)");
   await requireDom(cdp, name + " locations", "document.querySelector('.section-head h1')?.textContent === 'Филиалы'");
