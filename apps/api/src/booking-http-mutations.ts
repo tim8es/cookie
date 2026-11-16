@@ -12,7 +12,10 @@ import {
   type AssertBookingMayReschedule,
 } from "../../../packages/domain-booking/src/reschedule.js";
 import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/authorization.js";
-import { type BearerSessionVerifier, verifyTenantActor } from "./session-context.js";
+import {
+  type BearerSessionVerifier,
+  verifyTenantActor,
+} from "./session-context.js";
 
 /**
  * Strictly opt-in F1 business-side mutations. Both transaction-level policy
@@ -25,7 +28,8 @@ export interface SyntheticBookingMutationDependencies {
   readonly assertMayReschedule: AssertBookingMayReschedule;
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UTC_MINUTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/;
 type Params = { tenantId: string; bookingId: string };
 type RescheduleBody = { newStartAt: string };
@@ -42,11 +46,18 @@ function validKey(key: unknown): key is string {
 function validReschedule(body: unknown): body is RescheduleBody {
   if (!body || typeof body !== "object" || Array.isArray(body)) return false;
   const values = body as Record<string, unknown>;
-  if (Object.keys(values).length !== 1 || typeof values.newStartAt !== "string" ||
-      !UTC_MINUTE.test(values.newStartAt)) return false;
+  if (
+    Object.keys(values).length !== 1 ||
+    typeof values.newStartAt !== "string" ||
+    !UTC_MINUTE.test(values.newStartAt)
+  )
+    return false;
   const timestamp = Date.parse(values.newStartAt);
-  return Number.isFinite(timestamp) &&
-    new Date(timestamp).toISOString().slice(0, 19) === values.newStartAt.slice(0, 19);
+  return (
+    Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 19) ===
+      values.newStartAt.slice(0, 19)
+  );
 }
 
 function failDomain(error: unknown, reply: ReplyPort): unknown {
@@ -98,13 +109,21 @@ export function registerSyntheticBookingMutations(
         verifier,
       );
       if (!verified.actor) {
-        return replyError(reply, verified.status, verified.error === "forbidden" ? "ACCESS_DENIED" : "UNAUTHENTICATED");
+        return replyError(
+          reply,
+          verified.status,
+          verified.error === "forbidden" ? "ACCESS_DENIED" : "UNAUTHENTICATED",
+        );
       }
-      if (!UUID.test(request.params.bookingId) ||
-          !validKey(request.headers["idempotency-key"]) ||
-          (request.body !== undefined && (request.body === null ||
-            typeof request.body !== "object" || Array.isArray(request.body) ||
-            Object.keys(request.body).length !== 0))) {
+      if (
+        !UUID.test(request.params.bookingId) ||
+        !validKey(request.headers["idempotency-key"]) ||
+        (request.body !== undefined &&
+          (request.body === null ||
+            typeof request.body !== "object" ||
+            Array.isArray(request.body) ||
+            Object.keys(request.body).length !== 0))
+      ) {
         return replyError(reply, 400, "INVALID_REQUEST");
       }
       try {
@@ -133,11 +152,17 @@ export function registerSyntheticBookingMutations(
         verifier,
       );
       if (!verified.actor) {
-        return replyError(reply, verified.status, verified.error === "forbidden" ? "ACCESS_DENIED" : "UNAUTHENTICATED");
+        return replyError(
+          reply,
+          verified.status,
+          verified.error === "forbidden" ? "ACCESS_DENIED" : "UNAUTHENTICATED",
+        );
       }
-      if (!UUID.test(request.params.bookingId) ||
-          !validKey(request.headers["idempotency-key"]) ||
-          !validReschedule(request.body)) {
+      if (
+        !UUID.test(request.params.bookingId) ||
+        !validKey(request.headers["idempotency-key"]) ||
+        !validReschedule(request.body)
+      ) {
         return replyError(reply, 400, "INVALID_REQUEST");
       }
       try {
