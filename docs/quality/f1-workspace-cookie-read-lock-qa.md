@@ -31,3 +31,7 @@ Run full F1 CI on exact PR HEAD with lint, format, typecheck, unit, real Postgre
 ## Reproducibility
 
 Only a QA documentation evidence update follows the proven test-code SHA above; the source, checkpoints and assertions are unchanged. The final documentation-only HEAD requires its own full CI success before marking that latest exact head green. The first CI was halted at Prettier before SQL and does not constitute a security regression; the test was formatted byte-for-byte using the repository's own pinned Prettier, and the temporary formatter diagnostic workflow was deleted from the final diff. Keep PR Draft, no main merge or production claims. The read-first case complements revoke-first QA #183 and does not decide strict role-read policy #175.
+
+## Финальная сверка с main, 16 ноября 2026
+
+Этот QA PR теперь основан на `main` `e931b70fa06762791093d691edb9cc4bc9fd6d90`: в нём объединены обе последовательности revoke-first Workspace #190 и положительные Cancel/Reschedule #188, браузерный Booking #152 и внутренний Identity retention #189. Сценарий **read-first** (GET сначала получает link/session FOR SHARE, затем отзыв должен ждать COMMIT, SQLSTATE `55P03`, после отзыва следующий GET = 401) сохранён без изменения исходного QA-кода. Прежний [CI #43928213397](https://github.com/tim8es/cookie/actions/runs/43928213397) зелёный на старой базе и не подтверждает эту композицию; данный документационный коммит запускает новый полный F1 CI. Строгая свежесть Role policy по #175 не принимается автоматически, production не включён.
