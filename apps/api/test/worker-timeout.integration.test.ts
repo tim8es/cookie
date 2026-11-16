@@ -28,7 +28,10 @@ test(
     let eventId = "";
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
-      await pool.query("INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)", [owner]);
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [owner],
+      );
       await pool.query(
         `INSERT INTO cookie_tenancy.organizations(id, owner_identity_id, display_name)
          VALUES($1::uuid, $2::uuid, 'Synthetic bounded worker')`,
@@ -58,7 +61,13 @@ test(
           async (lease, signal) => {
             calls++;
             assert.equal(lease.id, eventId);
-            signal.addEventListener("abort", () => { aborted = true; }, { once: true });
+            signal.addEventListener(
+              "abort",
+              () => {
+                aborted = true;
+              },
+              { once: true },
+            );
             await new Promise<void>(() => {});
           },
           {
@@ -75,7 +84,10 @@ test(
       );
       assert.equal(calls, 1, "a timed-out worker must not start another task");
       assert.equal(aborted, true);
-      assert.doesNotMatch(JSON.stringify(observations), /synthetic|tenant|token|payload/);
+      assert.doesNotMatch(
+        JSON.stringify(observations),
+        /synthetic|tenant|token|payload/,
+      );
 
       const leased = await pool.query<{
         status: string;
@@ -114,9 +126,18 @@ test(
       assert.equal(delivered.rows[0]?.attempts, 2);
     } finally {
       try {
-        await pool.query("DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid", [tenantId]);
-        await pool.query("DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid", [tenantId]);
-        await pool.query("DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [owner]);
+        await pool.query(
+          "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid",
+          [tenantId],
+        );
+        await pool.query(
+          "DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid",
+          [tenantId],
+        );
+        await pool.query(
+          "DELETE FROM cookie_identity.identities WHERE id=$1::uuid",
+          [owner],
+        );
       } finally {
         await pool.end();
       }
@@ -138,7 +159,10 @@ test(
     let eventId = "";
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
-      await pool.query("INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)", [owner]);
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [owner],
+      );
       await pool.query(
         `INSERT INTO cookie_tenancy.organizations(id, owner_identity_id, display_name)
          VALUES($1::uuid, $2::uuid, 'Synthetic graceful worker')`,
@@ -146,12 +170,14 @@ test(
       );
       const client = await pool.connect();
       try {
-        eventId = (await enqueueOutbox(client, {
-          tenantId,
-          dedupeKey: "bounded-worker-success",
-          topic: "test.synthetic",
-          payload: { synthetic: true },
-        })).id;
+        eventId = (
+          await enqueueOutbox(client, {
+            tenantId,
+            dedupeKey: "bounded-worker-success",
+            topic: "test.synthetic",
+            payload: { synthetic: true },
+          })
+        ).id;
       } finally {
         client.release();
       }
@@ -171,7 +197,12 @@ test(
           busyDelayMs: 10,
         },
       );
-      assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0, stale: 0 });
+      assert.deepEqual(result, {
+        claimed: 1,
+        delivered: 1,
+        failed: 0,
+        stale: 0,
+      });
       const after = await pool.query<{ status: string }>(
         "SELECT status FROM cookie_jobs.outbox_events WHERE id=$1::uuid",
         [eventId],
@@ -179,9 +210,18 @@ test(
       assert.equal(after.rows[0]?.status, "delivered");
     } finally {
       try {
-        await pool.query("DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid", [tenantId]);
-        await pool.query("DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid", [tenantId]);
-        await pool.query("DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [owner]);
+        await pool.query(
+          "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid",
+          [tenantId],
+        );
+        await pool.query(
+          "DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid",
+          [tenantId],
+        );
+        await pool.query(
+          "DELETE FROM cookie_identity.identities WHERE id=$1::uuid",
+          [owner],
+        );
       } finally {
         await pool.end();
       }
