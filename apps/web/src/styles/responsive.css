@@ -41,8 +41,7 @@
   .public-brand strong { font-size: 21px; }
   .public-brand small { font-size: 9px; }
   .preview-stamp { display: none; }
-  .public-header button.public-back[data-slot=button] { border-radius: 8px; padding: 0 10px; height: 35px; font-size: 11px; }
-  .public-demo-notice { font-size: 10px; min-height: 28px; }
+  .public-demo-notice { padding: 4px 13px; font-size: 11px; min-height: 40px; }
   .content.public-content { padding: 17px 13px 10px; }
   .public-content .booking-head.booking-hero { min-height: 190px; padding: 25px 23px 23px; margin-bottom: 14px; border-radius: var(--cookie-radius-panel); }
   .booking-hero-section { font-size: 10px; }
@@ -70,6 +69,7 @@
 }
 @media(max-width:400px) {
   .public-brand-type small { display: none; }
+  .public-service-label { font-size: 11px; }
   .public-header { padding: 0 13px; }
   .content.public-content { padding: 13px 10px; }
   .public-content .booking-head.booking-hero { padding: 22px 20px; min-height: 176px; }
