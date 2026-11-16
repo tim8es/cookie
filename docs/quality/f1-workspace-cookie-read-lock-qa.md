@@ -1,6 +1,6 @@
 # F1 QA: protected Workspace GET must hold session/link authority locks until COMMIT
 
-**Status: PENDING real PostgreSQL 16 CI.** QA-only regression based on `main` SHA `a26807dbcc4bccb21c4ef7ffe68e20f140ce793d`. No backend, workflow, migration or production changes.
+**Status: PASS** — initial exact test-head SHA `620efbd594ad309178b4c9c4c41d7423935aeb92`, [full F1 CI #43927730725](https://github.com/tim8es/cookie/actions/runs/43927730725) **SUCCESS**: 103/103 unit, **62/62 real PostgreSQL 16 integration**, 46/46 web, lint/Prettier/typecheck, migration/backup/restore, compiled worker, API+Svelte build, Chromium browser smoke. The exact two-mode `Workspace HTTP read retains bearer/link authorization locks until its transaction commits` regression PASS (~905 ms). QA-only regression based on `main` SHA `a26807dbcc4bccb21c4ef7ffe68e20f140ce793d`. No backend, workflow, migration or production changes.
 
 ## Distinct risk / contract
 
@@ -27,3 +27,7 @@ TEST_DATABASE_URL=postgresql://cookie_ci:cookie_ci@127.0.0.1:5432/cookie_ci \
 ```
 
 Run full F1 CI on exact PR HEAD with lint, format, typecheck, unit, real PostgreSQL migrations/integration, backup/restore, worker, API+Svelte build and Chromium browser smoke. If formatting or fixtures fail before the asserted lock timeout, this is a *test defect*, not evidence of a security regression. Keep Draft until independent security review / #165 / #113 / #144 main merge policies.
+
+## Reproducibility
+
+Only a QA documentation evidence update follows the proven test-code SHA above; the source, checkpoints and assertions are unchanged. The final documentation-only HEAD requires its own full CI success before marking that latest exact head green. The first CI was halted at Prettier before SQL and does not constitute a security regression; the test was formatted byte-for-byte using the repository's own pinned Prettier, and the temporary formatter diagnostic workflow was deleted from the final diff. Keep PR Draft, no main merge or production claims. The read-first case complements revoke-first QA #183 and does not decide strict role-read policy #175.
