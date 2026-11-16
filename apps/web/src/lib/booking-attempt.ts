@@ -1,4 +1,4 @@
-import { TransportFailure, type TransportFailureKind } from "./transport";
+import { TransportFailure, type TransportFailureKind } from "./transport.js";
 
 /**
  * Frontend-only state for a single CreateBooking attempt. These are not wire

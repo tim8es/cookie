@@ -1,5 +1,5 @@
-import type { BookingAttemptState } from "./booking-attempt";
-import type { SlotView } from "./model";
+import type { BookingAttemptState } from "./booking-attempt.js";
+import type { SlotView } from "./model.js";
 
 /**
  * Presentation-only receipt populated by a reviewed, schema-validating server
