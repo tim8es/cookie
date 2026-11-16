@@ -61,8 +61,7 @@ async function expectRevocationBlocked(
     await client.query("SET LOCAL lock_timeout = '150ms'");
     await assert.rejects(
       client.query(statement, params),
-      (error: unknown) =>
-        (error as { code?: string }).code === "55P03",
+      (error: unknown) => (error as { code?: string }).code === "55P03",
     );
     await client.query("ROLLBACK");
   } finally {
@@ -142,14 +141,8 @@ test(
 
       const first = token();
       await insertSession(first, linkId);
-      await expectDenied(
-        pool,
-        authority(first, randomUUID(), identityId),
-      );
-      await expectDenied(
-        pool,
-        authority(first, tenantId, randomUUID()),
-      );
+      await expectDenied(pool, authority(first, randomUUID(), identityId));
+      await expectDenied(pool, authority(first, tenantId, randomUUID()));
       await expectDenied(pool, {
         ...authority(first, tenantId, identityId),
         audience: "wrong-audience",
@@ -259,10 +252,7 @@ test(
         ].join("\n"),
         [tenantId, identityId],
       );
-      await expectDenied(
-        pool,
-        authority(third, tenantId, identityId),
-      );
+      await expectDenied(pool, authority(third, tenantId, identityId));
     } finally {
       if (transaction) {
         await transaction.query("ROLLBACK").catch(() => undefined);
