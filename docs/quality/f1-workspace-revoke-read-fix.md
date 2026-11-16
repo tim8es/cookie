@@ -17,3 +17,9 @@ A revoked role that commits first must deny, without metadata. If the protected 
 The independent, previously RED `apps/api/test/workspace-role-revoke-read-qa.integration.test.ts` is copied **byte-for-byte** from QA #176, without weakening assertions, into this isolated source-fix branch so full real-PostgreSQL CI can verify it. The same test must be independently rerun against the final merged base. This does not prove all possible deadlock interleavings or authorize public/customer data access; #113 and #165 remain security gates.
 
 Mandatory CI: exact-head lint/Prettier/TypeScript, all unit/PG migrations and integration (including QA #176), backup/restore, worker smoke, Svelte/browser smoke. No production deployment/real data/paid provider.
+
+## Consolidated policy-candidate PR on current main (2026-11-16)
+
+This source branch has been retargeted from superseded canonical #173 to current `main` commit `3833803c554c4e4cd5593e215ed7bb12c494ea77`, after successful Booking #165 fixes, consolidated independent QA, Outbox/CI and 409 browser checks. All existing strict-contract policy locking and independent role revoke-read regression assertions remain unchanged; a new exact-head full F1 CI run must verify the current merged base.
+
+The strict policy is still **PROPOSED, not accepted**: [Issue #175](https://github.com/tim8es/cookie/issues/175) requires the product/security owner to choose transaction-linearizable Workspace reads vs a documented MVCC read-first snapshot policy, plus UI capability cache clearing on forbidden results and tenant switches. This branch is a single staged candidate replacing duplicate old-base #182 and QA-only #176; keep Draft, **do not merge into main until #175 is resolved**. No production/real Telegram/PII/payment/pilot permission.
