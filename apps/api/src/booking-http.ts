@@ -7,9 +7,15 @@ import {
   type AssertBookingEntitlement,
 } from "../../../packages/domain-booking/src/create.js";
 import { listAvailableSlots } from "../../../packages/domain-scheduling/src/index.js";
-import { AuthorizationDeniedError, type TrustedActor } from "../../../packages/platform-identity/src/authorization.js";
+import {
+  AuthorizationDeniedError,
+  type TrustedActor,
+} from "../../../packages/platform-identity/src/authorization.js";
 import { requireTenantPermission } from "../../../packages/platform-identity/src/postgres.js";
-import { type BearerSessionVerifier, verifyTenantActor } from "./session-context.js";
+import {
+  type BearerSessionVerifier,
+  verifyTenantActor,
+} from "./session-context.js";
 
 /**
  * An intentionally opt-in F1 staff-assisted API. No verifier, entitlement or
@@ -23,7 +29,8 @@ export interface SyntheticBookingHttpDependencies {
   readonly assertEntitled: AssertBookingEntitlement;
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UTC_MINUTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/;
 const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 
@@ -60,37 +67,61 @@ type BookingReadRow = QueryResultRow & {
   price_kopecks_snapshot: string;
 };
 
-function fail(reply: { code(status: number): { send(value: unknown): unknown } }, status: number, code: string): unknown {
+function fail(
+  reply: { code(status: number): { send(value: unknown): unknown } },
+  status: number,
+  code: string,
+): unknown {
   return reply.code(status).send({ error: { code } });
 }
 
 function validInstant(value: unknown): value is string {
   if (typeof value !== "string" || !UTC_INSTANT.test(value)) return false;
   const ms = Date.parse(value);
-  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 19) === value.slice(0, 19);
+  return (
+    Number.isFinite(ms) &&
+    new Date(ms).toISOString().slice(0, 19) === value.slice(0, 19)
+  );
 }
 
 function validDate(value: unknown): value is string {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return false;
   const ms = Date.parse(value + "T00:00:00Z");
-  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === value;
+  return (
+    Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === value
+  );
 }
 
 function validCreateBody(body: unknown): body is CreateBody {
   if (!body || typeof body !== "object" || Array.isArray(body)) return false;
   const fields = body as Record<string, unknown>;
-  const allowed = ["customerId", "locationId", "staffId", "serviceId", "startAt"];
+  const allowed = [
+    "customerId",
+    "locationId",
+    "staffId",
+    "serviceId",
+    "startAt",
+  ];
   return (
     Object.keys(fields).length === allowed.length &&
     Object.keys(fields).every((key) => allowed.includes(key)) &&
-    allowed.slice(0, 4).every((key) => typeof fields[key] === "string" && UUID.test(fields[key] as string)) &&
+    allowed
+      .slice(0, 4)
+      .every(
+        (key) =>
+          typeof fields[key] === "string" && UUID.test(fields[key] as string),
+      ) &&
     typeof fields.startAt === "string" &&
     UTC_MINUTE.test(fields.startAt) &&
     validInstant(fields.startAt)
   );
 }
 
-async function inReadTransaction<T>(pool: Pool, action: (client: PoolClient) => Promise<T>): Promise<T> {
+async function inReadTransaction<T>(
+  pool: Pool,
+  action: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await pool.connect();
   let active = false;
   try {
@@ -141,16 +172,27 @@ export function registerSyntheticBookingHttp(
   ): Promise<TrustedActor | null> {
     const verified = await verifyTenantActor(authorization, tenantId, verifier);
     if (!verified.actor) {
-      fail(reply, verified.status, verified.error === "forbidden" ? "ACCESS_DENIED" : "UNAUTHENTICATED");
+      fail(
+        reply,
+        verified.status,
+        verified.error === "forbidden" ? "ACCESS_DENIED" : "UNAUTHENTICATED",
+      );
       return null;
     }
     return verified.actor;
   }
 
-  function handleFailure(error: unknown, reply: { code(status: number): { send(value: unknown): unknown } }): unknown {
-    if (error instanceof AuthorizationDeniedError) return fail(reply, 403, "ACCESS_DENIED");
+  function handleFailure(
+    error: unknown,
+    reply: { code(status: number): { send(value: unknown): unknown } },
+  ): unknown {
+    if (error instanceof AuthorizationDeniedError)
+      return fail(reply, 403, "ACCESS_DENIED");
     if (error instanceof CreateBookingFailure) {
-      if (error.code === "BOOKING_CONFLICT" || error.code === "BOOKING_NOT_AVAILABLE")
+      if (
+        error.code === "BOOKING_CONFLICT" ||
+        error.code === "BOOKING_NOT_AVAILABLE"
+      )
         return fail(reply, 409, "BOOKING_CONFLICT");
       if (error.code === "IDEMPOTENCY_KEY_REUSED")
         return fail(reply, 409, "IDEMPOTENCY_KEY_REUSED");
@@ -163,15 +205,24 @@ export function registerSyntheticBookingHttp(
   app.get<{ Params: LocationParams }>(
     "/v1/organizations/:tenantId/locations/:locationId/catalog",
     async (request, reply) => {
-      const actor = await authenticate(request.headers.authorization, request.params.tenantId, reply);
+      const actor = await authenticate(
+        request.headers.authorization,
+        request.params.tenantId,
+        reply,
+      );
       if (!actor) return reply;
-      if (!UUID.test(request.params.locationId)) return fail(reply, 400, "INVALID_REQUEST");
+      if (!UUID.test(request.params.locationId))
+        return fail(reply, 400, "INVALID_REQUEST");
       try {
         const offers = await inReadTransaction(pool, async (client) => {
           await requireTenantPermission(
             client,
             actor,
-            { kind: "organization", tenantId: actor.tenantId, locationId: request.params.locationId },
+            {
+              kind: "organization",
+              tenantId: actor.tenantId,
+              locationId: request.params.locationId,
+            },
             "booking.create",
           );
           const rows = await client.query<{
@@ -205,16 +256,18 @@ export function registerSyntheticBookingHttp(
              ORDER BY service.display_name, staff.display_name, service.id, staff.id`,
             [actor.tenantId, request.params.locationId],
           );
-          return rows.rows.map((row): CatalogOffer => ({
-            serviceId: row.service_id,
-            serviceName: row.service_name,
-            staffId: row.staff_id,
-            staffName: row.staff_name,
-            durationMinutes: row.duration_minutes,
-            postServiceBufferMinutes: row.post_service_buffer_minutes,
-            priceKopecks: row.price_kopecks,
-            timeZone: row.time_zone!,
-          }));
+          return rows.rows.map(
+            (row): CatalogOffer => ({
+              serviceId: row.service_id,
+              serviceName: row.service_name,
+              staffId: row.staff_id,
+              staffName: row.staff_name,
+              durationMinutes: row.duration_minutes,
+              postServiceBufferMinutes: row.post_service_buffer_minutes,
+              priceKopecks: row.price_kopecks,
+              timeZone: row.time_zone!,
+            }),
+          );
         });
         return reply.send({ offers });
       } catch (error) {
@@ -229,18 +282,34 @@ export function registerSyntheticBookingHttp(
   }>(
     "/v1/organizations/:tenantId/locations/:locationId/availability",
     async (request, reply) => {
-      const actor = await authenticate(request.headers.authorization, request.params.tenantId, reply);
+      const actor = await authenticate(
+        request.headers.authorization,
+        request.params.tenantId,
+        reply,
+      );
       if (!actor) return reply;
       const { locationId } = request.params;
       const { serviceId, staffId, date } = request.query;
-      if (!UUID.test(locationId) || !serviceId || !UUID.test(serviceId) ||
-          !staffId || !UUID.test(staffId) || !validDate(date))
+      if (
+        !UUID.test(locationId) ||
+        !serviceId ||
+        !UUID.test(serviceId) ||
+        !staffId ||
+        !UUID.test(staffId) ||
+        !validDate(date)
+      )
         return fail(reply, 400, "INVALID_REQUEST");
       try {
         const slots = await inReadTransaction(pool, async (client) => {
           await requireTenantPermission(
-            client, actor,
-            { kind: "booking", tenantId: actor.tenantId, locationId, staffProfileId: staffId },
+            client,
+            actor,
+            {
+              kind: "booking",
+              tenantId: actor.tenantId,
+              locationId,
+              staffProfileId: staffId,
+            },
             "booking.create",
           );
           const service = await client.query<{
@@ -275,7 +344,11 @@ export function registerSyntheticBookingHttp(
                 AND staff_id=$3::uuid AND active`,
             [actor.tenantId, locationId, staffId],
           );
-          const blocked = await client.query<{ start_at: Date; end_at: Date; kind: string }>(
+          const blocked = await client.query<{
+            start_at: Date;
+            end_at: Date;
+            kind: string;
+          }>(
             `SELECT start_at, end_at, kind FROM cookie_scheduling.blocked_windows
               WHERE tenant_id=$1::uuid AND location_id=$2::uuid
                 AND staff_id=$3::uuid AND active`,
@@ -307,8 +380,12 @@ export function registerSyntheticBookingHttp(
             postServiceBufferMinutes: settings.post_service_buffer_minutes,
             stepMinutes: 1,
             shifts: intervals(shifts.rows),
-            breaks: intervals(blocked.rows.filter((row) => row.kind === "break")),
-            exceptions: intervals(blocked.rows.filter((row) => row.kind === "exception")),
+            breaks: intervals(
+              blocked.rows.filter((row) => row.kind === "break"),
+            ),
+            exceptions: intervals(
+              blocked.rows.filter((row) => row.kind === "exception"),
+            ),
             occupied: occupied.rows.map((row) => ({
               organizationId: actor.tenantId,
               locationId: row.location_id,
@@ -317,7 +394,9 @@ export function registerSyntheticBookingHttp(
               occupiedUntil: row.occupied_until.toISOString(),
             })),
           });
-          return available.filter((slot) => Date.parse(slot.startAt) > Date.now());
+          return available.filter(
+            (slot) => Date.parse(slot.startAt) > Date.now(),
+          );
         });
         return reply.send({ slots });
       } catch (error) {
@@ -329,11 +408,19 @@ export function registerSyntheticBookingHttp(
   app.post<{ Params: TenantParams; Body: CreateBody }>(
     "/v1/organizations/:tenantId/bookings",
     async (request, reply) => {
-      const actor = await authenticate(request.headers.authorization, request.params.tenantId, reply);
+      const actor = await authenticate(
+        request.headers.authorization,
+        request.params.tenantId,
+        reply,
+      );
       if (!actor) return reply;
       const key = request.headers["idempotency-key"];
-      if (!validCreateBody(request.body) || typeof key !== "string" ||
-          key.length < 1 || key.length > 128)
+      if (
+        !validCreateBody(request.body) ||
+        typeof key !== "string" ||
+        key.length < 1 ||
+        key.length > 128
+      )
         return fail(reply, 400, "INVALID_REQUEST");
       try {
         const receipt = await createBookingInternal(
@@ -359,9 +446,14 @@ export function registerSyntheticBookingHttp(
   app.get<{ Params: BookingParams }>(
     "/v1/organizations/:tenantId/bookings/:bookingId",
     async (request, reply) => {
-      const actor = await authenticate(request.headers.authorization, request.params.tenantId, reply);
+      const actor = await authenticate(
+        request.headers.authorization,
+        request.params.tenantId,
+        reply,
+      );
       if (!actor) return reply;
-      if (!UUID.test(request.params.bookingId)) return fail(reply, 400, "INVALID_REQUEST");
+      if (!UUID.test(request.params.bookingId))
+        return fail(reply, 400, "INVALID_REQUEST");
       try {
         const booking = await inReadTransaction(pool, async (client) => {
           const rows = await client.query<BookingReadRow>(
@@ -371,8 +463,14 @@ export function registerSyntheticBookingHttp(
           const row = rows.rows[0];
           if (!row) return null;
           await requireTenantPermission(
-            client, actor,
-            { kind: "booking", tenantId: actor.tenantId, locationId: row.location_id, staffProfileId: row.staff_id },
+            client,
+            actor,
+            {
+              kind: "booking",
+              tenantId: actor.tenantId,
+              locationId: row.location_id,
+              staffProfileId: row.staff_id,
+            },
             "booking.read",
           );
           return bookingDto(row);
@@ -391,17 +489,27 @@ export function registerSyntheticBookingHttp(
   }>(
     "/v1/organizations/:tenantId/locations/:locationId/calendar",
     async (request, reply) => {
-      const actor = await authenticate(request.headers.authorization, request.params.tenantId, reply);
+      const actor = await authenticate(
+        request.headers.authorization,
+        request.params.tenantId,
+        reply,
+      );
       if (!actor) return reply;
       const { locationId } = request.params;
       const { from, to } = request.query;
-      if (!UUID.test(locationId) || !validInstant(from) || !validInstant(to) ||
-          Date.parse(to) <= Date.parse(from) || Date.parse(to) - Date.parse(from) > 7 * 86_400_000)
+      if (
+        !UUID.test(locationId) ||
+        !validInstant(from) ||
+        !validInstant(to) ||
+        Date.parse(to) <= Date.parse(from) ||
+        Date.parse(to) - Date.parse(from) > 7 * 86_400_000
+      )
         return fail(reply, 400, "INVALID_REQUEST");
       try {
         const bookings = await inReadTransaction(pool, async (client) => {
           await requireTenantPermission(
-            client, actor,
+            client,
+            actor,
             { kind: "organization", tenantId: actor.tenantId, locationId },
             "booking.read",
           );
@@ -412,7 +520,8 @@ export function registerSyntheticBookingHttp(
                  ORDER BY start_at, id LIMIT 201`,
             [actor.tenantId, locationId, from, to],
           );
-          if (rows.rows.length > 200) throw new Error("Calendar result exceeds bounded F1 page");
+          if (rows.rows.length > 200)
+            throw new Error("Calendar result exceeds bounded F1 page");
           return rows.rows.map(bookingDto);
         });
         return reply.send({ bookings });
