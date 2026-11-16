@@ -68,7 +68,9 @@ function parseSlot(value: unknown): ProposedF1AvailableSlot | null {
   if (!record(value) || !exactKeys(value, SLOT_KEYS)) return null;
   if (!utcInstant(value.startAt) || !utcInstant(value.endAt) ||
       !utcInstant(value.occupiedUntil)) return null;
-  if (!(value.startAt < value.endAt && value.endAt <= value.occupiedUntil)) return null;
+  // Compare instants, not ISO strings with differing fractional precision.
+  if (!(Date.parse(value.startAt) < Date.parse(value.endAt) &&
+        Date.parse(value.endAt) <= Date.parse(value.occupiedUntil))) return null;
   return {
     startAt: value.startAt,
     endAt: value.endAt,
