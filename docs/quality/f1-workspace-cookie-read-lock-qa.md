@@ -39,3 +39,7 @@ Only a QA documentation evidence update follows the proven test-code SHA above; 
 ## Post-#195 combined main revalidation
 
 `main` now includes the independent post-409 refreshed availability QA #195, commit `3833803c554c4e4cd5593e215ed7bb12c494ea77`. This read-first Cookie/Telegram transactional lock QA test remains unchanged; the preceding full [F1 CI #43929951225](https://github.com/tim8es/cookie/actions/runs/43929951225) passed on main `e931b70f...`. This documentation-only update requests a new exact-head CI on the updated combined main before merge. No change to unapproved strict role-policy option #175 and no production activation.
+
+## Latest-main read-first serialization check (2026-11-16)
+
+Independent source test passed full [F1 CI #43929951225](https://github.com/tim8es/cookie/actions/runs/43929951225) on the previous main-based QA head `4ce719cca97c1b0d946c49fa7dd3228f06f12586`. The base is now explicitly refreshed to `main` commit `3833803c554c4e4cd5593e215ed7bb12c494ea77`, after unrelated Booking/CI and role-security merges. The test's authentic SQLSTATE 55P03 revoke-waits-for-protected-read oracle, positive authorized GET and post-COMMIT 401 assertions remain byte-for-byte unchanged. Require a **new exact-head, latest-main full F1 CI success** before merge. This test covers Cookie bearer and Telegram link row authority, **not** the contested RoleAssignment/Role snapshot linearization policy #175; no production/real PII/provider.
