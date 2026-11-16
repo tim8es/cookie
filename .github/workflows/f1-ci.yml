@@ -81,24 +81,3 @@ jobs:
           path: apps/web/artifacts/visual-smoke/
           if-no-files-found: ignore
           retention-days: 7
-      - name: Export exact Prettier source for formatting repair
-        if: ${{ always() }}
-        run: |
-          pnpm exec prettier --write apps/web/src/lib/proposed-f1-synthetic-wire.ts apps/web/src/lib/proposed-f1-synthetic-wire.test.ts
-          echo COOKIE_TS_START
-          base64 -w0 apps/web/src/lib/proposed-f1-synthetic-wire.ts
-          echo
-          echo COOKIE_TS_END
-          echo COOKIE_TEST_START
-          base64 -w0 apps/web/src/lib/proposed-f1-synthetic-wire.test.ts
-          echo
-          echo COOKIE_TEST_END
-      - name: Save formatting-only diagnostics
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: cookie-prettier-candidates
-          path: |
-            apps/web/src/lib/proposed-f1-synthetic-wire.ts
-            apps/web/src/lib/proposed-f1-synthetic-wire.test.ts
-          retention-days: 1

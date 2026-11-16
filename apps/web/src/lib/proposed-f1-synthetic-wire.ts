@@ -35,7 +35,12 @@ export interface ProposedF1Availability {
 }
 
 const RECEIPT_KEYS = [
-  "bookingId", "status", "startAt", "endAt", "occupiedUntil", "priceKopecks",
+  "bookingId",
+  "status",
+  "startAt",
+  "endAt",
+  "occupiedUntil",
+  "priceKopecks",
 ] as const;
 const SLOT_KEYS = ["startAt", "endAt", "occupiedUntil"] as const;
 const UUID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
@@ -46,17 +51,24 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  return Object.keys(value).length === expected.length &&
-    expected.every((key) => Object.prototype.hasOwnProperty.call(value, key));
+function exactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  return (
+    Object.keys(value).length === expected.length &&
+    expected.every((key) => Object.prototype.hasOwnProperty.call(value, key))
+  );
 }
 
 function utcInstant(value: unknown): value is string {
   if (typeof value !== "string" || !UTC_ISO.test(value)) return false;
   const date = new Date(value);
   // Date.parse normalizes impossible calendar days. Reject them explicitly.
-  return Number.isFinite(date.getTime()) &&
-    date.toISOString().slice(0, 19) === value.slice(0, 19);
+  return (
+    Number.isFinite(date.getTime()) &&
+    date.toISOString().slice(0, 19) === value.slice(0, 19)
+  );
 }
 
 function price(value: unknown): value is string {
@@ -66,11 +78,20 @@ function price(value: unknown): value is string {
 
 function parseSlot(value: unknown): ProposedF1AvailableSlot | null {
   if (!record(value) || !exactKeys(value, SLOT_KEYS)) return null;
-  if (!utcInstant(value.startAt) || !utcInstant(value.endAt) ||
-      !utcInstant(value.occupiedUntil)) return null;
+  if (
+    !utcInstant(value.startAt) ||
+    !utcInstant(value.endAt) ||
+    !utcInstant(value.occupiedUntil)
+  )
+    return null;
   // Compare instants, not ISO strings with differing fractional precision.
-  if (!(Date.parse(value.startAt) < Date.parse(value.endAt) &&
-        Date.parse(value.endAt) <= Date.parse(value.occupiedUntil))) return null;
+  if (
+    !(
+      Date.parse(value.startAt) < Date.parse(value.endAt) &&
+      Date.parse(value.endAt) <= Date.parse(value.occupiedUntil)
+    )
+  )
+    return null;
   return {
     startAt: value.startAt,
     endAt: value.endAt,
@@ -83,9 +104,13 @@ export function parseProposedF1ConfirmedReceipt(
   value: unknown,
 ): ProposedF1ConfirmedReceipt | null {
   if (!record(value) || !exactKeys(value, RECEIPT_KEYS)) return null;
-  if (value.status !== "Confirmed" ||
-      typeof value.bookingId !== "string" || !UUID.test(value.bookingId) ||
-      !price(value.priceKopecks)) return null;
+  if (
+    value.status !== "Confirmed" ||
+    typeof value.bookingId !== "string" ||
+    !UUID.test(value.bookingId) ||
+    !price(value.priceKopecks)
+  )
+    return null;
   const slot = parseSlot({
     startAt: value.startAt,
     endAt: value.endAt,
@@ -108,9 +133,13 @@ export function parseProposedF1ConfirmedReceipt(
 export function parseProposedF1Availability(
   value: unknown,
 ): ProposedF1Availability | null {
-  if (!record(value) || !exactKeys(value, ["priceKopecks", "slots"]) ||
-      (value.priceKopecks !== null && !price(value.priceKopecks)) ||
-      !Array.isArray(value.slots)) return null;
+  if (
+    !record(value) ||
+    !exactKeys(value, ["priceKopecks", "slots"]) ||
+    (value.priceKopecks !== null && !price(value.priceKopecks)) ||
+    !Array.isArray(value.slots)
+  )
+    return null;
   const slots: ProposedF1AvailableSlot[] = [];
   for (const item of value.slots) {
     const slot = parseSlot(item);
@@ -122,15 +151,22 @@ export function parseProposedF1Availability(
 }
 
 /** Strict error classification: raw/unrecognized HTTP 409 stays unverified. */
-export function classifyProposedF1Conflict(reason: unknown): VerifiedBookingConflict {
-  if (!(reason instanceof TransportFailure) ||
-      reason.kind !== "conflict" || reason.status !== 409 ||
-      !record(reason.responseBody) ||
-      !exactKeys(reason.responseBody, ["error"])) return "unknown";
+export function classifyProposedF1Conflict(
+  reason: unknown,
+): VerifiedBookingConflict {
+  if (
+    !(reason instanceof TransportFailure) ||
+    reason.kind !== "conflict" ||
+    reason.status !== 409 ||
+    !record(reason.responseBody) ||
+    !exactKeys(reason.responseBody, ["error"])
+  )
+    return "unknown";
   const wrapper = reason.responseBody.error;
   if (!record(wrapper) || !exactKeys(wrapper, ["code"])) return "unknown";
   if (wrapper.code === "BOOKING_CONFLICT") return "slot-unavailable";
-  if (wrapper.code === "IDEMPOTENCY_KEY_REUSED") return "idempotency-key-reused";
+  if (wrapper.code === "IDEMPOTENCY_KEY_REUSED")
+    return "idempotency-key-reused";
   return "unknown";
 }
 
@@ -149,7 +185,9 @@ export function formatProposedKopecks(kopecks: string): string | null {
  * trusted/authenticated HTTP client. No data from here is persisted as a booking.
  * UTC is explicit because this synthetic receipt does not return a location zone.
  */
-export function proposedF1ReceiptView(value: unknown): ConfirmedBookingReceiptView | null {
+export function proposedF1ReceiptView(
+  value: unknown,
+): ConfirmedBookingReceiptView | null {
   const receipt = parseProposedF1ConfirmedReceipt(value);
   if (!receipt) return null;
   const amount = formatProposedKopecks(receipt.priceKopecks);
