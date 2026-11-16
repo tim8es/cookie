@@ -35,3 +35,7 @@ Only a QA documentation evidence update follows the proven test-code SHA above; 
 ## Финальная сверка с main, 16 ноября 2026
 
 Этот QA PR теперь основан на `main` `e931b70fa06762791093d691edb9cc4bc9fd6d90`: в нём объединены обе последовательности revoke-first Workspace #190 и положительные Cancel/Reschedule #188, браузерный Booking #152 и внутренний Identity retention #189. Сценарий **read-first** (GET сначала получает link/session FOR SHARE, затем отзыв должен ждать COMMIT, SQLSTATE `55P03`, после отзыва следующий GET = 401) сохранён без изменения исходного QA-кода. Прежний [CI #43928213397](https://github.com/tim8es/cookie/actions/runs/43928213397) зелёный на старой базе и не подтверждает эту композицию; данный документационный коммит запускает новый полный F1 CI. Строгая свежесть Role policy по #175 не принимается автоматически, production не включён.
+
+## Post-#195 combined main revalidation
+
+`main` now includes the independent post-409 refreshed availability QA #195, commit `3833803c554c4e4cd5593e215ed7bb12c494ea77`. This read-first Cookie/Telegram transactional lock QA test remains unchanged; the preceding full [F1 CI #43929951225](https://github.com/tim8es/cookie/actions/runs/43929951225) passed on main `e931b70f...`. This documentation-only update requests a new exact-head CI on the updated combined main before merge. No change to unapproved strict role-policy option #175 and no production activation.
