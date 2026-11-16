@@ -43,6 +43,31 @@ count="$("${compose[@]}" exec -T postgres psql -U cookie -d cookie -Atqc 'SELECT
 "${compose[@]}" exec -T postgres psql -U cookie -d cookie -v ON_ERROR_STOP=1 -c 'CREATE TABLE public.cookie_runtime_ci_persistence (value integer NOT NULL)' >/dev/null
 "${compose[@]}" exec -T postgres psql -U cookie -d cookie -v ON_ERROR_STOP=1 -c 'INSERT INTO public.cookie_runtime_ci_persistence(value) VALUES (42)' >/dev/null
 
+# Exercise the actual COMPILED server-side owner provisioning command, not TS/mocks.
+export COOKIE_OWNER_IDENTITY_ID="$(node -e 'console.log(require("node:crypto").randomUUID())')"
+export COOKIE_OWNER_SETUP_KEY="$(node -e 'console.log(require("node:crypto").randomUUID())')"
+owner_command=(
+  "${compose[@]}" exec -T
+  -e COOKIE_OPERATOR_BOOTSTRAP=acknowledged
+  -e "COOKIE_OWNER_IDENTITY_ID=$COOKIE_OWNER_IDENTITY_ID"
+  -e "COOKIE_OWNER_SETUP_KEY=$COOKIE_OWNER_SETUP_KEY"
+  -e "COOKIE_OWNER_ORGANIZATION=CI Staging Salon"
+  -e "COOKIE_OWNER_LOCATION=Main branch"
+  -e "COOKIE_OWNER_TIME_ZONE=Europe/Moscow"
+  api node dist/packages/platform-identity/src/bootstrap-owner-cli.js
+)
+first_owner="$("${owner_command[@]}")"
+[[ "$first_owner" == *'"replayed":false'* ]] || {
+  echo "First real owner creation did not commit"; exit 1;
+}
+owner_count="$("${compose[@]}" exec -T postgres psql -U cookie -d cookie -Atqc "
+  SELECT count(*) FROM cookie_tenancy.owner_setup_receipts
+  WHERE owner_identity_id='$COOKIE_OWNER_IDENTITY_ID'::uuid
+")"
+[[ "$owner_count" == "1" ]] || {
+  echo "Expected exactly one durable owner setup receipt"; exit 1;
+}
+
 "${compose[@]}" restart postgres api >/dev/null
 for attempt in $(seq 1 60); do
   if curl --silent --fail --max-time 2 "http://127.0.0.1:$COOKIE_HTTP_PORT/health/ready" | grep -q '"status":"ready"'; then
@@ -52,4 +77,15 @@ for attempt in $(seq 1 60); do
 done
 value="$("${compose[@]}" exec -T postgres psql -U cookie -d cookie -Atqc 'SELECT value FROM public.cookie_runtime_ci_persistence')"
 [[ "$value" == "42" ]] || { echo "PostgreSQL lost persisted state after restart"; exit 1; }
-echo "Compiled API + same-origin web + 23+ migrations + persistent PostgreSQL restart PASS; Booking routes remain fail-closed."
+replayed_owner="$("${owner_command[@]}")"
+[[ "$replayed_owner" == *'"replayed":true'* ]] || {
+  echo "Owner setup did not replay after PostgreSQL restart"; exit 1;
+}
+owner_count_after_restart="$("${compose[@]}" exec -T postgres psql -U cookie -d cookie -Atqc "
+  SELECT count(*) FROM cookie_tenancy.owner_setup_receipts
+  WHERE owner_identity_id='$COOKIE_OWNER_IDENTITY_ID'::uuid
+")"
+[[ "$owner_count_after_restart" == "1" ]] || {
+  echo "PostgreSQL restart duplicated or lost owner workspace"; exit 1;
+}
+echo "Compiled API + same-origin web + 24 migrations + owner provisioning/replay + persistent PostgreSQL restart PASS; Booking routes remain fail-closed."
