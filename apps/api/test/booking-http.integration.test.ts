@@ -29,7 +29,7 @@ test(
     const service = randomUUID();
     const customer = randomUUID();
     const base = `/v1/organizations/${tenant}`;
-    const ownerHeader = { authorization: "***" };
+    const ownerHeader = { authorization: "Bearer synthetic-owner" };
     const createBody = {
       locationId: locationA,
       staffId: staff,
@@ -182,7 +182,7 @@ test(
         app.inject({
           method: "POST",
           url: `${base}/bookings`,
-          headers: { authorization: `*** "idempotency-key": key },
+          headers: { authorization: `Bearer ${token}`, "idempotency-key": key },
           payload: body,
         });
       const [first, competitor] = await Promise.all([
@@ -261,13 +261,13 @@ test(
       const adminA = await app.inject({
         method: "GET",
         url: calendarUrl,
-        headers: { authorization: "***" },
+        headers: { authorization: "Bearer synthetic-admin" },
       });
       assert.equal(adminA.statusCode, 200);
       const adminB = await app.inject({
         method: "GET",
         url: `${base}/locations/${locationB}/calendar?from=2027-04-12T00:00:00Z&to=2027-04-13T00:00:00Z`,
-        headers: { authorization: "***" },
+        headers: { authorization: "Bearer synthetic-admin" },
       });
       assert.equal(adminB.statusCode, 403);
       assert.equal(adminB.json().error.code, "ACCESS_DENIED");
