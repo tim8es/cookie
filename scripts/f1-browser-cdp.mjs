@@ -122,10 +122,15 @@ async function click(cdp, selector) {
 }
 
 /**
- * @returns {Promise<{bookingId:string, receipt:string, requests:number}>}
+ * @returns {Promise<{bookingId?:string, receipt?:string, requests:number, outcome:string}>}
  * AuthN is a synthetic test-only bearer verified by the injected Fastify app.
  */
-export async function runF1BrowserBooking(url, syntheticBearer) {
+export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
+  const slotTime = options.slotTime ?? "10:00";
+  const outcome = options.outcome ?? "confirmed";
+  const beforeSubmit = options.beforeSubmit;
+  assert.ok(["confirmed", "conflict", "denied"].includes(outcome));
+  assert.ok(/^\d{2}:\d{2}$/.test(slotTime));
   const page = new URL(url);
   assert.equal(page.protocol, "http:");
   assert.equal(page.hostname, "127.0.0.1");
@@ -194,17 +199,17 @@ export async function runF1BrowserBooking(url, syntheticBearer) {
     await poll("Svelte form and server-side available slots", async () =>
       evaluate(cdp, `(() => {
         const buttons = [...document.querySelectorAll(".booking-form .slot-grid button")];
-        return !!buttons.find((element) => element.textContent?.trim() === "10:00");
+        return !!buttons.find((element) => element.textContent?.trim() === ${JSON.stringify(slotTime)});
       })()`), 25000);
     const slotClicked = await evaluate(cdp, `(() => {
       const buttons = [...document.querySelectorAll(".booking-form .slot-grid button")];
-      const target = buttons.find((button) => button.textContent?.trim() === "10:00");
+      const target = buttons.find((button) => button.textContent?.trim() === ${JSON.stringify(slotTime)});
       if (!target) return false;
       target.focus();
       target.click();
       return true;
     })()`);
-    assert.equal(slotClicked, true, "Expected 10:00 to remain an available server slot");
+    assert.equal(slotClicked, true, "Expected " + slotTime + " to remain an available server slot");
     await poll("Svelte selected slot", async () =>
       evaluate(cdp, "Boolean(document.querySelector('.booking-form .slot-grid button[aria-pressed=true]'))"));
     const formReady = await evaluate(cdp, `(() => {
@@ -212,7 +217,33 @@ export async function runF1BrowserBooking(url, syntheticBearer) {
       return form?.checkValidity() && !form.querySelector("button[type=submit]")?.disabled;
     })()`);
     assert.equal(formReady, true, "Synthetic Svelte BookingForm must be valid");
+
+    // The selected slot came from the backend before the test callback.
+    // Another actor can reserve it or revoke this actor's permission before
+    // the user clicks Submit. This is a real browser→API negative-path gate.
+    if (beforeSubmit) await beforeSubmit();
     await click(cdp, ".booking-form button[type=submit]");
+    if (outcome !== "confirmed") {
+      const title = outcome === "conflict"
+        ? "Выбранное время больше недоступно"
+        : "Операция недоступна";
+      await poll("Svelte shows verified " + outcome + " without Confirmed", async () =>
+        evaluate(cdp, `(() => {
+          const card = document.querySelector(".booking-attempt-status");
+          return card?.textContent?.includes(${JSON.stringify(title)}) &&
+            !card.textContent.includes("Запись подтверждена") &&
+            !card.querySelector(".booking-attempt-receipt");
+        })()`), 25000);
+      if (outcome === "conflict") {
+        const choices = await evaluate(cdp,
+          "document.querySelectorAll('.booking-attempt-slot-options button').length");
+        assert.ok(choices > 0, "409 must offer freshly fetched backend availability");
+      }
+      assert.equal(bookingPosts, 1, "One POST only; no implicit retry or duplicate");
+      assert.deepEqual(external, [], "Synthetic client must not make external requests");
+      assert.deepEqual(runtimeErrors, [], "Forbidden/conflict must be handled by Svelte");
+      return { outcome, requests: bookingPosts };
+    }
     const receipt = await poll("Server-confirmed receipt rendered by Svelte UI", async () =>
       evaluate(cdp, `(() => {
         const card = document.querySelector(".booking-attempt-status");
@@ -229,7 +260,7 @@ export async function runF1BrowserBooking(url, syntheticBearer) {
     assert.deepEqual(runtimeErrors, [], "Browser must not emit uncaught Svelte exceptions");
     const layout = await evaluate(cdp, "({width:innerWidth, scrollWidth:document.documentElement.scrollWidth})");
     assert.ok(layout.scrollWidth <= layout.width + 1, "Svelte synthetic form overflows mobile viewport");
-    return { bookingId, receipt, requests: bookingPosts };
+    return { outcome: "confirmed", bookingId, receipt, requests: bookingPosts };
   } catch (error) {
     if (cdp) {
       try {
