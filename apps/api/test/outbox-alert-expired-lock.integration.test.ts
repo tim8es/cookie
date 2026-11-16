@@ -94,17 +94,20 @@ test(
         status: string;
         attempts: number;
         lease_token: string;
+        lease_until: Date;
       }>(
-        `SELECT status, attempts, lease_token::text
+        `SELECT status, attempts, lease_token::text, lease_until
            FROM cookie_jobs.outbox_alert_delivery
           WHERE transition_id=$1::bigint`,
         [exhaustedId],
       );
-      assert.deepEqual(beforeUnlock.rows[0], {
-        status: "leased",
-        attempts: 1,
-        lease_token: first[0]!.leaseToken,
-      });
+      assert.equal(beforeUnlock.rows[0]?.status, "leased");
+      assert.equal(beforeUnlock.rows[0]?.attempts, 1);
+      assert.equal(beforeUnlock.rows[0]?.lease_token, first[0]!.leaseToken);
+      assert.ok(
+        beforeUnlock.rows[0]!.lease_until.getTime() < Date.now(),
+        "a skipped expired lease must not be renewed or acknowledged",
+      );
 
       await locker.query("COMMIT");
       lockedTransaction = false;
