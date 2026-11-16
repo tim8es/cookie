@@ -153,6 +153,13 @@ test(
         tenantId,
         identityId,
         expiresAtUnixSeconds: created.expiresAtUnixSeconds,
+        opaqueSessionAuthority: {
+          tokenSha256: createHash("sha256")
+            .update(created.bearerToken)
+            .digest("hex"),
+          issuer: "cookie-f1-test",
+          audience: "cookie-booking-test",
+        },
       });
 
       const rawDigest = createHash("sha256")
