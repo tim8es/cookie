@@ -36,7 +36,7 @@ test("prevents kernel and contracts importing even public business or platform e
 });
 
 test("rejects new deep imports of another domain and platform implementation", () => {
-  const result = report("import '../../platform-db/src/worker.js'; import '../../domain-scheduling/src/index.js';");
+  const result = report("import '../../platform-db/src/worker.js'; import '../../domain-scheduling/src/approval.js';");
   assert.equal(result.failures.length, 2);
 });
 
