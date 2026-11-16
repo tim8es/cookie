@@ -113,5 +113,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Reject falsely green readiness checks (Issue #214)
+        run: bash scripts/ci-staging-readiness.test.sh
       - name: Build and smoke real compiled application stack
         run: bash scripts/ci-staging-compose-smoke.sh
