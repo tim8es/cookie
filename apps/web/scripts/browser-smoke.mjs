@@ -482,9 +482,11 @@ async function scenario(cdp, origin, width, height) {
   await click(cdp, ".appearance-presets button:nth-child(2)");
   await fill(cdp, ".appearance-introduction-field textarea", "Добро пожаловать на запись", "input");
   await requireDom(cdp, name + " live appearance preview", "getComputedStyle(document.querySelector('.appearance-preview-hero')).backgroundColor === 'rgb(36, 72, 59)'");
+  await requireDom(cdp, name + " unsaved theme identified", "document.querySelector('.appearance-preview-badge')?.textContent.includes('Не сохранено') && document.querySelector('.appearance-open')?.disabled && !document.querySelector('.appearance-save')?.disabled");
   await captureEvidence(cdp, name, "14-appearance-preview");
   await submitValidForm(cdp, ".appearance-editor form");
   await requireDom(cdp, name + " persisted synthetic appearance", "JSON.parse(sessionStorage.getItem('cookie.frontend-demo.v1')).appearance?.theme === 'forest'");
+  await requireDom(cdp, name + " saved theme identified", "document.querySelector('.appearance-preview-badge')?.textContent.includes('Сохранено') && !document.querySelector('.appearance-open')?.disabled && document.querySelector('.appearance-save')?.disabled");
   await click(cdp, ".appearance-open");
   await requireDom(cdp, name + " themed booking", "document.querySelector('.public-shell.salonThemeForest .booking-hero-copy p')?.textContent.includes('Добро пожаловать на запись')");
   await requireDom(cdp, name + " theme applied to public hero", "getComputedStyle(document.querySelector('.public-content .booking-hero')).backgroundColor === 'rgb(36, 72, 59)'");
