@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ServiceApiFailure, createRealService, readRealServices } from "./services-api";
+import {
+  ServiceApiFailure,
+  createRealService,
+  readRealServices,
+} from "./services-api";
 import type { VerifiedOwnerSession } from "./owner-auth";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
@@ -34,7 +38,8 @@ function mock(
 test("real catalog list reads only bearer tenant and validates server receipt", async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const services = await readRealServices(
-    session, mock(Response.json({ services: [record] }), calls),
+    session,
+    mock(Response.json({ services: [record] }), calls),
   );
   assert.deepEqual(services, [record]);
   assert.equal(calls[0]?.url, "/v1/organizations/" + TENANT + "/services");
@@ -55,7 +60,9 @@ test("draft service creation includes an explicit stable replay key", async () =
     basePriceKopecks: 150000,
   };
   const returned = await createRealService(
-    session, draft, KEY,
+    session,
+    draft,
+    KEY,
     mock(Response.json({ service: record }, { status: 201 }), calls),
   );
   assert.deepEqual(returned, record);
@@ -79,7 +86,8 @@ test("malformed, foreign, oversize or non-json catalog receipts fail closed", as
     await assert.rejects(
       readRealServices(session, mock(Response.json(body), [])),
       (reason: unknown) =>
-        reason instanceof ServiceApiFailure && reason.reason === "invalid-response",
+        reason instanceof ServiceApiFailure &&
+        reason.reason === "invalid-response",
     );
   }
 });
@@ -98,14 +106,18 @@ test("401/403/409/503 and offline cannot become successful mutations", async () 
   ] as const) {
     await assert.rejects(
       createRealService(
-        session, draft, KEY,
+        session,
+        draft,
+        KEY,
         mock(new Response(null, { status }), []),
       ),
       (reason: unknown) =>
         reason instanceof ServiceApiFailure && reason.reason === expected,
     );
   }
-  const broken = (async () => { throw new TypeError("offline"); }) as typeof fetch;
+  const broken = (async () => {
+    throw new TypeError("offline");
+  }) as typeof fetch;
   await assert.rejects(
     readRealServices(session, broken),
     (reason: unknown) =>
