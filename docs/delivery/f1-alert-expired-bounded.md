@@ -37,4 +37,4 @@ This PR now targets `main` including the reviewed synthetic Cookie session secur
 
 ## Combined-base check after ordinary Outbox merge (2026-11-16)
 
-Ordinary Outbox #159 was merged into `main` as commit `82dd319dbfbb7e23ad19513c3cf076486fb672e2`. This alert-queue PR remains independent, but its earlier [CI #43922271773](https://github.com/tim8es/cookie/actions/runs/43922271773) tested the prior main. A fresh exact-HEAD full F1 CI is required on the updated base before #161 can merge. Source SQL and QA assertions are unchanged. No live notification provider or production deployment.
+Ordinary Outbox #159 was merged into `main` as commit `82dd319dbfbb7e23ad19513c3cf076486fb672e2`. This alert-queue PR remains independent, but its earlier [CI #43922271773](https://github.com/tim8es/cookie/actions/runs/43922271773) tested the prior main. The pull-request base was explicitly refreshed to main commit `82dd319dbfbb7e23ad19513c3cf076486fb672e2` after #159 merged. A **new exact-head** full F1 CI on this refreshed base is required before #161 can merge. Source SQL and QA assertions are unchanged. No live notification provider or production deployment.
