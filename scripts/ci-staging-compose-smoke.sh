@@ -6,6 +6,7 @@ set -euo pipefail
 command -v docker >/dev/null
 command -v curl >/dev/null
 command -v openssl >/dev/null
+source scripts/lib/ci-cookie-ready.sh
 
 export COOKIE_DB_PASSWORD="$(openssl rand -hex 32)"
 export COOKIE_HTTP_PORT=18080
@@ -25,13 +26,10 @@ trap cleanup EXIT
 
 "${compose[@]}" config >/dev/null
 "${compose[@]}" up --build -d
-for attempt in $(seq 1 90); do
-  if curl --silent --fail --max-time 2 "http://127.0.0.1:$COOKIE_HTTP_PORT/health/ready" > /tmp/cookie-staging-ready.json; then
-    break
-  fi
-  sleep 2
-done
-grep -q '"status":"ready"' /tmp/cookie-staging-ready.json
+if ! cookie_wait_ready "http://127.0.0.1:$COOKIE_HTTP_PORT/health/ready" 90 2; then
+  echo "API readiness failed after initial startup" >&2
+  exit 1
+fi
 # The compiled API serves the same static web directly for one-app Altare hosting.
 "${compose[@]}" exec -T api node -e "fetch('http://127.0.0.1:3000/').then(async (r) => { if (!r.ok || !(await r.text()).includes('<html')) process.exitCode=1 }).catch(() => process.exitCode=1)"
 curl --silent --fail "http://127.0.0.1:$COOKIE_HTTP_PORT/" | grep -qi '<html'
@@ -39,7 +37,10 @@ status="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://12
 [[ "$status" == "404" ]] || { echo "Unapproved booking route became public (HTTP $status)"; exit 1; }
 
 count="$("${compose[@]}" exec -T postgres psql -U cookie -d cookie -Atqc 'SELECT count(*) FROM public.cookie_schema_migrations')"
-(( count >= 24 )) || { echo "Migrations were not applied: $count"; exit 1; }
+expected_count="$(find db/migrations -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d '[:space:]')"
+[[ "$count" == "$expected_count" ]] || {
+  echo "Migration count mismatch: applied=$count files=$expected_count"; exit 1;
+}
 "${compose[@]}" exec -T postgres psql -U cookie -d cookie -v ON_ERROR_STOP=1 -c 'CREATE TABLE public.cookie_runtime_ci_persistence (value integer NOT NULL)' >/dev/null
 "${compose[@]}" exec -T postgres psql -U cookie -d cookie -v ON_ERROR_STOP=1 -c 'INSERT INTO public.cookie_runtime_ci_persistence(value) VALUES (42)' >/dev/null
 
@@ -69,12 +70,10 @@ owner_count="$("${compose[@]}" exec -T postgres psql -U cookie -d cookie -Atqc "
 }
 
 "${compose[@]}" restart postgres api >/dev/null
-for attempt in $(seq 1 60); do
-  if curl --silent --fail --max-time 2 "http://127.0.0.1:$COOKIE_HTTP_PORT/health/ready" | grep -q '"status":"ready"'; then
-    break
-  fi
-  sleep 2
-done
+if ! cookie_wait_ready "http://127.0.0.1:$COOKIE_HTTP_PORT/health/ready" 60 2; then
+  echo "API failed to regain readiness after PostgreSQL/API restart" >&2
+  exit 1
+fi
 value="$("${compose[@]}" exec -T postgres psql -U cookie -d cookie -Atqc 'SELECT value FROM public.cookie_runtime_ci_persistence')"
 [[ "$value" == "42" ]] || { echo "PostgreSQL lost persisted state after restart"; exit 1; }
 replayed_owner="$("${owner_command[@]}")"
@@ -88,4 +87,4 @@ owner_count_after_restart="$("${compose[@]}" exec -T postgres psql -U cookie -d 
 [[ "$owner_count_after_restart" == "1" ]] || {
   echo "PostgreSQL restart duplicated or lost owner workspace"; exit 1;
 }
-echo "Compiled API + same-origin web + 24 migrations + owner provisioning/replay + persistent PostgreSQL restart PASS; Booking routes remain fail-closed."
+echo "Compiled API + same-origin web + verified migrations + owner provisioning/replay + persistent PostgreSQL restart PASS; Booking routes remain fail-closed."
