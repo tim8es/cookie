@@ -26,7 +26,11 @@ const screenshotStages = [
   "17-themed-confirmation", "18-sunday-unavailable", "19-next-day-recovery",
   "20-slot-lookup-error", "21-retry-restored",
 ];
-assert.equal(new Set(screenshotStages).size, screenshotStages.length, "Screenshot stages must be unique");
+assert.equal(
+  new Set(screenshotStages).size,
+  screenshotStages.length,
+  "Screenshot stages must be unique",
+);
 assert.deepEqual(
   new Set(screenshotStages.map((stage) => stage.slice(3))),
   new Set(captures),
