@@ -1,8 +1,8 @@
 name: Temporary QA 213 pinned Prettier output
 on:
-  push:
+  pull_request:
     branches:
-      - qa/f1-197-empty-error-browser-20261116
+      - qa/f1-197-409-response-body-20261116
 permissions:
   contents: read
 jobs:
