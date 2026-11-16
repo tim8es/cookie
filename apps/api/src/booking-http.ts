@@ -6,7 +6,7 @@ import {
   createBookingInternal,
   type AssertBookingEntitlement,
 } from "../../../packages/domain-booking/src/create.js";
-import { listAvailableSlots } from "../../../packages/domain-scheduling/src/index.js";
+import { readBookingAvailability } from "../../../packages/platform-db/src/booking-availability.js";
 import {
   AuthorizationDeniedError,
   type TrustedActor,
@@ -300,105 +300,75 @@ export function registerSyntheticBookingHttp(
       )
         return fail(reply, 400, "INVALID_REQUEST");
       try {
-        const slots = await inReadTransaction(pool, async (client) => {
-          await requireTenantPermission(
-            client,
-            actor,
-            {
-              kind: "booking",
-              tenantId: actor.tenantId,
-              locationId,
-              staffProfileId: staffId,
-            },
-            "booking.create",
-          );
-          const service = await client.query<{
-            duration_minutes: number;
-            post_service_buffer_minutes: number;
-            time_zone: string;
-          }>(
-            `SELECT service.duration_minutes, service.post_service_buffer_minutes,
-                    loc.time_zone
-               FROM cookie_staff.service_assignments assignment
-               JOIN cookie_staff.location_assignments staff_loc
-                 ON staff_loc.tenant_id=assignment.tenant_id
-                AND staff_loc.location_id=assignment.location_id
-                AND staff_loc.staff_id=assignment.staff_id
-               JOIN cookie_staff.staff_profiles staff
-                 ON staff.tenant_id=assignment.tenant_id AND staff.id=assignment.staff_id
-               JOIN cookie_catalog.services service
-                 ON service.tenant_id=assignment.tenant_id AND service.id=assignment.service_id
-               JOIN cookie_tenancy.locations loc
-                 ON loc.tenant_id=assignment.tenant_id AND loc.id=assignment.location_id
-              WHERE assignment.tenant_id=$1::uuid AND assignment.location_id=$2::uuid
-                AND assignment.staff_id=$3::uuid AND assignment.service_id=$4::uuid
-                AND assignment.active AND staff_loc.active AND staff.active
-                AND staff.bookable AND service.active AND loc.time_zone IS NOT NULL`,
-            [actor.tenantId, locationId, staffId, serviceId],
-          );
-          const settings = service.rows[0];
-          if (!settings) return [];
-          const shifts = await client.query<{ start_at: Date; end_at: Date }>(
-            `SELECT start_at, end_at FROM cookie_scheduling.shift_windows
-              WHERE tenant_id=$1::uuid AND location_id=$2::uuid
-                AND staff_id=$3::uuid AND active`,
-            [actor.tenantId, locationId, staffId],
-          );
-          const blocked = await client.query<{
-            start_at: Date;
-            end_at: Date;
-            kind: string;
-          }>(
-            `SELECT start_at, end_at, kind FROM cookie_scheduling.blocked_windows
-              WHERE tenant_id=$1::uuid AND location_id=$2::uuid
-                AND staff_id=$3::uuid AND active`,
-            [actor.tenantId, locationId, staffId],
-          );
-          const occupied = await client.query<{
-            location_id: string;
-            start_at: Date;
-            occupied_until: Date;
-          }>(
-            `SELECT location_id::text, start_at, occupied_until
-               FROM cookie_booking.bookings
-              WHERE tenant_id=$1::uuid AND staff_id=$2::uuid
-                AND status='Confirmed'`,
-            [actor.tenantId, staffId],
-          );
-          const intervals = (rows: { start_at: Date; end_at: Date }[]) =>
-            rows.map((row) => ({
-              startAt: row.start_at.toISOString(),
-              endAt: row.end_at.toISOString(),
-            }));
-          const available = listAvailableSlots({
-            organizationId: actor.tenantId,
-            locationId,
-            staffId,
-            localDate: date,
-            timeZone: settings.time_zone,
-            serviceDurationMinutes: settings.duration_minutes,
-            postServiceBufferMinutes: settings.post_service_buffer_minutes,
-            stepMinutes: 1,
-            shifts: intervals(shifts.rows),
-            breaks: intervals(
-              blocked.rows.filter((row) => row.kind === "break"),
-            ),
-            exceptions: intervals(
-              blocked.rows.filter((row) => row.kind === "exception"),
-            ),
-            occupied: occupied.rows.map((row) => ({
-              organizationId: actor.tenantId,
-              locationId: row.location_id,
-              staffId,
-              startAt: row.start_at.toISOString(),
-              occupiedUntil: row.occupied_until.toISOString(),
-            })),
-          });
-          return available.filter(
-            (slot) => Date.parse(slot.startAt) > Date.now(),
-          );
-        });
+        const snapshot = await inReadTransaction(pool, (client) =>
+          readBookingAvailability(client, {
+            actor, locationId, staffId, serviceId, localDate: date,
+          }),
+        );
+        const slots = snapshot?.slots ?? [];
         return reply.send({ slots });
+      } catch (error) {
+        return handleFailure(error, reply);
+      }
+    },
+  );
+
+  // Quote is a fresh, non-reserving read of the same availability snapshot.
+  // No price or slot is trusted by CreateBooking, even after a successful quote.
+  app.get<{
+    Params: LocationParams;
+    Querystring: {
+      serviceId?: string;
+      staffId?: string;
+      date?: string;
+      startAt?: string;
+    };
+  }>(
+    "/v1/organizations/:tenantId/locations/:locationId/quote",
+    async (request, reply) => {
+      const actor = await authenticate(
+        request.headers.authorization,
+        request.params.tenantId,
+        reply,
+      );
+      if (!actor) return reply;
+      const { locationId } = request.params;
+      const { serviceId, staffId, date, startAt } = request.query;
+      if (
+        !UUID.test(locationId) ||
+        !serviceId ||
+        !UUID.test(serviceId) ||
+        !staffId ||
+        !UUID.test(staffId) ||
+        !validDate(date) ||
+        !startAt ||
+        !UTC_MINUTE.test(startAt) ||
+        !validInstant(startAt)
+      )
+        return fail(reply, 400, "INVALID_REQUEST");
+      try {
+        const snapshot = await inReadTransaction(pool, (client) =>
+          readBookingAvailability(client, {
+            actor, locationId, staffId, serviceId, localDate: date,
+          }),
+        );
+        const slot = snapshot?.slots.find(
+          (item) => item.startAt === new Date(startAt).toISOString(),
+        );
+        if (!slot || !snapshot) return fail(reply, 409, "BOOKING_CONFLICT");
+        return reply.send({
+          locationId,
+          serviceId,
+          staffId,
+          ...slot,
+          durationMinutes: snapshot.durationMinutes,
+          postServiceBufferMinutes: snapshot.postServiceBufferMinutes,
+          timeZone: snapshot.timeZone,
+          priceKopecks: snapshot.priceKopecks,
+          currency: "RUB",
+          priceKind: "base-service",
+          provisional: true,
+        });
       } catch (error) {
         return handleFailure(error, reply);
       }
