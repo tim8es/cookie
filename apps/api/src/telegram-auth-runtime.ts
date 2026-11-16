@@ -47,9 +47,10 @@ export function createLiveTelegramSessionProvider(
     maxAgeSeconds: 300,
     maxFutureSkewSeconds: 30,
   });
-  const resolveVerifiedTelegramLink = createPostgresVerifiedTelegramLinkResolver({
-    userHashSecret: Buffer.from(secretHex, "hex"),
-  });
+  const resolveVerifiedTelegramLink =
+    createPostgresVerifiedTelegramLinkResolver({
+      userHashSecret: Buffer.from(secretHex, "hex"),
+    });
   return new PostgresOpaqueTelegramSessions({
     pool,
     telegramProofVerifier: proof,
