@@ -54,3 +54,19 @@ The retry proves an earlier exact-HEAD green result **for the tested base**; it 
 ## Evidence discipline
 
 All technical claims are tied to GitHub PR HEADs, file blob SHA comparisons and recorded F1 Actions runs; **run results do not automatically carry forward** across base changes. PostgreSQL serialization tests use synthetic actors and two actual database connections, not real customer identities. The source of truth for F1 acceptance remains [test strategy](test-strategy.md), [F1 negative cases](f1-pilot-acceptance-cases.md), [#175](https://github.com/tim8es/cookie/issues/175) and the accepted F0/F1 boundaries in `AGENTS.md`. The exact report base is noted above; reevaluate if main advances.
+
+## 5. Post-merge main reconciliation — #216 Chromium/Booking QA (2026-11-16)
+
+**New verified code state:** [PR #216](https://github.com/tim8es/cookie/pull/216) was **MERGED** by a parallel owner/agent to `main` commit `24c9a601bc6359c806308777bdbe18a7a999b186`, after the repository advanced through architecture/module-boundary updates. The obsolete stacked QA Drafts #207/#209/#213 were **closed without merging**. No duplicate browser/Booking test leaf remains for separate integration.
+
+A direct **live main Git blob comparison** confirms the merged executable QA sources are unchanged:
+- `scripts/f1-chromium-startup.mjs`: blob `91ec81098ca7abfb004842ed1f20c8750f36f393`;
+- `scripts/f1-chromium-startup.test.mjs`: blob `c0ec8b7a9fa9b473ddf42c01140f735d4c57c8ab`;
+- `scripts/f1-browser-cdp.mjs`: blob `2821f22433b68901ac05eab52a14b09e4a37d282`;
+- `apps/api/test/booking-http.integration.test.ts`: blob `1f077f2206c6f89e4c10200527e10416893f8047`.
+
+Critically, the **merged `package.json` preserved BOTH independent scripts**: existing `pnpm test` now includes five new fail-closed CDP unit tests, **and** the newer `check:boundaries` retains `node --test scripts/check-boundaries.test.mjs`. The old #216 source package.json would otherwise have overwritten that new architecture test command; the actual GitHub merge resolved them together.
+
+**Prior exact-PR evidence (not exact merge-SHA proof):** [full CI #43941593608](https://github.com/tim8es/cookie/actions/runs/43941593608) on test-code head and [#43942488706](https://github.com/tim8es/cookie/actions/runs/43942488706) on docs-only head were **SUCCESS**: 103 original unit + 5 CDP launcher unit, **66 PG16 integration**, **49 web**, backup/restore, worker, API/Svelte build and Chromium visual gate. These PR-head green runs do not automatically establish a full CI on the changed `main` merge commit with new architecture test scripts. On inspection, the merge commit had no attached complete Actions F1 run; **this report-only PR revision requests a new F1 check on the exact combined main-plus-doc tree**. Do not mark that newest run PASS until it completes.
+
+**Remaining gates:** [#197](https://github.com/tim8es/cookie/issues/197) now has verified real-browser 409→fresh-body, valid empty-200 and failure-503 coverage **in main**; #164 bounded Chromium startup hardening is also **in main**, but intermittent resource/launcher root cause is not statistically disproved. Both issues remain OPEN pending independent acceptance/monitoring. Security #113/#165 and the separate #175 Workspace owner decision and #144 enforced main protection remain open. This update does not authorize public Booking/real customers, personal data, paid providers, production or commercial pilot.
