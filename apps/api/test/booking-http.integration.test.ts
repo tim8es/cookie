@@ -29,7 +29,7 @@ test(
     const service = randomUUID();
     const customer = randomUUID();
     const base = `/v1/organizations/${tenant}`;
-    const ownerHeader = { authorization: "Bearer synthetic-owner" };
+    const ownerHeader = { authorization: "***" };
     const createBody = {
       locationId: locationA,
       staffId: staff,
@@ -93,7 +93,16 @@ test(
         `INSERT INTO cookie_identity.role_assignments
            (tenant_id,id,identity_id,role_id,location_id)
          VALUES ($1,$2,$3,$4,NULL),($1,$5,$6,$7,$8)`,
-        [tenant, randomUUID(), owner, role, randomUUID(), admin, adminRole, locationA],
+        [
+          tenant,
+          randomUUID(),
+          owner,
+          role,
+          randomUUID(),
+          admin,
+          adminRole,
+          locationA,
+        ],
       );
       await pool.query(
         "INSERT INTO cookie_customers.customers(tenant_id,id) VALUES ($1,$2)",
@@ -157,16 +166,23 @@ test(
       });
       assert.equal(availability.statusCode, 200);
       assert.ok(
-        availability.json().slots.some(
-          (slot: { startAt: string }) => slot.startAt === "2027-04-12T10:00:00.000Z",
-        ),
+        availability
+          .json()
+          .slots.some(
+            (slot: { startAt: string }) =>
+              slot.startAt === "2027-04-12T10:00:00.000Z",
+          ),
       );
 
-      const create = (key: string, body = createBody, token = "synthetic-owner") =>
+      const create = (
+        key: string,
+        body = createBody,
+        token = "synthetic-owner",
+      ) =>
         app.inject({
           method: "POST",
           url: `${base}/bookings`,
-          headers: { authorization: `Bearer ${token}`, "idempotency-key": key },
+          headers: { authorization: `*** "idempotency-key": key },
           payload: body,
         });
       const [first, competitor] = await Promise.all([
@@ -187,13 +203,20 @@ test(
       const retry = await create(winningKey);
       assert.equal(retry.statusCode, 201);
       assert.deepEqual(retry.json(), receipt);
-      assert.equal(entitlementChecks, 2, "both new concurrent attempts are checked; replay is not");
+      assert.equal(
+        entitlementChecks,
+        2,
+        "both new concurrent attempts are checked; replay is not",
+      );
       const differentPayload = await create(winningKey, {
         ...createBody,
         startAt: "2027-04-12T14:00:00Z",
       });
       assert.equal(differentPayload.statusCode, 409);
-      assert.equal(differentPayload.json().error.code, "IDEMPOTENCY_KEY_REUSED");
+      assert.equal(
+        differentPayload.json().error.code,
+        "IDEMPOTENCY_KEY_REUSED",
+      );
 
       const booking = await app.inject({
         method: "GET",
@@ -205,35 +228,54 @@ test(
       assert.equal(booking.json().status, "Confirmed");
 
       const calendarUrl = `${base}/locations/${locationA}/calendar?from=2027-04-12T00:00:00Z&to=2027-04-13T00:00:00Z`;
-      const calendar = await app.inject({ method: "GET", url: calendarUrl, headers: ownerHeader });
+      const calendar = await app.inject({
+        method: "GET",
+        url: calendarUrl,
+        headers: ownerHeader,
+      });
       assert.equal(calendar.statusCode, 200);
       assert.equal(calendar.json().bookings.length, 1);
 
-      const blockedAvailability = await app.inject({ method: "GET", url: slotsUrl, headers: ownerHeader });
+      const blockedAvailability = await app.inject({
+        method: "GET",
+        url: slotsUrl,
+        headers: ownerHeader,
+      });
       assert.equal(blockedAvailability.statusCode, 200);
       assert.ok(
-        !blockedAvailability.json().slots.some(
-          (slot: { startAt: string }) => slot.startAt === "2027-04-12T10:05:00.000Z",
-        ),
+        !blockedAvailability
+          .json()
+          .slots.some(
+            (slot: { startAt: string }) =>
+              slot.startAt === "2027-04-12T10:05:00.000Z",
+          ),
       );
-      const crossBranch = await create("cross-branch", { ...createBody, locationId: locationB, startAt: "2027-04-12T10:05:00Z" });
+      const crossBranch = await create("cross-branch", {
+        ...createBody,
+        locationId: locationB,
+        startAt: "2027-04-12T10:05:00Z",
+      });
       assert.equal(crossBranch.statusCode, 409);
       assert.equal(crossBranch.json().error.code, "BOOKING_CONFLICT");
 
       const adminA = await app.inject({
         method: "GET",
         url: calendarUrl,
-        headers: { authorization: "Bearer synthetic-admin" },
+        headers: { authorization: "***" },
       });
       assert.equal(adminA.statusCode, 200);
       const adminB = await app.inject({
         method: "GET",
         url: `${base}/locations/${locationB}/calendar?from=2027-04-12T00:00:00Z&to=2027-04-13T00:00:00Z`,
-        headers: { authorization: "Bearer synthetic-admin" },
+        headers: { authorization: "***" },
       });
       assert.equal(adminB.statusCode, 403);
       assert.equal(adminB.json().error.code, "ACCESS_DENIED");
-      const outsiderResponse = await create("outsider", createBody, "synthetic-outsider");
+      const outsiderResponse = await create(
+        "outsider",
+        createBody,
+        "synthetic-outsider",
+      );
       assert.equal(outsiderResponse.statusCode, 403);
       const foreignTenant = await app.inject({
         method: "GET",
@@ -264,7 +306,11 @@ test(
           (SELECT count(*)::text FROM cookie_jobs.outbox_events WHERE tenant_id=$1 AND topic='booking.confirmed') AS events`,
         [tenant],
       );
-      assert.deepEqual(counts.rows[0], { bookings: "1", receipts: "1", events: "1" });
+      assert.deepEqual(counts.rows[0], {
+        bookings: "1",
+        receipts: "1",
+        events: "1",
+      });
     } finally {
       await app.close();
       const tables = [
@@ -284,10 +330,19 @@ test(
         "cookie_tenancy.locations",
       ];
       for (const table of tables) {
-        await pool.query(`DELETE FROM ${table} WHERE tenant_id=$1`, [tenant]).catch(() => undefined);
+        await pool
+          .query(`DELETE FROM ${table} WHERE tenant_id=$1`, [tenant])
+          .catch(() => undefined);
       }
-      await pool.query("DELETE FROM cookie_tenancy.organizations WHERE id=$1", [tenant]).catch(() => undefined);
-      await pool.query("DELETE FROM cookie_identity.identities WHERE id=ANY($1::uuid[])", [[owner, admin, outsider]]).catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1", [tenant])
+        .catch(() => undefined);
+      await pool
+        .query(
+          "DELETE FROM cookie_identity.identities WHERE id=ANY($1::uuid[])",
+          [[owner, admin, outsider]],
+        )
+        .catch(() => undefined);
       await pool.end();
     }
   },
