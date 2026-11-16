@@ -35,7 +35,10 @@ function signedInitData(queryId: string): string {
 }
 
 test("opaque retention rejects unsafe deletion windows and unbounded batches", () => {
-  const pool = { query: () => undefined, connect: () => undefined } as unknown as Pool;
+  const pool = {
+    query: () => undefined,
+    connect: () => undefined,
+  } as unknown as Pool;
   for (const [retentionSeconds, batchSize] of [
     [3_660, 10],
     [7_199, 10],
@@ -82,9 +85,10 @@ test(
     let blocker: Awaited<ReturnType<typeof pool.connect>> | undefined;
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
-      await pool.query("INSERT INTO cookie_identity.identities(id) VALUES($1)", [
-        identityId,
-      ]);
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1)",
+        [identityId],
+      );
       await pool.query(
         "INSERT INTO cookie_tenancy.organizations(id,owner_identity_id,display_name) VALUES($1,$2,'Synthetic cleanup tenant')",
         [tenantId, identityId],
@@ -157,9 +161,10 @@ test(
       assert.equal(first.deleted, 1, "skip locked old row; make progress");
       assert.equal(
         (
-          await pool.query("SELECT 1 FROM cookie_identity.opaque_sessions WHERE token_sha256=$1", [
-            oldA,
-          ])
+          await pool.query(
+            "SELECT 1 FROM cookie_identity.opaque_sessions WHERE token_sha256=$1",
+            [oldA],
+          )
         ).rowCount,
         1,
         "locked row cannot be prematurely removed",
@@ -186,19 +191,24 @@ test(
         null,
         "fresh consumed proof stays unique after revocation and cleanup",
       );
-      assert.equal(
-        await sessions.verifyBearerToken(issued.bearerToken),
-        null,
-      );
+      assert.equal(await sessions.verifyBearerToken(issued.bearerToken), null);
     } finally {
       if (blocker) {
         await blocker.query("ROLLBACK").catch(() => undefined);
         blocker.release();
       }
-      await pool.query("DELETE FROM cookie_identity.opaque_sessions WHERE tenant_id=$1", [tenantId]).catch(() => undefined);
-      await pool.query("DELETE FROM cookie_identity.memberships WHERE tenant_id=$1", [tenantId]).catch(() => undefined);
-      await pool.query("DELETE FROM cookie_tenancy.organizations WHERE id=$1", [tenantId]).catch(() => undefined);
-      await pool.query("DELETE FROM cookie_identity.identities WHERE id=$1", [identityId]).catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_identity.opaque_sessions WHERE tenant_id=$1", [tenantId])
+        .catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_identity.memberships WHERE tenant_id=$1", [tenantId])
+        .catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1", [tenantId])
+        .catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_identity.identities WHERE id=$1", [identityId])
+        .catch(() => undefined);
       await pool.end();
     }
   },
@@ -232,7 +242,10 @@ test(
         maintenance.deleteInactiveMembership("bad-uuid", identityId),
         /Invalid tenant or identity UUID/,
       );
-      await pool.query("INSERT INTO cookie_identity.identities(id) VALUES($1)", [identityId]);
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1)",
+        [identityId],
+      );
       await pool.query(
         "INSERT INTO cookie_tenancy.organizations(id,owner_identity_id,display_name) VALUES($1,$2,'Synthetic deletion tenant')",
         [tenantId, identityId],
@@ -299,9 +312,10 @@ test(
       );
       assert.equal(
         (
-          await pool.query("SELECT 1 FROM cookie_identity.opaque_sessions WHERE tenant_id=$1", [
-            tenantId,
-          ])
+          await pool.query(
+            "SELECT 1 FROM cookie_identity.opaque_sessions WHERE tenant_id=$1",
+            [tenantId],
+          )
         ).rowCount,
         1,
         "FK failure rolls back any session deletion",
@@ -316,20 +330,33 @@ test(
       );
       assert.equal(
         (
-          await pool.query("SELECT 1 FROM cookie_identity.memberships WHERE tenant_id=$1", [
-            tenantId,
-          ])
+          await pool.query(
+            "SELECT 1 FROM cookie_identity.memberships WHERE tenant_id=$1",
+            [tenantId],
+          )
         ).rowCount,
         0,
       );
       assert.equal(await sessions.exchangeTelegramInitData(raw), null);
     } finally {
-      await pool.query("DELETE FROM cookie_identity.role_assignments WHERE tenant_id=$1", [tenantId]).catch(() => undefined);
-      await pool.query("DELETE FROM cookie_identity.roles WHERE tenant_id=$1", [tenantId]).catch(() => undefined);
-      await pool.query("DELETE FROM cookie_identity.opaque_sessions WHERE tenant_id=$1", [tenantId]).catch(() => undefined);
-      await pool.query("DELETE FROM cookie_identity.memberships WHERE tenant_id=$1", [tenantId]).catch(() => undefined);
-      await pool.query("DELETE FROM cookie_tenancy.organizations WHERE id=$1", [tenantId]).catch(() => undefined);
-      await pool.query("DELETE FROM cookie_identity.identities WHERE id=$1", [identityId]).catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_identity.role_assignments WHERE tenant_id=$1", [tenantId])
+        .catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_identity.roles WHERE tenant_id=$1", [tenantId])
+        .catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_identity.opaque_sessions WHERE tenant_id=$1", [tenantId])
+        .catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_identity.memberships WHERE tenant_id=$1", [tenantId])
+        .catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_tenancy.organizations WHERE id=$1", [tenantId])
+        .catch(() => undefined);
+      await pool
+        .query("DELETE FROM cookie_identity.identities WHERE id=$1", [identityId])
+        .catch(() => undefined);
       await pool.end();
     }
   },
