@@ -153,6 +153,14 @@ test(
       // migration 0022 trigger needs a Session UPDATE lock. Meanwhile this
       // command holds Session SHARE. If it subsequently requests Membership
       // SHARE, PostgreSQL detects the two-transaction deadlock.
+      const guardPid = (
+        await guarding.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")
+      ).rows[0]?.pid;
+      const revokePid = (
+        await revoking.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")
+      ).rows[0]?.pid;
+      assert.ok(guardPid && revokePid);
+
       const revokeResult = revoking
         .query(
           [
@@ -166,14 +174,6 @@ test(
           () => ({ ok: true as const }),
           (error: unknown) => ({ ok: false as const, error }),
         );
-
-      const guardPid = (
-        await guarding.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")
-      ).rows[0]?.pid;
-      const revokePid = (
-        await revoking.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")
-      ).rows[0]?.pid;
-      assert.ok(guardPid && revokePid);
 
       let blocked = false;
       for (let attempt = 0; attempt < 100; attempt++) {
