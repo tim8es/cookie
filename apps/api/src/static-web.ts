@@ -8,7 +8,8 @@ import type { FastifyInstance, FastifyReply } from "fastify";
  * enable API endpoints, identity, booking, payment or fake success.
  * The source directory must contain a build-produced index.html.
  */
-const assetName = /^[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.(?:js|css|svg|png|webp|ico|woff2?)$/i;
+const assetName =
+  /^[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.(?:js|css|svg|png|webp|ico|woff2?)$/i;
 const mimeTypes: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
