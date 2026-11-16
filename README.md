@@ -14,7 +14,7 @@
 - [Операционная готовность / runbooks / защита ПДн](docs/operations/pilot-operational-readiness.md).
 - [Рыночная матрица и модель unit economics](docs/product/market-economics-validation.md).
 - [Итоговый F0 owner review / evidence gate](docs/delivery/f0-closure-review-20261114.md).
-## Пакет F0 для одного ревью владельцем (PROPOSED)
+## Архивный пакет F0 — утверждён владельцем (DEC-115)
 
 - [Рекомендуемые решения — единый пакет F0-P01..P12](docs/decisions/f0-owner-review-package-20261114.md).
 - [Implementation blueprint: стек, границы, Booking, authZ, screen map](docs/architecture/f0-implementation-blueprint.md).
@@ -22,7 +22,7 @@
 - [Коммерческий playbook первых салонов](docs/product/pilot-commercial-playbook.md).
 - [Итог документального аудита и блокеры F0 Gate](docs/delivery/f0-consistency-audit-20261114.md).
 
-Эти новые материалы представляют **рекомендации автора пакета**; они не изменяют статус принятия первоначальных решений без ревью владельца. F0 Gate остаётся закрытым, код/merge/deploy не разрешены.
+Материалы были подготовлены как **PROPOSED** для review 2026-11-14. Позже в тот же день владелец явно принял F0-P01–F0-P12 (DEC-115) и разрешил F1 engineering. Документационный [PR #43](https://github.com/tim8es/cookie/pull/43) уже объединён с `main`. При этом отдельные детали реализации сохраняют статус PROPOSED там, где он указан в реестре; пилот, реальные ПДн, платежи и production deployment **не разрешены**.
 
 ## Начать чтение
 1. [Карта всей документации](docs/README.md).
@@ -43,6 +43,8 @@
 - Не используем реальные ПДн в демонстрационных внешних средах без надлежащего правового основания.
 
 ## Разработка
-Пока только документация, архитектура, PRD и задачи. Условия старта и инструкции агентам — [AGENTS.md](AGENTS.md) и [правила работы](docs/delivery/workflow.md). Разрабатывать только по отдельному явному решению после F0 Gate (#15).
+**F1 инженерная разработка разрешена** с 2026-11-14 (DEC-115): приложение, миграции, CI и тесты на синтетических данных в отдельных feature-ветках через PR. Не пушить напрямую в `main`; перед объединением проверять зависимости stacked PR и результат CI на точном commit SHA. [AGENTS.md](AGENTS.md) и [правила работы](docs/delivery/workflow.md) описывают workflow.
+
+**F1 не является разрешением на коммерческое использование.** Для реальных клиентов, ПДн, платежей, платных провайдеров, production deployment требуется отдельное согласование. Текущие блокирующие задачи: [#113](https://github.com/tim8es/cookie/issues/113) — синхронизация прав с Booking, [#66](https://github.com/tim8es/cookie/issues/66) — web/API контракты и интеграция, [#23](https://github.com/tim8es/cookie/issues/23) — настоящий технический E2E. Успешный CI отдельного Draft PR не означает завершённый Pilot Gate.
 
 Название продукта пока не утверждено; репозиторий остаётся приватным.
