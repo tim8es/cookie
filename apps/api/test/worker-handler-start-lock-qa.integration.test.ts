@@ -178,14 +178,18 @@ test(
             [tenantId],
           )
           .catch(() => undefined);
-        await pool.query(
-          "DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid",
-          [tenantId],
-        ).catch(() => undefined);
-        await pool.query(
-          "DELETE FROM cookie_identity.identities WHERE id=$1::uuid",
-          [identityId],
-        ).catch(() => undefined);
+        await pool
+          .query(
+            "DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid",
+            [tenantId],
+          )
+          .catch(() => undefined);
+        await pool
+          .query(
+            "DELETE FROM cookie_identity.identities WHERE id=$1::uuid",
+            [identityId],
+          )
+          .catch(() => undefined);
       } finally {
         await pool.end();
       }
