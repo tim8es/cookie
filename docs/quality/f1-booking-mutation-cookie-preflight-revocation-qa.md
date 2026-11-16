@@ -32,3 +32,7 @@ Mandatory: lint, Prettier, TS, unit, all PostgreSQL migrations and integrations,
 ## Final evidence note
 
 This **documentation-only** evidence update intentionally leaves the test source unchanged. The test-code head above is green; the final docs-only commit must separately complete exact-head full CI before a final green status is claimed. The first run was stopped at Prettier before PostgreSQL and therefore was **not** security RED; pinned formatting was corrected and the temporary formatting workflow was deleted. The new test deliberately isolates direct Cookie bearer authority and must not be mistaken for a real Telegram-link or public production API test. Keep PR Draft until independent review and latest-main reconciliation.
+
+## Current-main CI revalidation (2026-11-16)
+
+The independent test originally passed [full CI #43925220385](https://github.com/tim8es/cookie/actions/runs/43925220385) against earlier `main` including canonical Cookie bearer #173. The PR base has now been refreshed to commit `53de65ae8e7b833e1fc7ff756943c78430ca216e`, which also contains bounded worker #166 and hardened F1 CI #139. This documentation-only update forces a full exact-head run on that combined tree; test assertions, endpoints and synthetic fixtures are **unchanged**. Do not merge on the older green run. No production deployment or real customer/Telegram data.
