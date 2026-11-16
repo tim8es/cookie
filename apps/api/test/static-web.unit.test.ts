@@ -7,12 +7,15 @@ import test from "node:test";
 import { createApp } from "../src/app.js";
 import { registerCompiledWeb } from "../src/static-web.js";
 
-test("compiled web is served from the normal API without exposing a Booking route", async (t) => {
+test("compiled static web never enables Booking", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "cookie-static-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "assets"));
   await writeFile(join(root, "index.html"), "<!doctype html><html>Cookie</html>");
-  await writeFile(join(root, "assets", "app-abc123.js"), "export const ready = true;");
+  await writeFile(
+    join(root, "assets", "app-abc123.js"),
+    "export const ready = true;",
+  );
 
   const app = createApp({ query: async () => ({ rows: [] }) });
   t.after(async () => app.close());
