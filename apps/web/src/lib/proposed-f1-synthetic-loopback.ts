@@ -130,7 +130,11 @@ export function createProposedF1SyntheticLoopbackClient(
     url.searchParams.set("staffId", selection.staffId);
     url.searchParams.set("date", selection.localDate);
 
-    const raw = await transport.request(url, { method: "GET", headers });
+    const raw = await transport.request(url, {
+      method: "GET",
+      headers,
+      redirect: "error",
+    });
     const result = parseProposedF1Availability(raw);
     if (!result) throw new TransportFailure("invalid-response", 200);
     return result;
@@ -145,6 +149,7 @@ export function createProposedF1SyntheticLoopbackClient(
         }
         return transport.request(root + "/bookings", {
           method: "POST",
+          redirect: "error",
           headers: {
             ...headers,
             "Content-Type": "application/json",

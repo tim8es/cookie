@@ -264,3 +264,22 @@ test("API mode is still disconnected and never switches to the synthetic harness
   assert.equal(api.mode, "api");
   await assert.rejects(api.getSnapshot(), /API ещё не подключён/);
 });
+
+test("synthetic GET and POST fail closed on HTTP redirects", async () => {
+  const redirectModes: Array<string | undefined> = [];
+  const client = harness(async (_input, init) => {
+    redirectModes.push(init?.redirect);
+    if (init?.method === "GET") {
+      return Response.json({ priceKopecks: "20000", slots: [slot] });
+    }
+    return Response.json(confirmed, { status: 201 });
+  });
+
+  await client.readAvailability(selection);
+  const state = await new BookingAttempt(
+    client.port,
+    () => "redirect-guard-attempt",
+  ).submit(selection);
+  assert.equal(state.phase, "confirmed");
+  assert.deepEqual(redirectModes, ["error", "error"]);
+});
