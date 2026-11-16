@@ -26,6 +26,9 @@
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:ui": "node apps/web/scripts/check-ui-structure.mjs"
   },
+  "dependencies": {
+    "pg": "8.23.1"
+  },
   "devDependencies": {
     "@eslint/js": "9.39.1",
     "@types/node": "26.6.6",
