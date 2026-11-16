@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { CalendarDays, Clock3, ShieldCheck, UserRound } from "@lucide/svelte";
+  import { CalendarDays, Clock3, MapPin, ShieldCheck, UserRound } from "@lucide/svelte";
   import * as Card from "../components/ui/card/index.js";
   import { money, shortDate } from "../dates";
-  import type { Service } from "../model";
+  import type { Location, Service } from "../model";
 
   export let service: Service | undefined;
+  export let location: Location | undefined;
   export let staffId: string;
   export let bookingDate: string;
   export let bookingTime: string;
@@ -14,14 +15,14 @@
 <Card.Root class="booking-summary" aria-label="Сводка демо-визита">
   <div class="ticket-top">
     <div class="ticket-topline">
-      <span>Cookie / ваш визит</span>
+      <span>Ваш визит / детали</span>
       <span class="ticket-demo">DEMO</span>
     </div>
     <div class="ticket-mark" aria-hidden="true">
       <span></span><span></span><span></span><span></span>
     </div>
-    <h2>Время, которое<br />принадлежит вам.</h2>
-    <p>Ваш маленький план на красивый день.</p>
+    <h2>Ваш визит<br />в одном месте.</h2>
+    <p>Проверьте выбранные детали перед записью.</p>
   </div>
   <div class="ticket-stitch" aria-hidden="true"></div>
   <div class="ticket-body">
@@ -34,6 +35,10 @@
       <div>
         <dt><UserRound size={15} aria-hidden="true" /> Специалист</dt>
         <dd>{staffId ? staffName(staffId) : "—"}</dd>
+      </div>
+      <div>
+        <dt><MapPin size={15} aria-hidden="true" /> Филиал</dt>
+        <dd>{location?.name ?? "—"}{#if location?.address}<small class="ticket-location-address">{location.address}</small>{/if}</dd>
       </div>
       <div>
         <dt><CalendarDays size={15} aria-hidden="true" /> День</dt>

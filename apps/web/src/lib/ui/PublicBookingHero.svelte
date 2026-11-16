@@ -6,8 +6,8 @@
 <section class="booking-head booking-hero" aria-label="Онлайн-запись">
   <div class="booking-hero-copy">
     <span class="booking-hero-section">Cookie / запись к мастеру</span>
-    <h1>Время для себя.<br /><em>В вашем ритме.</em></h1>
-    <p>Выберите услугу, мастера и удобное время. Остальное мы уже собрали в одном месте.</p>
+    <h1>Выберите время.<br /><em>Мы вас ждём.</em></h1>
+    <p>Услуга, специалист и подходящее время — всё для записи в одном месте.</p>
   </div>
   <div class="booking-hero-studio">
     <div class="hero-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>

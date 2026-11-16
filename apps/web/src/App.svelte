@@ -226,7 +226,7 @@
 
   <div class="main-area">
     {#if screen === "booking"}
-      <PublicHeader onBack={() => goto("home")} />
+      <PublicHeader organizationName={org?.name ?? "Тестовый салон"} onBack={() => goto("home")} />
     {:else if screen === "home" && !org}
       <OnboardingHeader />
     {:else}
@@ -320,6 +320,7 @@
         {#if createdBooking}
           <BookingConfirmation
             booking={createdBooking}
+            location={data.locations.find((item) => item.id === createdBooking?.locationId)}
             serviceName={getService}
             staffName={getStaff}
             onOpenCalendar={() => { calendarDate = createdBooking!.date; goto("calendar"); }}

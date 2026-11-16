@@ -3,7 +3,7 @@
   import { Button } from "../components/ui/button/index.js";
   import * as Card from "../components/ui/card/index.js";
   import { Input } from "../components/ui/input/index.js";
-  import { localDay } from "../dates";
+  import { localDay, money } from "../dates";
   import type { DemoSnapshot, SlotView, StaffMember } from "../model";
   import BookingSummary from "./BookingSummary.svelte";
 
@@ -37,9 +37,9 @@
       <div class="booking-form-header">
         <div>
           <h2>Соберём ваш визит</h2>
-          <p>Всего три небольших шага до свободного времени.</p>
+          <p>Выберите услугу, дату и время, затем укажите, как к вам обращаться.</p>
         </div>
-        <span class="booking-steps" aria-label="Три шага">01 / 03</span>
+        <span class="booking-steps">Три раздела · одна форма</span>
       </div>
 
       <section class="booking-group" aria-labelledby="service-group-title">
@@ -133,6 +133,10 @@
       </section>
 
       <div class="booking-checkout">
+        <div class="booking-checkout-summary" aria-live="polite">
+          <span>Предварительно по каталогу</span>
+          <strong>{selectedService ? money(selectedService.basePriceRub) : "Выберите услугу"}</strong>
+        </div>
         <div class="booking-privacy">
           <LockKeyhole size={17} aria-hidden="true" />
           <p>Демонстрация без передачи данных. Не вводите настоящие имена или телефоны.</p>
@@ -145,6 +149,6 @@
       </div>
     </form>
   </Card.Root>
-  <BookingSummary service={selectedService} staffId={bookingStaff}
+  <BookingSummary service={selectedService} location={data.locations.find((item) => item.id === bookingLocation)} staffId={bookingStaff}
     {bookingDate} {bookingTime} {staffName} />
 </div>
