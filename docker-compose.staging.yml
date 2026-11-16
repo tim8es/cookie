@@ -1,0 +1,81 @@
+# A real compiled stack with a persistent PostgreSQL DB; NOT an authorized public pilot.
+# The standard API stays fail-closed (health only) until production AuthN/booking is reviewed.
+# Start on a private workstation/local machine, NOT an Altare Sandbox (no Docker there).
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cookie
+      POSTGRES_DB: cookie
+      POSTGRES_PASSWORD: ${COOKIE_DB_PASSWORD:?Set COOKIE_DB_PASSWORD to a long URL-safe hex value}
+    volumes:
+      - cookie_staging_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cookie -d cookie"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    networks: [private]
+
+  migrate:
+    image: cookie-staging-api:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: api
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://cookie:${COOKIE_DB_PASSWORD:?}@postgres:5432/cookie
+    command: ["node", "dist/packages/platform-db/src/cli.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [private]
+
+  api:
+    image: cookie-staging-api:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://cookie:${COOKIE_DB_PASSWORD:?}@postgres:5432/cookie
+      HOST: 0.0.0.0
+      PORT: "3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    stop_grace_period: 20s
+    networks: [private]
+
+  web:
+    image: cookie-staging-web:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${COOKIE_HTTP_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [private]
+
+networks:
+  private:
+
+volumes:
+  cookie_staging_pg:
