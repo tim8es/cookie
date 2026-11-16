@@ -51,9 +51,7 @@ export function registerLiveWorkspaceRead(
         verifier,
       );
       if (!verified.actor) {
-        return reply
-          .code(verified.status)
-          .send({ error: verified.error });
+        return reply.code(verified.status).send({ error: verified.error });
       }
 
       // A tenant URL is an equality check against VERIFIED session tenant.

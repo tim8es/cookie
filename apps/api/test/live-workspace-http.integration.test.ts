@@ -127,7 +127,10 @@ test(
         headers: { authorization: `Bearer ${bearer}` },
       });
       assert.equal(crossTenant.statusCode, 403);
-      assert.doesNotMatch(crossTenant.body, /Other tenant secret|Invisible branch/);
+      assert.doesNotMatch(
+        crossTenant.body,
+        /Other tenant secret|Invisible branch/,
+      );
 
       const allowed = await app.inject({
         method: "GET",
