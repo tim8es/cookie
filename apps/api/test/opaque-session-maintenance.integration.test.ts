@@ -322,8 +322,12 @@ test(
                    clock_timestamp()-interval '3 hours',
                    clock_timestamp()-interval '3 hours')`,
           [
-            createHash("sha256").update(tenantId + suffix).digest(),
-            createHash("sha256").update(identityId + suffix).digest(),
+            createHash("sha256")
+              .update(tenantId + suffix)
+              .digest(),
+            createHash("sha256")
+              .update(identityId + suffix)
+              .digest(),
             tenantId,
             identityId,
           ],
