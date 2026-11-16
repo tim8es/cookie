@@ -1,6 +1,6 @@
 # F1 independent QA: Outbox handler-start row lock (#150)
 
-**Status:** UNVERIFIED until an exact-head PostgreSQL 16 CI run completes. QA-only stacked regression on backend [PR #166](https://github.com/tim8es/cookie/pull/166). No production source, migrations or workflow changed.
+**Status:** PASS on tested QA branch SHA `60e9c635d36a96e9c53c9f3e44443bd90f9c2a9f`: [full F1 CI #43909164653](https://github.com/tim8es/cookie/actions/runs/43909164653). The targeted handler-start lock test passed on real PostgreSQL 16 (~349 ms); full suite: 102/102 unit PASS, 46/46 PostgreSQL integration PASS, lint, Prettier, typecheck, builds, worker and browser smoke PASS. QA-only stacked regression on backend [PR #166](https://github.com/tim8es/cookie/pull/166). No production source, migrations or permanent workflow changed.
 
 ## Risk and invariant
 
@@ -29,7 +29,7 @@ No random sleeps. The lock timeout only bounds the rival SQL attempt after expli
 
 ## Boundaries and blockers
 
-- Until exact-head CI is green, this QA scenario is neither PASS nor a proven new defect.
+- The positive lock proof is PASS at the recorded tested SHA only; future code/branch-base changes require fresh exact-head CI. It does not prove exactly-once external provider effects or close #150 on its own.
 - #165 remains confirmed RED on [QA PR #162](https://github.com/tim8es/cookie/pull/162) with [real PostgreSQL 16 CI](https://github.com/tim8es/cookie/actions/runs/43905245695).
 - #113 remains open for full authorization and session-revocation safety. #144 remains a branch-governance blocker.
 - No production rollout, commercial pilot, real PII, real channel, or payments authorized.
