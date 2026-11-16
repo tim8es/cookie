@@ -27,7 +27,7 @@ test(
       max: 2,
     });
     const revision = String(randomInt(12_000_000_000, 13_000_000_000));
-    let ids: string[] = [];
+    const ids: string[] = [];
     let lockedTransaction = false;
     const locker = await pool.connect();
     try {
