@@ -265,7 +265,7 @@ test(
         applied: isApplied ? "1" : "0",
         rejected: isApplied ? "0" : "1",
       });
-      if (isApplied) {
+      if (winner.value.status === "applied") {
         assert.equal(winner.value.createdDraft.active, false);
         assert.equal(winner.value.createdDraft.staffId, staffA);
       }
