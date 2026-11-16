@@ -409,10 +409,7 @@ export async function reviewShiftDraftCreateInternal(
     }
 
     const mode = await readModeLocked(client, tenantId);
-    if (
-      mode.mode !== "approval" ||
-      mode.revision !== request.policy_revision
-    ) {
+    if (mode.mode !== "approval" || mode.revision !== request.policy_revision) {
       fail("DRAFT_CREATE_APPROVAL_STALE");
     }
     // No stored shift exists yet: reauthorize requester over the stored
