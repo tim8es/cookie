@@ -4,55 +4,45 @@ import {
   classifyHttpStatus,
   createJsonTransport,
   TransportFailure,
+  type TransportFailureKind,
 } from "./transport";
 
-function responseFetcher(response: Response) {
-  let calls = 0;
-  const transport = createJsonTransport(async () => {
-    calls++;
-    return response;
+async function assertFailure(
+  request: Promise<unknown>,
+  kind: TransportFailureKind,
+  status: number | null = null,
+): Promise<void> {
+  await assert.rejects(request, (value: unknown) => {
+    assert.ok(value instanceof TransportFailure);
+    assert.equal(value.kind, kind);
+    assert.equal(value.status, status);
+    return true;
   });
-  return {
-    transport,
-    get calls() {
-      return calls;
-    },
-  };
 }
 
-function expectedFailure(kind: string, status: number | null = null) {
-  return (reason: unknown): boolean =>
-    reason instanceof TransportFailure &&
-    reason.kind === kind &&
-    reason.status === status;
-}
-
-test("HTTP transport starts offline and preserves caller inputs", async () => {
-  let observedUrl: string | URL | undefined;
-  let observedInit: RequestInit | undefined;
+test("fetch injection does not run at construction", async () => {
   let calls = 0;
-  const transport = createJsonTransport(async (url, init) => {
+  let seenUrl: string | URL | Request | undefined;
+  let seenOptions: RequestInit | undefined;
+  const transport = createJsonTransport(async (url, options) => {
     calls++;
-    observedUrl = url;
-    observedInit = init;
-    return Response.json({ synthetic: "ok" });
+    seenUrl = url;
+    seenOptions = options;
+    return Response.json({ synthetic: true });
   });
+
   assert.equal(calls, 0);
-  const url = new URL("http://127.0.0.1:1234/contract-to-be-reviewed");
-  const controller = new AbortController();
-  const init: RequestInit = {
-    method: "POST",
-    body: JSON.stringify({ synthetic: true }),
-    signal: controller.signal,
-  };
-  assert.deepEqual(await transport.request(url, init), { synthetic: "ok" });
+  const url = new URL("http://127.0.0.1:1234/placeholder");
+  const options: RequestInit = { method: "POST" };
+  const result = await transport.request(url, options);
+  assert.deepEqual(result, { synthetic: true });
   assert.equal(calls, 1);
-  assert.equal(observedUrl, url);
-  assert.equal(observedInit, init);
+  assert.equal(seenUrl, url);
+  assert.equal(seenOptions, options);
 });
 
-test("HTTP statuses map to generic transport errors", async () => {
-  const statuses = [
+test("HTTP errors remain transport failures without automatic retry", async () => {
+  const cases = [
     [400, "http"],
     [401, "unauthenticated"],
     [403, "forbidden"],
@@ -63,68 +53,49 @@ test("HTTP statuses map to generic transport errors", async () => {
     [500, "server"],
     [503, "server"],
   ] as const;
-  for (const [status, kind] of statuses) {
+
+  for (const [status, kind] of cases) {
+    let calls = 0;
+    const transport = createJsonTransport(async () => {
+      calls++;
+      return new Response(null, { status });
+    });
     assert.equal(classifyHttpStatus(status), kind);
-    const fixture = responseFetcher(
-      Response.json({ synthetic: "ignored" }, { status }),
-    );
-    await assert.rejects(
-      () => fixture.transport.request("/contract-not-defined"),
-      expectedFailure(kind, status),
-    );
-    assert.equal(fixture.calls, 1, "never auto-retry a mutation");
+    await assertFailure(transport.request("/placeholder"), kind, status);
+    assert.equal(calls, 1);
   }
 });
 
-test("204 returns null and malformed JSON is not success", async () => {
-  const empty = responseFetcher(new Response(null, { status: 204 }));
-  assert.equal(await empty.transport.request("/reviewed-only"), null);
+test("204 is empty success and malformed JSON cannot succeed", async () => {
+  const empty = createJsonTransport(async () => {
+    return new Response(null, { status: 204 });
+  });
+  assert.equal(await empty.request("/placeholder"), null);
 
-  const bad = responseFetcher(new Response("invalid json", { status: 200 }));
-  await assert.rejects(
-    () => bad.transport.request("/reviewed-only"),
-    expectedFailure("invalid-response", 200),
-  );
+  const invalid = createJsonTransport(async () => {
+    return new Response("{", { status: 200 });
+  });
+  await assertFailure(invalid.request("/placeholder"), "invalid-response", 200);
 });
 
-test("offline and aborted requests never report success", async () => {
-  let calls = 0;
+test("network and abortion failures stay distinguishable", async () => {
   const offline = createJsonTransport(async () => {
-    calls++;
-    throw new TypeError("Simulated offline");
+    throw new TypeError("Synthetic network failure");
   });
-  await assert.rejects(
-    () => offline.request("/none"),
-    expectedFailure("network"),
-  );
-  assert.equal(calls, 1);
+  await assertFailure(offline.request("/placeholder"), "network");
 
-  const controller = new AbortController();
-  controller.abort();
+  const abortController = new AbortController();
+  abortController.abort();
   const cancelled = createJsonTransport(async () => {
-    throw new Error("fetch rejected after abort");
+    throw new Error("Aborted before sending");
   });
-  await assert.rejects(
-    () => cancelled.request("/none", { signal: controller.signal }),
-    expectedFailure("aborted"),
-  );
+  const aborted = cancelled.request("/placeholder", {
+    signal: abortController.signal,
+  });
+  await assertFailure(aborted, "aborted");
 
   const abortError = createJsonTransport(async () => {
-    throw new DOMException("Aborted", "AbortError");
+    throw new DOMException("Cancelled", "AbortError");
   });
-  await assert.rejects(
-    () => abortError.request("/none"),
-    expectedFailure("aborted"),
-  );
-});
-
-test("a 409 never turns into a booking confirmation", async () => {
-  const failedBooking = responseFetcher(new Response(null, { status: 409 }));
-  await assert.rejects(
-    () => failedBooking.transport.request("/not-an-endpoint", {
-      method: "POST",
-    }),
-    expectedFailure("conflict", 409),
-  );
-  assert.equal(failedBooking.calls, 1);
+  await assertFailure(abortError.request("/placeholder"), "aborted");
 });
