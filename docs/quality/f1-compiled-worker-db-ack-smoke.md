@@ -24,3 +24,7 @@ The test has finite deadlines and terminates any orphaned child on failure. Its 
 Require lint, read-only Prettier, TypeScript and **exact-head full F1 GitHub Actions** including migrations/integration, restore, compiled smoke, API/Svelte and Chromium visual evidence. Do not mark PASS until a CI run actually proves the DB ACK and negative SSL failure. Node-postgres honors `PGSSLMODE`; the CI PostgreSQL service intentionally has no TLS configured.
 
 **Limits:** This verifies one real compiled process to DB end-to-end; it does not establish production delivery, provider-side exactly-once effects, high load or admin-protected main. #19/#144 remain distinct gates.
+
+## Latest-main verification after QA/CI merges (2026-11-16)
+
+The independent helper reached complete F1 CI success on head `f4e4783f16af65dd10357629caf0f3cef7054406` in [run #43929810899](https://github.com/tim8es/cookie/actions/runs/43929810899), after source formatting was repaired. The PR is now explicitly based on current `main` commit `3833803c554c4e4cd5593e215ed7bb12c494ea77`, which also includes the stronger Booking browser 409 QA. A *new exact-head, current-main* CI run is mandatory before merging; this documentation-only commit does not alter or weaken the compiled-worker DB claim/ACK assertions. No live provider, customer PII, payments or production deployment.
