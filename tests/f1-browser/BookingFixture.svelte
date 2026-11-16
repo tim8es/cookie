@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "../../apps/web/node_modules/svelte/src/index-client.js";
+  import { onMount } from "svelte";
   import BookingForm from "../../apps/web/src/lib/ui/BookingForm.svelte";
   import BookingAttemptStatus from "../../apps/web/src/lib/ui/BookingAttemptStatus.svelte";
   import { BookingAttempt } from "../../apps/web/src/lib/booking-attempt";
