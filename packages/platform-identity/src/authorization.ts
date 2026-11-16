@@ -34,6 +34,13 @@ export interface Membership {
   readonly assignments: readonly RoleAssignment[];
 }
 
+/** Issuer/audience metadata returned only by the trusted opaque Cookie verifier. */
+export interface VerifiedOpaqueSessionAuthority {
+  readonly tokenSha256: string;
+  readonly issuer: string;
+  readonly audience: string;
+}
+
 /** Construct ONLY after server-side session/identity verification. */
 export interface TrustedActor {
   readonly identityId: string;
@@ -46,6 +53,9 @@ export interface TrustedActor {
    * Internal service actors and legacy synthetic test verifiers may omit it.
    */
   readonly opaqueSessionTokenSha256?: string;
+  /** Bound to the server-owned issuer/audience for real opaque Cookie sessions. */
+  readonly opaqueSessionIssuer?: string;
+  readonly opaqueSessionAudience?: string;
 }
 
 /** Relations must be loaded from authoritative tenant-scoped storage. */
