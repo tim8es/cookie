@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { existsSync, rmSync, symlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -58,6 +59,7 @@ test(
       },
     };
     let browserFixtureServer: { close(): Promise<void> } | undefined;
+    let browserFixtureModulesLink: string | undefined;
     const app = createApp(pool, {
       syntheticBookingRoutes: {
         pool,
@@ -789,6 +791,14 @@ test(
         import.meta.url,
       ).href;
       const { createServer } = await import(viteModuleUrl);
+      // Vite resolves Svelte internals from its project root. Reuse the
+      // workspace's already-installed dependencies without downloading or
+      // editing a single file under apps/web/**.
+      const fixtureModules = resolve(process.cwd(), "tests/f1-browser/node_modules");
+      if (!existsSync(fixtureModules)) {
+        symlinkSync(resolve(process.cwd(), "apps/web/node_modules"), fixtureModules, "dir");
+        browserFixtureModulesLink = fixtureModules;
+      }
       const vite = await createServer({
         configFile: resolve(process.cwd(), "apps/web/vite.config.ts"),
         root: resolve(process.cwd(), "tests/f1-browser"),
@@ -835,11 +845,13 @@ test(
           WHERE tenant_id=$1 AND start_at='2027-04-13T10:00:00Z'::timestamptz`,
         [tenant],
       );
-      assert.deepEqual(committedBrowser.rows, [{
-        booking_id: browserResult.bookingId,
-        price_kopecks: "175555",
-        status: "Confirmed",
-      }]);
+      assert.deepEqual(committedBrowser.rows, [
+        {
+          booking_id: browserResult.bookingId,
+          price_kopecks: "175555",
+          status: "Confirmed",
+        },
+      ]);
       const browserLedger = await pool.query<{
         bookings: string;
         receipts: string;
@@ -858,6 +870,7 @@ test(
       });
     } finally {
       await browserFixtureServer?.close();
+      if (browserFixtureModulesLink) rmSync(browserFixtureModulesLink, { force: true });
       await app.close();
       const tables = [
         "cookie_booking.command_receipts",
