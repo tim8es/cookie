@@ -67,6 +67,7 @@
   let bookingTime = "";
   let clientAlias = "Тестовый клиент";
   let slotSuggestions: SlotView[] = [];
+  let slotLoadError = "";
   let createdBooking: BookingView | null = null;
   let calendarDate = localDay(new Date());
   let calendarMode: "day" | "week" = typeof window !== "undefined" && window.innerWidth <= 900 ? "day" : "week";
@@ -157,6 +158,7 @@
     const version = ++slotRequestVersion;
     bookingTime = "";
     slotSuggestions = [];
+    slotLoadError = "";
     busySlots = false;
     if (!bookingStaff || !bookingLocation || !bookingDate) return;
     busySlots = true;
@@ -167,7 +169,7 @@
       const suggested = await api.getSlotSuggestions(staffId, locationId, date);
       if (version === slotRequestVersion) slotSuggestions = suggested;
     } catch (reason) {
-      if (version === slotRequestVersion) error = describe(reason);
+      if (version === slotRequestVersion) slotLoadError = describe(reason);
     } finally {
       if (version === slotRequestVersion) busySlots = false;
     }
@@ -411,6 +413,7 @@
             {clientAlias}
             {busySlots}
             {slotSuggestions}
+            {slotLoadError}
             {canBook}
             staffName={getStaff}
             onServiceChange={syncStaffSelection}
@@ -418,6 +421,7 @@
             onStaffChange={(value) => { bookingStaff = value; void loadSlots(); }}
             onDateChange={(value) => { bookingDate = value; void loadSlots(); }}
             onTimeChange={(value) => bookingTime = value}
+            onRetrySlots={() => void loadSlots()}
             onAliasChange={(value) => clientAlias = value}
             onSubmit={() => void submitBooking()}
           />
