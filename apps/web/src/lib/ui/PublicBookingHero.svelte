@@ -1,18 +1,17 @@
 <script lang="ts">
-  /** Studio identity only. Booking state and slot availability belong to App. */
+  /** The salon is the primary brand; Cookie attribution belongs in the footer. */
   export let organizationName: string;
 </script>
 
 <section class="booking-head booking-hero" aria-label="Онлайн-запись">
   <div class="booking-hero-copy">
-    <span class="booking-hero-section">Cookie / запись к мастеру</span>
+    <span class="booking-hero-section">Запись в салон</span>
     <h1>Выберите время.<br /><em>Мы вас ждём.</em></h1>
-    <p>Услуга, специалист и подходящее время — всё для записи в одном месте.</p>
+    <p>Выберите услугу, специалиста и удобное время для визита.</p>
   </div>
   <div class="booking-hero-studio">
-    <div class="hero-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-    <span>Ваша студия</span>
+    <span>Вы записываетесь в</span>
     <strong>{organizationName}</strong>
-    <small>Демонстрационная запись</small>
+    <small>Бронирование в несколько шагов</small>
   </div>
 </section>
