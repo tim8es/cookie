@@ -10,7 +10,7 @@
 - Last inspected workflow ran lint, Prettier, kernel/API/UI boundary checks, API TypeScript, API/shared unit tests, PostgreSQL 16 integration/migration tests, synthetic backup/restore, API build, synthetic worker SIGTERM, Svelte check **including web unit tests**, web build and Chromium browser demo smoke.
 - CI runs a **single sequential job**; PostgreSQL integration takes approximately 30 seconds within a 117-second example, while the cold `pnpm install` downloaded 254 packages. Split jobs have not been justified by measured end-to-end cost.
 - Before this patch: no pnpm store cache, no cancellation of superseded PR runs, no push verification of `main`, and missing visual artifacts silently ignored.
-- At audit time `main` reported **protected: false**; the API returned 403 for protection settings, and the rulesets endpoint was unavailable for this private repository's plan. **No required-check enforcement** was proven. Protecting `main` must be performed by a repository administrator if/when available.
+- At audit time `main` reported **protected: false**; the API returned 403 for protection settings, and the rulesets endpoint was unavailable for this private repository's plan. **No required-check enforcement** was proven. Track this independently in [Issue #144](https://github.com/tim8es/cookie/issues/144); protecting `main` needs administrator/plan-level action and cannot be simulated by a passing CI check.
 
 ## Changes in the infrastructure-only PR
 
@@ -77,6 +77,10 @@ To debug a PR: open **Actions → F1 quality gates**, select the run associated 
 - **On failure:** stop further unsafe writes, keep durable Booking/outbox records, roll back application only where schema is backward-compatible; otherwise use reviewed forward-fix or isolated restore. Do **not** automatically run unreviewed down-migrations or restore over live data.
 - **Afterwards:** verify tenant-scoped bookings, idempotency, constraints, outbox dedupe and retries; monitor errors, queue age and database health, publish a release incident record if needed.
 - **Production prerequisites remain open:** exact platform/region, secrets, image provenance, network exposure, TLS, PII retention/legal, backup off-host and restore cadence, RPO/RTO, alerting, owner approval and cost profile.
+
+## Synchronization / proof of current base
+
+The CI PR is synchronized with `main` commit `0c5cffa148c88d169689abe82eedf6abe8cd3e78` (Telegram HMAC PR #141), without altering product files. PR #138 still proposes a different compiled-worker smoke in the same workflow; reconcile its gate by retaining the stricter compiled verification and rerunning exact-head CI after both changes meet. Do not silently discard either smoke test.
 
 ## Measured performance / open risks
 
