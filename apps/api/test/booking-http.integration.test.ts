@@ -356,10 +356,27 @@ test(
           payload: body,
         });
 
-      assert.equal((await move("no-id-reassignment", { newStartAt: "2027-04-12T14:00:00Z", staffId: staff })).statusCode, 400);
-      assert.equal((await cancel("no-body-price", { priceKopecks: "0" })).statusCode, 400);
-      assert.equal((await move("scoped-admin", undefined, "synthetic-admin")).statusCode, 403);
-      assert.equal((await cancel("scoped-admin", undefined, "synthetic-admin")).statusCode, 403);
+      assert.equal(
+        (
+          await move("no-id-reassignment", {
+            newStartAt: "2027-04-12T14:00:00Z",
+            staffId: staff,
+          })
+        ).statusCode,
+        400,
+      );
+      assert.equal(
+        (await cancel("no-body-price", { priceKopecks: "0" })).statusCode,
+        400,
+      );
+      assert.equal(
+        (await move("scoped-admin", undefined, "synthetic-admin")).statusCode,
+        403,
+      );
+      assert.equal(
+        (await cancel("scoped-admin", undefined, "synthetic-admin")).statusCode,
+        403,
+      );
 
       rescheduleDenied = true;
       const deniedMove = await move("denied-move");
@@ -367,10 +384,16 @@ test(
       assert.equal(deniedMove.json().error.code, "RESCHEDULE_POLICY_DENIED");
       rescheduleDenied = false;
 
-      const outsideSchedule = await move("outside-shift", { newStartAt: "2027-04-12T20:00:00Z" });
+      const outsideSchedule = await move("outside-shift", {
+        newStartAt: "2027-04-12T20:00:00Z",
+      });
       assert.equal(outsideSchedule.statusCode, 409);
       assert.equal(outsideSchedule.json().error.code, "BOOKING_CONFLICT");
-      const intact = await app.inject({ method: "GET", url: `${base}/bookings/${receipt.bookingId}`, headers: ownerHeader });
+      const intact = await app.inject({
+        method: "GET",
+        url: `${base}/bookings/${receipt.bookingId}`,
+        headers: ownerHeader,
+      });
       assert.equal(intact.json().startAt, receipt.startAt);
 
       const moved = await move("successful-move");
@@ -381,28 +404,46 @@ test(
       assert.equal(moved.json().priceKopecks, "150000");
       assert.deepEqual((await move("successful-move")).json(), moved.json());
       assert.equal(
-        (await move("successful-move", { newStartAt: "2027-04-12T15:00:00Z" })).json().error.code,
+        (
+          await move("successful-move", { newStartAt: "2027-04-12T15:00:00Z" })
+        ).json().error.code,
         "IDEMPOTENCY_KEY_REUSED",
       );
 
       cancellationDenied = true;
       const deniedCancel = await cancel("denied-cancel");
       assert.equal(deniedCancel.statusCode, 403);
-      assert.equal(deniedCancel.json().error.code, "CANCELLATION_POLICY_DENIED");
+      assert.equal(
+        deniedCancel.json().error.code,
+        "CANCELLATION_POLICY_DENIED",
+      );
       cancellationDenied = false;
 
       const cancelled = await cancel("successful-cancel");
       assert.equal(cancelled.statusCode, 200);
       assert.equal(cancelled.json().status, "CancelledByBusiness");
-      assert.deepEqual((await cancel("successful-cancel")).json(), cancelled.json());
-      const afterCancel = await app.inject({ method: "GET", url: `${base}/bookings/${receipt.bookingId}`, headers: ownerHeader });
+      assert.deepEqual(
+        (await cancel("successful-cancel")).json(),
+        cancelled.json(),
+      );
+      const afterCancel = await app.inject({
+        method: "GET",
+        url: `${base}/bookings/${receipt.bookingId}`,
+        headers: ownerHeader,
+      });
       assert.equal(afterCancel.json().status, "CancelledByBusiness");
       // Historical create receipt never resurrects an already-cancelled booking.
       assert.deepEqual((await create(winningKey)).json(), receipt);
-      assert.equal((await cancel("new-cancel-key")).json().error.code, "BOOKING_NOT_CONFIRMED");
+      assert.equal(
+        (await cancel("new-cancel-key")).json().error.code,
+        "BOOKING_NOT_CONFIRMED",
+      );
 
       // The successful cancellation releases the staff's protected range.
-      const rebook = await create("after-cancel-new-create", { ...createBody, startAt: "2027-04-12T14:00:00Z" });
+      const rebook = await create("after-cancel-new-create", {
+        ...createBody,
+        startAt: "2027-04-12T14:00:00Z",
+      });
       assert.equal(rebook.statusCode, 201);
       assert.notEqual(rebook.json().bookingId, receipt.bookingId);
       const mutationLedger = await pool.query<{
@@ -427,7 +468,6 @@ test(
         cancels: "1",
         reschedules: "1",
       });
-
     } finally {
       await app.close();
       const tables = [
