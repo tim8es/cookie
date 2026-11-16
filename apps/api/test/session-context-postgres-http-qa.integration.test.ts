@@ -83,12 +83,7 @@ test(
     ) =>
       app.inject({
         method: "GET",
-        url:
-          route(tenantId) +
-          "?tenantId=" +
-          tenantB +
-          "&identityId=" +
-          ownerB,
+        url: route(tenantId) + "?tenantId=" + tenantB + "&identityId=" + ownerB,
         headers: {
           authorization: "Bearer " + token,
           "x-tenant-id": tenantB,
@@ -345,11 +340,7 @@ test(
           nonMember,
         ],
       );
-      await verifyAudit(tenantB, [
-        "granted",
-        "granted",
-        "inactive-membership",
-      ]);
+      await verifyAudit(tenantB, ["granted", "granted", "inactive-membership"]);
       assert.ok(
         finalA.every(
           (row) =>
