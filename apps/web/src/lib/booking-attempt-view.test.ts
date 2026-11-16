@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bookingFeedback, type ClientBookingState } from "./booking-attempt-view";
+import {
+  bookingFeedback,
+  type ClientBookingState,
+} from "./booking-attempt-view";
 
 test("only a validated Confirmed phase can show success copy", () => {
   const cases: ClientBookingState[] = [
@@ -40,7 +43,10 @@ test("an uncertain result allows only same-attempt retry, never a new booking", 
     retryable: true,
   };
   assert.equal(bookingFeedback(unknown)?.canRetry, false);
-  assert.match(bookingFeedback(unknown)?.description ?? "", /Не создавайте новую/);
+  assert.match(
+    bookingFeedback(unknown)?.description ?? "",
+    /Не создавайте новую/,
+  );
   assert.equal(bookingFeedback(network)?.canRetry, true);
   assert.match(bookingFeedback(network)?.description ?? "", /ту же попытку/);
 });
@@ -52,5 +58,8 @@ test("failed refresh cannot suggest availability that was not returned", () => {
     refreshFailed: true,
   };
   assert.equal(bookingFeedback(state)?.announce, "alert");
-  assert.match(bookingFeedback(state)?.description ?? "", /Не удалось обновить/);
+  assert.match(
+    bookingFeedback(state)?.description ?? "",
+    /Не удалось обновить/,
+  );
 });
