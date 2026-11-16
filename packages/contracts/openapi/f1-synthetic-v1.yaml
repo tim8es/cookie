@@ -249,18 +249,32 @@ components:
         occupiedUntil: { type: string, format: date-time }
         priceKopecks: { type: string, pattern: "^[0-9]+$" }
     BookingDetail:
-      allOf:
-        - $ref: "#/components/schemas/BookingReceipt"
-        - type: object
-          required: [customerId, locationId, staffId, serviceId]
-          properties:
-            customerId: { $ref: "#/components/schemas/Uuid" }
-            locationId: { $ref: "#/components/schemas/Uuid" }
-            staffId: { $ref: "#/components/schemas/Uuid" }
-            serviceId: { $ref: "#/components/schemas/Uuid" }
-            status:
-              type: string
-              enum: [Confirmed, CancelledByBusiness, CancelledByClient, Completed, NoShow]
+      type: object
+      additionalProperties: false
+      required:
+        - bookingId
+        - customerId
+        - locationId
+        - staffId
+        - serviceId
+        - status
+        - startAt
+        - endAt
+        - occupiedUntil
+        - priceKopecks
+      properties:
+        bookingId: { $ref: "#/components/schemas/Uuid" }
+        customerId: { $ref: "#/components/schemas/Uuid" }
+        locationId: { $ref: "#/components/schemas/Uuid" }
+        staffId: { $ref: "#/components/schemas/Uuid" }
+        serviceId: { $ref: "#/components/schemas/Uuid" }
+        status:
+          type: string
+          enum: [Confirmed, CancelledByBusiness, CancelledByClient, Completed, NoShow]
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        occupiedUntil: { type: string, format: date-time }
+        priceKopecks: { type: string, pattern: "^[0-9]+$" }
     Error:
       type: object
       additionalProperties: false
