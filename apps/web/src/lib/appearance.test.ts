@@ -54,7 +54,10 @@ test(
 test(
   "legacy and malformed persisted appearance fails safe to explicit default",
   () => {
-    assert.deepEqual(normalizeSalonAppearance(undefined), defaultSalonAppearance);
+    assert.deepEqual(
+      normalizeSalonAppearance(undefined),
+      defaultSalonAppearance,
+    );
     assert.deepEqual(
       normalizeSalonAppearance({ theme: "not-a-theme", introduction: "" }),
       defaultSalonAppearance,
@@ -70,7 +73,10 @@ test(
       },
     );
     assert.deepEqual(
-      normalizeSalonAppearance({ theme: "clay", introduction: "a".repeat(121) }),
+      normalizeSalonAppearance({
+        theme: "clay",
+        introduction: "a".repeat(121),
+      }),
       {
         theme: "clay",
         introduction: defaultSalonAppearance.introduction,
