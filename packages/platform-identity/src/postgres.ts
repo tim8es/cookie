@@ -227,10 +227,10 @@ async function lockOpaqueSessionAuthority(
   if (session.telegram_link_id !== null) {
     const link = await client.query(
       `SELECT id FROM cookie_identity.telegram_identity_links
-        WHERE tenant_id=$2::uuid AND identity_id=$3::uuid
-          AND id=$6::uuid AND revoked_at IS NULL
+        WHERE tenant_id=$1::uuid AND identity_id=$2::uuid
+          AND id=$3::uuid AND revoked_at IS NULL
         FOR SHARE`,
-      [...params, session.telegram_link_id],
+      [actor.tenantId, actor.identityId, session.telegram_link_id],
     );
     if (link.rowCount !== 1) throw new AuthorizationDeniedError();
   }
