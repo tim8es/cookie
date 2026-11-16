@@ -81,8 +81,3 @@ jobs:
           path: apps/web/artifacts/visual-smoke/
           if-no-files-found: ignore
           retention-days: 7
-      - name: QA temporary Prettier diff for synthetic security test
-        if: ${{ always() }}
-        run: |
-          pnpm exec prettier --write apps/api/test/opaque-session-booking-revocation-qa.integration.test.ts
-          git --no-pager diff -- apps/api/test/opaque-session-booking-revocation-qa.integration.test.ts
