@@ -155,9 +155,10 @@ test(
         "cookie_identity.memberships",
       ]) {
         await pool
-          .query("DELETE FROM " + table + " WHERE tenant_id = ANY($1::uuid[])", [
-            fixtures.map((fixture) => fixture.tenant),
-          ])
+          .query(
+            "DELETE FROM " + table + " WHERE tenant_id = ANY($1::uuid[])",
+            [fixtures.map((fixture) => fixture.tenant)],
+          )
           .catch(() => undefined);
       }
       await pool
