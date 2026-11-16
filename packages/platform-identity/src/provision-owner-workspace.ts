@@ -26,7 +26,10 @@ export interface OwnerWorkspaceProvisionResult {
 
 export class OwnerWorkspaceProvisionError extends Error {
   constructor(
-    readonly code: "INVALID_INPUT" | "IDENTITY_NOT_FOUND" | "IDEMPOTENCY_KEY_REUSED",
+    readonly code:
+      | "INVALID_INPUT"
+      | "IDENTITY_NOT_FOUND"
+      | "IDEMPOTENCY_KEY_REUSED",
   ) {
     super(code);
     this.name = "OwnerWorkspaceProvisionError";
@@ -56,12 +59,14 @@ const OWNER_PERMISSIONS = [
 ] as const;
 
 function canonicalName(value: unknown): string {
-  if (typeof value !== "string") throw new OwnerWorkspaceProvisionError("INVALID_INPUT");
+  if (typeof value !== "string") {
+    throw new OwnerWorkspaceProvisionError("INVALID_INPUT");
+  }
   const normalized = value.normalize("NFC").trim();
   if (
     !normalized ||
     [...normalized].length > 200 ||
-    /[\u0000-\u001f\u007f]/u.test(normalized)
+    /\p{Cc}/u.test(normalized)
   ) {
     throw new OwnerWorkspaceProvisionError("INVALID_INPUT");
   }
@@ -74,8 +79,13 @@ function canonicalZone(value: unknown): string {
   }
   try {
     // PostgreSQL only checks syntax. Node's ICU validates an actual IANA zone.
-    return new Intl.DateTimeFormat("en-US", { timeZone: value }).resolvedOptions()
-      .timeZone;
+    const canonical = new Intl.DateTimeFormat("en-US", {
+      timeZone: value,
+    }).resolvedOptions().timeZone;
+    if (!/^[A-Za-z][A-Za-z0-9_+./-]*$/.test(canonical)) {
+      throw new OwnerWorkspaceProvisionError("INVALID_INPUT");
+    }
+    return canonical;
   } catch {
     throw new OwnerWorkspaceProvisionError("INVALID_INPUT");
   }
