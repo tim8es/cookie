@@ -305,6 +305,13 @@ test(
         priceKind: "base-service",
         provisional: true,
       });
+      const deniedQuote = await app.inject({
+        method: "GET",
+        url: quoteUrl("2027-04-12T10:00:00Z"),
+        headers: { authorization: "Bearer synthetic-outsider" },
+      });
+      assert.equal(deniedQuote.statusCode, 403);
+      assert.equal(deniedQuote.json().error.code, "ACCESS_DENIED");
 
       // All create assertions (including concurrent same-slot creates, replay
       // and revocation) exercise the real HTTP listener rather than inject.
@@ -392,6 +399,16 @@ test(
       });
       assert.equal(reQuoted.statusCode, 200);
       assert.equal(reQuoted.json().priceKopecks, "199900");
+      // Quote uses current catalog price, while idempotent replay remains
+      // bound to the original committed receipt, not this provisional read.
+      const repricedQuote = await app.inject({
+        method: "GET",
+        url: quoteUrl("2027-04-12T14:00:00Z"),
+        headers: ownerHeader,
+      });
+      assert.equal(repricedQuote.statusCode, 200);
+      assert.equal(repricedQuote.json().priceKopecks, "199900");
+      assert.equal(repricedQuote.json().provisional, true);
       assert.deepEqual((await create(winningKey)).json(), receipt);
       await pool.query(
         "UPDATE cookie_catalog.services SET base_price_kopecks=150000 WHERE tenant_id=$1 AND id=$2",
