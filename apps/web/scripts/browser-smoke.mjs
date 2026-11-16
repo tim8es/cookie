@@ -408,6 +408,36 @@ async function scenario(cdp, origin, width, height) {
   await requireDom(cdp, name + " first selection shows duration and preliminary price", "document.querySelector('.booking-service-meta')?.textContent.includes('60 мин') && document.querySelector('.booking-service-meta')?.textContent.replaceAll(String.fromCharCode(160), ' ').includes('1 500 ₽')");
   await requireDom(cdp, name + " preliminary price appears before staff picker", "(() => { const meta = document.querySelector('.booking-service-meta'); const staff = document.querySelector('.booking-form .form-pair'); return meta && staff && Boolean(meta.compareDocumentPosition(staff) & Node.DOCUMENT_POSITION_FOLLOWING); })()");
   await requireDom(cdp, name + " summary prioritizes visit data", "document.querySelector('.ticket-top h2')?.textContent.trim() === 'Ваш визит' && !document.querySelector('.booking-summary .ticket-mark')");
+
+  // Force a genuinely empty synthetic Sunday. An empty result must not be
+  // mistaken for missing prerequisites or a transport failure.
+  const previousBookingDate = await evaluate(cdp, "document.querySelector('.booking-form input[type=date]')?.value");
+  const closedSunday = await evaluate(cdp, `(() => {
+    const raw = document.querySelector('.booking-form input[type=date]').value;
+    const [y, m, d] = raw.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    date.setDate(date.getDate() + ((7 - date.getDay()) % 7 || 7));
+    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')].join('-');
+  })()`);
+  await fill(cdp, ".booking-form input[type=date]", closedSunday, "change");
+  await requireDom(cdp, name + " guest no-slots message", "document.querySelector('.slot-feedback-empty strong')?.textContent.includes('нет свободного времени') && !document.querySelector('.slot-feedback-empty')?.textContent.includes('настройте график')");
+  await requireDom(cdp, name + " no-slots blocks confirmation", "document.querySelector('.booking-form .book-submit')?.disabled && !document.querySelector('.booking-form .slot-grid button')");
+  await checkWidth(cdp, name + " empty availability");
+  await checkLabeledControls(cdp, name + " empty availability");
+  await captureEvidence(cdp, name, "18-sunday-unavailable");
+
+  const followingMonday = new Date(closedSunday + "T12:00:00Z");
+  followingMonday.setUTCDate(followingMonday.getUTCDate() + 1);
+  const nextDate = followingMonday.toISOString().slice(0, 10);
+  await click(cdp, ".slot-feedback-empty button");
+  await requireDom(cdp, name + " next-day lookup recovered", "document.querySelector('.booking-form input[type=date]')?.value === " + JSON.stringify(nextDate) + " && !!document.querySelector('.booking-form .slot-grid button')");
+  await requireDom(cdp, name + " no arbitrary auto booking after recovery", "document.querySelector('.booking-form .book-submit')?.disabled && !document.querySelector('.booking-form .slot-grid button[aria-pressed=true]')");
+  await checkWidth(cdp, name + " recovered availability");
+  await captureEvidence(cdp, name, "19-next-day-recovery");
+
+  await fill(cdp, ".booking-form input[type=date]", previousBookingDate, "change");
+  await requireDom(cdp, name + " original synthetic slots restored", "!!document.querySelector('.booking-form .slot-grid button')");
   await captureEvidence(cdp, name, "02-booking");
   await click(cdp, ".booking-form .slot-grid button");
   await requireDom(cdp, name + " selected slot", "document.querySelector('.booking-form .slot-grid button[aria-pressed=true]')");
@@ -613,7 +643,7 @@ async function main() {
       backend: "not connected",
       chromium: "headless",
       viewports: ["1280x800", "375x812", "320x568"],
-      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "appearance-preview", "themed-booking", "themed-confirmation", "unavailable-booking", "error-preview", "forbidden-preview"],
+      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "appearance-preview", "themed-booking", "themed-confirmation", "unavailable-booking", "sunday-unavailable", "next-day-recovery", "error-preview", "forbidden-preview"],
       checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "simulated embedded safe-area CSS", "no external requests", "zero uncaught page exceptions"],
       externalRequests: externalUrls.length,
     }, null, 2) + "\n");
