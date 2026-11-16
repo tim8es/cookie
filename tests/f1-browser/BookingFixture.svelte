@@ -16,7 +16,12 @@
   const staffId = q.get("staffId") ?? "";
   const serviceId = q.get("serviceId") ?? "";
   const customerId = q.get("customerId") ?? "";
-  const syntheticBearer = q.get("syntheticBearer") ?? "";
+  // The CI-only bearer is provided by CDP before navigation, never via
+  // location.search, URLs, referrers or browser history.
+  if (q.has("syntheticBearer")) throw new Error("Test bearer must never appear in URL");
+  const syntheticBearer = (
+    window as Window & { __COOKIE_F1_SYNTHETIC_BEARER__?: string }
+  ).__COOKIE_F1_SYNTHETIC_BEARER__ ?? "";
   const localDate = "2027-04-13";
   const client = createProposedF1SyntheticLoopbackClient({
     origin: window.location.origin,
