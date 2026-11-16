@@ -6,7 +6,7 @@
 
 - Браузер Telegram отправляет **исходную строку** `Telegram.WebApp.initData` на сервер. Нельзя доверять `initDataUnsafe`, Telegram username, выбранному клиентом tenantId, Identity или Customer.
 - `packages/platform-identity/src/telegram-init-data.ts` проверяет HMAC-SHA256 в соответствии с Telegram WebAppData: key = HMAC-SHA256(bot token, `WebAppData`); hash = HMAC-SHA256(sorted decoded key=value fields, key). Проверка хэша — с постоянным временем сравнения.
-- Для опционального современного параметра `signature` используется **bot-owner HMAC**, а не проверка Ed25519 для третьих сторон. Значение `signature` не считается проверенной клиентской claim и не выдаётся вызывающей стороне.
+- Для bot-owner HMAC данные включают **все параметры, кроме `hash`**, в том числе опциональный `signature` (он аутентифицируется HMAC, но не становится ролью/credentials Cookie). Только отдельный алгоритм третьей стороны Ed25519 исключает одновременно `hash` и `signature`. Эти способы проверки нельзя смешивать.
 - Проверяются уникальность параметров после decoding, корректная URL/UTF-8 кодировка, ограничение размера, `auth_date` и явное максимальное время жизни данных. Тесты используют только **синтетический** bot token, Telegram ID и серверные часы.
 - Выход: только `{channel: "telegram-mini-app", telegramUserId, authDateUnixSeconds}`. **Это не Cookie VerifiedSession** и не доступ к бронированию.
 
