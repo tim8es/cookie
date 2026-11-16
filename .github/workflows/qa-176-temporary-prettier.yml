@@ -1,0 +1,30 @@
+name: Temporary QA 176 formatter diagnostic
+on:
+  push:
+    branches:
+      - qa/f1-workspace-role-revoke-read-race-20261116
+permissions:
+  contents: read
+jobs:
+  formatted-test-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Print formatted QA test sources for exact formatting transfer
+        run: |
+          echo QA176_FORMAT_START
+          pnpm exec prettier apps/api/test/workspace-role-revoke-read-qa.integration.test.ts | base64 -w0
+          echo
+          echo QA176_FORMAT_END
+          echo PARENT173_FORMAT_START
+          pnpm exec prettier apps/api/test/opaque-session-authority-lock.integration.test.ts | base64 -w0
+          echo
+          echo PARENT173_FORMAT_END
