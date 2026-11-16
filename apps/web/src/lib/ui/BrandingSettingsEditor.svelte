@@ -49,6 +49,11 @@
   function choosePreset(id: BrandPresetId): void {
     onChange({ ...createBrandConfig(id), logoAssetId: draft.logoAssetId, backgroundAssetId: draft.backgroundAssetId });
   }
+  function changeMode(mode: BrandColorMode): void {
+    const background = brandPresets.find((item) => item.id === draft.presetId && item.mode === mode)
+      ?? brandPresets.find((item) => item.mode === mode);
+    onChange({ ...draft, mode, backgroundColor: background?.backgroundColor ?? draft.backgroundColor });
+  }
   async function upload(event: Event, kind: "logo" | "background"): Promise<void> {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
@@ -123,7 +128,7 @@
         <legend>3. Детали</legend>
         <div class="brand-selects">
           <label><span>Режим</span>
-            <select value={draft.mode} onchange={(e) => change("mode", e.currentTarget.value as BrandColorMode)}>
+            <select value={draft.mode} onchange={(e) => changeMode(e.currentTarget.value as BrandColorMode)}>
               <option value="light">Светлый</option><option value="dark">Тёмный</option>
             </select>
           </label>
