@@ -13,7 +13,11 @@ import type {
 } from "./model";
 import { UiFailure } from "./model";
 import { localDay, parseDay } from "./dates";
-import { defaultSalonAppearance, isSalonTheme, normalizeSalonAppearance } from "./appearance";
+import {
+  defaultSalonAppearance,
+  isSalonTheme,
+  normalizeSalonAppearance,
+} from "./appearance";
 
 export interface DemoStorage {
   getItem(key: string): string | null;
