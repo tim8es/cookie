@@ -77,7 +77,7 @@ pg_tool pg_restore -h 127.0.0.1 -U cookie_ci -d cookie_ci_restore_smoke \
 result="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
   -h 127.0.0.1 -U cookie_ci -d cookie_ci_restore_smoke -c "
     SELECT CASE WHEN
-      (SELECT count(*) FROM public.cookie_schema_migrations) = 21
+      (SELECT count(*) FROM public.cookie_schema_migrations) = 22
       AND EXISTS (
         SELECT 1 FROM cookie_jobs.outbox_events AS event
         JOIN cookie_tenancy.organizations AS org ON org.id = event.tenant_id
@@ -87,6 +87,8 @@ result="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
           AND org.display_name = 'Synthetic restore smoke'
       )
       AND to_regclass('cookie_customers.customers') IS NOT NULL
+      AND to_regclass('cookie_identity.opaque_sessions') IS NOT NULL
+      AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='revoke_opaque_sessions_on_membership_disable' AND NOT tgisinternal)
       AND to_regclass('cookie_booking.bookings') IS NOT NULL
       AND to_regclass('cookie_booking.command_receipts') IS NOT NULL
       AND EXISTS (SELECT 1 FROM pg_constraint WHERE conname='confirmed_staff_no_overlap' AND contype='x')

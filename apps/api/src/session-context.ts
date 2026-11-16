@@ -12,8 +12,9 @@ import { requireTenantPermission } from "../../../packages/platform-identity/src
 
 /**
  * This is a trusted AuthN port, NOT a bearer token parser/verifier. A provider
- * must validate signature, issuer, audience, expiry and revocation and bind
- * the selected tenant server-side before returning these claims.
+ * must cryptographically authenticate its token (signed claims or a server-
+ * stored unpredictable opaque bearer), validate issuer/audience, expiry and
+ * revocation and bind the selected tenant server-side before returning claims.
  */
 export interface VerifiedSession {
   readonly identityId: string;
