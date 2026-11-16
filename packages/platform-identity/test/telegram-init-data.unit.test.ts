@@ -87,7 +87,9 @@ test("bot-owner HMAC authenticates optional signature field without trusting it 
   });
   // A tampered signature must not inherit the valid HMAC of other fields.
   assert.equal(
-    verifier().verify(withSignature.replace("synthetic-ed25519-metadata", "forged-metadata")),
+    verifier().verify(
+      withSignature.replace("synthetic-ed25519-metadata", "forged-metadata"),
+    ),
     null,
   );
   assert.equal(
@@ -103,7 +105,10 @@ test("bot-owner HMAC authenticates optional signature field without trusting it 
   });
   assert.equal(
     verifier().verify(
-      withoutSignature.replace("&hash=", "&signature=synthetic-ed25519-metadata&hash="),
+      withoutSignature.replace(
+        "&hash=",
+        "&signature=synthetic-ed25519-metadata&hash=",
+      ),
     ),
     null,
   );

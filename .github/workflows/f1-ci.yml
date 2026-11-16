@@ -81,12 +81,3 @@ jobs:
           path: apps/web/artifacts/visual-smoke/
           if-no-files-found: ignore
           retention-days: 7
-
-      - name: Temporary HMAC regression Prettier capture
-        if: ${{ always() }}
-        run: |
-          pnpm exec prettier --write packages/platform-identity/test/telegram-init-data.unit.test.ts
-          echo COOKIE_HMAC_FORMAT_BEGIN
-          base64 -w0 packages/platform-identity/test/telegram-init-data.unit.test.ts
-          echo
-          echo COOKIE_HMAC_FORMAT_END
