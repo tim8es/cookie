@@ -72,6 +72,8 @@
   let calendarMode: "day" | "week" = typeof window !== "undefined" && window.innerWidth <= 900 ? "day" : "week";
 
   $: org = data.organization;
+  $: hasUnsavedAppearance = appearanceTheme !== data.appearance.theme ||
+    appearanceIntroduction.trim() !== data.appearance.introduction;
   $: stepCount = Number(!!org) + Number(data.services.length > 0) +
     Number(data.staff.length > 0) + Number(data.schedules.length > 0) +
     Number(data.bookings.length > 0);
@@ -362,6 +364,7 @@
           organizationName={org.name}
           theme={appearanceTheme}
           introduction={appearanceIntroduction}
+          {hasUnsavedAppearance}
           onThemeChange={(value) => appearanceTheme = value}
           onIntroductionChange={(value) => appearanceIntroduction = value}
           onSave={() => void saveAppearance()}
