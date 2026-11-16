@@ -436,8 +436,24 @@ async function scenario(cdp, origin, width, height) {
   await checkWidth(cdp, name + " recovered availability");
   await captureEvidence(cdp, name, "19-next-day-recovery");
 
+  // One-shot synthetic fault: only browser-smoke mode can read this flag.
+  // Real API mode and ordinary mock sessions never honor it.
+  await evaluate(cdp, "sessionStorage.setItem('cookie.frontend-demo.smoke.fail-next-slots', '1')");
   await fill(cdp, ".booking-form input[type=date]", previousBookingDate, "change");
-  await requireDom(cdp, name + " original synthetic slots restored", "!!document.querySelector('.booking-form .slot-grid button')");
+  await requireDom(cdp, name + " inline failed slot lookup", "document.querySelector('.slot-feedback-error[role=alert] strong')?.textContent.includes('Не удалось проверить время')");
+  await requireDom(cdp, name + " error is distinct from no availability", "!document.querySelector('.slot-feedback-empty') && !document.querySelector('.booking-form .slot-grid button')");
+  await requireDom(cdp, name + " previous time cleared on error", "document.querySelector('.booking-form .book-submit')?.disabled && !document.querySelector('.slot-feedback-error')?.textContent.includes('SYNTHETIC_SMOKE')");
+  await requireDom(cdp, name + " one-shot failure consumed", "sessionStorage.getItem('cookie.frontend-demo.smoke.fail-next-slots') === null");
+  await checkWidth(cdp, name + " failed lookup");
+  await checkLabeledControls(cdp, name + " failed lookup");
+  await captureEvidence(cdp, name, "20-slot-lookup-error");
+
+  await click(cdp, ".slot-feedback-error button");
+  await requireDom(cdp, name + " retry restores synthetic slots", "!!document.querySelector('.booking-form .slot-grid button') && !document.querySelector('.slot-feedback-error')");
+  await requireDom(cdp, name + " retry preserves selection without choosing a slot", "document.querySelector('.booking-form input[type=date]')?.value === " + JSON.stringify(previousBookingDate) + " && document.querySelector('.booking-form .book-submit')?.disabled && !document.querySelector('.booking-form .slot-grid button[aria-pressed=true]')");
+  await checkWidth(cdp, name + " retried lookup");
+  await checkLabeledControls(cdp, name + " retried lookup");
+  await captureEvidence(cdp, name, "21-retry-restored");
   await captureEvidence(cdp, name, "02-booking");
   await click(cdp, ".booking-form .slot-grid button");
   await requireDom(cdp, name + " selected slot", "document.querySelector('.booking-form .slot-grid button[aria-pressed=true]')");
@@ -643,11 +659,11 @@ async function main() {
       backend: "not connected",
       chromium: "headless",
       viewports: ["1280x800", "375x812", "320x568"],
-      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "appearance-preview", "themed-booking", "themed-confirmation", "unavailable-booking", "sunday-unavailable", "next-day-recovery", "error-preview", "forbidden-preview"],
+      captures: ["onboarding", "booking", "confirmation", "calendar-week", "detail", "calendar-day", "workspace", "services", "staff", "schedule", "locations", "appearance-preview", "themed-booking", "themed-confirmation", "unavailable-booking", "sunday-unavailable", "next-day-recovery", "slot-lookup-error", "retry-restored", "error-preview", "forbidden-preview"],
       checks: ["end-to-end demo UI", "horizontal overflow", "accessible controls", "dialog keyboard", "simulated embedded safe-area CSS", "no external requests", "zero uncaught page exceptions"],
       externalRequests: externalUrls.length,
     }, null, 2) + "\n");
-    console.log("PASS evidence: 39 PNG screenshots and manifest; external requests =", externalUrls.length);
+    console.log("PASS evidence: 21 captures per viewport and manifest; external requests =", externalUrls.length);
   } catch (error) {
     if (cdp) {
       try {
