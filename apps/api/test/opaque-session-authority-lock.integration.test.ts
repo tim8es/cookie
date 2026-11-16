@@ -36,9 +36,7 @@ test(
           identityId,
           expiresAtUnixSeconds: Math.floor(Date.now() / 1_000) + 600,
           opaqueSessionAuthority: {
-            tokenSha256: createHash("sha256")
-              .update(value)
-              .digest("hex"),
+            tokenSha256: createHash("sha256").update(value).digest("hex"),
             issuer: "cookie-qa",
             audience: "booking-qa",
           },
