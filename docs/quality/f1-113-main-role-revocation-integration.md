@@ -25,3 +25,7 @@ While this run executed, #161 merged a separate bounded alert-delivery maintenan
 ## Current main integration rerun
 
 [F1 CI #43924327926](https://github.com/tim8es/cookie/actions/runs/43924327926) passed the exact prior QA source (head `03a6a55add6dd1c5bf149b5d5144f6c7434de8ae`) on the then-current main. Since that run, the tested main has advanced to `f9df29a2f7c5865da6814c6f6a0423fe47b85569` after #166 worker integration. This documentation-only commit triggers a fresh PR merge-base CI. The imported test assertions remain unchanged; do not treat previous green CI as proof of the new combined state. No deployment.
+
+## Final CI base and Chromium retry evidence (2026-11-16)
+
+At QA head `65b0b0e2d1a925fd5418f7cc92b8c0d81e7a5b78`, [CI #43925080995](https://github.com/tim8es/cookie/actions/runs/43925080995) failed **one unrelated existing Chromium local-CDP GET timeout** in `booking-http.integration.test.ts` (58/59 PG integration tests passed, including the imported role/tenant regressions). This is consistent with tracked F1 intermittent browser startup/DevTools Issue #164, but it is not proven to share one root cause; no test was disabled or changed. PR base is now `main` `53de65ae8e7b833e1fc7ff756943c78430ca216e` with hardened CI #139 merged. This documentation-only commit triggers a new exact-head full F1 CI; all original role/tenant QA assertions remain byte-identical. Do not call PASS unless the entire workflow succeeds. No production deployment.
