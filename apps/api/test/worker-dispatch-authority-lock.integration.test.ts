@@ -202,3 +202,136 @@ test(
     }
   },
 );
+
+test(
+  "bounded handler starts while its PostgreSQL lease row lock is still held",
+  { skip: !process.env.TEST_DATABASE_URL },
+  async () => {
+    const pool = new Pool({
+      connectionString: process.env.TEST_DATABASE_URL,
+      application_name: "cookie-qa-outbox-locked-start",
+      max: 4,
+      connectionTimeoutMillis: 5_000,
+    });
+    const ownerId = randomUUID();
+    const tenantId = randomUUID();
+    const shutdown = new AbortController();
+    let eventId = "";
+    let handlerStarts = 0;
+    let checkedBeforeCommit = 0;
+    try {
+      await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [ownerId],
+      );
+      await pool.query(
+        `INSERT INTO cookie_tenancy.organizations(id, owner_identity_id, display_name)
+         VALUES($1::uuid, $2::uuid, 'Synthetic locked dispatch start')`,
+        [tenantId, ownerId],
+      );
+      const writer = await pool.connect();
+      try {
+        eventId = (
+          await enqueueOutbox(writer, {
+            tenantId,
+            dedupeKey: "locked-start-check",
+            topic: "qa.dispatchstart",
+            payload: { synthetic: true },
+          })
+        ).id;
+      } finally {
+        writer.release();
+      }
+
+      const transactionalPool = {
+        async query(sql: string, params?: unknown[]) {
+          return pool.query(sql, params);
+        },
+        async connect() {
+          const client = await pool.connect();
+          return {
+            async query(sql: string, params?: unknown[]) {
+              if (sql === "COMMIT") {
+                checkedBeforeCommit++;
+                assert.equal(
+                  handlerStarts,
+                  1,
+                  "handler must already have started before COMMIT is issued",
+                );
+                const locked = await pool.query(
+                  `SELECT id FROM cookie_jobs.outbox_events
+                    WHERE id=$1::uuid FOR UPDATE SKIP LOCKED`,
+                  [eventId],
+                );
+                assert.equal(
+                  locked.rowCount,
+                  0,
+                  "the lease row must remain locked during handler invocation",
+                );
+              }
+              return client.query(sql, params);
+            },
+            release() {
+              client.release();
+            },
+          };
+        },
+      } as unknown as Pool;
+
+      const result = await runTrustedPostgresOutboxWorker(
+        transactionalPool,
+        async (event) => {
+          handlerStarts++;
+          assert.equal(event.id, eventId);
+          shutdown.abort();
+        },
+        {
+          signal: shutdown.signal,
+          topic: "qa.dispatchstart",
+          leaseMs: 5_000,
+          handlerTimeoutMs: 1_000,
+          idleDelayMs: 10,
+          busyDelayMs: 10,
+        },
+      );
+
+      assert.equal(handlerStarts, 1);
+      assert.equal(checkedBeforeCommit, 1);
+      assert.deepEqual(result, {
+        claimed: 1,
+        delivered: 1,
+        failed: 0,
+        stale: 0,
+      });
+      const delivered = await pool.query<{ status: string }>(
+        `SELECT status FROM cookie_jobs.outbox_events WHERE id=$1::uuid`,
+        [eventId],
+      );
+      assert.equal(delivered.rows[0]?.status, "delivered");
+    } finally {
+      shutdown.abort();
+      try {
+        await pool
+          .query(
+            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid",
+            [tenantId],
+          )
+          .catch(() => undefined);
+        await pool
+          .query(
+            "DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid",
+            [tenantId],
+          )
+          .catch(() => undefined);
+        await pool
+          .query("DELETE FROM cookie_identity.identities WHERE id=$1::uuid", [
+            ownerId,
+          ])
+          .catch(() => undefined);
+      } finally {
+        await pool.end();
+      }
+    }
+  },
+);
