@@ -18,7 +18,7 @@ and dispatches only opaque random IDs. It never sends the source slug, SHA or
 suite to the public workflow. The worker verifies its exact detached SHA,
 captures logs and approved visual evidence in a temporary ZIP, and sends the
 ZIP only to a separately verified private GitHub evidence repository. The
-controller requires both a successful exact run ID and matching evidence
+controller requires both a successful exact run ID/attempt and matching evidence
 metadata/digest before setting a success commit status. A missing archive,
 failed upload, bad SHA, cancelled or timed out run is not green. Statuses are
 reported against the tested SHA, not a different PR head.
@@ -35,7 +35,7 @@ Controller environment:
 - CI_REGISTRY_WRITE_TOKEN: Contents write, registry only
 - CI_EXECUTION_REPO and CI_RUNNER_DISPATCH_TOKEN: Actions read/write, executor only
 - CI_EVIDENCE_REPO and CI_EVIDENCE_READ_TOKEN: Contents read, evidence repo only
-- CI_SOURCE_STATUS_TOKEN: Contents read and Commit statuses write, source only
+- CI_SOURCE_STATUS_TOKEN: Contents read, Pull requests read and Commit statuses write, source only
 - EXTERNAL_CI_APPROVED=1: explicit opt-in only after provider-policy and security review
 
 The generic executor's existing registry/access configuration must have
@@ -73,15 +73,62 @@ merge; do not treat an old successful status or a head-only check as equivalent.
    for absence of private markers and verify the private archive contents.
 4. Test failing gates, API/release failure, cancellation, stale SHA, replay and
    duplicate dispatch. A public run exposes generic actor/timing/status.
-5. Add a trusted external event controller for internal PR updates, exact
-   merge-SHA resolution, supersession/locking, durable reconciliation and
-   private evidence retention. Do not give secrets to fork/unreviewed code.
-   Do not keep a private hosted job polling for an hour on every PR.
+5. Validate the implemented trusted controller for internal PR updates, exact
+   merge-SHA resolution, supersession/locking, and durable reconciliation.
+   Set a private evidence retention procedure. Do not give secrets to fork or
+   unreviewed code. Do not keep a private hosted job polling for an hour on every PR.
 6. Verify GitHub plan supports enforcement, then activate required checks and
    only then retire duplicated workflows. A private self-hosted runner is the
    supported alternative if external hosted execution is not permitted.
 
-The current pilot has no automatic dispatch, no production secrets, and no
-public artifact upload. Evidence is private by access control, not encrypted
+The implementation includes an opt-in automated controller but it is not installed
+or enabled. There are no configured production secrets or public artifact uploads. Evidence is private by access control, not encrypted
 end-to-end. Releases need an explicit retention/deletion policy before use
 at scale. No source/runtime business modules are changed.
+
+
+## Automated controller (trusted Linux service)
+
+Install the reviewed controller from the protected default branch into a
+separate trusted Linux environment. Keep the code and credentials outside PR
+worktrees; do not install it on the public execution host. Use a dedicated
+service account, a mode-0700 persistent state directory and a protected
+mode-0600 environment file or external secret manager. Add the controller
+configuration above and `CI_TRUSTED_REVIEWERS`, a comma-separated allowlist
+of authorized reviewer logins. The source token also needs Pull requests:read.
+
+Run the following from a trusted scheduler, e.g. once per minute:
+
+```sh
+python3 /opt/private-ci/scripts/ci/controller.py example/private-source \\
+  --state-dir /var/lib/private-ci
+```
+
+In one tick the controller checks the current main SHA and the open internal,
+non-draft PRs targeting main. A PR only qualifies after an allowlisted reviewer
+approves its exact current head SHA; a new push requires a new approval. It
+verifies the generated merge commit's two exact parents against the current
+main and approved head, then submits three independent jobs. Each PR revision
+has a persistent record; an advisory lock prevents concurrent local controller
+instances. It cancels superseded jobs, validates original run ID / attempt,
+and never promotes stale or unverifiable evidence. At most four revisions are
+active. An ambiguous dispatch is terminal/error until an operator reconciles
+it; do not blindly remove the journal or resubmit. Review journal and private
+provider run history after failures. The controller does not yet automate
+retention, recovery of ambiguous dispatches or multi-host HA.
+
+Only start one controller for this source, not the manual dispatcher at the
+same time. A trusted main revision is tested after merge. Keep the existing
+native CI required until the whole integration has passed on the exact SHA,
+including negative/cancel cases. A successful external status is not a review
+approval. Automatic polling does not override protected-branch restrictions.
+
+## Provider policy and supported alternative
+
+Review GitHub Terms for Additional Products and Features before using
+GitHub-hosted runners in a different repository: running unrelated projects
+on a public repository's hosted runner is restricted. This adapter does not
+confer authorization; leave EXTERNAL_CI_APPROVED unset unless use of the chosen
+provider is permitted. The recommended no-hosted-minute route is a dedicated,
+ephemeral self-hosted runner in the private source repository, retaining native
+F1 checks. Never attach a privileged persistent runner to a public repository.
