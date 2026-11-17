@@ -602,15 +602,18 @@ async function main() {
     assert.equal(realBooking.rowCount,1);
     assert.equal(realBooking.rows[0].status,"Confirmed");
     assert.equal(realBooking.rows[0].price,"125050");
+    await button(cdp,"Обновить мои записи");
+    await requireDom(cdp,"exact own persisted booking in appointments","document.querySelector('[aria-label=\"Мои записи staging\"] .appointment-item')?.innerText.includes("+JSON.stringify(realBooking.rows[0].id)+") && document.querySelectorAll('[aria-label=\"Мои записи staging\"] .appointment-item').length===1");
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-appointments")));
     assert.ok(responses.some(r=>r.status===201&&r.path.endsWith("/staging-customer-bookings")));
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0,"Confirmed attempt marker must be removed");
     for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
       await viewport(cdp,width,height);
-      await checkWidth(cdp,"confirmed customer booking "+width+"px");
+      await checkWidth(cdp,"confirmed customer booking and appointments "+width+"px");
     }
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
-    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
+    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation and exact own appointments read, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
   } finally {
     if (cdp) cdp.close();
     try {

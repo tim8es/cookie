@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import StagingCustomerOffers from "./StagingCustomerOffers.svelte";
+  import StagingCustomerAppointments from "./StagingCustomerAppointments.svelte";
   import { Button } from "../components/ui/button/index.js";
   import * as Card from "../components/ui/card/index.js";
   import { authenticateTelegramCustomer, loadTelegramInitData, revokeTelegramOwnerSession, watchOwnerSessionExpiry, type VerifiedCustomerSession } from "../owner-auth";
@@ -65,4 +66,5 @@
 
 {#if phase === "verified" && session}
   <StagingCustomerOffers {session} onUnauthorized={expire} />
+  <StagingCustomerAppointments {session} onUnauthorized={expire} />
 {/if}
