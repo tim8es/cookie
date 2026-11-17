@@ -41,7 +41,7 @@
     return "Не удалось подтвердить доступность. Повторите запрос.";
   }
   function format(value: string, zone: string): string {
-    return new Intl.DateTimeFormat("ru-RU", { timeZone: zone, dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+    return new Intl.DateTimeFormat("ru-RU", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset" }).format(new Date(value));
   }
   async function refresh(): Promise<void> {
     loading = true;

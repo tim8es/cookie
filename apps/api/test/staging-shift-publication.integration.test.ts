@@ -168,14 +168,37 @@ test(
       };
       const first = await makePlan(draft);
       const serviceId: string = service.json().service.id;
-      const previewUrl = prefix + "/staging-availability?" + new URLSearchParams({
-        staffId, locationId:owner.locationId, serviceId, localDate:date,
-      }).toString();
-      const preview=()=>app.inject({method:"GET",url:previewUrl,headers});
-      assert.equal((await disabled.inject({method:"GET",url:previewUrl,headers})).statusCode,404);
-      assert.equal((await app.inject({method:"GET",url:previewUrl})).statusCode,401);
-      assert.equal((await app.inject({method:"GET",url:previewUrl.replace(owner.tenantId,randomUUID()),headers})).statusCode,403);
-      assert.equal((await preview()).statusCode,409);
+      const previewUrl =
+        prefix +
+        "/staging-availability?" +
+        new URLSearchParams({
+          staffId,
+          locationId: owner.locationId,
+          serviceId,
+          localDate: date,
+        }).toString();
+      const preview = () =>
+        app.inject({ method: "GET", url: previewUrl, headers });
+      assert.equal(
+        (await disabled.inject({ method: "GET", url: previewUrl, headers }))
+          .statusCode,
+        404,
+      );
+      assert.equal(
+        (await app.inject({ method: "GET", url: previewUrl })).statusCode,
+        401,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url: previewUrl.replace(owner.tenantId, randomUUID()),
+            headers,
+          })
+        ).statusCode,
+        403,
+      );
+      assert.equal((await preview()).statusCode, 409);
 
       const publishUrl = prefix + "/staging-shift-publication";
       const key = randomUUID();
@@ -232,7 +255,11 @@ test(
         },
       });
       assert.equal(activated.statusCode, 201);
-      assert.deepEqual((await preview()).json(),{localDate:date,timeZone:"Europe/Moscow",slots:[]});
+      assert.deepEqual((await preview()).json(), {
+        localDate: date,
+        timeZone: "Europe/Moscow",
+        slots: [],
+      });
       assert.equal(
         (await submit(first.shiftId, 1)).json().error,
         "SHIFT_STALE_REVISION",
@@ -265,26 +292,90 @@ test(
         "INSERT INTO cookie_staff.service_assignments(tenant_id,staff_id,location_id,service_id,active) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,true)",
         [owner.tenantId, staffId, other, service.json().service.id],
       );
-      assert.equal((await preview()).json().slots.length,33);
-      assert.equal((await preview()).headers["cache-control"],"no-store");
+      assert.equal((await preview()).json().slots.length, 33);
+      assert.equal((await preview()).headers["cache-control"], "no-store");
       // Day is branch-local Moscow time. 09:00 local -> 06:00 UTC.
-      const firstSlots=(await preview()).json().slots;
-      assert.equal(firstSlots[0].startAt,date+"T06:00:00.000Z");
+      const firstSlots = (await preview()).json().slots;
+      assert.equal(firstSlots[0].startAt, date + "T06:00:00.000Z");
       // Synthetic fixtures: service buffer, break, and confirmed booking at
       // another branch (including the buffer) reduce available starts.
-      await pool.query("UPDATE cookie_catalog.services SET post_service_buffer_minutes=15 WHERE tenant_id=$1::uuid AND id=$2::uuid",[owner.tenantId,serviceId]);
-      await pool.query("INSERT INTO cookie_scheduling.blocked_windows(tenant_id,id,staff_id,location_id,kind,start_at,end_at,active) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,'break',$5::timestamptz,$6::timestamptz,true)",[owner.tenantId,randomUUID(),staffId,owner.locationId,date+"T08:00:00Z",date+"T09:00:00Z"]);
-      const customer=randomUUID();
-      await pool.query("INSERT INTO cookie_customers.customers(tenant_id,id) VALUES($1::uuid,$2::uuid)",[owner.tenantId,customer]);
-      await pool.query("INSERT INTO cookie_booking.bookings(tenant_id,id,customer_id,staff_id,location_id,service_id,status,start_at,end_at,occupied_until,service_duration_minutes_snapshot,post_service_buffer_minutes_snapshot,price_kopecks_snapshot) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,'Confirmed',$7::timestamptz,$8::timestamptz,$9::timestamptz,60,15,100000)",[owner.tenantId,randomUUID(),customer,staffId,other,serviceId,date+"T10:00:00Z",date+"T11:00:00Z",date+"T11:15:00Z"]);
-      const busy=await preview();
-      assert.equal(busy.statusCode,200);
-      const slots=busy.json().slots as Array<{startAt:string;endAt:string;occupiedUntil:string}>;
-      assert.equal(slots.length,15);
-      assert.ok(slots.every(s=>s.occupiedUntil<=date+"T08:00:00.000Z"||s.startAt>=date+"T09:00:00.000Z"));
-      assert.ok(slots.every(s=>s.occupiedUntil<=date+"T10:00:00.000Z"||s.startAt>=date+"T11:15:00.000Z"));
-      assert.equal((await app.inject({method:"GET",url:previewUrl.replace(owner.locationId,other),headers})).statusCode,409,"plain alternate assignment is not grant-bound");
-      assert.equal((await app.inject({method:"GET",url:previewUrl.replace(date,"2026-02-30"),headers})).statusCode,400);
+      await pool.query(
+        "UPDATE cookie_catalog.services SET post_service_buffer_minutes=15 WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [owner.tenantId, serviceId],
+      );
+      await pool.query(
+        "INSERT INTO cookie_scheduling.blocked_windows(tenant_id,id,staff_id,location_id,kind,start_at,end_at,active) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,'break',$5::timestamptz,$6::timestamptz,true)",
+        [
+          owner.tenantId,
+          randomUUID(),
+          staffId,
+          owner.locationId,
+          date + "T08:00:00Z",
+          date + "T09:00:00Z",
+        ],
+      );
+      const customer = randomUUID();
+      await pool.query(
+        "INSERT INTO cookie_customers.customers(tenant_id,id) VALUES($1::uuid,$2::uuid)",
+        [owner.tenantId, customer],
+      );
+      await pool.query(
+        "INSERT INTO cookie_booking.bookings(tenant_id,id,customer_id,staff_id,location_id,service_id,status,start_at,end_at,occupied_until,service_duration_minutes_snapshot,post_service_buffer_minutes_snapshot,price_kopecks_snapshot) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,'Confirmed',$7::timestamptz,$8::timestamptz,$9::timestamptz,60,15,100000)",
+        [
+          owner.tenantId,
+          randomUUID(),
+          customer,
+          staffId,
+          other,
+          serviceId,
+          date + "T10:00:00Z",
+          date + "T11:00:00Z",
+          date + "T11:15:00Z",
+        ],
+      );
+      const busy = await preview();
+      assert.equal(busy.statusCode, 200);
+      const slots = busy.json().slots as Array<{
+        startAt: string;
+        endAt: string;
+        occupiedUntil: string;
+      }>;
+      assert.equal(slots.length, 15);
+      assert.ok(
+        slots.every(
+          (s) =>
+            s.occupiedUntil <= date + "T08:00:00.000Z" ||
+            s.startAt >= date + "T09:00:00.000Z",
+        ),
+      );
+      assert.ok(
+        slots.every(
+          (s) =>
+            s.occupiedUntil <= date + "T10:00:00.000Z" ||
+            s.startAt >= date + "T11:15:00.000Z",
+        ),
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url: previewUrl.replace(owner.locationId, other),
+            headers,
+          })
+        ).statusCode,
+        409,
+        "plain alternate assignment is not grant-bound",
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url: previewUrl.replace(date, "2026-02-30"),
+            headers,
+          })
+        ).statusCode,
+        400,
+      );
       const competing = await makePlan({ ...draft, locationId: other });
       assert.equal(
         (await submit(competing.shiftId, competing.revision)).json().error,
@@ -315,19 +406,19 @@ test(
         [owner.tenantId],
       );
       assert.equal((await submit()).json().error, "grant-unavailable");
-      assert.equal((await preview()).statusCode,409);
+      assert.equal((await preview()).statusCode, 409);
       await revokeStagingGrant(pool, owner.tenantId);
-      assert.equal((await preview()).statusCode,409);
+      assert.equal((await preview()).statusCode, 409);
       assert.equal((await submit()).json().error, "grant-unavailable");
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_remove(array_remove(permissions,'staging.shift.publish'),'staging.availability.read') WHERE tenant_id=$1::uuid",
         [owner.tenantId],
       );
       assert.equal((await submit()).statusCode, 403);
-      assert.equal((await preview()).statusCode,403);
+      assert.equal((await preview()).statusCode, 403);
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal((await submit()).statusCode, 401);
-      assert.equal((await preview()).statusCode,401);
+      assert.equal((await preview()).statusCode, 401);
     } finally {
       try {
         await disabled.close();
