@@ -1,0 +1,16 @@
+# Keep secrets, local state and Git metadata out of build context.
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+**/node_modules
+node_modules
+**/dist
+dist
+**/artifacts
+coverage
+.cache
+.tmp
+*.log
+.DS_Store

@@ -3,8 +3,10 @@ import { test } from "node:test";
 import {
   brandContrast,
   brandPresets,
+  compileBrandPreviewTokens,
   compileBrandTokens,
   createBrandConfig,
+  safeBrandPresetId,
   validateBrandConfig,
 } from "./branding-config";
 
@@ -105,4 +107,28 @@ test("config is versioned and cannot silently accept old or future shapes", () =
     validateBrandConfig({ ...base, logoAssetId: null, colorCss: ".body{}" }),
   );
   assert.deepEqual(validateBrandConfig(base), base);
+});
+
+test("invalid preview and reset recover without weakening save validation", () => {
+  const atelier = createBrandConfig("atelier");
+  const forest = createBrandConfig("forest");
+  const unknown = { ...forest, presetId: "future-preset" };
+  const invalidColor = { ...forest, primaryColor: "not-a-color" };
+  assert.deepEqual(
+    compileBrandPreviewTokens(atelier),
+    compileBrandTokens(atelier),
+  );
+  assert.deepEqual(
+    compileBrandPreviewTokens(unknown),
+    compileBrandTokens(atelier),
+  );
+  assert.deepEqual(
+    compileBrandPreviewTokens(invalidColor),
+    compileBrandTokens(forest),
+  );
+  assert.deepEqual(compileBrandPreviewTokens(null), compileBrandTokens(atelier));
+  assert.equal(safeBrandPresetId(unknown.presetId), "atelier");
+  assert.equal(safeBrandPresetId("forest"), "forest");
+  assert.throws(() => validateBrandConfig(unknown));
+  assert.throws(() => validateBrandConfig(invalidColor));
 });

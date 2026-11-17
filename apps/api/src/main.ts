@@ -2,6 +2,9 @@ import { Pool } from "pg";
 
 import { createApp } from "./app.js";
 import { parseConfig } from "./config.js";
+import { registerCompiledWeb } from "./static-web.js";
+import { createLiveTelegramSessionProvider } from "./telegram-auth-runtime.js";
+import { postgresTenantPolicyGuard } from "./session-context.js";
 
 const config = parseConfig(process.env);
 const pool = new Pool({
@@ -10,7 +13,19 @@ const pool = new Pool({
   max: 5,
   connectionTimeoutMillis: 3_000,
 });
-const app = createApp(pool, { logger: true });
+const telegramSessions = createLiveTelegramSessionProvider(process.env, pool);
+const app = createApp(pool, {
+  logger: true,
+  ...(telegramSessions
+    ? {
+        telegramAuthRoutes: { sessions: telegramSessions },
+        sessionRoutes: {
+          verifier: telegramSessions,
+          policy: postgresTenantPolicyGuard(pool),
+        },
+      }
+    : {}),
+});
 
 let stopping = false;
 async function shutdown(): Promise<void> {
@@ -32,6 +47,10 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 try {
+  if (process.env.COOKIE_WEB_DIST) {
+    // Optional same-origin compiled Svelte UI; absent or invalid files fail startup.
+    await registerCompiledWeb(app, process.env.COOKIE_WEB_DIST);
+  }
   await app.listen({ host: config.host, port: config.port });
 } catch {
   // Avoid logging connection credentials from arbitrary upstream exceptions.

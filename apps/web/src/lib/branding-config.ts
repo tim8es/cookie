@@ -18,3 +18,29 @@ export type {
   BrandConfigV1,
   BrandPreset,
 } from "../../../../packages/domain-appearance/src/index.js";
+
+import {
+  brandPresets,
+  compileBrandTokens,
+  createBrandConfig,
+  type BrandPresetId,
+} from "../../../../packages/domain-appearance/src/index.js";
+
+/** Preview recovery only. Save and publish keep strict domain validation. */
+export function safeBrandPresetId(value: unknown): BrandPresetId {
+  return brandPresets.find((preset) => preset.id === value)?.id ?? "atelier";
+}
+
+export function compileBrandPreviewTokens(
+  raw: unknown,
+): Readonly<Record<string, string>> {
+  try {
+    return compileBrandTokens(raw);
+  } catch {
+    const presetId =
+      raw && typeof raw === "object" && "presetId" in raw
+        ? safeBrandPresetId(raw.presetId)
+        : "atelier";
+    return compileBrandTokens(createBrandConfig(presetId));
+  }
+}
