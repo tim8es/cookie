@@ -53,7 +53,9 @@ async function atBarrier<T>(
   let pending: Promise<T> | undefined;
   try {
     await holder.query("BEGIN");
-    const pid = (await holder.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0]!.pid;
+    const pid = (
+      await holder.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")
+    ).rows[0]!.pid;
     assert.equal((await holder.query(lock.text, [...lock.values])).rowCount, 1);
     pending = command();
     // Attach a rejection handler before inspecting the independent DB state.
@@ -71,7 +73,11 @@ async function atBarrier<T>(
       }
       await pause(20);
     }
-    assert.equal(blocked, true, "Booking never reached the real row-lock checkpoint");
+    assert.equal(
+      blocked,
+      true,
+      "Booking never reached the real row-lock checkpoint",
+    );
     await inspect();
   } finally {
     try {
@@ -157,9 +163,10 @@ test(
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
       const ownerIdentityId = randomUUID();
-      await pool.query("INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)", [
-        ownerIdentityId,
-      ]);
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [ownerIdentityId],
+      );
       const owner = await provisionOwnerWorkspace(pool, {
         ownerIdentityId,
         organizationName: "Synthetic race studio",
@@ -188,7 +195,12 @@ test(
         return response.json().accessToken as string;
       }
       const ownerToken = await login(signed);
-      const post = (url: string, token: string, payload: object, key = randomUUID()) =>
+      const post = (
+        url: string,
+        token: string,
+        payload: object,
+        key = randomUUID(),
+      ) =>
         app.inject({
           method: "POST",
           url: prefix + url,
@@ -213,7 +225,9 @@ test(
       });
       assert.equal(staff.statusCode, 201);
       const staffId: string = staff.json().staff.id;
-      const date = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+      const date = new Date(Date.now() + 3 * 86400000)
+        .toISOString()
+        .slice(0, 10);
       const draft = await post("/shift-plans", ownerToken, {
         staffId,
         locationId: owner.locationId,
@@ -228,19 +242,23 @@ test(
         new Date(Date.now() + 3600000).toISOString(),
       );
       assert.equal(
-        (await post("/staging-publication", ownerToken, {
-          staffId,
-          locationId: owner.locationId,
-          serviceId,
-          expectedServiceRevision: 0,
-        })).statusCode,
+        (
+          await post("/staging-publication", ownerToken, {
+            staffId,
+            locationId: owner.locationId,
+            serviceId,
+            expectedServiceRevision: 0,
+          })
+        ).statusCode,
         201,
       );
       assert.equal(
-        (await post("/staging-shift-publication", ownerToken, {
-          shiftId: draft.json().plan.shiftId,
-          expectedRevision: draft.json().plan.revision,
-        })).statusCode,
+        (
+          await post("/staging-shift-publication", ownerToken, {
+            shiftId: draft.json().plan.shiftId,
+            expectedRevision: draft.json().plan.revision,
+          })
+        ).statusCode,
         200,
       );
 
@@ -303,30 +321,44 @@ test(
         values: [tenant, serviceId],
       };
       const request = (token: string, startAt: string, key: string) =>
-        post("/staging-customer-bookings", token, {
-          locationId: owner.locationId,
-          staffId,
-          serviceId,
-          startAt,
-        }, key);
+        post(
+          "/staging-customer-bookings",
+          token,
+          {
+            locationId: owner.locationId,
+            staffId,
+            serviceId,
+            startAt,
+          },
+          key,
+        );
       const empty = { bookings: 0, receipts: 0, events: 0 };
       assert.deepEqual(await durable(pool, tenant), empty);
 
       // The request reached Staff FOR UPDATE after actual HTTP preflight,
       // but cannot take its policy/session/grant locks yet.
-      for (const [index, kind] of (["role", "assignment", "membership", "bearer", "link"] as const).entries()) {
+      for (const [index, kind] of (
+        ["role", "assignment", "membership", "bearer", "link"] as const
+      ).entries()) {
         const client = await customer(19191010 + index);
         const denied = await atBarrier(
           pool,
           staffBarrier,
-          async () => request(client.token, date + "T11:00:00.000Z", randomUUID()),
+          async () =>
+            request(client.token, date + "T11:00:00.000Z", randomUUID()),
           async () => {
             const change = client[kind];
-            assert.equal((await pool.query(change.text, [...change.values])).rowCount, 1);
+            assert.equal(
+              (await pool.query(change.text, [...change.values])).rowCount,
+              1,
+            );
             assert.deepEqual(await durable(pool, tenant), empty);
           },
         );
-        assert.ok([401, 403].includes(denied.statusCode), "Revoke-first " + kind + " returned " + denied.statusCode);
+        assert.ok(
+          [401, 403].includes(denied.statusCode),
+          "Revoke-first " + kind + " returned " + denied.statusCode,
+        );
         assert.deepEqual(await durable(pool, tenant), empty);
       }
 
@@ -340,7 +372,14 @@ test(
         serviceBarrier,
         async () => request(good.token, start, key),
         async () => {
-          for (const change of [good.role, good.assignment, good.membership, good.bearer, good.link, grant]) {
+          for (const change of [
+            good.role,
+            good.assignment,
+            good.membership,
+            good.bearer,
+            good.link,
+            grant,
+          ]) {
             await revokeMustWait(pool, change);
           }
           assert.deepEqual(await durable(pool, tenant), empty);
@@ -353,11 +392,13 @@ test(
         "SELECT customer_id::text,status,price_kopecks_snapshot::text FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
         [tenant, successful.json().bookingId],
       );
-      assert.deepEqual(persisted.rows, [{
-        customer_id: good.context.customerId,
-        status: "Confirmed",
-        price_kopecks_snapshot: "100000",
-      }]);
+      assert.deepEqual(persisted.rows, [
+        {
+          customer_id: good.context.customerId,
+          status: "Confirmed",
+          price_kopecks_snapshot: "100000",
+        },
+      ]);
       const one = { bookings: 1, receipts: 1, events: 1 };
       assert.deepEqual(await durable(pool, tenant), one);
       const replay = await request(good.token, start, key);
@@ -382,7 +423,9 @@ test(
       assert.equal(recover.statusCode, 201);
       assert.deepEqual(recover.json(), successful.json());
       assert.equal(await sessions.revokeBearerToken(good.token), true);
-      assert.ok([401, 403].includes((await request(good.token, start, key)).statusCode));
+      assert.ok(
+        [401, 403].includes((await request(good.token, start, key)).statusCode),
+      );
       assert.deepEqual(await durable(pool, tenant), one);
     } finally {
       try {
@@ -390,7 +433,10 @@ test(
         if (tenantId) {
           // Only this isolated synthetic tenant; don't contaminate later
           // worker tests with our deliberate confirmed/create events.
-          await pool.query("DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid", [tenantId]);
+          await pool.query(
+            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid",
+            [tenantId],
+          );
         }
       } finally {
         await pool.end();

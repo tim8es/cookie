@@ -531,17 +531,11 @@ test(
         ).statusCode,
         403,
       );
-      assert.equal(
-        (
-          await book(bookingKey, {
-            ...bookingPayload,
-            customerId: customer,
-          } as typeof bookingPayload)
-        ).statusCode,
-        400,
-      );
+      const forgedCustomer = { ...bookingPayload, customerId: customer };
+      assert.equal((await book(bookingKey, forgedCustomer)).statusCode, 400);
       const otherPlacement = { ...bookingPayload, locationId: other };
-      assert.equal((await book(randomUUID(), otherPlacement)).statusCode, 409);
+      const rejectedPlacement = await book(randomUUID(), otherPlacement);
+      assert.equal(rejectedPlacement.statusCode, 409);
       const [created, replayed] = await Promise.all([book(), book()]);
       assert.equal(created.statusCode, 201, created.body);
       assert.equal(replayed.statusCode, 201, replayed.body);
@@ -557,15 +551,9 @@ test(
         { customer_id: clientContext.customerId, status: "Confirmed" },
       ]);
       assert.equal((await book(randomUUID())).statusCode, 409);
-      assert.equal(
-        (
-          await book(bookingKey, {
-            ...bookingPayload,
-            startAt: slots[1]!.startAt,
-          })
-        ).json().error,
-        "IDEMPOTENCY_KEY_REUSED",
-      );
+      const changedSlot = { ...bookingPayload, startAt: slots[1]!.startAt };
+      const keyConflict = await book(bookingKey, changedSlot);
+      assert.equal(keyConflict.json().error, "IDEMPOTENCY_KEY_REUSED");
       assert.ok(
         !(await clientSlots()).json().slots.some(
           (slot: { startAt: string }) => slot.startAt === bookingPayload.startAt,
@@ -704,7 +692,7 @@ test(
         await app.close();
         if (tenantId) {
           await pool.query(
-            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic IN ('schedule.shift.draft.created','schedule.shift.published')",
+            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic IN ('schedule.shift.draft.created','schedule.shift.published','booking.confirmed')",
             [tenantId],
           );
         }
