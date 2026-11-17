@@ -15,17 +15,17 @@ import {
   browserBinary, freePort, poll, getLocal, createClient, requireDom,
 } from "../apps/web/scripts/browser-smoke.mjs";
 
+import { isLocalStagingProject, resolveLocalStagingMode } from "./local-staging-mode.mjs";
+
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
-// The non-interactive verification never reads/writes the operator\'s state.
-const verification = process.argv[2] === "verify";
+// Disposable demo and CI never read/write the operator's persistent QA state.
+const mode = resolveLocalStagingMode(process.argv.slice(2), process.env.CI);
+const { verification, disposable, demo } = mode;
 const parent = join(root, ".tmp");
-if (verification && process.env.CI !== "true") {
-  throw new Error("The disposable verification mode requires CI=true");
-}
-if (verification) mkdirSync(parent, { recursive: true, mode: 0o700 });
-const folder = verification
-  ? mkdtempSync(join(parent, "manual-staging-ci-"))
-  : join(parent, "manual-staging");
+if (disposable) mkdirSync(parent, { recursive: true, mode: 0o700 });
+const folder = disposable
+  ? mkdtempSync(join(parent, mode.folderPrefix))
+  : join(parent, mode.folderPrefix);
 const settings = join(folder, "state.json");
 const lockPath = join(folder, "run.lock");
 const composeFile = join(root, "docker-compose.manual.yml");
@@ -61,7 +61,7 @@ function proof(state, role = "owner") {
 async function loadState() {
   if (!existsSync(settings)) {
     const state = {
-      project: "cookie-manual-" + randomBytes(6).toString("hex"),
+      project: mode.projectPrefix + randomBytes(6).toString("hex"),
       dbPort: await freePort(),
       password: hex(),
       botToken: "123456789:" + randomBytes(24).toString("base64url"),
@@ -74,7 +74,7 @@ async function loadState() {
     writeFileSync(settings, JSON.stringify(state), { flag: "wx", mode: 0o600 });
   }
   const state = JSON.parse(readFileSync(settings, "utf8"));
-  if (!/^cookie-manual-[0-9a-f]{12}$/.test(state.project) ||
+  if (!isLocalStagingProject(mode, state.project) ||
       !/^[0-9a-f]{64}$/.test(state.password) ||
       !/^[0-9a-f]{64}$/.test(state.secret) ||
       !/^123456789:[A-Za-z0-9_-]{32}$/.test(state.botToken) ||
@@ -112,7 +112,7 @@ async function seed(state, databaseUrl) {
     await pool.query("INSERT INTO cookie_identity.identities(id) VALUES($1::uuid) ON CONFLICT (id) DO NOTHING", [state.identityId]);
     const owner = await provisionOwnerWorkspace(pool, {
       ownerIdentityId: state.identityId, idempotencyKey: state.setupKey,
-      organizationName: "Тестовый салон Cookie", locationName: "Основной филиал",
+      organizationName: demo ? "Демо-салон kuki" : "Тестовый салон Cookie", locationName: "Основной филиал",
       timeZone: "Europe/Moscow",
     });
     // Do not recreate a deliberately revoked link.
@@ -178,13 +178,19 @@ async function signIn(cdp, origin, state, role = "owner") {
 }
 
 async function main() {
-  const command = process.argv[2] ?? "start";
-  if (!["start", "stop", "verify"].includes(command) || process.argv.length > 3) throw new Error("Use start or stop (verify is CI-only)");
+  const { command } = mode;
   mkdirSync(folder, { recursive: true, mode: 0o700 });
   if (command === "stop" && !existsSync(settings)) return;
   const lock = openSync(lockPath, "wx", 0o600);
   let state, api, chrome, profile, cdp, input;
-  const closeInput = () => input?.close();
+  let interrupted = false;
+  let composeAttempted = false;
+  const closeInput = () => { interrupted = true; input?.close(); };
+  const checkInterrupted = () => {
+    if (interrupted) throw new Error("Launch interrupted");
+  };
+  process.on("SIGINT", closeInput);
+  process.on("SIGTERM", closeInput);
   try {
     state = await loadState();
     if (command === "stop") {
@@ -197,6 +203,8 @@ async function main() {
     // Temporary operator-only staging input. No product default: #285 tracks tenant policy.
     const cutoff = parseStagingCancellationCutoff(process.env.COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES);
     const binary = browser();
+    checkInterrupted();
+    composeAttempted = true;
     compose(state, ["up", "-d", "--wait"]);
     const databaseUrl = "postgresql://cookie:" + state.password +
       "@127.0.0.1:" + state.dbPort + "/cookie_manual";
@@ -208,7 +216,9 @@ async function main() {
         return result.rows[0]?.name === "cookie_manual";
       }, 30000);
     } finally { await readiness.end(); }
+    checkInterrupted();
     await seed(state, databaseUrl);
+    checkInterrupted();
     const port = await freePort();
     const origin = "http://127.0.0.1:" + port;
     const env = Object.fromEntries(Object.entries(process.env)
@@ -228,6 +238,7 @@ async function main() {
       if (api.startFailed || api.exitCode !== null) return false;
       return (await getLocal(origin + "/health/ready")).status === 200;
     }, 18000);
+    checkInterrupted();
     profile = mkdtempSync(join(tmpdir(), "cookie-manual-chrome-"));
     chrome = child(binary, [
       "--user-data-dir=" + profile, "--remote-debugging-address=127.0.0.1",
@@ -255,7 +266,9 @@ async function main() {
         if (response.url.startsWith(origin + "/v1/") && response.url.endsWith("/staging-customer-cancellation/capability")) cancellationResponses.push(response.status);
       });
     }
+    checkInterrupted();
     await signIn(cdp, origin, state);
+    checkInterrupted();
     if (verification) {
       await requireDom(cdp, "actual owner service form", "document.querySelector(\'.owner-form input\')");
       await signIn(cdp, origin, state, "client");
@@ -269,20 +282,20 @@ async function main() {
       console.log("PASS actual local launcher: dedicated PostgreSQL, migrations, compiled runtime, signed owner/client and demo isolation");
       return;
     }
-    console.log("Real Cookie: " + origin + " — use the opened isolated browser.");
+    console.log((demo ? "kuki demo (synthetic, disposable): " : "Real Cookie: ") + origin + " — use the opened isolated browser.");
     console.log(cutoff === undefined ? "Cancellation disabled: COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES is unset." : "Explicit synthetic cancellation cutoff: " + cutoff + " minutes.");
-    console.log("Synthetic records only. owner / client = switch role; Enter = fresh login; demo = isolated preview; Ctrl+C = exit. DB retained.");
+    console.log(demo
+      ? "Synthetic records only. owner / client = switch role; Enter = fresh login; Ctrl+C = exit and remove this demo database. Relaunch for a fresh demo."
+      : "Synthetic records only. owner / client = switch role; Enter = fresh login; demo = legacy UI fixture; Ctrl+C = exit. DB retained.");
     input = createInterface({ input: process.stdin, output: process.stdout });
     input.on("SIGINT", closeInput);
-    process.on("SIGINT", closeInput);
-    process.on("SIGTERM", closeInput);
     api.once("exit", closeInput);
     chrome.once("exit", closeInput);
     let role = "owner";
     for await (const line of input) {
       const command = line.trim().toLowerCase();
-      if (command && !["owner", "client", "demo"].includes(command)) {
-        console.log("Use owner, client, demo or Enter.");
+      if (command && !(demo ? ["owner", "client"] : ["owner", "client", "demo"]).includes(command)) {
+        console.log(demo ? "Use owner, client or Enter." : "Use owner, client, demo or Enter.");
         continue;
       }
       try {
@@ -307,13 +320,21 @@ async function main() {
       try { await stop(chrome); } finally { await stop(api); }
       if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     } finally {
+      let cleaned = false;
       try {
-        // Only the fresh CI-generated project can be removed with its volume.
-        if (verification && state) compose(state, ["down", "-v"]);
+        // Only an explicitly disposable, freshly generated local profile owns its volume.
+        if (disposable && state && composeAttempted) {
+          if (!isLocalStagingProject(mode, state.project)) throw new Error("Refusing cleanup of an unrelated project");
+          compose(state, ["down", "-v"]);
+        }
+        cleaned = true;
       } finally {
         closeSync(lock);
         rmSync(lockPath, { force: true });
-        if (verification) rmSync(folder, { recursive: true, force: true });
+        if (disposable && cleaned) rmSync(folder, { recursive: true, force: true });
+        if (disposable && !cleaned) {
+          console.error("Disposable cleanup failed; private state retained at " + folder + " for manual recovery.");
+        }
       }
     }
   }
