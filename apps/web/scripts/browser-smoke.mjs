@@ -766,7 +766,15 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("Cookie browser smoke failed:", error);
-  process.exitCode = 1;
-});
+// Share DOM/CDP assertions without running the synthetic suite on import.
+export {
+  browserBinary, freePort, poll, getLocal, createClient, evaluate,
+  requireDom, click, fill, submitValidForm, checkWidth, checkLabeledControls,
+};
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error("Cookie browser smoke failed:", error);
+    process.exitCode = 1;
+  });
+}

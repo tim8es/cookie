@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { Button } from "../components/ui/button/index.js";
-  import { money } from "../dates";
+
   import type { VerifiedOwnerSession } from "../owner-auth";
   import {
     createRealService,
+    editRealService,
     readRealServices,
     ServiceApiFailure,
     type RealService,
@@ -26,6 +27,13 @@
   let servicePrice = 0;
   // Keep the same key when an uncertain HTTP response is retried.
   let pendingKey = "";
+  let editing: RealService | null = null;
+  let stale = false;
+  let uncertain = false;
+
+  function catalogPrice(kopecks: number): string {
+    return new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(kopecks / 100);
+  }
 
   function description(reason: unknown): string {
     if (reason instanceof ServiceApiFailure) {
@@ -35,6 +43,10 @@
         return "Достигнут предельный размер каталога (100 услуг в F1).";
       if (reason.reason === "conflict")
         return "Этот ключ уже использован с другими параметрами. Измените форму.";
+      if (reason.reason === "stale-revision")
+        return "Черновик уже изменён. Обновите список и заново откройте его, чтобы не затереть чужие изменения.";
+      if (reason.reason === "draft-unavailable")
+        return "Услуга не является доступным для изменения черновиком.";
       if (reason.reason === "invalid-response")
         return "Сервер вернул неподтверждённый формат ответа.";
     }
@@ -42,18 +54,44 @@
   }
 
   function editName(value: string): void {
+    if (saving || uncertain || stale) return;
     serviceName = value;
     pendingKey = "";
     saveError = "";
   }
   function editDuration(value: number): void {
+    if (saving || uncertain || stale) return;
     serviceDuration = value;
     pendingKey = "";
     saveError = "";
   }
   function editPrice(value: number): void {
+    if (saving || uncertain || stale) return;
     servicePrice = value;
     pendingKey = "";
+    saveError = "";
+  }
+
+  function startEdit(service: RealService): void {
+    if (saving || loading || uncertain || service.active) return;
+    editing = service;
+    serviceName = service.displayName;
+    serviceDuration = service.durationMinutes;
+    servicePrice = service.basePriceKopecks / 100;
+    pendingKey = "";
+    stale = false;
+    saveError = "";
+    notice = "";
+  }
+
+  function resetForm(): void {
+    editing = null;
+    serviceName = "";
+    serviceDuration = 60;
+    servicePrice = 0;
+    pendingKey = "";
+    stale = false;
+    uncertain = false;
     saveError = "";
   }
 
@@ -73,15 +111,15 @@
   }
 
   async function save(): Promise<void> {
-    if (saving || loading || !loaded) return;
+    if (saving || loading || !loaded || stale) return;
     if (
-      !serviceName.trim() ||
+      !serviceName.trim() || [...serviceName.trim()].length > 200 ||
       !Number.isInteger(serviceDuration) || serviceDuration < 1 ||
       serviceDuration > 1440 ||
-      !Number.isSafeInteger(servicePrice) ||
-      servicePrice < 0 || servicePrice > 9_999_999_999
+      !Number.isFinite(servicePrice) || servicePrice !== Number(servicePrice.toFixed(2)) ||
+      servicePrice < 0 || servicePrice > 9_999_999_999.99
     ) {
-      saveError = "Проверьте название, длительность и целую цену в рублях.";
+      saveError = "Проверьте название, длительность и цену с точностью до копеек.";
       return;
     }
 
@@ -91,25 +129,26 @@
     const key = pendingKey || crypto.randomUUID();
     pendingKey = key;
     try {
-      const saved = await createRealService(
-        session,
-        {
-          displayName: serviceName.trim().normalize("NFC"),
-          durationMinutes: serviceDuration,
-          basePriceKopecks: servicePrice * 100,
-        },
-        key,
-      );
-      // POST response is an actual persisted server record, not a UI estimate.
-      services = [...services.filter((item) => item.id !== saved.id), saved];
-      pendingKey = "";
-      serviceName = "";
-      servicePrice = 0;
-      notice = "Черновик услуги сохранён на сервере. Для записи клиентов он пока недоступен.";
-      // Read-after-write confirms the same record is still visible to the owner.
+      const draft = {
+        displayName: serviceName.trim().normalize("NFC"),
+        durationMinutes: serviceDuration,
+        basePriceKopecks: Math.round(servicePrice * 100),
+      };
+      const wasEditing = editing !== null;
+      if (editing) await editRealService(session, editing.id,
+        { ...draft, expectedRevision: editing.revision }, key);
+      else await createRealService(session, draft, key);
+      // Receipt proves the command committed, not that its snapshot is
+      // still current. Always re-read after both initial write and replay.
+      resetForm();
+      notice = wasEditing ? "Изменения черновика сохранены." : "Черновик услуги сохранён на сервере. Для записи клиентов он пока недоступен.";
       await refresh();
     } catch (reason) {
       saveError = description(reason);
+      stale = reason instanceof ServiceApiFailure &&
+        (reason.reason === "stale-revision" || reason.reason === "draft-unavailable");
+      uncertain = !(reason instanceof ServiceApiFailure) ||
+        reason.reason === "unavailable" || reason.reason === "invalid-response";
     } finally {
       saving = false;
     }
@@ -161,7 +200,10 @@
               <strong>{service.displayName}</strong>
               <small>{service.durationMinutes} мин · {service.active ? "Активна" : "Черновик"}</small>
             </div>
-            <strong class="price-label">{money(service.basePriceKopecks / 100)}</strong>
+            <strong class="price-label">{catalogPrice(service.basePriceKopecks)}</strong>
+            {#if !service.active}
+              <Button type="button" variant="outline" size="sm" disabled={saving || uncertain || loading} onclick={() => startEdit(service)}>Изменить</Button>
+            {/if}
           </div>
         {/each}
       </div>
@@ -177,7 +219,17 @@
       onPriceChange={editPrice}
       onSubmit={() => void save()}
       apiMode={true}
-      busy={saving || loading}
+      busy={saving || loading || stale}
+      editing={editing !== null}
+      onCancelEdit={resetForm}
+      frozen={uncertain}
     />
+    {#if stale}
+      <p class="owner-form-note">Обновите список и выберите актуальный черновик или отмените редактирование.</p>
+      <Button type="button" variant="outline" onclick={resetForm}>Сбросить форму</Button>
+    {/if}
+    {#if uncertain}
+      <p class="owner-form-note">Ответ не подтверждён. Повторите сохранение с теми же параметрами; не создавайте новый черновик до подтверждения.</p>
+    {/if}
   {/if}
 </div>

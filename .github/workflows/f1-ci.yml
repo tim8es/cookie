@@ -88,18 +88,26 @@ jobs:
           path: apps/web/artifacts/visual-smoke/
           if-no-files-found: error
           retention-days: 7
+      # Actual compiled API-mode + disposable PostgreSQL, separate from mock evidence.
+      - name: Real owner browser E2E with PostgreSQL (synthetic signed proof)
+        id: real_owner_browser
+        run: |
+          pnpm build:runtime
+          node apps/web/scripts/real-owner-browser-smoke.mjs
       - name: Report exact commit and smoke result
         if: ${{ always() }}
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           TESTED_SHA: ${{ github.sha }}
           BROWSER_SMOKE_RESULT: ${{ steps.browser_smoke.outcome }}
+          REAL_OWNER_BROWSER_RESULT: ${{ steps.real_owner_browser.outcome }}
         run: |
           {
             echo '### F1 CI evidence'
             echo "Source head: \`$PR_HEAD_SHA\`"
             echo "Workflow tested: \`$TESTED_SHA\`"
             echo "Browser smoke: \`$BROWSER_SMOKE_RESULT\`"
+            echo "Real owner browser smoke: \`$REAL_OWNER_BROWSER_RESULT\`"
             echo 'Includes lint, formatting, boundaries, API/web tests, migrations, synthetic restore, build and browser checks.'
           } >> "$GITHUB_STEP_SUMMARY"
 

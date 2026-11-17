@@ -158,7 +158,164 @@ test(
         [owner.tenantId],
       );
       assert.equal(saved.rows[0].count, 1);
-      // Two distinct keys race for the last available catalog slot.
+      const editUrl = prefix + "/" + a.id;
+      const edit = {
+        displayName: "Synthetic edited haircut",
+        durationMinutes: 45,
+        basePriceKopecks: 120050,
+        expectedRevision: 0,
+      };
+      const editKey = randomUUID();
+      const change = (
+        payload: object,
+        idempotencyKey = editKey,
+        url = editUrl,
+      ) =>
+        app.inject({
+          method: "PATCH",
+          url,
+          headers: { ...headers, "idempotency-key": idempotencyKey },
+          payload,
+        });
+      assert.equal(a.revision, 0);
+      assert.equal(
+        (await disabled.inject({ method: "PATCH", url: editUrl })).statusCode,
+        404,
+      );
+      assert.equal(
+        (await app.inject({ method: "PATCH", url: editUrl })).statusCode,
+        401,
+      );
+      assert.equal(
+        (
+          await change(
+            edit,
+            randomUUID(),
+            "/v1/organizations/" + randomUUID() + "/services/" + a.id,
+          )
+        ).statusCode,
+        403,
+      );
+      assert.equal(
+        (await change(edit, randomUUID(), prefix + "/" + randomUUID()))
+          .statusCode,
+        404,
+      );
+
+      const [updatedA, updatedB] = await Promise.all([
+        change(edit),
+        change(edit),
+      ]);
+      assert.equal(updatedA.statusCode, 200);
+      assert.equal(updatedB.statusCode, 200);
+      assert.equal(updatedA.headers["cache-control"], "no-store");
+      const revisionOne = updatedA.json().service;
+      assert.deepEqual(updatedB.json().service, revisionOne);
+      assert.deepEqual(revisionOne, {
+        ...a,
+        displayName: edit.displayName,
+        durationMinutes: 45,
+        basePriceKopecks: 120050,
+        revision: 1,
+      });
+      assert.equal(
+        (await change({ ...edit, durationMinutes: 46 })).statusCode,
+        409,
+      );
+      const stale = await change(edit, randomUUID());
+      assert.equal(stale.statusCode, 409);
+      assert.equal(stale.json().error, "stale-revision");
+
+      // Concurrent distinct edits from the same revision cannot both commit.
+      const next = { ...edit, expectedRevision: 1 };
+      const race = await Promise.all([
+        change({ ...next, durationMinutes: 50 }, randomUUID()),
+        change({ ...next, durationMinutes: 55 }, randomUUID()),
+      ]);
+      assert.deepEqual(
+        race.map((result) => result.statusCode).sort(),
+        [200, 409],
+      );
+      const revisionTwo = race
+        .find((result) => result.statusCode === 200)!
+        .json().service;
+      assert.equal(revisionTwo.revision, 2);
+
+      // Old receipts are immutable, but GET is authoritative current data.
+      assert.deepEqual((await change(edit)).json().service, revisionOne);
+      const createReplay = await submit();
+      assert.equal(createReplay.statusCode, 200);
+      assert.deepEqual(createReplay.json().service, a);
+      assert.deepEqual(
+        (await app.inject({ method: "GET", url: prefix, headers })).json()
+          .services,
+        [revisionTwo],
+      );
+
+      for (const invalidEdit of [
+        { ...next, active: true },
+        { ...next, expectedRevision: -1 },
+        { ...next, basePriceKopecks: 12.5 },
+        { ...next, durationMinutes: 0 },
+      ]) {
+        assert.equal((await change(invalidEdit, randomUUID())).statusCode, 400);
+      }
+      // Use a real scoped staff/assignment; service edits must not change
+      // references and must fail when there is an active assignment.
+      const staffId = randomUUID();
+      await pool.query(
+        "INSERT INTO cookie_staff.staff_profiles(tenant_id,id,display_name) VALUES($1::uuid,$2::uuid,'Synthetic draft staff')",
+        [owner.tenantId, staffId],
+      );
+      await pool.query(
+        "INSERT INTO cookie_staff.location_assignments(tenant_id,staff_id,location_id) VALUES($1::uuid,$2::uuid,$3::uuid)",
+        [owner.tenantId, staffId, owner.locationId],
+      );
+      await pool.query(
+        "INSERT INTO cookie_staff.service_assignments(tenant_id,staff_id,location_id,service_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid)",
+        [owner.tenantId, staffId, owner.locationId, a.id],
+      );
+      const binding = [owner.tenantId, staffId, owner.locationId, a.id];
+      const third = { ...edit, expectedRevision: 2 };
+      const successful = await change(third, randomUUID());
+      assert.equal(successful.statusCode, 200);
+      const assignment = await pool.query(
+        "SELECT active FROM cookie_staff.service_assignments WHERE tenant_id=$1::uuid AND staff_id=$2::uuid AND location_id=$3::uuid AND service_id=$4::uuid",
+        binding,
+      );
+      assert.deepEqual(assignment.rows, [{ active: false }]);
+      await pool.query(
+        "UPDATE cookie_staff.service_assignments SET active=true WHERE tenant_id=$1::uuid AND staff_id=$2::uuid AND location_id=$3::uuid AND service_id=$4::uuid",
+        binding,
+      );
+      assert.equal(
+        (await change({ ...edit, expectedRevision: 3 }, randomUUID()))
+          .statusCode,
+        404,
+      );
+      await pool.query(
+        "UPDATE cookie_staff.service_assignments SET active=false WHERE tenant_id=$1::uuid AND staff_id=$2::uuid AND location_id=$3::uuid AND service_id=$4::uuid",
+        binding,
+      );
+      await pool.query(
+        "UPDATE cookie_catalog.services SET active=true WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [owner.tenantId, a.id],
+      );
+      assert.equal(
+        (await change({ ...edit, expectedRevision: 3 }, randomUUID()))
+          .statusCode,
+        404,
+      );
+      const count = await pool.query(
+        `SELECT
+          (SELECT count(*)::int FROM cookie_catalog.service_create_receipts WHERE tenant_id=$1::uuid) AS creates,
+          (SELECT count(*)::int FROM cookie_catalog.service_edit_receipts WHERE tenant_id=$1::uuid) AS edits,
+          (SELECT draft_revision FROM cookie_catalog.services WHERE tenant_id=$1::uuid AND id=$2::uuid) AS revision`,
+        [owner.tenantId, a.id],
+      );
+      assert.deepEqual(count.rows[0], { creates: 1, edits: 3, revision: 3 });
+
+      // Last-slot race from #228 must survive the immutable receipt change.
       await pool.query(
         `INSERT INTO cookie_catalog.services
            (tenant_id,id,display_name,duration_minutes,base_price_kopecks,active)
@@ -184,6 +341,8 @@ test(
       const replayAtCapacity = await submit();
       assert.equal(replayAtCapacity.statusCode, 200);
       assert.deepEqual(replayAtCapacity.json().service, a);
+
+      // A revoked permission also denies committed receipt replay.
       // Permission reduction denies even a still-valid authenticated bearer.
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=ARRAY[\u0027organization.context.read\u0027]::text[] WHERE tenant_id=$1::uuid",
@@ -194,6 +353,7 @@ test(
         403,
       );
       assert.equal((await submit()).statusCode, 403);
+      assert.equal((await change(edit)).statusCode, 403);
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal(
         (await app.inject({ method: "GET", url: prefix, headers })).statusCode,

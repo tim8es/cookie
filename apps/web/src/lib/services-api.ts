@@ -7,12 +7,15 @@ export interface RealService {
   readonly basePriceKopecks: number;
   readonly active: boolean;
   readonly createdAt: string;
+  readonly revision: number;
 }
 
 export type ServiceFailureReason =
   | "unauthorized"
   | "conflict"
   | "capacity"
+  | "stale-revision"
+  | "draft-unavailable"
   | "unavailable"
   | "invalid-response";
 export class ServiceApiFailure extends Error {
@@ -42,7 +45,10 @@ function isRealService(value: unknown): value is RealService {
     s.basePriceKopecks! <= 999_999_999_999 &&
     typeof s.active === "boolean" &&
     typeof s.createdAt === "string" &&
-    Number.isFinite(Date.parse(s.createdAt))
+    Number.isFinite(Date.parse(s.createdAt)) &&
+    Number.isSafeInteger(s.revision) &&
+    s.revision! >= 0 &&
+    s.revision! <= 2147483647
   );
 }
 
@@ -50,6 +56,7 @@ async function request(
   session: VerifiedOwnerSession,
   fetcher: typeof fetch,
   init: RequestInit,
+  suffix = "",
 ): Promise<{ body: unknown; status: number }> {
   if (Date.now() / 1000 >= session.expiresAtUnixSeconds) {
     throw new ServiceApiFailure("unauthorized");
@@ -57,7 +64,7 @@ async function request(
   let response: Response;
   try {
     response = await fetcher(
-      "/v1/organizations/" + session.tenantId + "/services",
+      "/v1/organizations/" + session.tenantId + "/services" + suffix,
       {
         ...init,
         credentials: "omit",
@@ -77,13 +84,27 @@ async function request(
     throw new ServiceApiFailure("unauthorized");
   }
   if (response.status === 409) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: unknown;
-    } | null;
-    throw new ServiceApiFailure(
-      body?.error === "catalog-capacity-reached" ? "capacity" : "conflict",
-    );
+    const problem: unknown = await response.json().catch(() => null);
+    if (
+      problem &&
+      typeof problem === "object" &&
+      "error" in problem &&
+      problem.error === "stale-revision"
+    ) {
+      throw new ServiceApiFailure("stale-revision");
+    }
+    if (
+      problem &&
+      typeof problem === "object" &&
+      "error" in problem &&
+      problem.error === "catalog-capacity-reached"
+    ) {
+      throw new ServiceApiFailure("capacity");
+    }
+    throw new ServiceApiFailure("conflict");
   }
+  if (response.status === 404 && suffix)
+    throw new ServiceApiFailure("draft-unavailable");
   if (!response.ok) throw new ServiceApiFailure("unavailable");
   try {
     return {
@@ -151,4 +172,52 @@ export async function createRealService(
     throw new ServiceApiFailure("invalid-response");
   }
   return (result.body as { service: RealService }).service;
+}
+
+export interface RealServiceEdit extends RealServiceDraft {
+  readonly expectedRevision: number;
+}
+
+export async function editRealService(
+  session: VerifiedOwnerSession,
+  serviceId: string,
+  draft: RealServiceEdit,
+  idempotencyKey: string,
+  fetcher: typeof fetch = globalThis.fetch,
+): Promise<RealService> {
+  if (
+    !UUID.test(serviceId) ||
+    !UUID.test(idempotencyKey) ||
+    !Number.isSafeInteger(draft.expectedRevision) ||
+    draft.expectedRevision < 0 ||
+    draft.expectedRevision >= 2147483647
+  )
+    throw new ServiceApiFailure("invalid-response");
+  const result = await request(
+    session,
+    fetcher,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": idempotencyKey,
+      },
+      body: JSON.stringify(draft),
+    },
+    "/" + serviceId,
+  );
+  if (result.status !== 200 || !result.body || typeof result.body !== "object")
+    throw new ServiceApiFailure("invalid-response");
+  const service = (result.body as { service?: unknown }).service;
+  if (
+    !isRealService(service) ||
+    service.id !== serviceId ||
+    service.active ||
+    service.revision !== draft.expectedRevision + 1 ||
+    service.displayName !== draft.displayName.normalize("NFC").trim() ||
+    service.durationMinutes !== draft.durationMinutes ||
+    service.basePriceKopecks !== draft.basePriceKopecks
+  )
+    throw new ServiceApiFailure("invalid-response");
+  return service;
 }

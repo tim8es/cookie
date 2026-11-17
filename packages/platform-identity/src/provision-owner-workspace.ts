@@ -58,6 +58,7 @@ const OWNER_PERMISSIONS = [
   "schedule.read",
   "catalog.service.read",
   "catalog.service.create",
+  "catalog.service.edit-draft",
   "staff.profile.read",
   "staff.profile.create",
   "location.read",
