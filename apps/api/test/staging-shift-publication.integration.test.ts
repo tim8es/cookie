@@ -562,6 +562,26 @@ test(
           headers: { ...clientHeaders, "idempotency-key": key },
           payload,
         });
+      const recoveryUrl = bookingUrl + "/receipt";
+      const recover = (key: string = bookingKey) =>
+        app.inject({
+          method: "GET",
+          url: recoveryUrl,
+          headers: { ...clientHeaders, "idempotency-key": key },
+        });
+      const missingReceipt = await recover();
+      assert.equal(missingReceipt.statusCode, 404);
+      const disabledReceipt = await disabled.inject({
+        method: "GET",
+        url: recoveryUrl,
+        headers: { ...clientHeaders, "idempotency-key": bookingKey },
+      });
+      assert.equal(disabledReceipt.statusCode, 404);
+      const anonymousReceipt = await app.inject({
+        method: "GET",
+        url: recoveryUrl,
+      });
+      assert.equal(anonymousReceipt.statusCode, 401);
       const disabledBooking = await disabled.inject({
         method: "POST",
         url: bookingUrl,
@@ -594,6 +614,29 @@ test(
       assert.deepEqual(created.json(), replayed.json());
       assert.equal(created.json().status, "Confirmed");
       assert.equal(created.json().priceKopecks, "100000");
+      const recovered = await recover();
+      assert.equal(recovered.statusCode, 200);
+      assert.equal(recovered.headers["cache-control"], "no-store");
+      assert.deepEqual(recovered.json(), created.json());
+      assert.equal((await recover(randomUUID())).statusCode, 404);
+      const ownerReceipt = await app.inject({
+        method: "GET",
+        url: recoveryUrl,
+        headers: { ...headers, "idempotency-key": bookingKey },
+      });
+      assert.equal(ownerReceipt.statusCode, 403);
+      const foreignReceipt = await app.inject({
+        method: "GET",
+        url: recoveryUrl.replace(owner.tenantId, randomUUID()),
+        headers: { ...clientHeaders, "idempotency-key": bookingKey },
+      });
+      assert.equal(foreignReceipt.statusCode, 403);
+      const invalidRecovery = await app.inject({
+        method: "GET",
+        url: recoveryUrl + "?customerId=" + customer,
+        headers: { ...clientHeaders, "idempotency-key": bookingKey },
+      });
+      assert.equal(invalidRecovery.statusCode, 400);
       const persisted = await pool.query(
         `SELECT customer_id::text,status
            FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid`,
@@ -652,6 +695,7 @@ test(
         [owner.tenantId],
       );
       assert.equal((await book()).statusCode, 403, "deny even receipt replay");
+      assert.equal((await recover()).statusCode, 403);
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.booking.create') WHERE tenant_id=$1::uuid AND base_type='client'",
         [owner.tenantId],
@@ -843,6 +887,7 @@ test(
       assert.equal((await preview()).statusCode, 409);
       assert.deepEqual((await clientOffers()).json(), { offers: [] });
       assert.equal((await clientSlots()).statusCode, 409);
+      assert.deepEqual((await recover()).json(), created.json());
       const expiredBooking = await book(randomUUID());
       assert.equal(expiredBooking.json().error, "grant-unavailable");
       assert.deepEqual((await history()).json(), beforeExpiry.json());
@@ -869,6 +914,7 @@ test(
         headers: clientHeaders,
       });
       assert.equal((await history()).statusCode, 401);
+      assert.equal((await recover()).statusCode, 401);
       const revokedReplay = await cancel();
       assert.equal(revokedReplay.statusCode, 401);
       assert.equal((await clientOffers()).statusCode, 401);

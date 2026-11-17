@@ -193,6 +193,9 @@ async function main() {
     }
     if (!existsSync(join(root, "dist/apps/api/src/main.js")) ||
         !existsSync(join(root, "apps/web/dist/index.html"))) throw new Error("Run pnpm build:runtime first");
+    const { parseStagingCancellationCutoff } = await import("../dist/apps/api/src/staging-customer-cancellation-http.js");
+    // Temporary operator-only staging input. No product default: #285 tracks tenant policy.
+    const cutoff = parseStagingCancellationCutoff(process.env.COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES);
     const binary = browser();
     compose(state, ["up", "-d", "--wait"]);
     const databaseUrl = "postgresql://cookie:" + state.password +
@@ -216,8 +219,7 @@ async function main() {
       COOKIE_TELEGRAM_AUTH_MODE: "enabled",
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
       COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled",
-      // Explicit synthetic QA cutoff; do not infer a commercial policy.
-      COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60",
+      ...(cutoff === undefined ? {} : { COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: String(cutoff) }),
       COOKIE_PUBLIC_ORIGIN: "https://cookie-manual.invalid",
       COOKIE_TELEGRAM_BOT_TOKEN: state.botToken,
       COOKIE_TELEGRAM_USER_HMAC_SECRET: state.secret,
@@ -246,10 +248,20 @@ async function main() {
     cdp = createClient(target.webSocketDebuggerUrl);
     await cdp.ready;
     await cdp.send("Page.enable");
+    const cancellationResponses = [];
+    if (verification) {
+      await cdp.send("Network.enable");
+      cdp.onEvent("Network.responseReceived", ({ response }) => {
+        if (response.url.startsWith(origin + "/v1/") && response.url.endsWith("/staging-customer-cancellation/capability")) cancellationResponses.push(response.status);
+      });
+    }
     await signIn(cdp, origin, state);
     if (verification) {
       await requireDom(cdp, "actual owner service form", "document.querySelector(\'.owner-form input\')");
       await signIn(cdp, origin, state, "client");
+      await poll("actual cancellation capability", () => cancellationResponses.includes(cutoff === undefined ? 404 : 200));
+      const policyText = cutoff === undefined ? "Отмена в тестовом режиме недоступна." : "более чем " + cutoff + " мин.";
+      await requireDom(cdp, "explicit cancellation cutoff (no implicit default)", "document.querySelector(\'[aria-label=\\\"Мои записи\\\"]\')?.innerText.includes(" + JSON.stringify(policyText) + ")");
       await requireDom(cdp, "actual client workspace without owner navigation", "document.querySelector(\'[aria-label=\\\"Клиентский вход staging\\\"]\') && !document.querySelector(\'.real-owner-nav\')");
       await cdp.send("Page.navigate", { url: origin + "/demo" });
       await requireDom(cdp, "explicit demo", "document.querySelector(\'[data-cookie-mode=mock] .welcome-form\')");
@@ -258,6 +270,7 @@ async function main() {
       return;
     }
     console.log("Real Cookie: " + origin + " — use the opened isolated browser.");
+    console.log(cutoff === undefined ? "Cancellation disabled: COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES is unset." : "Explicit synthetic cancellation cutoff: " + cutoff + " minutes.");
     console.log("Synthetic records only. owner / client = switch role; Enter = fresh login; demo = isolated preview; Ctrl+C = exit. DB retained.");
     input = createInterface({ input: process.stdin, output: process.stdout });
     input.on("SIGINT", closeInput);
