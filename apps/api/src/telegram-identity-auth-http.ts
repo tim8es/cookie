@@ -1,10 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
-import { runSqlTransaction } from "../../../packages/platform-db/src/transaction.js";
-import type { TelegramMiniAppProofVerifier } from "../../../packages/platform-identity/src/telegram-init-data.js";
-import { IdentitySessions } from "../../../packages/platform-identity/src/identity-sessions.js";
-import { exchangeSelfServiceTelegram } from "../../../packages/platform-identity/src/telegram-self-registration.js";
-import type { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/opaque-sessions.js";
+import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
+import {
+  IdentitySessions,
+  exchangeSelfServiceTelegram,
+  type PostgresOpaqueTelegramSessions,
+  type TelegramMiniAppProofVerifier,
+} from "../../../packages/platform-identity/src/index.js";
 
 export interface TelegramIdentityAuthDependencies {
   readonly pool: Pool;
