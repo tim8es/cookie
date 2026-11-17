@@ -33,7 +33,7 @@ export class StaffCapacityReached extends Error {}
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9._:-]{16,128}$/;
-const MAX_TENANT_STAFF = 100;
+const MAX_STAFF = 100;
 
 function canonicalText(
   value: unknown,
@@ -159,16 +159,14 @@ export async function listTenantStaff(
     `SELECT id::text,display_name,position_title,active,bookable,created_at
        FROM cookie_staff.staff_profiles
       WHERE tenant_id=$1::uuid ORDER BY created_at,id LIMIT $2`,
-    [tenantId, MAX_TENANT_STAFF + 1],
+    [tenantId, MAX_STAFF + 1],
   );
   const locationRows = await client.query<LocationRow>(
     `SELECT id::text,display_name FROM cookie_tenancy.locations
       WHERE tenant_id=$1::uuid ORDER BY display_name,id LIMIT 101`,
     [tenantId],
   );
-  if (
-    profiles.rows.length > MAX_TENANT_STAFF || locationRows.rows.length > 100
-  ) {
+  if (profiles.rows.length > MAX_STAFF || locationRows.rows.length > 100) {
     throw new Error("Staff directory exceeds F1 limit");
   }
   const assignments = await readAssignments(
@@ -224,7 +222,7 @@ export async function createTenantDraftStaff(
     const full = await client.query(
       `SELECT 1 FROM cookie_staff.staff_profiles
         WHERE tenant_id=$1::uuid LIMIT 1 OFFSET $2`,
-      [tenantId, MAX_TENANT_STAFF - 1],
+      [tenantId, MAX_STAFF - 1],
     );
     if (full.rows.length) throw new StaffCapacityReached();
     const location = await client.query(
