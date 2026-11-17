@@ -30,6 +30,7 @@
   import {
     authenticateTelegramOwner,
     loadTelegramInitData,
+    telegramLoginAvailable,
     revokeTelegramOwnerSession,
     watchOwnerSessionExpiry,
     type VerifiedOwnerSession,
@@ -51,7 +52,7 @@
   let initializing = true;
   let apiDisconnected = false;
   let ownerSession: VerifiedOwnerSession | null = null;
-  let ownerAuthPhase: "unavailable" | "loading" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
+  let ownerAuthPhase: "unavailable" | "disabled" | "loading" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
   let stopOwnerExpiry: (() => void) | null = null;
   let ownerMounted = false;
   let busy = false;
@@ -116,6 +117,12 @@
   async function authenticateOwner(): Promise<void> {
     ownerAuthPhase = "loading";
     try {
+      const enabled = await telegramLoginAvailable();
+      if (!ownerMounted) return;
+      if (!enabled) {
+        ownerAuthPhase = "disabled";
+        return;
+      }
       const initData = await loadTelegramInitData(window, document);
       if (!ownerMounted) return;
       if (!initData) {

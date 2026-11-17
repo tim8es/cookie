@@ -28,6 +28,33 @@ type TelegramWindow = Window & {
   Telegram?: { WebApp?: { initData?: unknown } };
 };
 
+/** Unknown providers are ignored until this client implements them. */
+export async function telegramLoginAvailable(
+  fetcher: typeof fetch = globalThis.fetch,
+): Promise<boolean> {
+  const response = await request(fetcher, "/v1/auth/methods", {
+    method: "GET",
+  });
+  if (response.status !== 200) throw new OwnerAuthFailure("unavailable");
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new OwnerAuthFailure("invalid-response");
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new OwnerAuthFailure("invalid-response");
+  }
+  const methods = (body as { methods?: unknown }).methods;
+  if (
+    !Array.isArray(methods) ||
+    !methods.every((value) => typeof value === "string")
+  ) {
+    throw new OwnerAuthFailure("invalid-response");
+  }
+  return methods.includes("telegram");
+}
+
 /** Never read proof from URL, localStorage, manually entered fields or preview mode. */
 export function readTelegramInitData(win: Window | undefined): string | null {
   const raw = (win as TelegramWindow | undefined)?.Telegram?.WebApp?.initData;

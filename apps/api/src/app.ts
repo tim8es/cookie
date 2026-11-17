@@ -106,6 +106,13 @@ export function createApp(
     status: "ok",
   }));
 
+  // Advertise only providers whose real exchange route is registered.
+  app.get("/v1/auth/methods", async (_request, reply) =>
+    reply.header("Cache-Control", "no-store").send({
+      methods: options.telegramAuthRoutes ? ["telegram"] : [],
+    }),
+  );
+
   app.get<{ Reply: HealthResponse }>(
     "/health/ready",
     async (_request, reply) => {

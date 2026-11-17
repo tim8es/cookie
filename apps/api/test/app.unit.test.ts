@@ -3,6 +3,32 @@ import test from "node:test";
 
 import { createApp } from "../src/app.js";
 
+test("advertised login methods match the registered Telegram route", async (t) => {
+  const database = { query: async () => ({ rows: [] }) };
+  const disabled = createApp(database);
+  const enabled = createApp(database, {
+    telegramAuthRoutes: { sessions: {} as never },
+  });
+  t.after(async () => {
+    await disabled.close();
+    await enabled.close();
+  });
+  for (const [app, methods, expectedStatus] of [
+    [disabled, [], 404],
+    [enabled, ["telegram"], 400],
+  ] as const) {
+    const list = await app.inject({ method: "GET", url: "/v1/auth/methods" });
+    assert.deepEqual(list.json(), { methods });
+    assert.equal(list.headers["cache-control"], "no-store");
+    const exchange = await app.inject({
+      method: "POST",
+      url: "/v1/auth/telegram/exchange",
+      payload: {},
+    });
+    assert.equal(exchange.statusCode, expectedStatus);
+  }
+});
+
 test("liveness does not depend on database availability", async (t) => {
   const app = createApp({
     query: async () => {
