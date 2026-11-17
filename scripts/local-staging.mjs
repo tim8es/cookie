@@ -216,6 +216,8 @@ async function main() {
       COOKIE_TELEGRAM_AUTH_MODE: "enabled",
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
       COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled",
+      // Explicit synthetic QA cutoff; do not infer a commercial policy.
+      COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60",
       COOKIE_PUBLIC_ORIGIN: "https://cookie-manual.invalid",
       COOKIE_TELEGRAM_BOT_TOKEN: state.botToken,
       COOKIE_TELEGRAM_USER_HMAC_SECRET: state.secret,

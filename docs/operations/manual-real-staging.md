@@ -40,7 +40,7 @@ pnpm staging:local:stop
 1. Обзор → филиал → услуги → мастер → расписание. Создайте уникальные тестовые названия.
 2. Завершите процесс, перезапустите, проверьте сохранённые записи.
 3. На вкладке мастеров доступна активация в controlled staging, когда эта функция присутствует в checkout. Локальный скрипт создаёт исключительно синтетический, невозобновляемый grant на 5 мастеров на 30 дней; не моделирует коммерческий тариф.
-4. В интеграционной ветке опубликуйте смену, введите `client` в терминале, выберите филиал, услугу, мастера и слот, подтвердите запись; проверьте «Мои записи», затем `owner` → календарь. Запись включена только в изолированном локальном runtime. Cancellation/reschedule, public Booking и worker/provider acceptance остаются отдельными gates.
+4. В интеграционной ветке опубликуйте смену, введите `client` в терминале, выберите филиал, услугу, мастера и слот, подтвердите запись; проверьте «Мои записи», затем `owner` → календарь. В локальном runtime доступна и реальная отмена своей записи: в «Мои записи» нажмите «Отменить запись», подтвердите действие и проверьте статус в календаре владельца. Для синтетического QA явно задан cutoff 60 минут (не коммерческое правило). Выберите запись более чем за час до начала. Перенос, public Booking и worker/provider acceptance остаются отдельными gates.
 
 В интеграционной ветке `/` всегда использует API, `/demo` — mock. Для ручной проверки реального backend используйте только команды выше. Не переносите тестовые ключи или данные из локального UI на реальный сайт.
 
@@ -63,7 +63,7 @@ App Hosting поддерживает Node.js 26, команды install/build/st
 
 Далее используйте реальные server-only Telegram settings и проверенную owner-link процедуру из [telegram-owner-auth-staging.md](telegram-owner-auth-staging.md). В том числе `COOKIE_TELEGRAM_AUTH_MODE=enabled`, `COOKIE_PUBLIC_ORIGIN` (точный HTTPS origin), индивидуальный bot token и независимый HMAC secret, предоставленные только доверенным оператором. **Локальные synthetic credentials и CDP launcher запрещены на Altare.** Привязка владельца требует проверенного initData и явного согласия; прямой URL не даёт доступ. Если approval на фактический Telegram provider ещё не получен, не включайте этот режим. Без неё можно проверить только startup/health и закрытый AuthN gate.
 
-Для управляемой публикации в private staging дополнительно нужен проверенный operator-issued grant и `COOKIE_STAGING_PUBLICATION_MODE=enabled` (см. [staging publication capacity](../delivery/staging-publication-capacity-20261117.md)); не включайте без принятого security review. Customer write flag и public API в этом runbook намеренно не активированы.
+Для управляемой публикации в private staging дополнительно нужен проверенный operator-issued grant и `COOKIE_STAGING_PUBLICATION_MODE=enabled` (см. [staging publication capacity](../delivery/staging-publication-capacity-20261117.md)); не включайте без принятого security review. Customer write flag, cancellation cutoff и public API в этом Altare runbook намеренно не активированы.
 
 После deploy проверьте HTTPS, `/health/ready`, вход/отказ доступа, реальные SQL записи, restart/persistence, логи без secrets, restore на отдельной тестовой DB. Не утверждайте, что deployment проверен, без URL/commit/observed results. Отключите автоматический rollout произвольных feature branches; отдельная staging branch обновляется только после проверки.
 

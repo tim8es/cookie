@@ -599,7 +599,7 @@ async function main() {
     // The previous browser path proved default-off. Restart with the separate
     // write switch only in this isolated synthetic CI process.
     await stopServer(api);
-    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled" }, origin);
+    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60" }, origin);
     script = await load(cdp, origin+"?surface=customer-staging", signedProof(botToken,customerUserId), script);
     await requireDom(cdp,"write-enabled customer catalog","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
     for(let i=0;i<3;i++){
@@ -612,7 +612,7 @@ async function main() {
     await evaluate(cdp,"document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+").click()");
     await requireDom(cdp,"real write button","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Записаться'&&!b.disabled)");
     await button(cdp,"Записаться");
-    await requireDom(cdp,"server-confirmed real booking","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Запись подтверждена') && document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Фактическая стоимость')");
+    await requireDom(cdp,"server-confirmed real booking","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Создание записи подтверждено') && document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Фактическая стоимость')");
     const realBooking = await pool.query(
       "SELECT b.id::text,b.status,b.price_kopecks_snapshot::text AS price FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1::uuid",
       [owner.tenantId],
@@ -632,6 +632,20 @@ async function main() {
       await viewport(cdp,width,height);
       await checkWidth(cdp,"confirmed customer booking "+width+"px");
     }
+    await requireDom(cdp,"real cancel action","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)");
+    await button(cdp,"Отменить запись");
+    await button(cdp,"Подтвердить отмену");
+    await requireDom(cdp,"confirmed persisted cancellation","document.querySelector("+JSON.stringify(historyPanel)+")?.innerText.includes('Отменена клиентом')");
+    const realCancelled=await pool.query("SELECT status FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",[owner.tenantId,realBooking.rows[0].id]);
+    assert.deepEqual(realCancelled.rows,[{status:"CancelledByClient"}]);
+    const receiptCard = "document.querySelector("+JSON.stringify(panel+" .customer-choice-summary")+")";
+    await requireDom(cdp,"creation receipt no longer presents cancelled booking as active",
+      receiptCard+"?.innerText.includes('Запись изменена после создания') && !"+receiptCard+"?.innerText.includes('Время при создании') && !"+receiptCard+"?.innerText.includes('Статус на момент обновления списка: подтверждена')");
+    await button(cdp,"Создать ещё запись");
+    await requireDom(cdp,"new selection returns to live catalog after cancellation",
+      "document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2 && !"+receiptCard);
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0,"Cancellation must not create a pending Create marker");
+    await checkWidth(cdp,"cancelled customer booking");
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
     const demoApiRequests = [];
@@ -642,7 +656,7 @@ async function main() {
     await requireDom(cdp, "explicit demo route uses demo shell even in runtime build", "document.querySelector(\'[data-cookie-mode=mock] .welcome-form\')");
     assert.deepEqual(demoApiRequests, [], "Demo called real API");
     assert.deepEqual(external, [], "Demo made external requests");
-    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
+    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation and own cancellation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
   } finally {
     if (cdp) cdp.close();
     try {
