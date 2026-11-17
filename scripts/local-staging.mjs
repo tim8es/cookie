@@ -18,10 +18,12 @@ import {
 } from "../apps/web/scripts/browser-smoke.mjs";
 
 import { isLocalStagingProject, resolveLocalStagingMode } from "./local-staging-mode.mjs";
+import { runPrivateDemoWorker } from "./private-demo-worker.mjs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 // Disposable demo and CI never read/write the operator's persistent QA state.
-const mode = resolveLocalStagingMode(process.argv.slice(2), process.env.CI);
+const mode = resolveLocalStagingMode(process.argv.slice(2), process.env.CI,
+  process.connected === true && typeof process.send === "function", process.env.COOKIE_DEMO_WORKER_TTL_SECONDS);
 const { verification, disposable, demo } = mode;
 const parent = join(root, ".tmp");
 if (disposable) mkdirSync(parent, { recursive: true, mode: 0o700 });
@@ -278,6 +280,7 @@ async function main() {
   };
   process.on("SIGINT", closeInput);
   process.on("SIGTERM", closeInput);
+  if (mode.worker) process.on("disconnect", closeInput);
   try {
     state = await loadState();
     if (command === "stop") {
@@ -289,7 +292,7 @@ async function main() {
     const { parseStagingCancellationCutoff } = await import("../dist/apps/api/src/staging-customer-cancellation-http.js");
     // Temporary operator-only staging input. No product default: #285 tracks tenant policy.
     const cutoff = parseStagingCancellationCutoff(process.env.COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES);
-    const binary = browser();
+    const binary = mode.worker ? null : browser();
     checkInterrupted();
     composeAttempted = true;
     compose(state, ["up", "-d", "--wait"]);
@@ -333,6 +336,14 @@ async function main() {
       example = await seedDemoCatalog(origin, proof(state), workspace);
     }
     checkInterrupted();
+    if (mode.worker) {
+      await runPrivateDemoWorker({
+        api, lifetimeMs: mode.lifetimeMs,
+        ready: { origin, tenantId, project: state.project },
+        createProof: (role) => proof(state, role),
+      });
+      return;
+    }
     profile = mkdtempSync(join(tmpdir(), "cookie-manual-chrome-"));
     chrome = child(binary, [
       "--user-data-dir=" + profile, "--remote-debugging-address=127.0.0.1",
@@ -416,6 +427,7 @@ async function main() {
   } finally {
     process.off("SIGINT", closeInput);
     process.off("SIGTERM", closeInput);
+    if (mode.worker) process.off("disconnect", closeInput);
     input?.close();
     cdp?.close();
     try {
@@ -443,6 +455,6 @@ async function main() {
 }
 
 main().catch(() => {
-  console.error("Local staging failed. Check Node 26, Docker, Chrome/Edge, build:runtime and local ports. No credentials logged.");
+  console.error("Local staging failed. Check Node 26, Docker, runtime build and local ports; Chrome/Edge is required only in browser mode. No credentials logged.");
   process.exitCode = 1;
 });
