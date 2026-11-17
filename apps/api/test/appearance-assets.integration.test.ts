@@ -270,6 +270,69 @@ test(
         writer.release();
         deleter.release();
       }
+      // Reverse order: a committed deletion must not leave a dangling draft
+      // reference. Prove actual lock contention rather than relying on timing.
+      const deleteFirst = await pool.connect();
+      const saveSecond = await pool.connect();
+      try {
+        await deleteFirst.query("BEGIN");
+        await saveSecond.query("BEGIN");
+        const firstPid = await deleteFirst.query<{ pid: number }>(
+          "SELECT pg_backend_pid() AS pid",
+        );
+        const secondPid = await saveSecond.query<{ pid: number }>(
+          "SELECT pg_backend_pid() AS pid",
+        );
+        assert.equal(
+          await deleteUnusedAppearanceAsset(
+            deleteFirst,
+            tenantA,
+            background.id,
+            "background",
+          ),
+          true,
+        );
+        const saving = saveTenantBrandDraft(
+          saveSecond,
+          tenantA,
+          2,
+          { ...createBrandConfig("clay"), backgroundAssetId: background.id },
+          postgresAppearanceAssetOwnership,
+        ).then(
+          (result) => ({ result }),
+          (error: unknown) => ({ error }),
+        );
+        try {
+          await waitForBlocked(
+            pool,
+            secondPid.rows[0]!.pid,
+            firstPid.rows[0]!.pid,
+          );
+          await deleteFirst.query("COMMIT");
+          const outcome = await saving;
+          assert.ok("error" in outcome);
+          assert.ok(outcome.error instanceof AppearanceAssetNotVerified);
+        } finally {
+          await deleteFirst.query("ROLLBACK");
+          await saving;
+        }
+        await saveSecond.query("ROLLBACK");
+        const persisted = await pool.query(
+          `SELECT draft_revision::text,published_revision::text,
+                  draft_config->>'backgroundAssetId' AS background
+             FROM cookie_appearance.organization_branding
+            WHERE tenant_id=$1::uuid`,
+          [tenantA],
+        );
+        assert.deepEqual(persisted.rows, [
+          { draft_revision: "2", published_revision: "2", background: null },
+        ]);
+      } finally {
+        await deleteFirst.query("ROLLBACK").catch(() => undefined);
+        await saveSecond.query("ROLLBACK").catch(() => undefined);
+        deleteFirst.release();
+        saveSecond.release();
+      }
     } finally {
       try {
         await pool.query(
