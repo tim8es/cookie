@@ -8,6 +8,7 @@
   import { readRealLocations, type RealLocation } from "../locations-api";
   import { createShiftPlan, readShiftPlans, ShiftPlanError, type ShiftPlan } from "../shift-plans-api";
   import OwnerFormHeader from "./OwnerFormHeader.svelte";
+  import StagingSchedulePanel from "./StagingSchedulePanel.svelte";
 
   export let session: VerifiedOwnerSession;
   export let onOpenStaff: () => void;
@@ -21,6 +22,7 @@
   let startLocal = "";
   let endLocal = "";
   let pendingKey = "";
+  let publishing = false;
   let loading = true;
   let loaded = false;
   let saving = false;
@@ -96,7 +98,7 @@
   }
 
   async function save(): Promise<void> {
-    if (saving || loading || !loaded) return;
+    if (saving || loading || publishing || !loaded) return;
     if (!staffId || !selectedLocation || !startLocal || !endLocal) {
       saveError = "Выберите мастера, филиал и время.";
       return;
@@ -152,7 +154,7 @@
   <section class="card">
     <div class="card-title">
       <div><span class="eyebrow">РАСПИСАНИЕ</span><h2>Будущие черновики</h2></div>
-      <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || saving}>Обновить</Button>
+      <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || saving || publishing}>Обновить</Button>
     </div>
     {#if loading}
       <p role="status">Загружаем смены…</p>
@@ -185,29 +187,33 @@
         {:else}
           <div class="owner-form-fields">
             <label class="field">Мастер
-              <select value={staffId} onchange={(event) => chooseStaff(event.currentTarget.value)} disabled={saving} required>
+              <select value={staffId} onchange={(event) => chooseStaff(event.currentTarget.value)} disabled={saving || publishing} required>
                 <option value="" disabled>Выберите мастера</option>
                 {#each eligibleStaff as member (member.id)}<option value={member.id}>{member.displayName}</option>{/each}
               </select>
             </label>
             <label class="field">Филиал
-              <select value={locationId} onchange={(event) => editLocation(event.currentTarget.value)} disabled={saving} required>
+              <select value={locationId} onchange={(event) => editLocation(event.currentTarget.value)} disabled={saving || publishing} required>
                 <option value="" disabled>Выберите филиал</option>
                 {#each assignedBranches as location (location.id)}<option value={location.id}>{location.displayName}</option>{/each}
               </select>
             </label>
             <p class="owner-form-note">Часовой пояс: {selectedLocation?.timeZone ?? "не выбран"}</p>
             <label class="field">Начало смены
-              <Input type="datetime-local" value={startLocal} onchange={(event) => editStart(event.currentTarget.value)} required disabled={saving} />
+              <Input type="datetime-local" value={startLocal} onchange={(event) => editStart(event.currentTarget.value)} required disabled={saving || publishing} />
             </label>
             <label class="field">Окончание смены
-              <Input type="datetime-local" value={endLocal} onchange={(event) => editEnd(event.currentTarget.value)} required disabled={saving} />
+              <Input type="datetime-local" value={endLocal} onchange={(event) => editEnd(event.currentTarget.value)} required disabled={saving || publishing} />
             </label>
           </div>
           <p class="owner-form-note">Проверка конфликтов и активация доступны на отдельном этапе публикации. Смена остаётся черновиком.</p>
-          <Button class="owner-submit" type="submit" disabled={saving || loading || !selectedLocation}>{saving ? "Сохраняем…" : "Сохранить черновик смены"}</Button>
+          <Button class="owner-submit" type="submit" disabled={saving || publishing || loading || !selectedLocation}>{saving ? "Сохраняем…" : "Сохранить черновик смены"}</Button>
         {/if}
       </form>
     </Card.Root>
   {/if}
 </div>
+{#if loaded}
+  <StagingSchedulePanel {session} {plans} {staff} {locations} disabled={loading || saving}
+    bind:pending={publishing} onPublished={refresh} />
+{/if}
