@@ -241,3 +241,59 @@ test("a throwing conflict validator fails closed", async () => {
   assert.equal(state.phase, "error");
   assert.equal(flow.reset(), false);
 });
+
+test("a later denial or slot conflict cannot resolve a lost booking response", async () => {
+  for (const kind of ["unauthenticated", "forbidden", "conflict"] as const) {
+    const keys: string[] = [];
+    let refreshes = 0;
+    const flow = new BookingAttempt(
+      {
+        create: async (_selection: Selection, key: string) => {
+          keys.push(key);
+          if (keys.length === 1) throw new TransportFailure("network");
+          throw new TransportFailure(kind);
+        },
+        verifyConfirmed,
+        classifyConflict: () => "slot-unavailable" as const,
+        refreshSlots: async () => {
+          refreshes++;
+          return ["12:00"];
+        },
+      },
+      () => "original-key",
+    );
+    await flow.submit(selection);
+    assert.deepEqual(await flow.retry(), {
+      phase: "error",
+      reason: "outcome-unknown",
+      retryable: false,
+    });
+    assert.equal(flow.reset(), false);
+    await flow.submit({ slot: "12:00" });
+    assert.deepEqual(keys, ["original-key", "original-key"]);
+    assert.equal(refreshes, 0);
+  }
+});
+
+test("an unclassified exception cannot authorize a new booking attempt", async () => {
+  let calls = 0;
+  const flow = new BookingAttempt(
+    {
+      create: async () => {
+        calls++;
+        throw new Error("Unknown failure after sending");
+      },
+      verifyConfirmed,
+      refreshSlots: async () => [],
+    },
+    () => "original-key",
+  );
+  assert.deepEqual(await flow.submit(selection), {
+    phase: "error",
+    reason: "outcome-unknown",
+    retryable: false,
+  });
+  assert.equal(flow.reset(), false);
+  await flow.submit({ slot: "12:00" });
+  assert.equal(calls, 1);
+});

@@ -775,7 +775,7 @@ test(
         "ui-wire-loss",
       );
       assert.deepEqual(
-        frontend.port.verifyConfirmed(historicalReplay),
+        frontend.port.verifyConfirmed(historicalReplay, selection),
         recovered.receipt,
       );
 

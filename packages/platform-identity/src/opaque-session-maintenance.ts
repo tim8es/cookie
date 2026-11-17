@@ -1,7 +1,5 @@
 import type { Pool, PoolClient } from "pg";
 
-import { runSqlTransaction } from "../../platform-db/src/index.js";
-
 /**
  * F1-only database maintenance. No HTTP route, cron job or production
  * bootstrap registration is included here.
@@ -20,6 +18,11 @@ const UUID =
 
 export interface OpaqueSessionMaintenanceConfig {
   readonly pool: Pool;
+  /** Trusted composition root: resolve only after acknowledged COMMIT. */
+  readonly runTransaction: <T>(
+    pool: Pool,
+    work: (client: PoolClient) => Promise<T>,
+  ) => Promise<T>;
   /** Explicit minimum age for consumed proof HMAC hashes, from issued_at. */
   readonly retentionSeconds: number;
   /** Maximum number of old sessions to delete in one non-blocking batch. */
@@ -59,6 +62,7 @@ export class PostgresOpaqueSessionMaintenance {
       !config?.pool ||
       typeof config.pool.query !== "function" ||
       typeof config.pool.connect !== "function" ||
+      typeof config.runTransaction !== "function" ||
       !Number.isSafeInteger(config.retentionSeconds) ||
       config.retentionSeconds < MIN_RETENTION_SECONDS ||
       config.retentionSeconds > MAX_RETENTION_SECONDS ||
@@ -100,7 +104,7 @@ export class PostgresOpaqueSessionMaintenance {
       throw new Error("Invalid tenant or identity UUID");
     }
     try {
-      return await runSqlTransaction<InactiveMembershipDeleteResult>(
+      return await this.config.runTransaction<InactiveMembershipDeleteResult>(
         this.config.pool,
         async (client) => {
           const member = await client.query<{ active: boolean }>(

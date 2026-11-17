@@ -21,6 +21,7 @@ export {
   AppearanceAssetNotVerified,
   AppearanceRevisionConflict,
   readTenantBrandDraft,
+  readAppearanceRevisionState,
   saveTenantBrandDraft,
   publishTenantBrandDraft,
   readPublishedTenantBrand,

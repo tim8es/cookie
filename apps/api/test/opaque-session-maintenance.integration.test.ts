@@ -6,6 +6,7 @@ import test from "node:test";
 import { Pool } from "pg";
 import type { PoolClient } from "pg";
 
+import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { PostgresOpaqueSessionMaintenance } from "../../../packages/platform-identity/src/opaque-session-maintenance.js";
 import { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/opaque-sessions.js";
@@ -52,16 +53,28 @@ test("opaque retention rejects unsafe deletion windows and unbounded batches", (
       () =>
         new PostgresOpaqueSessionMaintenance({
           pool,
+          runTransaction: runSqlTransaction,
           retentionSeconds,
           batchSize,
         }),
       /Invalid opaque session maintenance configuration/,
     );
   }
+  assert.throws(
+    () =>
+      new PostgresOpaqueSessionMaintenance({
+        pool,
+        runTransaction: undefined as unknown as typeof runSqlTransaction,
+        retentionSeconds: 7_200,
+        batchSize: 1,
+      }),
+    /Invalid opaque session maintenance configuration/,
+  );
   assert.doesNotThrow(
     () =>
       new PostgresOpaqueSessionMaintenance({
         pool,
+        runTransaction: runSqlTransaction,
         retentionSeconds: 7_200,
         batchSize: 1,
       }),
@@ -148,6 +161,7 @@ test(
 
       const maintenance = new PostgresOpaqueSessionMaintenance({
         pool,
+        runTransaction: runSqlTransaction,
         retentionSeconds: 7_200,
         batchSize: 1,
       });
@@ -239,6 +253,7 @@ test(
     const assignmentId = randomUUID();
     const maintenance = new PostgresOpaqueSessionMaintenance({
       pool,
+      runTransaction: runSqlTransaction,
       retentionSeconds: 7_200,
       batchSize: 2,
     });
@@ -371,6 +386,7 @@ test(
         } as unknown as Pool;
         const faultMaintenance = new PostgresOpaqueSessionMaintenance({
           pool: faultPool,
+          runTransaction: runSqlTransaction,
           retentionSeconds: 7_200,
           batchSize: 2,
         });

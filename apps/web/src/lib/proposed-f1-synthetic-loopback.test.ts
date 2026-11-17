@@ -243,7 +243,7 @@ test("invalid IDs, impossible times and invalid attempt keys cannot reach fetch"
     ).submit(input);
     assert.deepEqual(state, {
       phase: "error",
-      reason: "unexpected",
+      reason: "outcome-unknown",
       retryable: false,
     });
   }
@@ -253,7 +253,7 @@ test("invalid IDs, impossible times and invalid attempt keys cannot reach fetch"
   ).submit(selection);
   assert.deepEqual(badKey, {
     phase: "error",
-    reason: "unexpected",
+    reason: "outcome-unknown",
     retryable: false,
   });
   assert.equal(requests, 0);
@@ -262,7 +262,7 @@ test("invalid IDs, impossible times and invalid attempt keys cannot reach fetch"
 test("API mode is still disconnected and never switches to the synthetic harness", async () => {
   const api = createCookieUiApi("api");
   assert.equal(api.mode, "api");
-  await assert.rejects(api.getSnapshot(), /API ещё не подключён/);
+  await assert.rejects(api.getSnapshot(), { code: "NOT_CONNECTED" });
 });
 
 test("synthetic GET and POST fail closed on HTTP redirects", async () => {

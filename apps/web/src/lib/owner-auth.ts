@@ -110,7 +110,7 @@ function validSession(body: unknown, nowSeconds: number): VerifiedOwnerSession {
 }
 
 /** One-time Telegram signed proof -> bearer -> verified tenant context. */
-export async function authenticateTelegramOwner(
+export async function exchangeTelegramSession(
   rawInitData: string,
   fetcher: typeof fetch = globalThis.fetch,
   nowSeconds = Math.floor(Date.now() / 1000),
@@ -138,6 +138,19 @@ export async function authenticateTelegramOwner(
     throw new OwnerAuthFailure("invalid-response");
   }
 
+  return session;
+}
+
+export async function authenticateTelegramOwner(
+  rawInitData: string,
+  fetcher: typeof fetch = globalThis.fetch,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<VerifiedOwnerSession> {
+  const session = await exchangeTelegramSession(
+    rawInitData,
+    fetcher,
+    nowSeconds,
+  );
   try {
     const context = await request(
       fetcher,
@@ -227,4 +240,52 @@ export function watchOwnerSessionExpiry(
   doc.addEventListener("visibilitychange", check);
   check();
   return stop;
+}
+
+export interface VerifiedCustomerSession extends VerifiedOwnerSession {
+  readonly customerId: string;
+}
+
+/** Same real HMAC exchange; distinct server-owned client relation, not an owner fallback. */
+export async function authenticateTelegramCustomer(
+  rawInitData: string,
+  fetcher: typeof fetch = globalThis.fetch,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<VerifiedCustomerSession> {
+  const session = await exchangeTelegramSession(
+    rawInitData,
+    fetcher,
+    nowSeconds,
+  );
+  try {
+    const context = await request(
+      fetcher,
+      "/v1/organizations/" + session.tenantId + "/staging-customer-context",
+      {
+        method: "GET",
+        headers: { authorization: "Bearer " + session.accessToken },
+      },
+    );
+    if ([401, 403, 404].includes(context.status))
+      throw new OwnerAuthFailure("unauthorized");
+    if (context.status !== 200) throw new OwnerAuthFailure("unavailable");
+    const data: unknown = await context.json();
+    if (
+      !data ||
+      typeof data !== "object" ||
+      Array.isArray(data) ||
+      Object.keys(data).length !== 2 ||
+      !("tenantId" in data) ||
+      data.tenantId !== session.tenantId ||
+      !("customerId" in data) ||
+      typeof data.customerId !== "string" ||
+      !UUID.test(data.customerId)
+    )
+      throw new OwnerAuthFailure("invalid-response");
+    return { ...session, customerId: data.customerId };
+  } catch (reason) {
+    await revokeTelegramOwnerSession(session, fetcher).catch(() => undefined);
+    if (reason instanceof OwnerAuthFailure) throw reason;
+    throw new OwnerAuthFailure("invalid-response");
+  }
 }
