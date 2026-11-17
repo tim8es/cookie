@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { VerifiedOwnerSession } from "./owner-auth";
-import { readShiftPlans, createShiftPlan, ShiftPlanError } from "./shift-plans-api";
+import {
+  readShiftPlans,
+  createShiftPlan,
+  ShiftPlanError,
+} from "./shift-plans-api";
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const STAFF = "22222222-2222-4222-8222-222222222222";
 const LOCATION = "33333333-3333-4333-8333-333333333333";
@@ -34,13 +38,23 @@ test("staff planning equals a genuine server draft and sends civil time and repl
     assert.equal(url, "/v1/organizations/" + TENANT + "/shift-plans");
     assert.equal(request.cache, "no-store");
     assert.equal(request.credentials, "omit");
-    assert.equal((request.headers as Record<string, string>).authorization, "Bearer " + session.accessToken);
-    if (request.method === "GET") return Response.json({ plans: [plan], hasMore: false });
+    assert.equal(
+      (request.headers as Record<string, string>).authorization,
+      "Bearer " + session.accessToken,
+    );
+    if (request.method === "GET")
+      return Response.json({ plans: [plan], hasMore: false });
     assert.deepEqual(JSON.parse(String(request.body)), draft);
-    assert.equal((request.headers as Record<string, string>)["idempotency-key"], KEY);
+    assert.equal(
+      (request.headers as Record<string, string>)["idempotency-key"],
+      KEY,
+    );
     return Response.json({ plan }, { status: 201 });
   }) as typeof fetch;
-  assert.deepEqual(await readShiftPlans(session, fetcher), { plans: [plan], hasMore: false });
+  assert.deepEqual(await readShiftPlans(session, fetcher), {
+    plans: [plan],
+    hasMore: false,
+  });
   assert.deepEqual(await createShiftPlan(session, draft, KEY, fetcher), plan);
 });
 
@@ -51,11 +65,19 @@ test("published, foreign, duplicate or reversed shift receipts cannot show draft
     { ...plan, endAt: plan.startAt },
     { ...plan, startAt: "2027-07-12T06:00:00+03:00" },
   ]) {
-    const fetcher = (async () => Response.json({ plan: invalid }, { status: 201 })) as typeof fetch;
-    await assert.rejects(createShiftPlan(session, draft, KEY, fetcher),
-      (reason: unknown) => reason instanceof ShiftPlanError && reason.reason === "invalid-response");
+    const fetcher = (async () =>
+      Response.json({ plan: invalid }, { status: 201 })) as typeof fetch;
+    await assert.rejects(
+      createShiftPlan(session, draft, KEY, fetcher),
+      (reason: unknown) =>
+        reason instanceof ShiftPlanError &&
+        reason.reason === "invalid-response",
+    );
   }
-  await assert.rejects(readShiftPlans(session, (async () => Response.json({ plans: [plan, plan], hasMore: false })) as typeof fetch));
+  await assert.rejects(
+    readShiftPlans(session, (async () =>
+      Response.json({ plans: [plan, plan], hasMore: false })) as typeof fetch),
+  );
 });
 
 test("denied or invalid local time never becomes a successful shift", async () => {
@@ -67,8 +89,12 @@ test("denied or invalid local time never becomes a successful shift", async () =
     [422, "local-time-invalid", "invalid-time"],
     [503, "unavailable", "unavailable"],
   ] as const) {
-    const fetcher = (async () => Response.json({ error }, { status })) as typeof fetch;
-    await assert.rejects(createShiftPlan(session, draft, KEY, fetcher),
-      (failure: unknown) => failure instanceof ShiftPlanError && failure.reason === reason);
+    const fetcher = (async () =>
+      Response.json({ error }, { status })) as typeof fetch;
+    await assert.rejects(
+      createShiftPlan(session, draft, KEY, fetcher),
+      (failure: unknown) =>
+        failure instanceof ShiftPlanError && failure.reason === reason,
+    );
   }
 });

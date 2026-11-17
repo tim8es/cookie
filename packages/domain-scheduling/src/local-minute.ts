@@ -11,7 +11,10 @@ export function validateLocalMinute(value: unknown): number {
     throw new RangeError("Invalid local minute");
   }
   const ms = Date.parse(value + ":00Z");
-  if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 16) !== value) {
+  if (
+    !Number.isFinite(ms) ||
+    new Date(ms).toISOString().slice(0, 16) !== value
+  ) {
     throw new RangeError("Invalid local date");
   }
   return ms;
@@ -19,9 +22,19 @@ export function validateLocalMinute(value: unknown): number {
 
 function formattedMinute(formatter: Intl.DateTimeFormat, ms: number): string {
   const parts = formatter.formatToParts(new Date(ms));
-  const part = (key: string) => parts.find((value) => value.type === key)?.value ?? "";
-  return part("year") + "-" + part("month") + "-" + part("day") +
-    "T" + part("hour") + ":" + part("minute");
+  const part = (key: string) =>
+    parts.find((value) => value.type === key)?.value ?? "";
+  return (
+    part("year") +
+    "-" +
+    part("month") +
+    "-" +
+    part("day") +
+    "T" +
+    part("hour") +
+    ":" +
+    part("minute")
+  );
 }
 
 export function resolveLocalMinute(value: string, timeZone: string): string {

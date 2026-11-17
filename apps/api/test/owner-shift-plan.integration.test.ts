@@ -70,7 +70,10 @@ test(
     const disabled = createApp(pool);
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
-      await pool.query("INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)", [ownerId]);
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [ownerId],
+      );
       const owner = await provisionOwnerWorkspace(pool, {
         ownerIdentityId: ownerId,
         organizationName: "Synthetic shift studio",
@@ -88,7 +91,10 @@ test(
       });
       const prefix = "/v1/organizations/" + owner.tenantId;
       const url = prefix + "/shift-plans";
-      assert.equal((await disabled.inject({ method: "GET", url })).statusCode, 404);
+      assert.equal(
+        (await disabled.inject({ method: "GET", url })).statusCode,
+        404,
+      );
       assert.equal((await app.inject({ method: "GET", url })).statusCode, 401);
       const exchange = await app.inject({
         method: "POST",
@@ -96,13 +102,17 @@ test(
         payload: { initData: signed },
       });
       assert.equal(exchange.statusCode, 201);
-      const headers = { authorization: "Bearer " + exchange.json().accessToken };
+      const headers = {
+        authorization: "Bearer " + exchange.json().accessToken,
+      };
       const empty = await app.inject({ method: "GET", url, headers });
       assert.equal(empty.statusCode, 200);
       assert.equal(empty.headers["cache-control"], "no-store");
       assert.deepEqual(empty.json(), { plans: [], hasMore: false });
       const foreign = await app.inject({
-        method: "GET", url: "/v1/organizations/" + randomUUID() + "/shift-plans", headers,
+        method: "GET",
+        url: "/v1/organizations/" + randomUUID() + "/shift-plans",
+        headers,
       });
       assert.equal(foreign.statusCode, 403);
 
@@ -110,7 +120,11 @@ test(
         method: "POST",
         url: prefix + "/services",
         headers: { ...headers, "idempotency-key": randomUUID() },
-        payload: { displayName: "Synthetic service", durationMinutes: 60, basePriceKopecks: 100000 },
+        payload: {
+          displayName: "Synthetic service",
+          durationMinutes: 60,
+          basePriceKopecks: 100000,
+        },
       });
       assert.equal(service.statusCode, 201);
       const staff = await app.inject({
@@ -126,7 +140,9 @@ test(
       });
       assert.equal(staff.statusCode, 201);
       const staffId: string = staff.json().staff.id;
-      const date = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+      const date = new Date(Date.now() + 3 * 86400000)
+        .toISOString()
+        .slice(0, 10);
       const draft = {
         staffId,
         locationId: owner.locationId,
@@ -134,12 +150,13 @@ test(
         endLocal: date + "T18:00",
       };
       const key = randomUUID();
-      const submit = () => app.inject({
-        method: "POST",
-        url,
-        headers: { ...headers, "idempotency-key": key },
-        payload: draft,
-      });
+      const submit = () =>
+        app.inject({
+          method: "POST",
+          url,
+          headers: { ...headers, "idempotency-key": key },
+          payload: draft,
+        });
       const [left, right] = await Promise.all([submit(), submit()]);
       assert.deepEqual([left.statusCode, right.statusCode].sort(), [200, 201]);
       const plan = left.json().plan;
@@ -156,19 +173,25 @@ test(
         { ...draft, active: true },
         { ...draft, startLocal: "2026-02-30T09:00" },
         { ...draft, endLocal: draft.startLocal },
-        { ...draft, startLocal: "2000-01-01T09:00", endLocal: "2000-01-01T18:00" },
+        {
+          ...draft,
+          startLocal: "2000-01-01T09:00",
+          endLocal: "2000-01-01T18:00",
+        },
         { ...draft, locationId: randomUUID() },
       ];
       for (const [index, payload] of invalidPayloads.entries()) {
         const rejected = await app.inject({
-          method: "POST", url,
+          method: "POST",
+          url,
           headers: { ...headers, "idempotency-key": randomUUID() },
           payload,
         });
         assert.equal(rejected.statusCode, [400, 422, 422, 409, 409][index]);
       }
       const conflict = await app.inject({
-        method: "POST", url,
+        method: "POST",
+        url,
         headers: { ...headers, "idempotency-key": key },
         payload: { ...draft, endLocal: date + "T17:00" },
       });
@@ -187,13 +210,15 @@ test(
           WHERE shift.tenant_id=$1::uuid`,
         [owner.tenantId],
       );
-      assert.deepEqual(data.rows, [{
-        shift_active: false,
-        bookable: false,
-        location_active: false,
-        service_active: false,
-        service_assignment_active: false,
-      }]);
+      assert.deepEqual(data.rows, [
+        {
+          shift_active: false,
+          bookable: false,
+          location_active: false,
+          service_active: false,
+          service_assignment_active: false,
+        },
+      ]);
       const evidence = await pool.query(
         `SELECT
           (SELECT count(*)::int FROM cookie_scheduling.shift_draft_receipts WHERE tenant_id=$1::uuid) AS receipts,
@@ -208,10 +233,16 @@ test(
           WHERE tenant_id=$1::uuid`,
         [owner.tenantId],
       );
-      assert.equal((await app.inject({ method: "GET", url, headers })).statusCode, 403);
+      assert.equal(
+        (await app.inject({ method: "GET", url, headers })).statusCode,
+        403,
+      );
       assert.equal((await submit()).statusCode, 403);
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
-      assert.equal((await app.inject({ method: "GET", url, headers })).statusCode, 401);
+      assert.equal(
+        (await app.inject({ method: "GET", url, headers })).statusCode,
+        401,
+      );
     } finally {
       await disabled.close();
       await app.close();

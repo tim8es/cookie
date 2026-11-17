@@ -33,25 +33,44 @@ test("a missing or duplicated DST minute is not silently accepted", () => {
 
 test("owner draft planning permission cannot be delegated via admin role", () => {
   const permission = "schedule.shift.plan.create";
-  const resource = { kind: "schedule" as const, tenantId: "tenant", locationId: "branch", staffProfileId: "staff" };
-  const actor = { identityId: "admin", tenantId: "tenant", correlationId: "request" };
+  const resource = {
+    kind: "schedule" as const,
+    tenantId: "tenant",
+    locationId: "branch",
+    staffProfileId: "staff",
+  };
+  const actor = {
+    identityId: "admin",
+    tenantId: "tenant",
+    correlationId: "request",
+  };
   const snapshot = {
     ownerIdentityId: "owner",
     membership: {
       identityId: "admin",
       tenantId: "tenant",
       active: true,
-      assignments: [{ roleId: "role", scope: { kind: "organization" as const }, active: true }],
+      assignments: [
+        {
+          roleId: "role",
+          scope: { kind: "organization" as const },
+          active: true,
+        },
+      ],
     },
-    roles: [{
-      id: "role",
-      tenantId: "tenant",
-      baseType: "admin" as const,
-      displayName: "Owner",
-      active: true,
-      permissions: [permission],
-    }],
+    roles: [
+      {
+        id: "role",
+        tenantId: "tenant",
+        baseType: "admin" as const,
+        displayName: "Owner",
+        active: true,
+        permissions: [permission],
+      },
+    ],
   };
-  assert.deepEqual(evaluateAuthorization({ actor, resource, permission }, snapshot),
-    { allowed: false, reason: "owner-required" });
+  assert.deepEqual(
+    evaluateAuthorization({ actor, resource, permission }, snapshot),
+    { allowed: false, reason: "owner-required" },
+  );
 });

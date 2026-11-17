@@ -51,7 +51,8 @@ function validateBody(body: unknown): Draft | null {
     typeof record.endLocal !== "string" ||
     record.startLocal.length !== 16 ||
     record.endLocal.length !== 16
-  ) return null;
+  )
+    return null;
   return {
     staffId: record.staffId,
     locationId: record.locationId,
@@ -69,20 +70,30 @@ export function registerOwnerShiftPlanRoutes(
     async (request, reply) => {
       privateReply(reply);
       const verified = await verifyTenantActor(
-        request.headers.authorization, request.params.tenantId, verifier,
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
       );
       if (!verified.actor)
         return reply.code(verified.status).send({ error: verified.error });
       try {
-        return reply.send(await withTenantPermission(
-          pool,
-          verified.actor,
-          "schedule.shift.plan.read",
-          (client) => listOwnerShiftPlans(client, verified.actor!.tenantId),
-        ));
+        return reply.send(
+          await withTenantPermission(
+            pool,
+            verified.actor,
+            "schedule.shift.plan.read",
+            (client) => listOwnerShiftPlans(client, verified.actor!.tenantId),
+          ),
+        );
       } catch (reason) {
-        return reply.code(reason instanceof AuthorizationDeniedError ? 403 : 503)
-          .send({ error: reason instanceof AuthorizationDeniedError ? "forbidden" : "unavailable" });
+        return reply
+          .code(reason instanceof AuthorizationDeniedError ? 403 : 503)
+          .send({
+            error:
+              reason instanceof AuthorizationDeniedError
+                ? "forbidden"
+                : "unavailable",
+          });
       }
     },
   );
@@ -92,7 +103,9 @@ export function registerOwnerShiftPlanRoutes(
     async (request, reply) => {
       privateReply(reply);
       const verified = await verifyTenantActor(
-        request.headers.authorization, request.params.tenantId, verifier,
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
       );
       if (!verified.actor)
         return reply.code(verified.status).send({ error: verified.error });
@@ -109,7 +122,9 @@ export function registerOwnerShiftPlanRoutes(
           idempotencyKey: key,
           ...draft,
         });
-        return reply.code(result.replayed ? 200 : 201).send({ plan: result.receipt });
+        return reply
+          .code(result.replayed ? 200 : 201)
+          .send({ plan: result.receipt });
       } catch (reason) {
         if (reason instanceof AuthorizationDeniedError)
           return reply.code(403).send({ error: "forbidden" });

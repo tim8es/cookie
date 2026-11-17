@@ -103,7 +103,9 @@ function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-function validateBase(input: Pick<DraftCommandBase, "actor" | "idempotencyKey">): void {
+function validateBase(
+  input: Pick<DraftCommandBase, "actor" | "idempotencyKey">,
+): void {
   if (
     !input ||
     !input.actor ||
@@ -394,7 +396,10 @@ export async function createOwnerShiftPlan(
 
 async function createShiftDraft(
   pool: Pool,
-  input: Pick<OwnerShiftPlanInput, "actor" | "idempotencyKey" | "staffId" | "locationId">,
+  input: Pick<
+    OwnerShiftPlanInput,
+    "actor" | "idempotencyKey" | "staffId" | "locationId"
+  >,
   mode: CreateMode,
   transactionClient?: PoolClient,
 ): Promise<{ receipt: ShiftDraftReceipt; replayed: boolean }> {
@@ -402,9 +407,22 @@ async function createShiftDraft(
   const keyHash = digest(input.idempotencyKey);
   // Preserve historical request fingerprints for existing standard commands.
   const requestHash = digest(
-    JSON.stringify(mode.kind === "standard"
-      ? [input.staffId, input.locationId, mode.range.startAt, mode.range.endAt]
-      : ["owner-plan-v1", input.staffId, input.locationId, mode.startLocal, mode.endLocal]),
+    JSON.stringify(
+      mode.kind === "standard"
+        ? [
+            input.staffId,
+            input.locationId,
+            mode.range.startAt,
+            mode.range.endAt,
+          ]
+        : [
+            "owner-plan-v1",
+            input.staffId,
+            input.locationId,
+            mode.startLocal,
+            mode.endLocal,
+          ],
+    ),
   );
   const client = transactionClient ?? (await pool.connect());
   const ownsTransaction = transactionClient === undefined;
@@ -424,7 +442,12 @@ async function createShiftDraft(
       await requireTenantPermission(
         client,
         input.actor,
-        { kind: "schedule", tenantId, staffProfileId: input.staffId, locationId: input.locationId },
+        {
+          kind: "schedule",
+          tenantId,
+          staffProfileId: input.staffId,
+          locationId: input.locationId,
+        },
         "schedule.shift.plan.create",
       );
     }
@@ -461,7 +484,8 @@ async function createShiftDraft(
         const startAt = resolveLocalMinute(mode.startLocal, timeZone);
         const endAt = resolveLocalMinute(mode.endLocal, timeZone);
         const delta = Date.parse(endAt) - Date.parse(startAt);
-        if (delta <= 0 || delta > MAX_INTERVAL_MS) fail("DRAFT_LOCAL_TIME_INVALID");
+        if (delta <= 0 || delta > MAX_INTERVAL_MS)
+          fail("DRAFT_LOCAL_TIME_INVALID");
         range = { startAt, endAt };
       } catch {
         fail("DRAFT_LOCAL_TIME_INVALID");
