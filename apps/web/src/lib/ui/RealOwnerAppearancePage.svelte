@@ -52,19 +52,21 @@
     && publication.publishedRevision !== stored.revision
     && !dirty && !saving && !uploading && !publishing && !needsReload;
 
-  async function refreshPublication(request: AbortController): Promise<void> {
+  async function refreshPublication(request: AbortController): Promise<AppearancePublicationState | null> {
     publication = null;
     publicationError = "";
     try {
       const current = await readAppearancePublicationState(session, globalThis.fetch, request.signal);
-      if (active !== request || request.signal.aborted) return;
+      if (active !== request || request.signal.aborted) return null;
       if (current && current.draftRevision !== stored?.revision) {
         publicationError = "Версия черновика изменилась. Загрузите актуальные данные.";
-        return;
+        return null;
       }
       publication = current;
+      return current;
     } catch {
       if (active === request) publicationError = "Не удалось проверить статус публикации.";
+      return null;
     }
   }
 
@@ -246,9 +248,9 @@
       draft = current.config;
       await loadPreviews(current.config, request);
       if (active !== request || request.signal.aborted) return;
-      await refreshPublication(request);
+      const confirmed = await refreshPublication(request);
       if (active !== request || request.signal.aborted) return;
-      if (publication && publication.publishedRevision === target.revision) {
+      if (confirmed && confirmed.publishedRevision === target.revision) {
         notice = "Сервер подтвердил публикацию оформления версии " + target.revision + ". Публичная ссылка ещё не подключена.";
       } else {
         publication = null;
