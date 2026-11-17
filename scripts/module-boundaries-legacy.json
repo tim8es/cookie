@@ -61,11 +61,6 @@
     "../../platform-identity/src/authorization.js",
     "../../platform-identity/src/postgres.js"
   ],
-  "packages/domain-scheduling/src/publish-shift.ts": [
-    "../../platform-db/src/outbox.js",
-    "../../platform-identity/src/authorization.js",
-    "../../platform-identity/src/postgres.js"
-  ],
   "packages/platform-db/src/replay.ts": [
     "../../platform-identity/src/authorization.js",
     "../../platform-identity/src/postgres.js"
