@@ -25,7 +25,7 @@ test("real appearance draft uses the verified tenant and no browser credentials"
     assert.equal(init?.redirect, "error");
     assert.equal(init?.cache, "no-store");
     assert.equal(
-      new Headers(init.headers).get("authorization"),
+      new Headers(init?.headers).get("authorization"),
       "Bearer synthetic",
     );
     return Response.json({ draft: { revision: 0, config } });
@@ -41,7 +41,7 @@ test("save checks revision and canonical config rather than trusting HTTP 200", 
   let returned = config;
   const fetcher: typeof fetch = async (_url, init) => {
     assert.equal(init?.method, "PUT");
-    assert.deepEqual(JSON.parse(String(init.body)), {
+    assert.deepEqual(JSON.parse(String(init?.body)), {
       expectedRevision: 1,
       config,
     });

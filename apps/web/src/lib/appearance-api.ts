@@ -1,7 +1,4 @@
-import {
-  validateBrandConfig,
-  type BrandConfigV1,
-} from "./branding-config";
+import { validateBrandConfig, type BrandConfigV1 } from "./branding-config";
 import type { VerifiedOwnerSession } from "./owner-auth";
 
 export interface RealAppearanceDraft {
