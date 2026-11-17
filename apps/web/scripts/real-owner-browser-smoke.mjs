@@ -264,6 +264,7 @@ async function main() {
   let browserData;
   let api, chrome, cdp;
   const errors = [], external = [], responses = [];
+  let customerCreateRequests = 0;
   try {
     const owner = await seed(pool, botToken, userHashSecret, userId);
     const port = await freePort();
@@ -320,6 +321,7 @@ async function main() {
     await cdp.send("Network.setBlockedURLs", { urls: ["https://*"] });
     cdp.onEvent("Runtime.exceptionThrown", () => errors.push("uncaught page exception"));
     cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
+      if (request.url.startsWith(origin) && request.method === "POST" && new URL(request.url).pathname.endsWith("/staging-customer-bookings")) customerCreateRequests++;
       if (/^https?:/.test(request.url) && !request.url.startsWith(origin)) {
         external.push("external request blocked");
       }
@@ -644,6 +646,15 @@ async function main() {
     const beforeRecovery=await pool.query("SELECT b.id::text FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1 AND b.status='Confirmed'",[owner.tenantId]);
     assert.equal(beforeRecovery.rowCount,1,"Real second booking must already be committed");
     const successfulCreates=responses.filter(r=>r.status===201&&r.path.endsWith("/staging-customer-bookings")).length;
+    const recoveryPostCount = customerCreateRequests;
+    const recoveryProjection = () => pool.query(
+      `SELECT
+         (SELECT count(*)::int FROM cookie_booking.bookings WHERE tenant_id=$1::uuid) AS bookings,
+         (SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND operation='booking.create') AS receipts,
+         (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.confirmed') AS events`,
+      [owner.tenantId],
+    );
+    const beforeProjection = await recoveryProjection();
     script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script);
     await requireDom(cdp,"reload retains unresolved marker","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Статус предыдущей попытки неизвестен')");
     await button(cdp,"Найти подтверждение записи");
@@ -653,6 +664,8 @@ async function main() {
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-bookings/receipt")));
     const afterRecovery=await pool.query("SELECT b.id::text FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1 AND b.status='Confirmed'",[owner.tenantId]);
     assert.deepEqual(afterRecovery.rows,beforeRecovery.rows);
+    assert.equal(customerCreateRequests,recoveryPostCount,"Receipt recovery must not send any Create POST, including failed requests");
+    assert.deepEqual((await recoveryProjection()).rows,beforeProjection.rows,"Recovery must leave durable bookings, create receipts and outbox counts unchanged");
     await checkWidth(cdp,"cancelled customer booking");
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
