@@ -136,6 +136,11 @@ export function registerProtectedSessionContext(
   app.get<{ Params: { tenantId: string } }>(
     "/v1/organizations/:tenantId/session-context",
     async (request, reply) => {
+      // A bearer-scoped tenant response must never be cached by browsers,
+      // gateways or shared reverse proxies, including 401/403/503 replies.
+      reply.header("Cache-Control", "no-store");
+      reply.header("Pragma", "no-cache");
+      reply.header("Vary", "Authorization");
       const verified = await verifyTenantActor(
         request.headers.authorization,
         request.params.tenantId,
