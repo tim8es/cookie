@@ -279,7 +279,7 @@ test("an unclassified exception cannot authorize a new booking attempt", async (
   let calls = 0;
   const flow = new BookingAttempt(
     {
-      create: async (_selection: Selection) => {
+      create: async () => {
         calls++;
         throw new Error("Unknown failure after sending");
       },
