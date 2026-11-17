@@ -374,14 +374,15 @@ async function main() {
       await cdp.send("Page.navigate", { url: origin + "/" });
       await requireDom(cdp, "no owner authorization without fresh signed proof",
         "document.querySelector('[data-cookie-mode=api] .feedback-state h1') && !document.querySelector('.verified-owner-shell') && !document.querySelector('.sidebar')");
-      if (!demo) {
-        await cdp.send("Page.navigate", { url: origin + "/demo" });
-        await requireDom(cdp, "explicit legacy UI fixture", "document.querySelector('[data-cookie-mode=mock] .welcome-form')");
+      for (const path of ["/demo", "/demo/", "/demo?browser-smoke=1", "/demo/example"]) {
+        const legacy = await getLocal(origin + path);
+        assert.equal(legacy.status, 404, "Legacy fixture must not be served by the real runtime");
+        assert.doesNotMatch(legacy.text, /<html/i);
       }
       await signIn(cdp, origin, state, "owner");
       await requireDom(cdp, "shared catalog survives role switch and fresh authentication",
         "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(marker) + ")");
-      if (demo) await requireDom(cdp, "no browser-local mock catalog",
+      await requireDom(cdp, "no browser-local mock catalog",
         "sessionStorage.getItem('cookie.frontend-demo.v1') === null");
       console.log("PASS shared " + (demo ? "demo" : "QA") + " runtime catalog: browser write, real DB/receipt, role switch, fail-closed entry, three viewport widths");
       console.log("PASS actual local launcher: dedicated PostgreSQL, migrations, compiled runtime, signed owner/client and demo isolation");
@@ -392,7 +393,7 @@ async function main() {
     if (example) console.log("Sample service and published shift on " + example.date + ". Switch to client to book.");
     console.log(demo
       ? "Synthetic records only. owner / client = switch role; Enter = fresh login; Ctrl+C = exit and remove this demo database. Relaunch for a fresh demo."
-      : "Synthetic records only. owner / client = switch role; Enter = fresh login; demo = legacy UI fixture; Ctrl+C = exit. DB retained.");
+      : "Synthetic records only. owner / client = switch role; Enter = fresh login; Ctrl+C = exit. DB retained. Use pnpm demo:local separately for disposable demo.");
     input = createInterface({ input: process.stdin, output: process.stdout });
     input.on("SIGINT", closeInput);
     api.once("exit", closeInput);
@@ -400,16 +401,11 @@ async function main() {
     let role = "owner";
     for await (const line of input) {
       const command = line.trim().toLowerCase();
-      if (command && !(demo ? ["owner", "client"] : ["owner", "client", "demo"]).includes(command)) {
-        console.log(demo ? "Use owner, client or Enter." : "Use owner, client, demo or Enter.");
+      if (command && !["owner", "client"].includes(command)) {
+        console.log("Use owner, client or Enter. Start a disposable demo separately with pnpm demo:local.");
         continue;
       }
       try {
-        if (command === "demo") {
-          await cdp.send("Page.navigate", { url: origin + "/demo" });
-          await requireDom(cdp, "explicit demo", "document.querySelector('[data-cookie-mode=mock]')");
-          continue;
-        }
         if (command) role = command;
         await signIn(cdp, origin, state, role);
         console.log("Signed in as " + role + ".");
