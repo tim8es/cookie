@@ -294,11 +294,11 @@
 </script>
 
 <svelte:head>
-  <title>{api.mode === "api" ? "Cookie — услуги салона" : screen === "booking" ? "Cookie — онлайн-запись · демо" : "Cookie — кабинет салона · демо"}</title>
-  <meta name="description" content={api.mode === "api" ? "Cookie: защищённый каталог услуг владельца." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
+  <title>{api.mode === "api" ? "Cookie — кабинет салона" : screen === "booking" ? "Cookie — онлайн-запись · демо" : "Cookie — кабинет салона · демо"}</title>
+  <meta name="description" content={api.mode === "api" ? "Cookie: защищённый кабинет услуг и мастеров." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
-<div class="app-shell" class:real-owner-shell={api.mode === "api"} class:public-shell={api.mode !== "api" && screen === "booking"} class:onboarding-shell={screen === "home" && !org && api.mode === "mock"} class:telegramPreview={telegramPreview && screen === "booking"}>
+<div class="app-shell" class:real-owner-shell={api.mode === "api"} class:public-shell={api.mode !== "api" && screen === "booking"} class:onboarding-shell={screen === "home" && !org && api.mode === "mock"} class:telegramPreview={api.mode !== "api" && telegramPreview && screen === "booking"}>
   {#if api.mode !== "api" && screen !== "booking" && !(screen === "home" && !org)}
     <Sidebar {screen} {stepCount} onNavigate={goto} />
   {/if}
@@ -314,7 +314,7 @@
       <Topbar {screen} bind:preview canCreateBooking={!!org} onNavigate={goto} />
     {/if}
 
-    <main class="content" class:public-content={screen === "booking"}>
+    <main class="content" class:public-content={api.mode !== "api" && screen === "booking"}>
       <DemoNotices
         {error} {notice}
         onDismissError={() => error = ""}
