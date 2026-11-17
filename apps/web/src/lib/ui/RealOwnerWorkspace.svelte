@@ -3,11 +3,12 @@
   import type { VerifiedOwnerSession } from "../owner-auth";
   import RealOwnerServicesPage from "./RealOwnerServicesPage.svelte";
   import RealOwnerStaffPage from "./RealOwnerStaffPage.svelte";
+  import RealOwnerLocationsPage from "./RealOwnerLocationsPage.svelte";
 
   export let session: VerifiedOwnerSession;
   export let onLogout: () => void;
 
-  let section: "services" | "staff" = "services";
+  let section: "services" | "staff" | "locations" = "services";
 </script>
 
 <nav class="real-owner-nav" aria-label="Разделы кабинета владельца">
@@ -23,10 +24,18 @@
     aria-current={section === "staff" ? "page" : undefined}
     onclick={() => (section = "staff")}
   >Мастера</Button>
+  <Button
+    type="button"
+    variant={section === "locations" ? "default" : "outline"}
+    aria-current={section === "locations" ? "page" : undefined}
+    onclick={() => (section = "locations")}
+  >Филиалы</Button>
   <Button type="button" variant="outline" onclick={onLogout}>Выйти</Button>
 </nav>
 {#if section === "services"}
   <RealOwnerServicesPage {session} {onLogout} />
-{:else}
+{:else if section === "staff"}
   <RealOwnerStaffPage {session} onOpenServices={() => (section = "services")} />
+{:else}
+  <RealOwnerLocationsPage {session} />
 {/if}
