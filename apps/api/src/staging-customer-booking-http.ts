@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import {
   createStagingCustomerBooking,
   CreateBookingFailure,
+  readStagingCreateReceipt,
 } from "../../../packages/domain-booking/src/index.js";
 import { StagingPublicationDenied } from "../../../packages/domain-entitlement/src/index.js";
 import { readStagingCustomerContext } from "../../../packages/domain-customers/src/index.js";
@@ -63,6 +64,43 @@ export function registerStagingCustomerBooking(
       }
     },
   );
+  app.get<{ Params: { tenantId: string } }>(
+    "/v1/organizations/:tenantId/staging-customer-bookings/receipt",
+    async (request, reply) => {
+      reply.header("Cache-Control", "no-store");
+      reply.header("Pragma", "no-cache");
+      reply.header("Vary", "Authorization, Idempotency-Key");
+      const verified = await verifyTenantActor(
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
+      );
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
+      const key = request.headers["idempotency-key"];
+      if (
+        typeof key !== "string" ||
+        !KEY.test(key) ||
+        Object.keys(request.query as object).length !== 0
+      ) {
+        return reply.code(400).send({ error: "invalid-request" });
+      }
+      const actor = verified.actor;
+      try {
+        const receipt = await runSqlTransaction(pool, (client) =>
+          readStagingCreateReceipt(client, actor, key),
+        );
+        if (!receipt)
+          return reply.code(404).send({ error: "receipt-unavailable" });
+        return reply.send(receipt);
+      } catch (error) {
+        if (error instanceof AuthorizationDeniedError)
+          return reply.code(403).send({ error: "forbidden" });
+        return reply.code(503).send({ error: "unavailable" });
+      }
+    },
+  );
+
   app.post<{ Params: { tenantId: string } }>(
     "/v1/organizations/:tenantId/staging-customer-bookings",
     async (request, reply) => {
