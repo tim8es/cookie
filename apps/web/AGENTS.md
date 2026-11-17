@@ -15,7 +15,7 @@ production launch or unrestricted visual redesign. Keep it consistent.
 
 ## Change boundaries
 
-- `src/App.svelte` coordinates synthetic state, navigation and UI adapter actions.
+- `src/App.svelte` coordinates authenticated runtime navigation and real owner/customer UI. `src/LegacyFixture.svelte` is isolated legacy test-only orchestration; do not add product features there.
   It must **not** accumulate new screen layouts. Split every new screen into
   `src/lib/ui/*Page.svelte` and accept typed props/callbacks.
 - General controls come from maintained version-controlled shadcn-svelte
@@ -34,14 +34,14 @@ production launch or unrestricted visual redesign. Keep it consistent.
 
 ## Demo/real parity — owner requirement #311
 
-For each released capability, prefer the same runtime, screen and domain policy in demo and real mode. `pnpm demo:local` is the disposable synthetic runtime; The compiled API refuses legacy `/demo` routes; the browser-local fixture remains available only on the separate development/static UI-test server. Do not re-expose it as a product route. Do not extend it as independent business logic or use mock success as real acceptance. Preserve strict data/session isolation, fail-closed production auth and no real external effects. New changes should use the same scenarios in both modes; disclose any missing parity in the PR.
+For each released capability, prefer the same runtime, screen and domain policy in demo and real mode. `pnpm demo:local` is the disposable synthetic runtime; The compiled API refuses legacy `/demo` routes; the browser-local fixture remains available only via `dev:fixture` / `build:fixture`. The real build rejects mock controller/adapter modules and writes to a separate output directory. Do not re-expose it as a product route. Do not extend it as independent business logic or use mock success as real acceptance. Preserve strict data/session isolation, fail-closed production auth and no real external effects. New changes should use the same scenarios in both modes; disclose any missing parity in the PR.
 
 ## Acceptance for any UI change
 
 1. `pnpm install --frozen-lockfile` from the workspace root.
 2. `pnpm check:ui`, `pnpm --filter @cookie/web check`,
    `pnpm --filter @cookie/web build` and existing repo tests.
-3. `node apps/web/scripts/browser-smoke.mjs`: review generated Chromium
+3. `pnpm --filter @cookie/web build:fixture` then `node apps/web/scripts/browser-smoke.mjs`: review generated Chromium
    screenshots on 1280×800, 375×812 and 320×568 CSS pixels.
 4. Check no horizontal document overflow, accessible labels and focus
    behavior, and no external requests in mock mode.
