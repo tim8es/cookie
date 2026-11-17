@@ -17,12 +17,10 @@ export async function runProtectedTransaction<T>(
   let discard = false;
 
   async function commit(): Promise<void> {
-    state = "committing";
     const result = await client.query("COMMIT");
     if (result.command !== "COMMIT") {
       throw new Error("Protected transaction did not commit");
     }
-    state = "finished";
   }
 
   try {
@@ -34,12 +32,16 @@ export async function runProtectedTransaction<T>(
       if (reason instanceof AuthorizationDeniedError) {
         // The policy writes a sanitized denial audit. Commit ONLY before
         // executing business work. A failed audit commit is unavailable.
+        state = "committing";
         await commit();
+        state = "finished";
       }
       throw reason;
     }
     const result = await work(client);
+    state = "committing";
     await commit();
+    state = "finished";
     return result;
   } catch (reason) {
     if (state === "open") {
