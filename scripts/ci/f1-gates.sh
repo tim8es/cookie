@@ -21,7 +21,10 @@ web() {
   pnpm --filter @cookie/web check
   pnpm --filter @cookie/web build
 }
-browser() { node apps/web/scripts/browser-smoke.mjs; }
+browser() {
+  pnpm --filter @cookie/web build:fixture
+  node apps/web/scripts/browser-smoke.mjs
+}
 browser_evidence() { node scripts/ci-visual-evidence-check.mjs; }
 real_owner() {
   pnpm build:runtime
