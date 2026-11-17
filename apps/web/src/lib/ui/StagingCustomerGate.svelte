@@ -1,16 +1,27 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import StagingCustomerOffers from "./StagingCustomerOffers.svelte";
   import { Button } from "../components/ui/button/index.js";
   import * as Card from "../components/ui/card/index.js";
   import { authenticateTelegramCustomer, loadTelegramInitData, revokeTelegramOwnerSession, type VerifiedCustomerSession } from "../owner-auth";
   let session: VerifiedCustomerSession | null = null;
   let phase: "loading" | "unavailable" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" = "loading";
+  let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+  let mounted = true;
+  function expire(): void {
+    session = null;
+    phase = "error";
+    clearTimeout(expiryTimer);
+  }
   async function signIn(): Promise<void> {
     try {
       const proof = await loadTelegramInitData(window, document);
       if (!proof) { phase = "unavailable"; return; }
-      session = await authenticateTelegramCustomer(proof);
+      const verified = await authenticateTelegramCustomer(proof);
+      if (!mounted) { void revokeTelegramOwnerSession(verified).catch(() => undefined); return; }
+      session = verified;
       phase = "verified";
+      expiryTimer = setTimeout(expire, Math.max(0, verified.expiresAtUnixSeconds * 1000 - Date.now()));
     } catch {
       session = null;
       phase = "error";
@@ -20,11 +31,12 @@
     const current = session;
     if (!current) return;
     session = null;
+    clearTimeout(expiryTimer);
     phase = "signing-out";
     try { await revokeTelegramOwnerSession(current); phase = "signed-out"; }
     catch { phase = "logout-failed"; }
   }
-  onMount(() => { void signIn(); });
+  onMount(() => { void signIn(); return () => { mounted = false; clearTimeout(expiryTimer); }; });
 </script>
 
 <Card.Root class="state-card feedback-state" aria-label="Клиентский вход staging">
@@ -50,3 +62,7 @@
     <p>Требуется свежая проверенная Telegram-подпись и заранее подтверждённая оператором тестовая привязка. Этот экран не создаёт аккаунт автоматически.</p>
   {/if}
 </Card.Root>
+
+{#if phase === "verified" && session}
+  <StagingCustomerOffers {session} onUnauthorized={expire} />
+{/if}
