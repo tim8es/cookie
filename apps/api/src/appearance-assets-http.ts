@@ -1,4 +1,8 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type {
+  FastifyInstance,
+  FastifyReply,
+  FastifyRequest,
+} from "fastify";
 import type { Pool } from "pg";
 
 import {
@@ -76,8 +80,11 @@ export function registerPrivateAppearanceAssetRoutes(
     );
     scope.setErrorHandler((error, _request, reply) => {
       privateHeaders(reply);
-      const status =
-        error.statusCode === 413 ? 413 : error.statusCode === 415 ? 415 : 400;
+      const code =
+        typeof error === "object" && error !== null && "statusCode" in error
+          ? error.statusCode
+          : undefined;
+      const status = code === 413 ? 413 : code === 415 ? 415 : 400;
       return reply.code(status).send({ error: "invalid-upload" });
     });
 

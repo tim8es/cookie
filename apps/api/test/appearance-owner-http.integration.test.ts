@@ -4,7 +4,6 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { Pool } from "pg";
-
 import sharp from "sharp";
 
 import { postgresAppearanceAssetOwnership } from "../../../packages/appearance-asset-adapter/src/index.js";
@@ -139,10 +138,9 @@ test(
       assert.equal(
         (
           await disabled.inject({
-            method: "POST",
-            url: uploadUrl,
-            headers: uploadHeaders,
-            payload: raw,
+            method: "GET",
+            url: uploadUrl + "/" + randomUUID(),
+            headers,
           })
         ).statusCode,
         404,
@@ -167,7 +165,11 @@ test(
       assert.equal(exhausted.statusCode, 409);
       assert.equal(exhausted.json().error, "appearance-storage-quota");
       const assetUrl = uploadUrl + "/" + assetId;
-      const fetched = await app.inject({ method: "GET", url: assetUrl, headers });
+      const fetched = await app.inject({
+        method: "GET",
+        url: assetUrl,
+        headers,
+      });
       assert.equal(fetched.statusCode, 200);
       assert.equal(fetched.headers["content-type"], "image/png");
       assert.equal(fetched.headers["cache-control"], "no-store");
