@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 
+import { appendAuthIdentityAudit } from "./auth-security-audit.js";
 import { withVerifiedEmailPassword } from "./email-login.js";
 import {
   reserveEmailLoginAttempt,
@@ -46,8 +47,14 @@ export async function loginEmailPassword(
     fingerprintSecret,
     address,
     password,
-    (client, identityId) =>
-      sessions.issueForVerifiedIdentityInTransaction(client, identityId),
+    async (client, identityId) => {
+      const issued = await sessions.issueForVerifiedIdentityInTransaction(
+        client,
+        identityId,
+      );
+      await appendAuthIdentityAudit(client, "email_login", identityId);
+      return issued;
+    },
   );
   if (!session) return { status: "denied" };
   return { status: "authenticated", ...session };
