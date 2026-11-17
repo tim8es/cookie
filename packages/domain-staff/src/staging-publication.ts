@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Pool, QueryResultRow } from "pg";
+import { lockStagingServiceForPublication } from "../../domain-catalog/src/index.js";
 import {
   assertNewStagingSeat,
   lockLiveStagingGrant,
@@ -36,10 +37,6 @@ export class StagingStaffPublicationConflict extends Error {
 interface ProfileRow extends QueryResultRow {
   active: boolean;
   bookable: boolean;
-}
-interface ServiceRow extends QueryResultRow {
-  active: boolean;
-  draft_revision: number;
 }
 interface ReceiptRow extends QueryResultRow {
   request_sha256: string;
@@ -111,14 +108,16 @@ export async function publishStaffForStaging(
     if (profile.rows[0].bookable)
       throw new StagingStaffPublicationConflict("already-bookable");
     await assertNewStagingSeat(client, tenantId, grant.seatLimit);
-    const service = await client.query<ServiceRow>(
-      "SELECT active,draft_revision FROM cookie_catalog.services WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE",
-      [tenantId, serviceId],
+    const service = await lockStagingServiceForPublication(
+      client,
+      tenantId,
+      serviceId,
+      expectedServiceRevision,
     );
-    if (!service.rows[0])
-      throw new StagingStaffPublicationConflict("target-unavailable");
-    if (service.rows[0].draft_revision !== expectedServiceRevision)
-      throw new StagingStaffPublicationConflict("stale-revision");
+    if (service.status !== "ready")
+      throw new StagingStaffPublicationConflict(
+        service.status === "missing" ? "target-unavailable" : "stale-revision",
+      );
     const branch = await client.query(
       "SELECT id FROM cookie_tenancy.locations WHERE tenant_id=$1::uuid AND id=$2::uuid AND time_zone IS NOT NULL FOR SHARE",
       [tenantId, locationId],
@@ -138,12 +137,7 @@ export async function publishStaffForStaging(
     )
       throw new StagingStaffPublicationConflict("target-unavailable");
     // Explicitly selected service only. Shared active services are reused.
-    if (!service.rows[0].active) {
-      await client.query(
-        "UPDATE cookie_catalog.services SET active=true,draft_revision=draft_revision+1 WHERE tenant_id=$1::uuid AND id=$2::uuid",
-        [tenantId, serviceId],
-      );
-    }
+    await service.activate();
     await client.query(
       "UPDATE cookie_staff.location_assignments SET active=true WHERE tenant_id=$1::uuid AND staff_id=$2::uuid AND location_id=$3::uuid",
       [tenantId, staffId, locationId],
