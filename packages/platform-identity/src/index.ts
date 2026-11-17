@@ -5,3 +5,4 @@
  */
 export type { TrustedActor } from "./authorization.js";
 export { requireTenantPermission } from "./postgres.js";
+export { AuthorizationDeniedError } from "./authorization.js";
