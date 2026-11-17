@@ -175,7 +175,7 @@ def worker(suite, commit):
         return 0 if code == 0 else 1
 
 
-def valid_evidence(release, job, commit, suite, run_id, attempt):
+def valid_evidence(release, job, commit, suite, run_id, attempt, *, require_success=True):
     try:
         report = json.loads(release["body"])
         asset = [a for a in release["assets"] if a["name"] == "evidence.zip"]
@@ -185,7 +185,8 @@ def valid_evidence(release, job, commit, suite, run_id, attempt):
             and type(report["runId"]) is int and report["runId"] == run_id
             and type(report["runAttempt"]) is int and report["runAttempt"] == attempt
             and report["suite"] == suite and type(report["exitCode"]) is int
-            and report["exitCode"] == 0 and release["tag_name"] == job
+            and (report["exitCode"] == 0 if require_success else -255 <= report["exitCode"] <= 255)
+            and release["tag_name"] == job
             and release.get("draft") is False and len(asset) == 1
             and asset[0]["state"] == "uploaded"
             and 0 < asset[0]["size"] <= MAX_ARCHIVE
