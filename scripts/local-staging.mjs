@@ -1,4 +1,5 @@
 // Interactive, loopback-only real Cookie runtime for synthetic manual QA.
+import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHmac, randomBytes, randomInt, randomUUID } from "node:crypto";
 import {
@@ -13,6 +14,7 @@ import { setTimeout as pause } from "node:timers/promises";
 import { Pool } from "pg";
 import {
   browserBinary, freePort, poll, getLocal, createClient, requireDom,
+  evaluate, fill, submitValidForm, checkWidth,
 } from "../apps/web/scripts/browser-smoke.mjs";
 
 import { isLocalStagingProject, resolveLocalStagingMode } from "./local-staging-mode.mjs";
@@ -140,6 +142,7 @@ async function seed(state, databaseUrl) {
     if (!grants.rowCount && Date.parse(state.grantExpiry) > Date.now()) {
       await issueStagingGrant(pool, owner.tenantId, 5, state.grantExpiry);
     }
+    return owner.tenantId;
   } finally {
     await pool.end();
   }
@@ -175,6 +178,44 @@ async function signIn(cdp, origin, state, role = "owner") {
   } finally {
     await cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier });
   }
+}
+
+// Identical browser/DB contract for disposable QA and true demo verification.
+// Use the existing real form and API, never a second implementation.
+async function verifySharedCatalog(cdp, databaseUrl, tenantId) {
+  const marker = "Synthetic shared runtime service";
+  const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+  try {
+    const read = async () => (await pool.query(
+      "SELECT display_name, duration_minutes, base_price_kopecks::text AS price, active FROM cookie_catalog.services WHERE tenant_id=$1::uuid",
+      [tenantId],
+    )).rows;
+    assert.deepEqual(await read(), [], "fresh disposable catalog must be empty");
+    await requireDom(cdp, "actual owner service form", "document.querySelector('.owner-form input') && document.querySelector('.empty-mini')");
+    for (const width of [1280, 375, 320]) {
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width, height: 812, deviceScaleFactor: 1, mobile: width < 600,
+      });
+      await checkWidth(cdp, "shared runtime service form " + width + "px");
+    }
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
+    await fill(cdp, ".owner-form input:not([type=number])", marker);
+    await evaluate(cdp, "(() => {const n=document.querySelectorAll('.owner-form input[type=number]');n[0].value='45';n[0].dispatchEvent(new Event('input',{bubbles:true}));n[1].value='1200';n[1].dispatchEvent(new Event('input',{bubbles:true}));})()");
+    await submitValidForm(cdp, ".owner-form");
+    await requireDom(cdp, "confirmed real catalog service",
+      "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(marker) + ")");
+    assert.deepEqual(await read(), [{
+      display_name: marker, duration_minutes: 45, price: "120000", active: false,
+    }]);
+    const receipt = await pool.query(
+      "SELECT count(*)::int AS count FROM cookie_catalog.service_create_receipts WHERE tenant_id=$1::uuid",
+      [tenantId],
+    );
+    assert.equal(receipt.rows[0]?.count, 1);
+  } finally {
+    await pool.end();
+  }
+  return marker;
 }
 
 async function main() {
@@ -217,7 +258,7 @@ async function main() {
       }, 30000);
     } finally { await readiness.end(); }
     checkInterrupted();
-    await seed(state, databaseUrl);
+    const tenantId = await seed(state, databaseUrl);
     checkInterrupted();
     const port = await freePort();
     const origin = "http://127.0.0.1:" + port;
@@ -270,15 +311,25 @@ async function main() {
     await signIn(cdp, origin, state);
     checkInterrupted();
     if (verification) {
-      await requireDom(cdp, "actual owner service form", "document.querySelector(\'.owner-form input\')");
+      const marker = await verifySharedCatalog(cdp, databaseUrl, tenantId);
       await signIn(cdp, origin, state, "client");
       await poll("actual cancellation capability", () => cancellationResponses.includes(cutoff === undefined ? 404 : 200));
       const policyText = cutoff === undefined ? "Отмена в тестовом режиме недоступна." : "более чем " + cutoff + " мин.";
       await requireDom(cdp, "explicit cancellation cutoff (no implicit default)", "document.querySelector(\'[aria-label=\\\"Мои записи\\\"]\')?.innerText.includes(" + JSON.stringify(policyText) + ")");
       await requireDom(cdp, "actual client workspace without owner navigation", "document.querySelector(\'[aria-label=\\\"Клиентский вход staging\\\"]\') && !document.querySelector(\'.real-owner-nav\')");
-      await cdp.send("Page.navigate", { url: origin + "/demo" });
-      await requireDom(cdp, "explicit demo", "document.querySelector(\'[data-cookie-mode=mock] .welcome-form\')");
+      await cdp.send("Page.navigate", { url: origin + "/" });
+      await requireDom(cdp, "no owner authorization without fresh signed proof",
+        "document.querySelector('[data-cookie-mode=api] .feedback-state h1') && !document.querySelector('.verified-owner-shell') && !document.querySelector('.sidebar')");
+      if (!demo) {
+        await cdp.send("Page.navigate", { url: origin + "/demo" });
+        await requireDom(cdp, "explicit legacy UI fixture", "document.querySelector('[data-cookie-mode=mock] .welcome-form')");
+      }
       await signIn(cdp, origin, state, "owner");
+      await requireDom(cdp, "shared catalog survives role switch and fresh authentication",
+        "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(marker) + ")");
+      if (demo) await requireDom(cdp, "no browser-local mock catalog",
+        "sessionStorage.getItem('cookie.frontend-demo.v1') === null");
+      console.log("PASS shared " + (demo ? "demo" : "QA") + " runtime catalog: browser write, real DB/receipt, role switch, fail-closed entry, three viewport widths");
       console.log("PASS actual local launcher: dedicated PostgreSQL, migrations, compiled runtime, signed owner/client and demo isolation");
       return;
     }
