@@ -92,16 +92,26 @@ export async function reserveEmailLoginAttempt(
       start,
     );
     if (source > sourceAttempts) return false;
-    if (accountFingerprint === null) return true;
+    if (accountFingerprint !== null) {
+      const account = await increment(
+        client,
+        "account",
+        accountFingerprint,
+        windowSeconds,
+        start,
+      );
+      if (account > accountAttempts) return false;
+    }
 
-    const account = await increment(
-      client,
-      "account",
-      accountFingerprint,
-      windowSeconds,
-      start,
+    // A request that waited on locks across a window boundary must not
+    // authenticate using an expired budget, even if cleanup removed its row.
+    const live = await client.query<{ active: boolean }>(
+      `SELECT $1::bigint <= floor(extract(epoch FROM clock_timestamp()))::bigint
+        AND floor(extract(epoch FROM clock_timestamp()))::bigint <
+          $1::bigint + $2::integer AS active`,
+      [start, windowSeconds],
     );
-    return account <= accountAttempts;
+    return live.rows[0]?.active === true;
   });
 }
 
