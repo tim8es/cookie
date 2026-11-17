@@ -272,12 +272,14 @@ test(
       );
       assert.equal((await upload(raw)).statusCode, 403);
       assert.equal(
-        (await app.inject({ method: "GET", url: assetUrl, headers })).statusCode,
+        (await app.inject({ method: "GET", url: assetUrl, headers }))
+          .statusCode,
         200,
       );
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal(
-        (await app.inject({ method: "GET", url: assetUrl, headers })).statusCode,
+        (await app.inject({ method: "GET", url: assetUrl, headers }))
+          .statusCode,
         401,
       );
       assert.equal((await read()).statusCode, 401);
