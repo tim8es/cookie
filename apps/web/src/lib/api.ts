@@ -23,7 +23,7 @@ class NotConnectedApi implements CookieUiPort {
   private unavailable(): never {
     throw new UiFailure(
       "NOT_CONNECTED",
-      "Этот демонстрационный адаптер недоступен в рабочем режиме. Для просмотра демо откройте /demo.",
+      "Демонстрационный адаптер недоступен в рабочем режиме.",
     );
   }
   async getSnapshot(): Promise<DemoSnapshot> {

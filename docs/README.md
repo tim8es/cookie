@@ -64,3 +64,6 @@
 ## Дополнение продуктового baseline 2026-11-17
 - [Табличный обмен XLSX/CSV и Telegram-first администрирование](product/tabular-and-telegram-admin.md) — DEC-116 ACCEPTED; REQ-068–072; техническая детализация DEC-117 PROPOSED, REQ-073 F3 PROPOSED.
 - Порядок: #252 (F2 early data exchange) → #253 (F2 Telegram admin) → #254 (F3 optional sync). Не блокирует текущий F1 #203; отдельный review перед реализацией.
+
+## Бренд
+- [kuki: ребрендинг и миграция технических идентификаторов](operations/brand-migration.md) — решение владельца от 2026-11-17, #305.

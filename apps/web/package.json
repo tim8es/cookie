@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "dev:fixture": "vite --host 127.0.0.1 --mode ui-fixture",
+    "build:fixture": "vite build --mode ui-fixture",
     "check": "svelte-check --tsconfig ./tsconfig.json && pnpm test",
     "test": "node --import tsx --test src/lib/*.test.ts"
   },

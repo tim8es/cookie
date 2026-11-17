@@ -59,7 +59,7 @@
 
 <div class="section-head calendar-page-head">
   <div>
-    <span class="calendar-page-kicker">COOKIE / РАБОЧЕЕ ВРЕМЯ</span>
+    <span class="calendar-page-kicker">kuki / РАБОЧЕЕ ВРЕМЯ</span>
     <h1>Календарь записей</h1>
     <p>Демонстрационный график салона. Без реальных клиентов.</p>
   </div>

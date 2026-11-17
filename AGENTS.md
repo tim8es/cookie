@@ -1,4 +1,8 @@
-# Cookie: инструкция для Codex и других агентов
+# kuki: инструкция для Codex и других агентов
+
+## Owner update — 2026-11-17: canonical brand (ACCEPTED)
+
+Public spelling is **kuki**, lowercase, including wordmarks, headings, metadata, accessible labels, Telegram surfaces and new documentation. See [#305](https://github.com/tim8es/cookie/issues/305) and [migration inventory](docs/operations/brand-migration.md). Do not rename HTTP Cookie/Set-Cookie, existing runtime identifiers, persistence, package names, repository URLs or integrations by global replacement. Coordinate technical migration separately; no production rollout.
 
 ## Owner update — 2026-11-17: configurable business policies (ACCEPTED)
 

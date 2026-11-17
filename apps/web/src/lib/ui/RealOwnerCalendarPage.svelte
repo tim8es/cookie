@@ -134,7 +134,7 @@
 
 <div class="section-head calendar-page-head owner-calendar-header">
   <div>
-    <span class="eyebrow">COOKIE / ЗАПИСИ</span>
+    <span class="eyebrow">kuki / ЗАПИСИ</span>
     <h1>Календарь записей</h1>
     <p>Сохранённые записи филиала. Просмотр не открывает новую запись.</p>
   </div>

@@ -14,7 +14,7 @@
   export let onNavigate: (next: Screen) => void;
 </script>
 
-          <div class="section-head dashboard-welcome"><div><p class="dashboard-kicker">Cookie / рабочее пространство</p><h1>Хорошего дня!</h1><p><strong>{organizationName}</strong> · здесь начинается порядок в записи</p></div><button class="btn btn-secondary" onclick={() => onNavigate("booking")}>Открыть запись ↗</button></div>
+          <div class="section-head dashboard-welcome"><div><p class="dashboard-kicker">kuki / рабочее пространство</p><h1>Хорошего дня!</h1><p><strong>{organizationName}</strong> · здесь начинается порядок в записи</p></div><button class="btn btn-secondary" onclick={() => onNavigate("booking")}>Открыть запись ↗</button></div>
           <div class="stat-grid" aria-label="Сводка демонстрационного салона">
             <div class="stat-card"><span>На выбранный день</span><strong>{dayBookings.length}</strong><small>демо-записей</small></div>
             <div class="stat-card"><span>Мастеров</span><strong>{data.staff.length}</strong><small>в команде</small></div>
