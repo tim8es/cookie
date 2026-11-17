@@ -3,7 +3,10 @@
  * Caller MUST hold its trusted PostgreSQL transaction and preserve lock order.
  * Authentication/issuer verification remains owned by Identity.
  */
-export { AuthorizationDeniedError, type TrustedActor } from "./authorization.js";
+export {
+  AuthorizationDeniedError,
+  type TrustedActor,
+} from "./authorization.js";
 export { requireTenantPermission } from "./postgres.js";
 
 /** Real opt-in Telegram session composition; no operator provisioning export. */
