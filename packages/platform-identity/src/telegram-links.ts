@@ -26,7 +26,18 @@ const TELEGRAM_ID = /^[1-9][0-9]{0,15}$/;
 const FINGERPRINT_CONTEXT = "cookie-telegram-user-fingerprint-v1\0";
 
 /** Deliberately not exported: provisioning requires a separate approved flow. */
-function fingerprint(userHashSecret: Buffer, telegramUserId: string): Buffer {
+export function telegramUserFingerprint(
+  userHashSecret: Buffer,
+  telegramUserId: string,
+): Buffer {
+  if (
+    !Buffer.isBuffer(userHashSecret) ||
+    userHashSecret.byteLength < 32 ||
+    !TELEGRAM_ID.test(telegramUserId) ||
+    !Number.isSafeInteger(Number(telegramUserId))
+  ) {
+    throw new Error("Invalid Telegram account fingerprint input");
+  }
   return createHmac("sha256", userHashSecret)
     .update(FINGERPRINT_CONTEXT, "utf8")
     .update(telegramUserId, "utf8")
@@ -54,7 +65,7 @@ export function createPostgresVerifiedTelegramLinkResolver(
       return null;
     }
 
-    const hash = fingerprint(secret, proof.telegramUserId);
+    const hash = telegramUserFingerprint(secret, proof.telegramUserId);
     // Never choose the first of multiple tenants. An approved, explicit
     // tenant-selection protocol is required to support shared Telegram users.
     // SHARE protects the link from concurrent revocation until COMMIT when
