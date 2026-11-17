@@ -25,11 +25,12 @@
   import BookingSetupHint from "./lib/ui/BookingSetupHint.svelte";
   import DemoState from "./lib/ui/DemoState.svelte";
   import OwnerAuthGate from "./lib/ui/OwnerAuthGate.svelte";
-  import RealOwnerServicesPage from "./lib/ui/RealOwnerServicesPage.svelte";
+  import RealOwnerWorkspace from "./lib/ui/RealOwnerWorkspace.svelte";
   import {
     authenticateTelegramOwner,
     loadTelegramInitData,
     revokeTelegramOwnerSession,
+    watchOwnerSessionExpiry,
     type VerifiedOwnerSession,
   } from "./lib/owner-auth";
   import CalendarView from "./lib/ui/CalendarView.svelte";
@@ -47,7 +48,9 @@
   let initializing = true;
   let apiDisconnected = false;
   let ownerSession: VerifiedOwnerSession | null = null;
-  let ownerAuthPhase: "unavailable" | "loading" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" = "unavailable";
+  let ownerAuthPhase: "unavailable" | "loading" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
+  let stopOwnerExpiry: (() => void) | null = null;
+  let ownerMounted = false;
   let busy = false;
   let busySlots = false;
   let error = "";
@@ -95,21 +98,45 @@
     !data.bookings.length ? "booking" : "complete";
 
   onMount(() => {
+    ownerMounted = true;
     void reload();
     if (api.mode === "api") void authenticateOwner();
+    return () => {
+      ownerMounted = false;
+      stopOwnerExpiry?.();
+      ownerSession = null;
+    };
   });
 
   async function authenticateOwner(): Promise<void> {
     ownerAuthPhase = "loading";
     try {
       const initData = await loadTelegramInitData(window, document);
+      if (!ownerMounted) return;
       if (!initData) {
         ownerAuthPhase = "unavailable";
         return;
       }
-      ownerSession = await authenticateTelegramOwner(initData);
+      const session = await authenticateTelegramOwner(initData);
+      if (!ownerMounted) {
+        await revokeTelegramOwnerSession(session).catch(() => undefined);
+        return;
+      }
+      stopOwnerExpiry?.();
+      ownerSession = session;
       ownerAuthPhase = "verified";
+      stopOwnerExpiry = watchOwnerSessionExpiry(
+        session.expiresAtUnixSeconds,
+        () => {
+          if (ownerSession !== session) return;
+          ownerSession = null;
+          ownerAuthPhase = "expired";
+        },
+        window,
+        document,
+      );
     } catch {
+      if (!ownerMounted) return;
       ownerSession = null;
       ownerAuthPhase = "error";
     }
@@ -120,6 +147,8 @@
     if (!session || ownerAuthPhase !== "verified") return;
     // Discard the bearer immediately; even failed remote revocation cannot
     // restore any owner permissions in the current browser session.
+    stopOwnerExpiry?.();
+    stopOwnerExpiry = null;
     ownerSession = null;
     ownerAuthPhase = "signing-out";
     try {
@@ -312,25 +341,27 @@
 </script>
 
 <svelte:head>
-  <title>{api.mode === "api" ? "Cookie — услуги салона" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
-  <meta name="description" content={api.mode === "api" ? "Cookie: защищённый каталог услуг владельца." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
+  <title>{api.mode === "api" ? "Cookie — кабинет салона" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
+  <meta name="description" content={api.mode === "api" ? "Cookie: защищённый кабинет услуг и мастеров." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
-<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org && api.mode === "mock"} class:telegramPreview={telegramPreview && screen === "booking"} class:salonThemeForest={data.appearance.theme === "forest"} class:salonThemeOcean={data.appearance.theme === "ocean"} class:salonThemeClay={data.appearance.theme === "clay"}>
-  {#if screen !== "booking" && !(screen === "home" && !org)}
+<div class="app-shell" class:real-owner-shell={api.mode === "api"} class:public-shell={api.mode !== "api" && screen === "booking"} class:onboarding-shell={screen === "home" && !org && api.mode === "mock"} class:telegramPreview={api.mode !== "api" && telegramPreview && screen === "booking"} class:salonThemeForest={data.appearance.theme === "forest"} class:salonThemeOcean={data.appearance.theme === "ocean"} class:salonThemeClay={data.appearance.theme === "clay"}>
+  {#if api.mode !== "api" && screen !== "booking" && !(screen === "home" && !org)}
     <Sidebar {screen} {stepCount} onNavigate={goto} />
   {/if}
 
   <div class="main-area">
-    {#if screen === "booking"}
+    {#if api.mode === "api"}
+      <OnboardingHeader apiMode={true} />
+    {:else if screen === "booking"}
       <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} demoMode={api.mode === "mock"} onBack={() => goto("home")} />
     {:else if screen === "home" && !org}
-      <OnboardingHeader apiMode={api.mode === "api"} />
+      <OnboardingHeader apiMode={false} />
     {:else}
       <Topbar {screen} bind:preview canCreateBooking={!!org} onNavigate={goto} />
     {/if}
 
-    <main class="content" class:public-content={screen === "booking"}>
+    <main class="content" class:public-content={api.mode !== "api" && screen === "booking"}>
       <DemoNotices
         {error} {notice}
         onDismissError={() => error = ""}
@@ -338,7 +369,7 @@
       />
       {#if api.mode === "api"}
         {#if ownerAuthPhase === "verified" && ownerSession}
-          <RealOwnerServicesPage session={ownerSession} onLogout={() => void logoutOwner()} />
+          <RealOwnerWorkspace session={ownerSession} onLogout={() => void logoutOwner()} />
         {:else}
           <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
         {/if}
