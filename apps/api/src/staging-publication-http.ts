@@ -10,6 +10,11 @@ import {
   StagingStaffPublicationConflict,
   type StagingStaffPublicationInput,
 } from "../../../packages/domain-staff/src/staging-publication.js";
+import {
+  listStagingPublishedShifts,
+  publishStagingShift,
+} from "../../../packages/domain-scheduling/src/staging-shift-publication.js";
+import { PublishShiftFailure } from "../../../packages/domain-scheduling/src/publish-shift.js";
 import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/authorization.js";
 import { withTenantPermission } from "./protected-tenant-transaction.js";
 import {
@@ -98,8 +103,96 @@ export function registerStagingPublicationRoutes(
     },
   );
 
+  app.get<{ Params: Params }>(
+    "/v1/organizations/:tenantId/staging-shift-publication",
+    async (request, reply) => {
+      privateReply(reply);
+      const verified = await verifyTenantActor(
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
+      );
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
+      try {
+        return reply.send(
+          await withTenantPermission(
+            pool,
+            verified.actor,
+            "schedule.shift.plan.read",
+            (client) =>
+              listStagingPublishedShifts(client, verified.actor!.tenantId),
+          ),
+        );
+      } catch (error) {
+        return reply
+          .code(error instanceof AuthorizationDeniedError ? 403 : 503)
+          .send({
+            error:
+              error instanceof AuthorizationDeniedError
+                ? "forbidden"
+                : "unavailable",
+          });
+      }
+    },
+  );
+
   // Normal runtime has no write route unless explicitly enabled by operator.
   if (!enabled) return;
+  app.post<{ Params: Params }>(
+    "/v1/organizations/:tenantId/staging-shift-publication",
+    async (request, reply) => {
+      privateReply(reply);
+      const verified = await verifyTenantActor(
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
+      );
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
+      const body = request.body;
+      const key = request.headers["idempotency-key"];
+      if (
+        !body ||
+        typeof body !== "object" ||
+        Array.isArray(body) ||
+        Object.keys(body).length !== 2 ||
+        !("shiftId" in body) ||
+        typeof body.shiftId !== "string" ||
+        !UUID.test(body.shiftId) ||
+        !("expectedRevision" in body) ||
+        typeof body.expectedRevision !== "number" ||
+        !Number.isSafeInteger(body.expectedRevision) ||
+        body.expectedRevision < 0 ||
+        body.expectedRevision > 2147483647 ||
+        typeof key !== "string" ||
+        !KEY.test(key)
+      )
+        return reply.code(400).send({ error: "invalid-request" });
+      try {
+        const publication = await publishStagingShift(
+          pool,
+          verified.actor,
+          body.shiftId,
+          body.expectedRevision,
+          key,
+        );
+        return reply.code(200).send({ publication });
+      } catch (error) {
+        if (error instanceof AuthorizationDeniedError)
+          return reply.code(403).send({ error: "forbidden" });
+        if (error instanceof StagingPublicationDenied)
+          return reply.code(409).send({ error: error.code });
+        if (error instanceof PublishShiftFailure) {
+          if (error.code === "INVALID_SHIFT_PUBLISH")
+            return reply.code(400).send({ error: "invalid-request" });
+          return reply.code(409).send({ error: error.code });
+        }
+        return reply.code(503).send({ error: "unavailable" });
+      }
+    },
+  );
+
   app.post<{ Params: Params }>(
     "/v1/organizations/:tenantId/staging-publication",
     async (request, reply) => {

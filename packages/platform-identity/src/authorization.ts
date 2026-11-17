@@ -93,6 +93,7 @@ const SYSTEM_OWNER_ONLY_PERMISSIONS = new Set([
   "schedule.shift.plan.create",
   "staging.entitlement.read",
   "staging.staff.publish",
+  "staging.shift.publish",
 ]);
 
 export interface PolicySnapshot {

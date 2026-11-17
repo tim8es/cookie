@@ -67,6 +67,7 @@ const OWNER_PERMISSIONS = [
   "schedule.shift.plan.create",
   "staging.entitlement.read",
   "staging.staff.publish",
+  "staging.shift.publish",
 ] as const;
 
 function canonicalName(value: unknown): string {
