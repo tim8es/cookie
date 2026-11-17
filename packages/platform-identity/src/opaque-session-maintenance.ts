@@ -18,6 +18,11 @@ const UUID =
 
 export interface OpaqueSessionMaintenanceConfig {
   readonly pool: Pool;
+  /** Trusted composition root: resolve only after acknowledged COMMIT. */
+  readonly runTransaction: <T>(
+    pool: Pool,
+    work: (client: PoolClient) => Promise<T>,
+  ) => Promise<T>;
   /** Explicit minimum age for consumed proof HMAC hashes, from issued_at. */
   readonly retentionSeconds: number;
   /** Maximum number of old sessions to delete in one non-blocking batch. */
@@ -57,6 +62,7 @@ export class PostgresOpaqueSessionMaintenance {
       !config?.pool ||
       typeof config.pool.query !== "function" ||
       typeof config.pool.connect !== "function" ||
+      typeof config.runTransaction !== "function" ||
       !Number.isSafeInteger(config.retentionSeconds) ||
       config.retentionSeconds < MIN_RETENTION_SECONDS ||
       config.retentionSeconds > MAX_RETENTION_SECONDS ||
@@ -97,65 +103,54 @@ export class PostgresOpaqueSessionMaintenance {
     if (!UUID.test(tenantId) || !UUID.test(identityId)) {
       throw new Error("Invalid tenant or identity UUID");
     }
-    const client = await this.config.pool.connect();
-    let inTransaction = false;
     try {
-      await client.query("BEGIN");
-      inTransaction = true;
-      const member = await client.query<{ active: boolean }>(
-        [
-          "SELECT active FROM cookie_identity.memberships",
-          " WHERE tenant_id=$1::uuid AND identity_id=$2::uuid FOR UPDATE",
-        ].join("\n"),
-        [tenantId, identityId],
-      );
-      if (member.rowCount !== 1) {
-        await client.query("ROLLBACK");
-        inTransaction = false;
-        return { status: "missing", deletedSessions: 0 };
-      }
-      if (member.rows[0]?.active !== false) {
-        await client.query("ROLLBACK");
-        inTransaction = false;
-        return { status: "active", deletedSessions: 0 };
-      }
+      return await this.config.runTransaction<InactiveMembershipDeleteResult>(
+        this.config.pool,
+        async (client) => {
+          const member = await client.query<{ active: boolean }>(
+            [
+              "SELECT active FROM cookie_identity.memberships",
+              " WHERE tenant_id=$1::uuid AND identity_id=$2::uuid FOR UPDATE",
+            ].join("\n"),
+            [tenantId, identityId],
+          );
+          if (member.rowCount !== 1) {
+            return { status: "missing", deletedSessions: 0 };
+          }
+          if (member.rows[0]?.active !== false) {
+            return { status: "active", deletedSessions: 0 };
+          }
 
-      const removed = await this.deleteEligibleForMembership(
-        client,
-        tenantId,
-        identityId,
-      );
-      const remaining = await client.query(
-        [
-          "SELECT 1 FROM cookie_identity.opaque_sessions",
-          " WHERE tenant_id=$1::uuid AND identity_id=$2::uuid LIMIT 1",
-        ].join("\n"),
-        [tenantId, identityId],
-      );
-      if (remaining.rowCount !== 0) {
-        await client.query("COMMIT");
-        inTransaction = false;
-        return { status: "retained", deletedSessions: removed };
-      }
+          const removed = await this.deleteEligibleForMembership(
+            client,
+            tenantId,
+            identityId,
+          );
+          const remaining = await client.query(
+            [
+              "SELECT 1 FROM cookie_identity.opaque_sessions",
+              " WHERE tenant_id=$1::uuid AND identity_id=$2::uuid LIMIT 1",
+            ].join("\n"),
+            [tenantId, identityId],
+          );
+          if (remaining.rowCount !== 0) {
+            return { status: "retained", deletedSessions: removed };
+          }
 
-      // Existing restrictive FKs are deliberate. Never cascade silently.
-      await client.query(
-        [
-          "DELETE FROM cookie_identity.memberships",
-          " WHERE tenant_id=$1::uuid AND identity_id=$2::uuid AND NOT active",
-        ].join("\n"),
-        [tenantId, identityId],
+          // Existing restrictive FKs are deliberate. Never cascade silently.
+          await client.query(
+            [
+              "DELETE FROM cookie_identity.memberships",
+              " WHERE tenant_id=$1::uuid AND identity_id=$2::uuid AND NOT active",
+            ].join("\n"),
+            [tenantId, identityId],
+          );
+          return { status: "deleted", deletedSessions: removed };
+        },
       );
-      await client.query("COMMIT");
-      inTransaction = false;
-      return { status: "deleted", deletedSessions: removed };
     } catch (error) {
-      if (inTransaction) {
-        await client.query("ROLLBACK").catch(() => undefined);
-        inTransaction = false;
-      }
       // 23503 = foreign_key_violation: roles / trusted Telegram links etc.
-      // No session rows are deleted in a failed member-removal transaction.
+      // The shared transaction port must finish rollback before this result.
       if (
         typeof error === "object" &&
         error !== null &&
@@ -165,8 +160,6 @@ export class PostgresOpaqueSessionMaintenance {
         return { status: "blocked-by-dependencies", deletedSessions: 0 };
       }
       throw error;
-    } finally {
-      client.release();
     }
   }
 
