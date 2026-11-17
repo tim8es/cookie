@@ -75,6 +75,7 @@ test(
       pool,
       verifier: sessions,
       assets: postgresAppearanceAssetOwnership,
+      stagingPublicationEnabled: true,
     });
     registerPrivateAppearanceAssetRoutes(app, {
       pool,
@@ -259,10 +260,100 @@ test(
         payload: { expectedRevision: 2 },
       });
       assert.equal(disabledPublish.statusCode, 404);
+      const statusUrl = prefix + "/publication";
+      const status = () =>
+        app.inject({ method: "GET", url: statusUrl, headers });
+      assert.equal(
+        (await draftOnly.inject({ method: "GET", url: statusUrl, headers }))
+          .statusCode,
+        404,
+      );
+      assert.deepEqual((await status()).json(), {
+        draftRevision: 2,
+        publishedRevision: null,
+        canPublish: false,
+      });
+      const missingGrant = await publish();
+      assert.equal(missingGrant.statusCode, 409);
+      assert.equal(missingGrant.json().error, "appearance-grant-unavailable");
+      const grantId = randomUUID();
+      await pool.query(
+        `INSERT INTO cookie_entitlement.staging_appearance_grants
+          (tenant_id,id,issued_at,expires_at)
+         VALUES($1::uuid,$2::uuid,clock_timestamp()-interval '2 hours',
+                clock_timestamp()-interval '1 hour')`,
+        [owner.tenantId, grantId],
+      );
+      assert.equal((await publish()).statusCode, 409);
+      // Replace an expired synthetic fixture before any publication; the
+      // product exposes no owner-controlled grant issue or renewal endpoint.
+      await pool.query(
+        "DELETE FROM cookie_entitlement.staging_appearance_grants WHERE tenant_id=$1::uuid",
+        [owner.tenantId],
+      );
+      const activeGrant = randomUUID();
+      await pool.query(
+        `INSERT INTO cookie_entitlement.staging_appearance_grants
+          (tenant_id,id,expires_at)
+         VALUES($1::uuid,$2::uuid,clock_timestamp()+interval '1 hour')`,
+        [owner.tenantId, activeGrant],
+      );
+      assert.deepEqual((await status()).json(), {
+        draftRevision: 2,
+        publishedRevision: null,
+        canPublish: true,
+      });
       const published = await publish();
       assert.equal(published.statusCode, 200);
       assert.equal(published.json().published.revision, 2);
       assert.equal(published.headers["cache-control"], "no-store");
+      assert.deepEqual((await publish()).json(), published.json());
+      assert.deepEqual((await status()).json(), {
+        draftRevision: 2,
+        publishedRevision: 2,
+        canPublish: true,
+      });
+      const audit = await pool.query(
+        `SELECT revision::text,grant_id::text,actor_identity_id::text
+           FROM cookie_appearance.publication_audit WHERE tenant_id=$1::uuid`,
+        [owner.tenantId],
+      );
+      assert.deepEqual(audit.rows, [
+        { revision: "2", grant_id: activeGrant, actor_identity_id: ownerId },
+      ]);
+      const newer = await app.inject({
+        method: "PUT",
+        url,
+        headers,
+        payload: { expectedRevision: 2, config: createBrandConfig("ocean") },
+      });
+      assert.equal(newer.statusCode, 200);
+      const publishNewer = () =>
+        app.inject({
+          method: "POST",
+          url: prefix + "/publish",
+          headers,
+          payload: { expectedRevision: 3 },
+        });
+      await pool.query(
+        `UPDATE cookie_entitlement.staging_appearance_grants
+            SET revoked_at=clock_timestamp() WHERE tenant_id=$1::uuid`,
+        [owner.tenantId],
+      );
+      assert.equal((await publishNewer()).statusCode, 409);
+      assert.deepEqual((await status()).json(), {
+        draftRevision: 3,
+        publishedRevision: 2,
+        canPublish: false,
+      });
+      const persisted = await pool.query(
+        `SELECT draft_revision::text,published_revision::text
+           FROM cookie_appearance.organization_branding WHERE tenant_id=$1::uuid`,
+        [owner.tenantId],
+      );
+      assert.deepEqual(persisted.rows, [
+        { draft_revision: "3", published_revision: "2" },
+      ]);
       const foreign = await app.inject({
         method: "GET",
         url: "/v1/organizations/" + randomUUID() + "/appearance/draft",

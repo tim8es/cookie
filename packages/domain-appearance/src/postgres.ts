@@ -118,6 +118,22 @@ export async function readTenantBrandDraft(
   };
 }
 
+/** Private revision-only snapshot; no draft or published config is exposed. */
+export async function readAppearanceRevisionState(
+  client: PoolClient,
+  tenantId: string,
+): Promise<{ draftRevision: number; publishedRevision: number | null }> {
+  requireTenantId(tenantId);
+  const row = await rowForTenant(client, tenantId, false);
+  return {
+    draftRevision: row ? revisionFromDatabase(row.draft_revision) : 0,
+    publishedRevision:
+      row?.published_revision == null
+        ? null
+        : revisionFromDatabase(row.published_revision),
+  };
+}
+
 /** Revision-based compare-and-swap; requires a trusted transaction. */
 export async function saveTenantBrandDraft(
   client: PoolClient,

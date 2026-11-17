@@ -189,7 +189,7 @@
           disabled={!!validationError || !canPublish || hasUnsavedChanges || saving || publishing || uploading}
           onclick={onPublish}>{publishing ? "Публикация…" : "Опубликовать"}</Button>
       </div>
-      <p class="brand-info">Предпросмотр не означает публикацию. Страница клиента меняется только после ответа сервера.</p>
+      <p class="brand-info">Предпросмотр не означает публикацию. Изменения вступают в силу после подтверждения сервера и подключения публичной страницы.</p>
     </section>
 
     <aside class="brand-preview" aria-label="Предпросмотр публичной страницы">
