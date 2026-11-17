@@ -8,6 +8,7 @@ test("interactive demo uses the same disposable lifecycle as CI, but never the p
   const demo = resolveLocalStagingMode(["demo"], undefined);
   const verify = resolveLocalStagingMode(["verify"], "true");
   const verifyDemo = resolveLocalStagingMode(["verify-demo"], "true");
+  const worker = resolveLocalStagingMode(["serve-demo"], undefined, true, "120");
   assert.equal(start.disposable, false);
   assert.equal(stop.disposable, false);
   assert.equal(start.folderPrefix, stop.folderPrefix);
@@ -22,6 +23,12 @@ test("interactive demo uses the same disposable lifecycle as CI, but never the p
   assert.equal(verifyDemo.disposable, demo.disposable);
   assert.equal(verifyDemo.folderPrefix, demo.folderPrefix);
   assert.equal(verifyDemo.projectPrefix, demo.projectPrefix);
+  assert.equal(worker.worker, true);
+  assert.equal(worker.demo, true);
+  assert.equal(worker.disposable, true);
+  assert.equal(worker.projectPrefix, demo.projectPrefix);
+  assert.equal(worker.folderPrefix, demo.folderPrefix);
+  assert.equal(worker.lifetimeMs, 120000);
   assert.equal(new Set([start.folderPrefix, demo.folderPrefix, verify.folderPrefix]).size, 3);
   assert.equal(new Set([start.projectPrefix, demo.projectPrefix, verify.projectPrefix]).size, 3);
   for (const mode of [start, demo, verify]) {
@@ -51,4 +58,12 @@ test("demo seed transport permits only the exact loopback API and rejects redire
   }
   assert.equal(await fetcher("/v1/auth/telegram/exchange", { redirect: "follow", credentials: "include" }), "ok");
   assert.deepEqual(calls, [["http://127.0.0.1:1234/v1/auth/telegram/exchange", { redirect: "error", credentials: "omit" }]]);
+});
+
+test("private demo worker cannot be detached or left running indefinitely", () => {
+  assert.throws(() => resolveLocalStagingMode(["serve-demo"], "true", false, "120"));
+  for (const ttl of [undefined, "", "0", "-1", "01", "1.5", "901", "Infinity", " 4"]) {
+    assert.throws(() => resolveLocalStagingMode(["serve-demo"], "true", true, ttl));
+  }
+  assert.equal(resolveLocalStagingMode(["serve-demo"], undefined, true, "900").lifetimeMs, 900000);
 });
