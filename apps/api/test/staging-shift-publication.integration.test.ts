@@ -512,14 +512,16 @@ test(
           headers: { ...clientHeaders, "idempotency-key": key },
           payload,
         });
-      assert.equal(
-        (await disabled.inject({ method: "POST", url: bookingUrl })).statusCode,
-        404,
-      );
-      assert.equal(
-        (await app.inject({ method: "POST", url: bookingUrl })).statusCode,
-        401,
-      );
+      const disabledBooking = await disabled.inject({
+        method: "POST",
+        url: bookingUrl,
+      });
+      assert.equal(disabledBooking.statusCode, 404);
+      const anonymousBooking = await app.inject({
+        method: "POST",
+        url: bookingUrl,
+      });
+      assert.equal(anonymousBooking.statusCode, 401);
       assert.equal(
         (
           await app.inject({
@@ -554,10 +556,11 @@ test(
       const changedSlot = { ...bookingPayload, startAt: slots[1]!.startAt };
       const keyConflict = await book(bookingKey, changedSlot);
       assert.equal(keyConflict.json().error, "IDEMPOTENCY_KEY_REUSED");
+      const refreshedSlots = (await clientSlots()).json().slots as Array<{
+        startAt: string;
+      }>;
       assert.ok(
-        !(await clientSlots()).json().slots.some(
-          (slot: { startAt: string }) => slot.startAt === bookingPayload.startAt,
-        ),
+        !refreshedSlots.some((slot) => slot.startAt === bookingPayload.startAt),
       );
       const durable = await pool.query(
         `SELECT

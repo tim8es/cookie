@@ -12,10 +12,7 @@ import {
   type CustomerOffer,
   type CustomerSlot,
 } from "./staging-customer-offers-api.js";
-import {
-  createJsonTransport,
-  TransportFailure,
-} from "./transport.js";
+import { classifyHttpStatus, TransportFailure } from "./transport.js";
 
 export interface CustomerBookingSelection {
   readonly offer: CustomerOffer;
@@ -62,18 +59,17 @@ export async function canCreateCustomerBooking(
   }
 }
 
+type CustomerAttempt = BookingAttempt<
+  CustomerBookingSelection,
+  ConfirmedBookingReceipt,
+  CustomerSlot
+>;
+
 export function customerBookingAttempt(
   session: VerifiedCustomerSession,
   key: string,
   fetcher: typeof fetch = globalThis.fetch,
-): BookingAttempt<CustomerBookingSelection, ConfirmedBookingReceipt, CustomerSlot> {
-  const transport = createJsonTransport(async (url, init) => {
-    const response = await fetcher(url, init);
-    if (response.ok && response.status !== 201) {
-      return new Response(null, { status: 204 });
-    }
-    return response;
-  });
+): CustomerAttempt {
   const port: BookingAttemptPort<
     CustomerBookingSelection,
     ConfirmedBookingReceipt,
@@ -82,21 +78,42 @@ export function customerBookingAttempt(
     async create(selection, idempotencyKey) {
       // An explicit expired session is not a successful confirmation.
       const authorization = headers(session);
-      return transport.request(endpoint(session), {
-        ...privacy,
-        method: "POST",
-        headers: {
-          ...authorization,
-          "content-type": "application/json",
-          "idempotency-key": idempotencyKey,
-        },
-        body: JSON.stringify({
-          locationId: selection.offer.locationId,
-          staffId: selection.offer.staffId,
-          serviceId: selection.offer.serviceId,
-          startAt: selection.startAt,
-        }),
-      });
+      let response: Response;
+      try {
+        response = await fetcher(endpoint(session), {
+          ...privacy,
+          method: "POST",
+          headers: {
+            ...authorization,
+            "content-type": "application/json",
+            "idempotency-key": idempotencyKey,
+          },
+          body: JSON.stringify({
+            locationId: selection.offer.locationId,
+            staffId: selection.offer.staffId,
+            serviceId: selection.offer.serviceId,
+            startAt: selection.startAt,
+          }),
+        });
+      } catch {
+        throw new TransportFailure("network");
+      }
+      if (!response.ok) {
+        const body: unknown = await response.json().catch(() => undefined);
+        throw new TransportFailure(
+          classifyHttpStatus(response.status),
+          response.status,
+          body,
+        );
+      }
+      if (response.status !== 201) {
+        throw new TransportFailure("invalid-response", response.status);
+      }
+      try {
+        return (await response.json()) as unknown;
+      } catch {
+        throw new TransportFailure("invalid-response", response.status);
+      }
     },
     verifyConfirmed(raw, selection) {
       return verifyBookingReceipt(raw, selection.startAt);
