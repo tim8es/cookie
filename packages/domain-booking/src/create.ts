@@ -265,10 +265,8 @@ export async function createBookingInternal(
   return createBooking(pool, input, { kind: "internal", assertEntitled });
 }
 
-export type StagingCustomerCreateBooking = Omit<
-  InternalCreateBooking,
-  "customerId"
->;
+type CustomerSelection = Omit<InternalCreateBooking, "customerId">;
+export type StagingCustomerCreateBooking = CustomerSelection;
 
 /** Controlled staging only: resolve Customer from the verified bearer
  * inside the very transaction that commits the booking, never from JSON.
@@ -300,14 +298,15 @@ async function createBooking(
     return await runSqlTransaction(pool, async (client) => {
       // Staging publication takes Staff before policy and the grant. Match
       // that order for this new path; keep the existing internal path intact.
-      const initialStaff =
-        mode.kind === "staging"
-          ? await client.query(
-              `SELECT id FROM cookie_staff.staff_profiles
-                WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
-              [tenantId, request.staffId],
-            )
-          : null;
+      let staffExists = false;
+      if (mode.kind === "staging") {
+        const profile = await client.query(
+          `SELECT id FROM cookie_staff.staff_profiles
+            WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
+          [tenantId, request.staffId],
+        );
+        staffExists = profile.rowCount === 1;
+      }
       let customerId: string;
       if (mode.kind === "staging") {
         const actor = request.actor;
@@ -373,14 +372,15 @@ async function createBooking(
 
       // All CreateBooking and protected ScheduleChange handlers must share
       // this staff lock order; the latter is still an open F1 requirement.
-      const locked =
-        initialStaff ??
-        (await client.query(
+      if (mode.kind === "internal") {
+        const profile = await client.query(
           `SELECT id FROM cookie_staff.staff_profiles
             WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
           [tenantId, input.staffId],
-        ));
-      if (locked.rowCount !== 1) {
+        );
+        staffExists = profile.rowCount === 1;
+      }
+      if (!staffExists) {
         throw new CreateBookingFailure("BOOKING_NOT_AVAILABLE");
       }
       if (mode.kind === "staging") {
@@ -390,7 +390,13 @@ async function createBooking(
             WHERE tenant_id=$1::uuid AND staff_id=$2::uuid
               AND location_id=$3::uuid AND service_id=$4::uuid
               AND grant_id=$5::uuid LIMIT 1 FOR SHARE`,
-          [tenantId, input.staffId, input.locationId, input.serviceId, grant.id],
+          [
+            tenantId,
+            input.staffId,
+            input.locationId,
+            input.serviceId,
+            grant.id,
+          ],
         );
         if (placement.rowCount !== 1) {
           throw new CreateBookingFailure("BOOKING_NOT_AVAILABLE");
