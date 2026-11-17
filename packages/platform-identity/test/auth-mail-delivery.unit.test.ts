@@ -16,10 +16,10 @@ const links = {
   recoveryPath: "/auth/recover",
 };
 const recipient = "test@example.invalid";
-const registrationToken = "er_" + "a".repeat(43);
-const recoveryToken = "ep_" + "b".repeat(43);
+const regToken = "er_" + "a".repeat(43);
+const resetToken = "ep_" + "b".repeat(43);
 
-test("auth links use a configured origin and a purpose-specific fragment", async () => {
+test("auth links use trusted origin and purpose fragments", async () => {
   const sent: AuthMailMessage[] = [];
   const transport = {
     deliver: async (message: AuthMailMessage) => {
@@ -29,31 +29,31 @@ test("auth links use a configured origin and a purpose-specific fragment", async
   const delivery = createAuthMailDelivery(links, transport);
   await delivery.send("registration", {
     address: recipient,
-    token: registrationToken,
+    token: regToken,
   });
   await delivery.send("password-recovery", {
     address: recipient,
-    token: recoveryToken,
+    token: resetToken,
   });
   assert.equal(sent.length, 2);
   assert.equal(
     sent[0]?.confirmationUrl,
-    links.publicOrigin + links.registrationPath + "#token=" + registrationToken,
+    links.publicOrigin + links.registrationPath + "#token=" + regToken,
   );
   assert.equal(
     sent[1]?.confirmationUrl,
-    links.publicOrigin + links.recoveryPath + "#token=" + recoveryToken,
+    links.publicOrigin + links.recoveryPath + "#token=" + resetToken,
   );
   await assert.rejects(
     delivery.send("password-recovery", {
       address: recipient,
-      token: registrationToken,
+      token: regToken,
     }),
   );
   await assert.rejects(
     delivery.send("registration", {
       address: "test@example.invalid\r\nBcc: attacker@example.invalid",
-      token: registrationToken,
+      token: regToken,
     }),
   );
   assert.equal(sent.length, 2);
@@ -80,7 +80,7 @@ test("auth links use a configured origin and a purpose-specific fragment", async
   }
 });
 
-test("sendmail submits MIME through stdin and sanitizes transport failures", async () => {
+test("sendmail submits MIME and sanitizes failures", async () => {
   const dir = await mkdtemp(join(tmpdir(), "kuki-auth-mail-"));
   try {
     const executable = join(dir, "synthetic-sendmail");
@@ -98,7 +98,7 @@ test("sendmail submits MIME through stdin and sanitizes transport failures", asy
     const delivery = createAuthMailDelivery(links, transport);
     await delivery.send("registration", {
       address: recipient,
-      token: registrationToken,
+      token: regToken,
     });
     assert.equal(
       await readFile(executable + ".args", "utf8"),
@@ -110,13 +110,13 @@ test("sendmail submits MIME through stdin and sanitizes transport failures", asy
     assert.match(headers ?? "", /Content-Transfer-Encoding: base64/);
     assert.doesNotMatch(headers ?? "", /er_/);
     const body = Buffer.from(encoded ?? "", "base64").toString("utf8");
-    assert.ok(body.includes("#token=" + registrationToken));
+    assert.ok(body.includes("#token=" + regToken));
 
     await writeFile(executable, '#!/bin/sh\ncat >/dev/null\nexit 7\n');
     await assert.rejects(
       delivery.send("registration", {
         address: recipient,
-        token: registrationToken,
+        token: regToken,
       }),
       /^Error: Authentication mail submission failed$/,
     );
@@ -124,7 +124,7 @@ test("sendmail submits MIME through stdin and sanitizes transport failures", asy
     await assert.rejects(
       delivery.send("registration", {
         address: recipient,
-        token: registrationToken,
+        token: regToken,
       }),
       /^Error: Authentication mail submission failed$/,
     );
