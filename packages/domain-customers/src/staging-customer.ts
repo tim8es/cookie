@@ -14,7 +14,8 @@ const UUID =
 export const CUSTOMER_CONTEXT_PERMISSION = "staging.customer.context.read";
 export const CUSTOMER_OFFERS_PERMISSION = "staging.customer.offers.read";
 const CUSTOMER_BOOKING_PERMISSION = "staging.customer.booking.create";
-export const CUSTOMER_APPOINTMENTS_PERMISSION = "staging.customer.appointments.read";
+export const CUSTOMER_APPOINTMENTS_PERMISSION =
+  "staging.customer.appointments.read";
 
 interface LinkInput {
   readonly tenantId: string;

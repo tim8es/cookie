@@ -498,20 +498,47 @@ test(
       );
       assert.equal(bookingCount.rows[0].count, 0);
       const appointmentsUrl = prefix + "/staging-customer-appointments";
-      const appointments = () => app.inject({method:"GET",url:appointmentsUrl,headers:clientHeaders});
+      const appointments = () =>
+        app.inject({
+          method: "GET",
+          url: appointmentsUrl,
+          headers: clientHeaders,
+        });
       const emptyAppointments = await appointments();
-      assert.equal(emptyAppointments.statusCode,200);
-      assert.deepEqual(emptyAppointments.json(),{appointments:[],hasMore:false});
-      const anonymousAppointments=await app.inject({method:"GET",url:appointmentsUrl});
-      assert.equal(anonymousAppointments.statusCode,401);
-      const ownerAppointments=await app.inject({method:"GET",url:appointmentsUrl,headers});
-      assert.equal(ownerAppointments.statusCode,403);
-      const foreignAppointments=await app.inject({method:"GET",url:appointmentsUrl.replace(owner.tenantId,randomUUID()),headers:clientHeaders});
-      assert.equal(foreignAppointments.statusCode,403);
-      const forgedAppointments=await app.inject({method:"GET",url:appointmentsUrl+"?customerId="+customer,headers:clientHeaders});
-      assert.equal(forgedAppointments.statusCode,400);
-      const disabledAppointments=await disabled.inject({method:"GET",url:appointmentsUrl,headers:clientHeaders});
-      assert.equal(disabledAppointments.statusCode,404);
+      assert.equal(emptyAppointments.statusCode, 200);
+      assert.deepEqual(emptyAppointments.json(), {
+        appointments: [],
+        hasMore: false,
+      });
+      const anonymousAppointments = await app.inject({
+        method: "GET",
+        url: appointmentsUrl,
+      });
+      assert.equal(anonymousAppointments.statusCode, 401);
+      const ownerAppointments = await app.inject({
+        method: "GET",
+        url: appointmentsUrl,
+        headers,
+      });
+      assert.equal(ownerAppointments.statusCode, 403);
+      const foreignAppointments = await app.inject({
+        method: "GET",
+        url: appointmentsUrl.replace(owner.tenantId, randomUUID()),
+        headers: clientHeaders,
+      });
+      assert.equal(foreignAppointments.statusCode, 403);
+      const forgedAppointments = await app.inject({
+        method: "GET",
+        url: appointmentsUrl + "?customerId=" + customer,
+        headers: clientHeaders,
+      });
+      assert.equal(forgedAppointments.statusCode, 400);
+      const disabledAppointments = await disabled.inject({
+        method: "GET",
+        url: appointmentsUrl,
+        headers: clientHeaders,
+      });
+      assert.equal(disabledAppointments.statusCode, 404);
       const bookingUrl = prefix + "/staging-customer-bookings";
       const bookingPayload = {
         locationId: owner.locationId,
@@ -584,22 +611,45 @@ test(
         [owner.tenantId],
       );
       assert.deepEqual(durable.rows[0], { receipts: 1, events: 1 });
-      const ownAppointments=await appointments();
-      assert.equal(ownAppointments.statusCode,200);
-      assert.equal(ownAppointments.headers["cache-control"],"no-store");
-      assert.deepEqual(ownAppointments.json(),{appointments:[{
-        bookingId:created.json().bookingId,status:"Confirmed",
-        startAt:created.json().startAt,endAt:created.json().endAt,
-        locationName:"Synthetic branch",staffName:"Synthetic planner staff",serviceName:"Synthetic service",
-        timeZone:"Europe/Moscow",priceKopecks:"100000",
-      }],hasMore:false});
-      await pool.query("UPDATE cookie_catalog.services SET base_price_kopecks=200000 WHERE tenant_id=$1::uuid AND id=$2::uuid",[owner.tenantId,serviceId]);
-      const snapshotAppointments=await appointments();
-      assert.deepEqual(snapshotAppointments.json(),ownAppointments.json(),"Catalog change must not rewrite booked price");
-      await pool.query("UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.appointments.read') WHERE tenant_id=$1::uuid AND base_type='client'",[owner.tenantId]);
-      const deniedAppointments=await appointments();
-      assert.equal(deniedAppointments.statusCode,403);
-      await pool.query("UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.appointments.read') WHERE tenant_id=$1::uuid AND base_type='client'",[owner.tenantId]);
+      const ownAppointments = await appointments();
+      assert.equal(ownAppointments.statusCode, 200);
+      assert.equal(ownAppointments.headers["cache-control"], "no-store");
+      assert.deepEqual(ownAppointments.json(), {
+        appointments: [
+          {
+            bookingId: created.json().bookingId,
+            status: "Confirmed",
+            startAt: created.json().startAt,
+            endAt: created.json().endAt,
+            locationName: "Synthetic branch",
+            staffName: "Synthetic planner staff",
+            serviceName: "Synthetic service",
+            timeZone: "Europe/Moscow",
+            priceKopecks: "100000",
+          },
+        ],
+        hasMore: false,
+      });
+      await pool.query(
+        "UPDATE cookie_catalog.services SET base_price_kopecks=200000 WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [owner.tenantId, serviceId],
+      );
+      const snapshotAppointments = await appointments();
+      assert.deepEqual(
+        snapshotAppointments.json(),
+        ownAppointments.json(),
+        "Catalog change must not rewrite booked price",
+      );
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.appointments.read') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
+      const deniedAppointments = await appointments();
+      assert.equal(deniedAppointments.statusCode, 403);
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.appointments.read') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
 
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.booking.create') WHERE tenant_id=$1::uuid AND base_type='client'",
@@ -701,11 +751,11 @@ test(
       assert.equal((await clientSlots()).statusCode, 409);
       const expiredBooking = await book(randomUUID());
       assert.equal(expiredBooking.json().error, "grant-unavailable");
-      const expiredAppointments=await appointments();
-      assert.deepEqual(expiredAppointments.json(),ownAppointments.json());
+      const expiredAppointments = await appointments();
+      assert.deepEqual(expiredAppointments.json(), ownAppointments.json());
       await revokeStagingGrant(pool, owner.tenantId);
-      const revokedAppointments=await appointments();
-      assert.deepEqual(revokedAppointments.json(),ownAppointments.json());
+      const revokedAppointments = await appointments();
+      assert.deepEqual(revokedAppointments.json(), ownAppointments.json());
       assert.deepEqual((await clientOffers()).json(), { offers: [] });
       await app.inject({
         method: "POST",
@@ -714,8 +764,8 @@ test(
       });
       assert.equal((await clientOffers()).statusCode, 401);
       assert.equal((await clientSlots()).statusCode, 401);
-      const loggedOutAppointments=await appointments();
-      assert.equal(loggedOutAppointments.statusCode,401);
+      const loggedOutAppointments = await appointments();
+      assert.equal(loggedOutAppointments.statusCode, 401);
       assert.equal((await preview()).statusCode, 409);
       assert.equal((await submit()).json().error, "grant-unavailable");
       await pool.query(
