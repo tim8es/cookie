@@ -260,6 +260,19 @@ test(
         payload: { expectedRevision: 2 },
       });
       assert.equal(disabledPublish.statusCode, 404);
+      const statusUrl = prefix + "/publication";
+      const status = () =>
+        app.inject({ method: "GET", url: statusUrl, headers });
+      assert.equal(
+        (await draftOnly.inject({ method: "GET", url: statusUrl, headers }))
+          .statusCode,
+        404,
+      );
+      assert.deepEqual((await status()).json(), {
+        draftRevision: 2,
+        publishedRevision: null,
+        canPublish: false,
+      });
       const missingGrant = await publish();
       assert.equal(missingGrant.statusCode, 409);
       assert.equal(missingGrant.json().error, "appearance-grant-unavailable");
@@ -285,11 +298,21 @@ test(
          VALUES($1::uuid,$2::uuid,clock_timestamp()+interval '1 hour')`,
         [owner.tenantId, activeGrant],
       );
+      assert.deepEqual((await status()).json(), {
+        draftRevision: 2,
+        publishedRevision: null,
+        canPublish: true,
+      });
       const published = await publish();
       assert.equal(published.statusCode, 200);
       assert.equal(published.json().published.revision, 2);
       assert.equal(published.headers["cache-control"], "no-store");
       assert.deepEqual((await publish()).json(), published.json());
+      assert.deepEqual((await status()).json(), {
+        draftRevision: 2,
+        publishedRevision: 2,
+        canPublish: true,
+      });
       const audit = await pool.query(
         `SELECT revision::text,grant_id::text,actor_identity_id::text
            FROM cookie_appearance.publication_audit WHERE tenant_id=$1::uuid`,
@@ -318,6 +341,11 @@ test(
         [owner.tenantId],
       );
       assert.equal((await publishNewer()).statusCode, 409);
+      assert.deepEqual((await status()).json(), {
+        draftRevision: 3,
+        publishedRevision: 2,
+        canPublish: false,
+      });
       const persisted = await pool.query(
         `SELECT draft_revision::text,published_revision::text
            FROM cookie_appearance.organization_branding WHERE tenant_id=$1::uuid`,

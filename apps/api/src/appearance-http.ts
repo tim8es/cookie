@@ -5,11 +5,15 @@ import {
   AppearanceAssetNotVerified,
   AppearanceRevisionConflict,
   readTenantBrandDraft,
+  readAppearanceRevisionState,
   saveTenantBrandDraft,
   validateBrandConfig,
   type TenantAssetOwnership,
 } from "../../../packages/domain-appearance/src/index.js";
-import { AppearancePublicationDenied } from "../../../packages/domain-entitlement/src/index.js";
+import {
+  AppearancePublicationDenied,
+  lockLiveStagingAppearanceGrant,
+} from "../../../packages/domain-entitlement/src/index.js";
 import {
   AuthorizationDeniedError,
   type TrustedActor,
@@ -185,6 +189,54 @@ export function registerRealAppearanceRoutes(
 
   // Runtime draft editing does not confer the publication entitlement.
   if (draftOnly || !stagingPublicationEnabled) return;
+
+  app.get<{ Params: TenantParams }>(
+    "/v1/organizations/:tenantId/appearance/publication",
+    async (request, reply) => {
+      const verified = await authenticated(
+        request.headers.authorization,
+        request.params.tenantId,
+      );
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
+      const actor = verified.actor;
+      if (!actor.opaqueSessionAuthority)
+        return reply.code(403).send({ error: "forbidden" });
+      if (Object.keys(request.query as object).length !== 0)
+        return reply.code(400).send({ error: "invalid-request" });
+      try {
+        const state = await withTenantPermission(
+          pool,
+          actor,
+          "appearance.read",
+          (client) => readAppearanceRevisionState(client, actor.tenantId),
+        );
+        let canPublish = false;
+        try {
+          await withTenantPermission(
+            pool,
+            actor,
+            "appearance.publish",
+            async (client) => {
+              await lockLiveStagingAppearanceGrant(client, actor.tenantId);
+            },
+          );
+          canPublish = true;
+        } catch (error) {
+          if (
+            !(error instanceof AuthorizationDeniedError) &&
+            !(error instanceof AppearancePublicationDenied)
+          )
+            throw error;
+        }
+        // Capability is advisory. POST repeats all checks with the mutation.
+        return reply.send({ ...state, canPublish });
+      } catch (error) {
+        const result = failure(error);
+        return reply.code(result.status).send({ error: result.error });
+      }
+    },
+  );
 
   app.post<{ Params: TenantParams; Body: PublishBody }>(
     "/v1/organizations/:tenantId/appearance/publish",

@@ -18,6 +18,11 @@
     uploadAppearanceAsset,
     type AppearanceAssetKind,
   } from "../appearance-assets-api";
+  import {
+    readAppearancePublicationState,
+    publishAppearanceDraft,
+    type AppearancePublicationState,
+  } from "../appearance-publication-api";
   import { readRealWorkspaceOverview } from "../workspace-overview-api";
 
   export let session: VerifiedOwnerSession;
@@ -32,12 +37,36 @@
   let backgroundPreviewUrl: string | null = null;
   let loading = true;
   let saving = false;
+  let publishing = false;
+  let publication: AppearancePublicationState | null = null;
+  let publicationError = "";
   let needsReload = false;
   let error = "";
   let notice = "";
   let active: AbortController | null = null;
 
   $: dirty = !!stored && !!draft && !sameBrandConfig(stored.config, draft);
+
+  $: canPublish = !!publication && !!stored && publication.canPublish
+    && publication.draftRevision === stored.revision && stored.revision > 0
+    && publication.publishedRevision !== stored.revision
+    && !dirty && !saving && !uploading && !publishing && !needsReload;
+
+  async function refreshPublication(request: AbortController): Promise<void> {
+    publication = null;
+    publicationError = "";
+    try {
+      const current = await readAppearancePublicationState(session, globalThis.fetch, request.signal);
+      if (active !== request || request.signal.aborted) return;
+      if (current && current.draftRevision !== stored?.revision) {
+        publicationError = "Версия черновика изменилась. Загрузите актуальные данные.";
+        return;
+      }
+      publication = current;
+    } catch {
+      if (active === request) publicationError = "Не удалось проверить статус публикации.";
+    }
+  }
 
   function describe(reason: unknown): string {
     if (reason instanceof AppearanceApiFailure) {
@@ -83,7 +112,7 @@
   }
 
   async function upload(kind: AppearanceAssetKind, file: File): Promise<void> {
-    if (!assetsAvailable || uploading || loading || saving || needsReload || !draft || active) return;
+    if (!assetsAvailable || uploading || loading || saving || publishing || needsReload || !draft || active) return;
     const request = new AbortController();
     active = request;
     uploading = true;
@@ -114,14 +143,14 @@
   }
 
   function remove(kind: AppearanceAssetKind): void {
-    if (!assetsAvailable || saving || uploading || needsReload || !draft) return;
+    if (!assetsAvailable || saving || publishing || uploading || needsReload || !draft) return;
     clearPreview(kind);
     draft = { ...draft, [kind === "logo" ? "logoAssetId" : "backgroundAssetId"]: null };
     notice = "Изображение убрано из черновика. Файл в хранилище не удалён.";
   }
 
   async function reload(): Promise<void> {
-    if (saving || uploading) return;
+    if (saving || uploading || publishing) return;
     active?.abort();
     const request = new AbortController();
     active = request;
@@ -131,6 +160,8 @@
     stored = null;
     draft = null;
     assetsAvailable = false;
+    publication = null;
+    publicationError = "";
     assetError = "";
     clearPreviews();
     try {
@@ -149,6 +180,7 @@
         if (active === request) assetError = "Не удалось проверить доступность загрузки.";
       }
       if (active === request && !request.signal.aborted) await loadPreviews(result.config, request);
+      if (active === request && !request.signal.aborted) await refreshPublication(request);
     } catch (reason) {
       if (active === request) error = describe(reason);
     } finally {
@@ -160,13 +192,13 @@
   }
 
   function change(value: BrandConfigV1): void {
-    if (saving || uploading || needsReload || !stored) return;
+    if (saving || publishing || uploading || needsReload || !stored) return;
     draft = value;
     notice = "";
   }
 
   async function save(): Promise<void> {
-    if (saving || uploading || loading || needsReload || !stored || !draft || !dirty) return;
+    if (saving || publishing || uploading || loading || needsReload || !stored || !draft || !dirty) return;
     const request = new AbortController();
     active = request;
     saving = true;
@@ -180,6 +212,8 @@
       draft = current.config;
       await loadPreviews(current.config, request);
       if (active !== request || request.signal.aborted) return;
+      await refreshPublication(request);
+      if (active !== request || request.signal.aborted) return;
       notice = "Черновик сохранён на сервере. Показана актуальная версия.";
     } catch (reason) {
       if (active !== request) return;
@@ -191,6 +225,43 @@
       if (active === request) {
         active = null;
         saving = false;
+      }
+    }
+  }
+
+  async function publish(): Promise<void> {
+    if (!canPublish || !stored || active || dirty) return;
+    const target = stored;
+    const request = new AbortController();
+    active = request;
+    publishing = true;
+    publication = null;
+    notice = "";
+    error = "";
+    try {
+      await publishAppearanceDraft(session, target, globalThis.fetch, request.signal);
+      const current = await readRealAppearanceDraft(session, globalThis.fetch, request.signal);
+      if (active !== request || request.signal.aborted) return;
+      stored = current;
+      draft = current.config;
+      await loadPreviews(current.config, request);
+      if (active !== request || request.signal.aborted) return;
+      await refreshPublication(request);
+      if (active !== request || request.signal.aborted) return;
+      if (publication && publication.publishedRevision === target.revision) {
+        notice = "Сервер подтвердил публикацию оформления версии " + target.revision + ". Публичная ссылка ещё не подключена.";
+      } else {
+        publication = null;
+        publicationError = "Результат публикации не подтверждён актуальным состоянием сервера. Загрузите данные.";
+      }
+    } catch {
+      if (active !== request) return;
+      needsReload = true;
+      error = "Публикация не подтверждена. Загрузите актуальное состояние перед повторной попыткой.";
+    } finally {
+      if (active === request) {
+        active = null;
+        publishing = false;
       }
     }
   }
@@ -218,14 +289,21 @@
 {:else if stored && draft}
   {#if notice}<p role="status">{notice}</p>{/if}
   {#if assetError}<p role="alert">{assetError}</p>{/if}
+  {#if publicationError}
+    <p role="alert">{publicationError}</p>
+    <Button type="button" variant="outline" disabled={saving || uploading || publishing || dirty} onclick={() => void reload()}>Обновить состояние</Button>
+  {/if}
   <p>Версия черновика: {stored.revision}. Публичная страница пока не подключена.</p>
+  {#if publication && !publication.canPublish}<p>Публикация недоступна: требуется разрешение организации и право пользователя.</p>{/if}
   <BrandingSettingsEditor
     {organizationName}
     {draft}
     hasUnsavedChanges={dirty}
     {saving}
-    canPublish={false}
-    publishedStatusKnown={false}
+    {publishing}
+    {canPublish}
+    publishedRevision={publication?.publishedRevision ?? null}
+    publishedStatusKnown={publication !== null}
     {assetsAvailable}
     {uploading}
     {logoPreviewUrl}
@@ -233,7 +311,7 @@
     allowPrivateBlobPreview={true}
     onChange={change}
     onSave={() => void save()}
-    onPublish={() => undefined}
+    onPublish={() => void publish()}
     onUploadLogo={(file) => upload("logo", file)}
     onUploadBackground={(file) => upload("background", file)}
     onRemoveLogo={() => remove("logo")}
