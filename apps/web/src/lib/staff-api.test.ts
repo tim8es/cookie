@@ -230,18 +230,24 @@ test("unknown staff creation preserves key even after a subsequent denial", asyn
   const calls: Array<{ url: string; init: RequestInit }> = [];
   let unresolved = false;
   for (const status of [503, 403]) {
-    try {
-      await createRealStaff(
+    await assert.rejects(
+      createRealStaff(
         session,
         draft,
         KEY,
         mock(new Response(null, { status }), calls),
-      );
-      assert.fail("unexpected successful staff write");
-    } catch (error) {
-      unresolved = retainStaffCreateKey(unresolved, error);
-      assert.equal(unresolved, true);
-    }
+      ),
+      (error: unknown) => {
+        assert.ok(error instanceof StaffApiFailure);
+        assert.equal(
+          error.reason,
+          status === 503 ? "unavailable" : "unauthorized",
+        );
+        unresolved = retainStaffCreateKey(unresolved, error);
+        return true;
+      },
+    );
+    assert.equal(unresolved, true);
   }
   assert.deepEqual(
     await createRealStaff(
@@ -252,6 +258,7 @@ test("unknown staff creation preserves key even after a subsequent denial", asyn
     ),
     staff,
   );
+  assert.equal(calls.length, 3);
   for (const call of calls) {
     assert.deepEqual(JSON.parse(String(call.init.body)), draft);
     assert.equal(
@@ -259,8 +266,19 @@ test("unknown staff creation preserves key even after a subsequent denial", asyn
       KEY,
     );
   }
-  for (const reason of ["capacity", "conflict", "missing-reference", "unauthorized"] as const) {
-    assert.equal(retainStaffCreateKey(false, new StaffApiFailure(reason)), false);
+  for (const reason of [
+    "capacity",
+    "conflict",
+    "missing-reference",
+    "unauthorized",
+  ] as const) {
+    assert.equal(
+      retainStaffCreateKey(false, new StaffApiFailure(reason)),
+      false,
+    );
   }
-  assert.equal(retainStaffCreateKey(false, new StaffApiFailure("invalid-response")), true);
+  assert.equal(
+    retainStaffCreateKey(false, new StaffApiFailure("invalid-response")),
+    true,
+  );
 });

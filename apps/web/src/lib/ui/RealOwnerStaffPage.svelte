@@ -48,29 +48,26 @@
   function editName(value: string): void {
     if (pendingKey) return;
     staffName = value;
-    pendingKey = "";
     writeError = "";
   }
   function editTitle(value: string): void {
     if (pendingKey) return;
     staffTitle = value;
-    pendingKey = "";
     writeError = "";
   }
   function editLocation(value: string): void {
     if (pendingKey) return;
     staffLocation = value;
-    pendingKey = "";
     writeError = "";
   }
   function editService(value: string): void {
     if (pendingKey) return;
     staffService = value;
-    pendingKey = "";
     writeError = "";
   }
 
   async function refresh(): Promise<void> {
+    if (pendingKey) return;
     loading = true;
     readError = "";
     try {
@@ -137,7 +134,9 @@
       await refresh();
     } catch (reason) {
       if (!retainStaffCreateKey(retrying, reason)) pendingKey = "";
-      writeError = message(reason);
+      writeError = pendingKey
+        ? "Сервер не подтвердил результат создания профиля."
+        : message(reason);
     } finally {
       saving = false;
     }
