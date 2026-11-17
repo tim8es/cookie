@@ -187,7 +187,7 @@ test("booking catalog returns data only after acknowledged transaction close", a
               ],
             };
           }
-          if (sql.includes("FROM cookie_staff.service_assignments assignment")) {
+          if (sql.includes("FROM cookie_staff.service_assignments")) {
             commands.push("catalog");
             if (scenario === "read-error" || scenario === "rollback-error") {
               throw new Error("private SQL error");
@@ -249,7 +249,12 @@ test("booking catalog returns data only after acknowledged transaction close", a
         if (scenario === "begin-tag") {
           assert.deepEqual(commands, ["BEGIN"]);
         } else if (scenario === "read-error" || scenario === "rollback-error") {
-          assert.deepEqual(commands, ["BEGIN", "policy", "catalog", "ROLLBACK"]);
+          assert.deepEqual(commands, [
+            "BEGIN",
+            "policy",
+            "catalog",
+            "ROLLBACK",
+          ]);
         } else {
           assert.deepEqual(commands, ["BEGIN", "policy", "catalog", "COMMIT"]);
         }
