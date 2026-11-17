@@ -61,8 +61,8 @@ test(
         "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
         [otherId],
       );
-      const previousSession = await sessions.issueForVerifiedIdentity(identityId);
-      const unrelatedSession = await sessions.issueForVerifiedIdentity(otherId);
+      const previous = await sessions.issueForVerifiedIdentity(identityId);
+      const unrelated = await sessions.issueForVerifiedIdentity(otherId);
 
       const unknownEmail = randomUUID() + "@example.invalid";
       assert.equal(
@@ -101,7 +101,7 @@ test(
         /recovery rollback/,
       );
       assert.equal(calls, 2);
-      assert.equal(await sessions.resolve(previousSession.token), identityId);
+      assert.equal(await sessions.resolve(previous.token), identityId);
 
       const verify = (candidate: string) =>
         withVerifiedEmailPassword(
@@ -121,8 +121,8 @@ test(
       assert.equal(results.filter(Boolean).length, 1);
       assert.equal(await verify(original), null);
       assert.equal(await verify(changed), identityId);
-      assert.equal(await sessions.resolve(previousSession.token), null);
-      assert.equal(await sessions.resolve(unrelatedSession.token), otherId);
+      assert.equal(await sessions.resolve(previous.token), null);
+      assert.equal(await sessions.resolve(unrelated.token), otherId);
       assert.equal(
         await completeEmailPasswordRecovery(
           transaction,
@@ -161,7 +161,9 @@ test(
         false,
       );
       assert.equal(await verify(changed), identityId);
-      const purged = await purgeExpiredEmailRecoveryChallenges(transaction, 10000);
+      const batch = 10000;
+      const purge = purgeExpiredEmailRecoveryChallenges;
+      const purged = await purge(transaction, batch);
       assert.ok(purged > 0);
       const remaining = await pool.query(
         "SELECT 1 FROM cookie_identity.email_password_recovery_challenges WHERE email_hmac_sha256=$1",
