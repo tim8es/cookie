@@ -17,6 +17,7 @@ import {
   type SyntheticWorkspaceReadDependencies,
 } from "./workspace-http.js";
 import { registerStagingAvailabilityRoutes } from "./staging-availability-http.js";
+import { registerStagingCustomerContext } from "./staging-customer-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
 import {
   registerStagingPublicationRoutes,
@@ -115,6 +116,7 @@ export function createApp(
 
   if (options.stagingPublicationRoutes) {
     registerStagingPublicationRoutes(app, options.stagingPublicationRoutes);
+    registerStagingCustomerContext(app, options.stagingPublicationRoutes);
     registerStagingAvailabilityRoutes(app, options.stagingPublicationRoutes);
   }
 
