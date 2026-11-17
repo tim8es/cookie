@@ -21,6 +21,7 @@
 - [ADR-0002 stack](architecture/ADR-0002-technical-stack.md).
 - [ADR-0003 atomic booking](architecture/ADR-0003-booking-consistency.md).
 - [ADR-0004 identity/tenancy](architecture/ADR-0004-identity-tenancy.md).
+- [Самостоятельная регистрация и подключаемые методы входа](architecture/self-service-auth-direction.md) — направление владельца 2026-11-17 (#309), реализация на review.
 - [ADR-0005 UI/embedded widget](architecture/ADR-0005-shared-booking-ui.md).
 - [ADR-0006 SaaS/self-hosted](architecture/ADR-0006-distribution.md).
 - [ADR-0007 AI/channel safety](architecture/ADR-0007-channel-ai-command-safety.md).

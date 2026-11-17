@@ -6,6 +6,7 @@ import test from "node:test";
 import { Pool } from "pg";
 import type { PoolClient } from "pg";
 
+import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { PostgresOpaqueSessionMaintenance } from "../../../packages/platform-identity/src/opaque-session-maintenance.js";
 import { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/opaque-sessions.js";
@@ -52,16 +53,28 @@ test("opaque retention rejects unsafe deletion windows and unbounded batches", (
       () =>
         new PostgresOpaqueSessionMaintenance({
           pool,
+          runTransaction: runSqlTransaction,
           retentionSeconds,
           batchSize,
         }),
       /Invalid opaque session maintenance configuration/,
     );
   }
+  assert.throws(
+    () =>
+      new PostgresOpaqueSessionMaintenance({
+        pool,
+        runTransaction: undefined as unknown as typeof runSqlTransaction,
+        retentionSeconds: 7_200,
+        batchSize: 1,
+      }),
+    /Invalid opaque session maintenance configuration/,
+  );
   assert.doesNotThrow(
     () =>
       new PostgresOpaqueSessionMaintenance({
         pool,
+        runTransaction: runSqlTransaction,
         retentionSeconds: 7_200,
         batchSize: 1,
       }),
@@ -148,6 +161,7 @@ test(
 
       const maintenance = new PostgresOpaqueSessionMaintenance({
         pool,
+        runTransaction: runSqlTransaction,
         retentionSeconds: 7_200,
         batchSize: 1,
       });
@@ -239,6 +253,7 @@ test(
     const assignmentId = randomUUID();
     const maintenance = new PostgresOpaqueSessionMaintenance({
       pool,
+      runTransaction: runSqlTransaction,
       retentionSeconds: 7_200,
       batchSize: 2,
     });
@@ -341,6 +356,67 @@ test(
         "INSERT INTO cookie_identity.role_assignments(tenant_id,id,identity_id,role_id) VALUES($1,$2,$3,$4)",
         [tenantId, assignmentId, identityId, roleId],
       );
+      // Abort the real transaction just before COMMIT, after the cleanup
+      // work has run. PostgreSQL responds with ROLLBACK, not an exception.
+      const assertRolledBackCleanup = async (expectedSessions: number) => {
+        let discarded = false;
+        let command: string | undefined;
+        const faultPool = {
+          query: pool.query.bind(pool),
+          connect: async () => {
+            const client = await pool.connect();
+            return {
+              async query(sql: string, values?: unknown[]) {
+                if (sql === "COMMIT") {
+                  await assert.rejects(client.query("SELECT 1 / 0"), {
+                    code: "22012",
+                  });
+                  const result = await client.query(sql);
+                  command = result.command;
+                  return result;
+                }
+                return client.query(sql, values);
+              },
+              release(discard?: boolean) {
+                discarded = discard === true;
+                client.release(discard);
+              },
+            };
+          },
+        } as unknown as Pool;
+        const faultMaintenance = new PostgresOpaqueSessionMaintenance({
+          pool: faultPool,
+          runTransaction: runSqlTransaction,
+          retentionSeconds: 7_200,
+          batchSize: 2,
+        });
+        await assert.rejects(
+          faultMaintenance.deleteInactiveMembership(tenantId, identityId),
+          /SQL transaction did not commit/,
+        );
+        assert.equal(command, "ROLLBACK");
+        assert.equal(discarded, true);
+        assert.equal(
+          (
+            await pool.query(
+              "SELECT 1 FROM cookie_identity.opaque_sessions WHERE tenant_id=$1",
+              [tenantId],
+            )
+          ).rowCount,
+          expectedSessions,
+        );
+        assert.equal(
+          (
+            await pool.query(
+              "SELECT 1 FROM cookie_identity.memberships WHERE tenant_id=$1 AND identity_id=$2 AND NOT active",
+              [tenantId, identityId],
+            )
+          ).rowCount,
+          1,
+        );
+      };
+
+      await assertRolledBackCleanup(3);
       assert.deepEqual(
         await maintenance.deleteInactiveMembership(tenantId, identityId),
         { status: "retained", deletedSessions: 2 },
@@ -374,6 +450,7 @@ test(
         "DELETE FROM cookie_identity.role_assignments WHERE tenant_id=$1 AND id=$2",
         [tenantId, assignmentId],
       );
+      await assertRolledBackCleanup(1);
       assert.deepEqual(
         await maintenance.deleteInactiveMembership(tenantId, identityId),
         { status: "deleted", deletedSessions: 1 },
