@@ -217,7 +217,7 @@ test(
         [tenantId, bound.identity_id],
       );
       assert.deepEqual(role.rows, [
-        { base_type: "client", permissions: ["staging.customer.context.read"] },
+        { base_type: "client", permissions: ["staging.customer.context.read", "staging.customer.offers.read"] },
       ]);
       await pool.query(
         "UPDATE cookie_identity.roles SET active=false WHERE tenant_id=$1::uuid AND base_type='client'",

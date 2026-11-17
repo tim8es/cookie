@@ -361,6 +361,23 @@ async function main() {
     await requireDom(cdp,"verified client context","document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента подтверждён' && !document.querySelector('.real-owner-nav')");
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-context")));
     await checkWidth(cdp,"real client context");
+    const panel='[aria-label="Клиентская витрина staging"]';
+    await requireDom(cdp,"published client catalog","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
+    for(let i=0;i<3;i++){
+      await requireDom(cdp,"available selection "+i,"document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.options.length===2 && !document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.disabled");
+      await evaluate(cdp,"(()=>{const s=document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"];s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    }
+    await requireDom(cdp,"client date enabled","!document.querySelector("+JSON.stringify(panel+" input[type=date]")+")?.disabled");
+    await evaluate(cdp,"(()=>{const d=document.querySelector("+JSON.stringify(panel+" input[type=date]")+");d.value="+JSON.stringify(date)+";d.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await button(cdp,"Найти свободное время");
+    await requireDom(cdp,"real customer slots","document.querySelectorAll("+JSON.stringify(panel+" .customer-slot-choice")+")?.length===29");
+    await evaluate(cdp,"document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+").click()");
+    await requireDom(cdp,"slot is not reserved","document.querySelector("+JSON.stringify(panel+" .customer-choice-summary")+")?.innerText.includes('Время не забронировано')");
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-offers")));
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-slots")));
+    assert.equal((await pool.query("SELECT count(*)::int AS count FROM cookie_booking.bookings WHERE tenant_id=$1::uuid",[owner.tenantId])).rows[0].count,0);
+    await checkWidth(cdp,"real customer offers");
+    await checkLabeledControls(cdp,"real customer offers");
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
     await button(cdp,"Выйти");
     await requireDom(cdp,"customer logout","document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вы вышли'");
@@ -369,7 +386,7 @@ async function main() {
     assert.ok(!(await evaluate(cdp,"Boolean(document.querySelector('.real-owner-nav'))")));
     assert.deepEqual(external, [], "Unexpected real-mode external network requests");
     assert.deepEqual(errors, [], "Unexpected browser runtime errors");
-    console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit, staging capacity activation, confirmed shift publication, server availability preview and PostgreSQL persistence across API restart, 3 viewport checks, server logout, real staged customer login and owner denial.");
+    console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit, staging capacity activation, confirmed shift publication, server availability preview and PostgreSQL persistence across API restart, 3 viewport checks, server logout, real staged customer login, published catalog, slot selection without reservation and owner denial.");
   } finally {
     if (cdp) cdp.close();
     if (chrome && !chrome.killed) chrome.kill("SIGTERM");
