@@ -47,6 +47,7 @@ test(
       max: 6,
     });
     const ownerId = randomUUID();
+    let tenantId: string | undefined;
     const verifier = createTelegramMiniAppProofVerifier({
       botToken: BOT,
       maxAgeSeconds: 300,
@@ -82,6 +83,7 @@ test(
         idempotencyKey: randomUUID(),
       });
 
+      tenantId = owner.tenantId;
       const signed = proof(19190009);
       await linkVerifiedTelegramOwner(pool, verifier, SECRET, {
         tenantId: owner.tenantId,
@@ -222,10 +224,11 @@ test(
       const evidence = await pool.query(
         `SELECT
           (SELECT count(*)::int FROM cookie_scheduling.shift_draft_receipts WHERE tenant_id=$1::uuid) AS receipts,
-          (SELECT count(*)::int FROM cookie_scheduling.shift_draft_audit WHERE tenant_id=$1::uuid AND operation='create') AS audits`,
+          (SELECT count(*)::int FROM cookie_scheduling.shift_draft_audit WHERE tenant_id=$1::uuid AND operation='create') AS audits,
+          (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='schedule.shift.draft.created') AS events`,
         [owner.tenantId],
       );
-      assert.deepEqual(evidence.rows[0], { receipts: 1, audits: 1 });
+      assert.deepEqual(evidence.rows[0], { receipts: 1, audits: 1, events: 1 });
       // Revoked plan permission must deny reads and also deny receipt replay.
       await pool.query(
         `UPDATE cookie_identity.roles SET permissions=array_remove(
@@ -244,9 +247,21 @@ test(
         401,
       );
     } finally {
-      await disabled.close();
-      await app.close();
-      await pool.end();
+      try {
+        await disabled.close();
+        await app.close();
+        // Integration tests reuse a disposable database. Only remove the
+        // new synthetic tenant's queue events so the later worker fixture
+        // cannot claim this scenario's committed draft event.
+        if (tenantId) {
+          await pool.query(
+            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='schedule.shift.draft.created'",
+            [tenantId],
+          );
+        }
+      } finally {
+        await pool.end();
+      }
     }
   },
 );
