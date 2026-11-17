@@ -19,6 +19,11 @@ const app = createApp(pool, {
   ...(telegramSessions
     ? {
         telegramAuthRoutes: { sessions: telegramSessions },
+        liveWorkspaceReads: { pool, verifier: telegramSessions },
+        catalogRoutes: { pool, verifier: telegramSessions },
+        staffRoutes: { pool, verifier: telegramSessions },
+        locationRoutes: { pool, verifier: telegramSessions },
+        shiftPlanRoutes: { pool, verifier: telegramSessions },
         sessionRoutes: {
           verifier: telegramSessions,
           policy: postgresTenantPolicyGuard(pool),

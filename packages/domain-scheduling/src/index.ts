@@ -250,3 +250,11 @@ export function evaluateAvailableStart(
   const prepared = prepare(request);
   return availableAt(prepared, parseInstant(startAt));
 }
+
+/** Owner-only planning commands enforce policy within the domain transaction. */
+export {
+  createOwnerShiftPlan,
+  DraftShiftFailure,
+  type OwnerShiftPlanInput,
+} from "./draft-shift.js";
+export { listOwnerShiftPlans } from "./owner-shift-plans.js";

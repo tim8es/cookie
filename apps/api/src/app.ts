@@ -18,6 +18,26 @@ import {
 } from "./workspace-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
 import {
+  registerLiveWorkspaceRead,
+  type LiveWorkspaceReadDependencies,
+} from "./live-workspace-http.js";
+import {
+  registerOwnerShiftPlanRoutes,
+  type OwnerShiftPlanRouteDependencies,
+} from "./owner-shift-plan-http.js";
+import {
+  registerRealLocationRoutes,
+  type RealLocationRouteDependencies,
+} from "./locations-http.js";
+import {
+  registerRealCatalogRoutes,
+  type RealCatalogRouteDependencies,
+} from "./catalog-http.js";
+import {
+  registerRealStaffRoutes,
+  type RealStaffRoutesDependencies,
+} from "./staff-http.js";
+import {
   registerProtectedSessionContext,
   type ProtectedSessionDependencies,
 } from "./session-context.js";
@@ -32,6 +52,11 @@ export function createApp(
   options: {
     readonly logger?: boolean;
     readonly sessionRoutes?: ProtectedSessionDependencies;
+    readonly liveWorkspaceReads?: LiveWorkspaceReadDependencies;
+    readonly catalogRoutes?: RealCatalogRouteDependencies;
+    readonly staffRoutes?: RealStaffRoutesDependencies;
+    readonly locationRoutes?: RealLocationRouteDependencies;
+    readonly shiftPlanRoutes?: OwnerShiftPlanRouteDependencies;
     readonly telegramAuthRoutes?: {
       readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
@@ -74,6 +99,19 @@ export function createApp(
   if (options.telegramAuthRoutes)
     registerTelegramAuthExchange(app, options.telegramAuthRoutes.sessions);
 
+  // Real Catalog requires an independently verified bearer and transactional SQL policy.
+  if (options.catalogRoutes)
+    registerRealCatalogRoutes(app, options.catalogRoutes);
+
+  if (options.staffRoutes) registerRealStaffRoutes(app, options.staffRoutes);
+
+  // Owner-controlled Locations are real tenant-scoped rows, never anonymous.
+  if (options.locationRoutes)
+    registerRealLocationRoutes(app, options.locationRoutes);
+
+  if (options.shiftPlanRoutes)
+    registerOwnerShiftPlanRoutes(app, options.shiftPlanRoutes);
+
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.
   if (options.syntheticBookingRoutes)
@@ -84,7 +122,13 @@ export function createApp(
   if (options.syntheticBookingMutations)
     registerSyntheticBookingMutations(app, options.syntheticBookingMutations);
 
-  // No workspace or staff schedule read route in normal production startup.
+  if (options.liveWorkspaceReads && options.syntheticWorkspaceReads) {
+    throw new Error("Cannot mix production and synthetic Workspace routes");
+  }
+  if (options.liveWorkspaceReads)
+    registerLiveWorkspaceRead(app, options.liveWorkspaceReads);
+
+  // Synthetic workspace reads remain test-only.
   if (options.syntheticWorkspaceReads)
     registerSyntheticWorkspaceReads(app, options.syntheticWorkspaceReads);
 

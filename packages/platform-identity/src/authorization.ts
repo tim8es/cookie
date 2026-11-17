@@ -87,7 +87,11 @@ export interface AuthorizationRequest {
 }
 
 /** Non-delegable actions remain protected even if a caller omits ownerProtected. */
-const SYSTEM_OWNER_ONLY_PERMISSIONS = new Set(["organization.transfer-owner"]);
+const SYSTEM_OWNER_ONLY_PERMISSIONS = new Set([
+  "organization.transfer-owner",
+  "schedule.shift.plan.read",
+  "schedule.shift.plan.create",
+]);
 
 export interface PolicySnapshot {
   readonly ownerIdentityId: string;

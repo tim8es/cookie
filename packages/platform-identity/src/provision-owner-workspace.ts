@@ -56,6 +56,14 @@ const OWNER_PERMISSIONS = [
   "booking.cancel",
   "booking.reschedule",
   "schedule.read",
+  "catalog.service.read",
+  "catalog.service.create",
+  "staff.profile.read",
+  "staff.profile.create",
+  "location.read",
+  "location.create",
+  "schedule.shift.plan.read",
+  "schedule.shift.plan.create",
 ] as const;
 
 function canonicalName(value: unknown): string {

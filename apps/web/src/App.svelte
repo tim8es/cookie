@@ -25,6 +25,7 @@
   import BookingSetupHint from "./lib/ui/BookingSetupHint.svelte";
   import DemoState from "./lib/ui/DemoState.svelte";
   import OwnerAuthGate from "./lib/ui/OwnerAuthGate.svelte";
+  import RealOwnerWorkspace from "./lib/ui/RealOwnerWorkspace.svelte";
   import {
     authenticateTelegramOwner,
     loadTelegramInitData,
@@ -44,7 +45,6 @@
   let screen: Screen = "home";
   let data: DemoSnapshot = blank;
   let initializing = true;
-  let apiDisconnected = false;
   let ownerSession: VerifiedOwnerSession | null = null;
   let ownerAuthPhase: "unavailable" | "loading" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" = "unavailable";
   let busy = false;
@@ -137,7 +137,6 @@
       data = await api.getSnapshot();
       appearanceTheme = data.appearance.theme;
       appearanceIntroduction = data.appearance.introduction;
-      apiDisconnected = false;
       if (!staffService) staffService = data.services[0]?.id ?? "";
       if (!scheduleStaff) scheduleStaff = data.staff[0]?.id ?? "";
       if (!scheduleLocation) scheduleLocation = data.locations[0]?.id ?? "";
@@ -146,7 +145,6 @@
       if (!bookingStaff) bookingStaff = data.staff[0]?.id ?? "";
     } catch (reason) {
       if (api.mode === "api" && reason instanceof UiFailure && reason.code === "NOT_CONNECTED") {
-        apiDisconnected = true;
         error = "";
       } else {
         error = describe(reason);
@@ -311,32 +309,38 @@
 </script>
 
 <svelte:head>
-  <title>{apiDisconnected ? "Cookie — вход владельца" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
-  <meta name="description" content={api.mode === "api" ? "Cookie: тестовое подключение Backend API пока недоступно." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
+  <title>{api.mode === "api" ? "Cookie — кабинет салона" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
+  <meta name="description" content={api.mode === "api" ? "Cookie: защищённый кабинет услуг и мастеров." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
-<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org} class:telegramPreview={telegramPreview && screen === "booking"} class:salonThemeForest={data.appearance.theme === "forest"} class:salonThemeOcean={data.appearance.theme === "ocean"} class:salonThemeClay={data.appearance.theme === "clay"}>
-  {#if screen !== "booking" && !(screen === "home" && !org)}
+<div class="app-shell" class:real-owner-shell={api.mode === "api"} class:public-shell={api.mode !== "api" && screen === "booking"} class:onboarding-shell={screen === "home" && !org && api.mode === "mock"} class:telegramPreview={api.mode !== "api" && telegramPreview && screen === "booking"} class:salonThemeForest={data.appearance.theme === "forest"} class:salonThemeOcean={data.appearance.theme === "ocean"} class:salonThemeClay={data.appearance.theme === "clay"}>
+  {#if api.mode !== "api" && screen !== "booking" && !(screen === "home" && !org)}
     <Sidebar {screen} {stepCount} onNavigate={goto} />
   {/if}
 
   <div class="main-area">
-    {#if screen === "booking"}
+    {#if api.mode === "api"}
+      <OnboardingHeader apiMode={true} />
+    {:else if screen === "booking"}
       <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} demoMode={api.mode === "mock"} onBack={() => goto("home")} />
     {:else if screen === "home" && !org}
-      <OnboardingHeader apiMode={apiDisconnected} />
+      <OnboardingHeader apiMode={false} />
     {:else}
       <Topbar {screen} bind:preview canCreateBooking={!!org} onNavigate={goto} />
     {/if}
 
-    <main class="content" class:public-content={screen === "booking"}>
+    <main class="content" class:public-content={api.mode !== "api" && screen === "booking"}>
       <DemoNotices
         {error} {notice}
         onDismissError={() => error = ""}
         onDismissNotice={() => notice = ""}
       />
-      {#if apiDisconnected}
-        <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
+      {#if api.mode === "api"}
+        {#if ownerAuthPhase === "verified" && ownerSession}
+          <RealOwnerWorkspace session={ownerSession} onLogout={() => void logoutOwner()} />
+        {:else}
+          <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
+        {/if}
       {:else if initializing || busy}
         <div class="loading-card" role="status"><div class="spinner"></div><span>{initializing ? "Загружаем демо-пространство…" : "Обновляем данные в браузерной сессии…"}</span></div>
       {:else if preview === "error"}
