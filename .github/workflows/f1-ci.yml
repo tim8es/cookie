@@ -53,6 +53,13 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
+      - name: Temporary formatting diagnostics for public owner source files
+        run: |
+          for file in apps/api/src/app.ts apps/api/src/locations-http.ts apps/api/src/staff-http.ts apps/api/test/owner-staff.integration.test.ts apps/api/test/real-owner-locations.integration.test.ts apps/web/src/lib/locations-api.test.ts apps/web/src/lib/locations-api.ts apps/web/src/lib/staff-api.test.ts apps/web/src/lib/staff-api.ts packages/domain-staff/src/draft-staff.ts packages/domain-tenancy/src/locations.ts; do
+            printf 'COOKIE_FMT %s ' "$file"
+            pnpm exec prettier "$file" | base64 -w0
+            printf '\n'
+          done
       - name: Check source formatting
         run: pnpm format:check
       - name: Check kernel and contract module boundaries
