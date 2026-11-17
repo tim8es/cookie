@@ -18,7 +18,7 @@ const receipt = {
   priceKopecks: "125050",
 };
 
-test("receipt recovery is a read-only request using the original key", async () => {
+test("receipt recovery reads with the original key", async () => {
   const fetcher: typeof fetch = async (url, init) => {
     assert.ok(String(url).endsWith("/staging-customer-bookings/receipt"));
     assert.ok(!String(url).includes(key));
@@ -32,10 +32,11 @@ test("receipt recovery is a read-only request using the original key", async () 
     assert.equal(headers.get("authorization"), auth);
     return Response.json(receipt);
   };
-  assert.deepEqual(await recoverCustomerBooking(session, key, fetcher), receipt);
+  const recovered = await recoverCustomerBooking(session, key, fetcher);
+  assert.deepEqual(recovered, receipt);
 });
 
-test("receipt absence, denial or corruption is not a resolved result", async () => {
+test("absence, denial and corruption remain unresolved", async () => {
   for (const status of [401, 403, 404, 409, 503]) {
     const fetcher = async () => Response.json(receipt, { status });
     assert.equal(await recoverCustomerBooking(session, key, fetcher), null);
