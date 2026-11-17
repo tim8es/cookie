@@ -53,11 +53,6 @@ jobs:
         run: bash scripts/ci/f1-gates.sh install
       - name: Lint
         run: bash scripts/ci/f1-gates.sh lint
-      - name: Diagnostic formatter diff (remove before merge)
-        run: |
-          path=apps/api/test/staging-shift-publication.integration.test.ts
-          pnpm exec prettier "$path" > /tmp/cookie-contention-formatted.ts
-          diff -u "$path" /tmp/cookie-contention-formatted.ts || true
       - name: Check source formatting
         run: bash scripts/ci/f1-gates.sh format_check
       - name: Check kernel and contract module boundaries
