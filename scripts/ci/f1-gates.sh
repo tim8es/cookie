@@ -27,8 +27,9 @@ real_owner() {
   pnpm build:runtime
   node apps/web/scripts/real-owner-browser-smoke.mjs
   # Explicit test cases, not product defaults. Separate isolated Docker projects.
+  # Run the same real catalog scenario in QA and actual demo mode.
   env -u COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES node scripts/local-staging.mjs verify
-  COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES=90 node scripts/local-staging.mjs verify
+  COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES=90 node scripts/local-staging.mjs verify-demo
 }
 staging_readiness() { bash scripts/ci-staging-readiness.test.sh; }
 staging_runtime() { bash scripts/ci-staging-compose-smoke.sh; }
