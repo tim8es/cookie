@@ -56,8 +56,8 @@ def candidate(pr, source, base, reviews, reviewers):
     head = pr["head"]
     target = pr["base"]
     source_id = source.lower()
-    if (head.get("repo", {}).get("full_name", "").lower() != source_id
-            or target.get("repo", {}).get("full_name", "").lower() != source_id
+    if ((head.get("repo") or {}).get("full_name", "").lower() != source_id
+            or (target.get("repo") or {}).get("full_name", "").lower() != source_id
             or target.get("ref") != base):
         return None
     sha, base_sha, merge = head.get("sha"), target.get("sha"), pr.get("merge_commit_sha")
@@ -121,14 +121,28 @@ class Controller:
             "state": value, "context": CONTEXT + suite, "description": description,
         })
 
+    def main_sha(self):
+        result = self.src("/git/ref/heads/main")
+        sha = result.get("object", {}).get("sha")
+        if not isinstance(sha, str) or not ci.SHA.fullmatch(sha):
+            raise ValueError("Invalid main ref")
+        return sha
+
     def snapshot(self, number):
+        if number == 0:
+            sha = self.main_sha()
+            return {"head": sha, "base": sha, "commit": sha}
         pr = self.src("/pulls/" + str(number))
         if pr.get("state") == "open" and pr.get("mergeable") is None:
             return "unknown"
+        if pr.get("state") != "open" or pr.get("draft") is not False:
+            return None
         reviews = pages(self.source_token, "/repos/" + self.source + "/pulls/" +
                         str(number) + "/reviews")
         result = candidate(pr, self.source, self.base, reviews, self.reviewers)
         if result:
+            if result["base"] != self.main_sha():
+                return "unknown"
             merge = self.src("/commits/" + result["commit"])
             parents = [p["sha"] for p in merge.get("parents", [])]
             if (merge.get("sha") != result["commit"]
@@ -225,6 +239,7 @@ class Controller:
         prs = pages(self.source_token, "/repos/" + self.source + "/pulls?state=open&base=main")
         numbers = {p["number"] for p in prs}
         current = {number: self.snapshot(number) for number in numbers}
+        current[0] = self.snapshot(0)
         terminal = {"success", "failure", "error", "obsolete"}
         # Visit old records first: cancel superseded work before new dispatch.
         for record in self.state.values():
