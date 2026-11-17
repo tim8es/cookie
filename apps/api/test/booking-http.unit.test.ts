@@ -137,3 +137,129 @@ test("opt-in booking adapter requires verified actor, rejects forged tenant and 
   assert.equal(invalidMinuteQuote.statusCode, 400);
   assert.equal(invalidMinuteQuote.json().error.code, "INVALID_REQUEST");
 });
+
+test("booking catalog returns data only after acknowledged transaction close", async (t) => {
+  for (const scenario of [
+    "success",
+    "begin-tag",
+    "commit-tag",
+    "commit-error",
+    "read-error",
+    "rollback-error",
+  ] as const) {
+    await t.test(scenario, async (t) => {
+      const commands: string[] = [];
+      const releases: boolean[] = [];
+      const client = {
+        async query(sql: string) {
+          if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") {
+            commands.push(sql);
+            if (
+              (sql === "COMMIT" && scenario === "commit-error") ||
+              (sql === "ROLLBACK" && scenario === "rollback-error")
+            ) {
+              throw new Error("private SQL error");
+            }
+            const command =
+              (sql === "BEGIN" && scenario === "begin-tag") ||
+              (sql === "COMMIT" && scenario === "commit-tag")
+                ? "ROLLBACK"
+                : sql;
+            return { command, rows: [] };
+          }
+          if (sql.includes("org.owner_identity_id::text")) {
+            commands.push("policy");
+            return {
+              rows: [
+                {
+                  owner_identity_id: IDENTITY,
+                  membership_identity_id: IDENTITY,
+                  membership_active: true,
+                  assignment_id: "assignment",
+                  assignment_active: true,
+                  assignment_location_id: null,
+                  role_id: "role",
+                  role_base_type: "owner",
+                  role_display_name: "Owner",
+                  role_permissions: ["booking.create"],
+                  role_active: true,
+                },
+              ],
+            };
+          }
+          if (sql.includes("FROM cookie_staff.service_assignments")) {
+            commands.push("catalog");
+            if (scenario === "read-error" || scenario === "rollback-error") {
+              throw new Error("private SQL error");
+            }
+            return {
+              rows: [
+                {
+                  service_id: SERVICE,
+                  service_name: "Synthetic service",
+                  staff_id: STAFF,
+                  staff_name: "Synthetic staff",
+                  duration_minutes: 30,
+                  post_service_buffer_minutes: 0,
+                  price_kopecks: "10000",
+                  time_zone: "UTC",
+                },
+              ],
+            };
+          }
+          return { rows: [] };
+        },
+        release(discard: boolean) {
+          releases.push(discard);
+        },
+      };
+      const app = createApp(mockDb, {
+        syntheticBookingRoutes: {
+          pool: { connect: async () => client } as unknown as Pool,
+          verifier: {
+            verifyBearerToken: async () => ({
+              tenantId: TENANT,
+              identityId: IDENTITY,
+              expiresAtUnixSeconds: Math.floor(Date.now() / 1000) + 600,
+            }),
+          },
+          assertEntitled: async () => {
+            assert.fail("catalog must not invoke booking entitlement");
+          },
+        },
+      });
+      t.after(async () => app.close());
+
+      const response = await app.inject({
+        method: "GET",
+        url: `/v1/organizations/${TENANT}/locations/${LOCATION}/catalog`,
+        headers: { authorization: "Bearer valid" },
+      });
+
+      if (scenario === "success") {
+        assert.equal(response.statusCode, 200);
+        assert.equal(response.json().offers[0].serviceId, SERVICE);
+        assert.deepEqual(commands, ["BEGIN", "policy", "catalog", "COMMIT"]);
+        assert.deepEqual(releases, [false]);
+      } else {
+        assert.equal(response.statusCode, 503);
+        assert.deepEqual(response.json(), {
+          error: { code: "BACKEND_UNAVAILABLE" },
+        });
+        if (scenario === "begin-tag") {
+          assert.deepEqual(commands, ["BEGIN"]);
+        } else if (scenario === "read-error" || scenario === "rollback-error") {
+          assert.deepEqual(commands, [
+            "BEGIN",
+            "policy",
+            "catalog",
+            "ROLLBACK",
+          ]);
+        } else {
+          assert.deepEqual(commands, ["BEGIN", "policy", "catalog", "COMMIT"]);
+        }
+        assert.deepEqual(releases, [scenario !== "read-error"]);
+      }
+    });
+  }
+});

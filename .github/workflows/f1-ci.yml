@@ -50,36 +50,34 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - name: Install pinned direct dependencies
-        run: pnpm install --frozen-lockfile
+        run: bash scripts/ci/f1-gates.sh install
       - name: Lint
-        run: pnpm lint
+        run: bash scripts/ci/f1-gates.sh lint
       - name: Check source formatting
-        run: pnpm format:check
+        run: bash scripts/ci/f1-gates.sh format_check
       - name: Check kernel and contract module boundaries
-        run: pnpm check:boundaries
+        run: bash scripts/ci/f1-gates.sh boundaries
       - name: Check frontend UI module boundaries
-        run: pnpm check:ui
+        run: bash scripts/ci/f1-gates.sh ui
       - name: Typecheck API and shared contracts
-        run: pnpm typecheck
+        run: bash scripts/ci/f1-gates.sh types
       - name: Unit tests
-        run: pnpm test
+        run: bash scripts/ci/f1-gates.sh unit
       - name: PostgreSQL migration integration
-        run: pnpm test:integration
+        run: bash scripts/ci/f1-gates.sh integration
       - name: Synthetic PostgreSQL 16 backup and restore smoke
-        run: bash scripts/ci-restore-smoke.sh
+        run: bash scripts/ci/f1-gates.sh restore
       - name: Build API and migration CLI
-        run: pnpm build
+        run: bash scripts/ci/f1-gates.sh build
       - name: Compiled synthetic worker fail-closed and SIGTERM smoke
-        run: bash scripts/ci-compiled-synthetic-worker-smoke.sh
+        run: bash scripts/ci/f1-gates.sh worker
       - name: Check and build Svelte static app
-        run: |
-          pnpm --filter @cookie/web check
-          pnpm --filter @cookie/web build
+        run: bash scripts/ci/f1-gates.sh web
       - name: Synthetic browser onboarding and booking smoke
         id: browser_smoke
-        run: node apps/web/scripts/browser-smoke.mjs
+        run: bash scripts/ci/f1-gates.sh browser
       - name: Validate synthetic browser evidence completeness
-        run: node scripts/ci-visual-evidence-check.mjs
+        run: bash scripts/ci/f1-gates.sh browser_evidence
       - name: Attach synthetic visual evidence for review
         if: ${{ always() && steps.browser_smoke.outcome != 'skipped' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -91,9 +89,7 @@ jobs:
       # Actual compiled API-mode + disposable PostgreSQL, separate from mock evidence.
       - name: Real owner browser E2E with PostgreSQL (synthetic signed proof)
         id: real_owner_browser
-        run: |
-          pnpm build:runtime
-          node apps/web/scripts/real-owner-browser-smoke.mjs
+        run: bash scripts/ci/f1-gates.sh real_owner
       - name: Report exact commit and smoke result
         if: ${{ always() }}
         env:
@@ -122,9 +118,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Reject falsely green readiness checks (Issue #214)
-        run: bash scripts/ci-staging-readiness.test.sh
+        run: bash scripts/ci/f1-gates.sh staging_readiness
       - name: Build and smoke real compiled application stack
-        run: bash scripts/ci-staging-compose-smoke.sh
+        run: bash scripts/ci/f1-gates.sh staging_runtime
 
   postgres17-compatibility:
     name: PostgreSQL 17 migration and transaction compatibility (Altare)
@@ -161,10 +157,8 @@ jobs:
           node-version: "26"
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/f1-gates.sh install
       - name: Verify actual PostgreSQL 17 service, not just image tag
-        run: |
-          version=$(docker run --rm --network host -e PGPASSWORD=cookie_ci postgres:17-alpine psql -h 127.0.0.1 -U cookie_ci -d cookie_ci -Atqc 'SHOW server_version_num')
-          [[ "$version" == 17* ]] || { echo "Expected PostgreSQL 17, got $version"; exit 1; }
+        run: bash scripts/ci/f1-gates.sh pg17_verify
       - name: Run real PG17 migrations and integration regression
-        run: pnpm test:integration
+        run: bash scripts/ci/f1-gates.sh integration

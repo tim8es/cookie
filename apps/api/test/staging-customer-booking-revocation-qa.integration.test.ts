@@ -199,7 +199,7 @@ test(
         url: string,
         token: string,
         payload: object,
-        key = randomUUID(),
+        key: string = randomUUID(),
       ) =>
         app.inject({
           method: "POST",
