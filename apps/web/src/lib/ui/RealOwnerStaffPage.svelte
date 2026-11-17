@@ -205,7 +205,7 @@
       onTitleChange={editTitle}
       onServiceChange={editService}
       onLocationChange={editLocation}
-      onOpenServices
+      onOpenServices={onOpenServices}
       onSubmit={() => void save()}
       apiMode={true}
       busy={saving || loading}
