@@ -46,7 +46,7 @@ test("booking capability is opt-in and requires exact response", async () => {
   assert.equal(await canCreateCustomerBooking(session, malformed), false);
 });
 
-test("lost response retries the exact selection and original idempotency key", async () => {
+test("lost response retries the original selection and key", async () => {
   const requests: Array<{ key: string | null; body: unknown }> = [];
   const fetcher: typeof fetch = async (url, init) => {
     assert.equal(
@@ -57,7 +57,8 @@ test("lost response retries the exact selection and original idempotency key", a
     assert.equal(init?.redirect, "error");
     assert.equal(init?.credentials, "omit");
     const headers = new Headers(init?.headers);
-    assert.equal(headers.get("authorization"), "Bearer " + session.accessToken);
+    const authorization = "Bearer " + session.accessToken;
+    assert.equal(headers.get("authorization"), authorization);
     const body: unknown = JSON.parse(String(init?.body));
     requests.push({ key: headers.get("idempotency-key"), body });
     if (requests.length === 1) throw new Error("lost response");
@@ -80,10 +81,11 @@ test("lost response retries the exact selection and original idempotency key", a
 });
 
 test("a successful but wrong HTTP status or time never confirms", async () => {
+  const wrongStatusFetcher = async () => Response.json(receipt);
   const wrongStatus = customerBookingAttempt(
     session,
     "stable-key",
-    async () => Response.json(receipt),
+    wrongStatusFetcher,
   );
   assert.equal((await wrongStatus.submit(selection)).phase, "error");
   const wrongTime = customerBookingAttempt(
@@ -95,7 +97,7 @@ test("a successful but wrong HTTP status or time never confirms", async () => {
   assert.equal((await wrongTime.submit(selection)).phase, "error");
 });
 
-test("verified slot conflict refreshes actual availability without new POST", async () => {
+test("verified conflict refreshes slots without new POST", async () => {
   const calls: string[] = [];
   const fetcher: typeof fetch = async (url, init) => {
     calls.push(String(url));

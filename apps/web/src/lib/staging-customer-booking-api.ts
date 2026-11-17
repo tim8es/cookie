@@ -1,7 +1,4 @@
-import {
-  BookingAttempt,
-  type BookingAttemptPort,
-} from "./booking-attempt.js";
+import { BookingAttempt, type BookingAttemptPort } from "./booking-attempt.js";
 import {
   verifyBookingReceipt,
   type ConfirmedBookingReceipt,
@@ -21,7 +18,8 @@ export interface CustomerBookingSelection {
 }
 
 function endpoint(session: VerifiedCustomerSession): string {
-  return "/v1/organizations/" + session.tenantId + "/staging-customer-bookings";
+  const root = "/v1/organizations/" + session.tenantId;
+  return root + "/staging-customer-bookings";
 }
 function headers(session: VerifiedCustomerSession): Record<string, string> {
   if (Date.now() / 1000 >= session.expiresAtUnixSeconds) {
@@ -122,8 +120,9 @@ export function customerBookingAttempt(
       if (!(reason instanceof TransportFailure)) return "unknown";
       const body = reason.responseBody;
       if (!body || typeof body !== "object") return "unknown";
-      if (Object.keys(body).length !== 1 || !("error" in body))
+      if (Object.keys(body).length !== 1 || !("error" in body)) {
         return "unknown";
+      }
       if (body.error === "IDEMPOTENCY_KEY_REUSED")
         return "idempotency-key-reused";
       if (
