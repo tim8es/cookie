@@ -4,6 +4,16 @@
 
 ## 1. Локально (Windows / macOS / Linux)
 
+### Полноценное локальное демо (Issue #311)
+
+`pnpm demo:local` собирает **тот же** runtime и открывает настоящий owner workspace на loopback. Команда использует тот же launcher, сервер, Svelte bundle, PostgreSQL migrations, domain seed, signed synthetic owner/client login и staging API. Никакого второго frontend, mock backend или новых HTTP auth bypass.
+
+Каждый запуск создаёт свежий случайный Compose project `cookie-demo-*`, отдельный порт, БД/volume, ключи, синтетический салон и отдельный браузерный профиль. `owner` / `client` меняют роль; Enter обновляет сессию. При штатном закрытии приложения или Ctrl+C удаляется только собственный disposable project/volume; следующий запуск начинается с чистого салона. В случае ошибки удаления сохраняется приватное состояние для ручного восстановления; при аварийном SIGKILL автоматическая очистка не гарантируется. Никогда не удаляйте persistent `cookie-manual-*` или чужие volumes. Не публикуйте local state или credentials.
+
+Демо воспроизводит реально подключённые функции текущего staging build; отсутствующие рабочие сценарии не эмулируются. Старый `/demo` — временный browser-local fixture для UX/регрессионных тестов, не полноценное демо и не доказательство паритета. Публичное демо, автоматизированное сравнение всех экранов и полное удаление legacy fixture остаются в #311. Это локальный synthetic launcher, не разрешение на публикацию synthetic login или коммерческий пилот.
+
+### Постоянный локальный QA-контур
+
 Требуются Git, Node.js 26, Docker Desktop/Engine + Compose v2, Chrome/Chromium или Edge. Запускайте из корня checkout.
 
 ```sh
