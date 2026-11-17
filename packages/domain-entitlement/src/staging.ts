@@ -85,7 +85,8 @@ export async function lockLiveStagingGrant(
   client: PoolClient,
   tenantId: string,
 ): Promise<{ id: string; seatLimit: number }> {
-  const row = await grantRow(client, tenantId, true);
+  const locked = await grantRow(client, tenantId, true);
+  const row = locked && await grantRow(client, tenantId, false);
   if (!row || row.revoked_at || !row.live)
     throw new StagingPublicationDenied("grant-unavailable");
   return { id: row.id, seatLimit: row.seat_limit };

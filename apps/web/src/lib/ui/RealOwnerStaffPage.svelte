@@ -66,7 +66,6 @@
 
   async function refresh(): Promise<void> {
     loading = true;
-    loaded = false;
     readError = "";
     try {
       const [directory, catalog] = await Promise.all([
@@ -84,6 +83,7 @@
       }
       loaded = true;
     } catch (reason) {
+      loaded = false;
       staff = [];
       locations = [];
       services = [];

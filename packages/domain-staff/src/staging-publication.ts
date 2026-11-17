@@ -72,6 +72,7 @@ export async function publishStaffForStaging(
     if (prior.rows[0]) {
       if (prior.rows[0].request_sha256 !== hash)
         throw new StagingStaffPublicationConflict("idempotency-conflict");
+      await lockLiveStagingGrant(client, tenantId);
       await client.query("COMMIT");
       return { publication: { staffId, locationId, serviceId }, replayed: true };
     }

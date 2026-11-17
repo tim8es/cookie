@@ -16,6 +16,7 @@ import {
 
 import { runMigrations } from "../../../dist/packages/platform-db/src/migrations.js";
 import { provisionOwnerWorkspace } from "../../../dist/packages/platform-identity/src/provision-owner-workspace.js";
+import { issueStagingGrant } from "../../../dist/packages/domain-entitlement/src/staging.js";
 import { createTelegramMiniAppProofVerifier } from "../../../dist/packages/platform-identity/src/telegram-init-data.js";
 import { linkVerifiedTelegramOwner } from "../../../dist/packages/platform-identity/src/link-telegram-owner.js";
 
@@ -187,6 +188,7 @@ async function main() {
       DATABASE_URL: databaseUrl, HOST: "127.0.0.1", PORT: String(port),
       COOKIE_WEB_DIST: resolve("apps/web/dist"),
       COOKIE_TELEGRAM_AUTH_MODE: "enabled",
+      COOKIE_STAGING_PUBLICATION_MODE: "enabled",
       COOKIE_TELEGRAM_USER_HMAC_SECRET: userHashSecret.toString("hex"),
       COOKIE_TELEGRAM_BOT_TOKEN: botToken,
       COOKIE_PUBLIC_ORIGIN: "https://cookie-e2e.invalid",
@@ -294,11 +296,29 @@ async function main() {
       await requireDom(cdp, "staff list at " + width, "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
     }
     assert.deepEqual(await assertStored(pool, owner), beforeRestart, "Restart changed persisted IDs");
+    // No grant is implicit: a trusted operator explicitly grants a single
+    // synthetic staging seat before the owner can perform the activation.
+    await requireDom(cdp, "no staging grant", "document.body.innerText.includes('Оператор ещё не выдал тестовое разрешение')");
+    await issueStagingGrant(pool, owner.tenantId, 1, new Date(Date.now()+3600000).toISOString());
+    await button(cdp, "Обновить лимит");
+    await requireDom(cdp, "staging seat available", "document.body.innerText.includes('Активных мастеров: 0 / 1')");
+    await evaluate(cdp, "(() => {const panel=document.querySelector('[aria-label=\"Тестовая активация мастеров\"]');const s=panel.querySelector('select');s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await requireDom(cdp, "staging selection", "document.querySelector('[aria-label=\"Тестовая активация мастеров\"] input[type=checkbox]')?.disabled===false");
+    await evaluate(cdp, "document.querySelector('[aria-label=\"Тестовая активация мастеров\"] input[type=checkbox]').click()");
+    await button(cdp, "Активировать для staging");
+    await requireDom(cdp, "staging seat consumed", "document.body.innerText.includes('Активных мастеров: 1 / 1') && document.querySelector('.list-items')?.innerText.includes('Активирован')");
+    const publication = await pool.query(
+      "SELECT (SELECT count(*)::int FROM cookie_staff.staging_publication_receipts WHERE tenant_id=$1::uuid) AS receipts, (SELECT count(*)::int FROM cookie_staff.staff_profiles WHERE tenant_id=$1::uuid AND active AND bookable) AS seats, (SELECT count(*)::int FROM cookie_scheduling.shift_windows WHERE tenant_id=$1::uuid AND active) AS shifts",
+      [owner.tenantId],
+    );
+    assert.deepEqual(publication.rows[0], {receipts:1,seats:1,shifts:0});
+    assert.ok(responses.some(r=>r.status===201&&r.path.endsWith("/staging-publication")));
+    await checkWidth(cdp, "activated staging staff");
     assert.deepEqual(external, [], "Unexpected real-mode external network requests");
     assert.deepEqual(errors, [], "Unexpected browser runtime errors");
     await button(cdp, "Выйти");
     await requireDom(cdp, "final logout", "document.body.innerText.includes('Вы вышли')");
-    console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit and PostgreSQL persistence across API restart, 3 viewport checks, server logout.");
+    console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit, staging capacity activation and PostgreSQL persistence across API restart, 3 viewport checks, server logout.");
   } finally {
     if (cdp) cdp.close();
     if (chrome && !chrome.killed) chrome.kill("SIGTERM");

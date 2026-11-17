@@ -33,7 +33,7 @@
         if (!location || !service) return [];
         return [{
           id: member.id + ":" + location.id + ":" + service.id,
-          label: member.displayName + " · " + location.displayName + " · " + service.displayName,
+          label: member.displayName + " · " + location.displayName + " · " + service.displayName + " (" + service.durationMinutes + " мин.)",
           input: { staffId: member.id, locationId: location.id, serviceId: service.id,
             expectedServiceRevision: service.revision },
         }];
