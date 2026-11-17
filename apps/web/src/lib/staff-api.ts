@@ -98,6 +98,7 @@ async function request(
   session: VerifiedOwnerSession,
   init: RequestInit,
   fetcher: typeof fetch,
+  suffix = "",
 ): Promise<{ body: unknown; status: number }> {
   if (Date.now() / 1000 >= session.expiresAtUnixSeconds) {
     throw new StaffApiFailure("unauthorized");
@@ -105,7 +106,7 @@ async function request(
   let response: Response;
   try {
     response = await fetcher(
-      "/v1/organizations/" + session.tenantId + "/staff",
+      "/v1/organizations/" + session.tenantId + "/staff" + suffix,
       {
         ...init,
         credentials: "omit",
@@ -184,6 +185,19 @@ export async function readRealStaff(
   return { staff: candidate.staff, locations: candidate.locations };
 }
 
+/** A later denial cannot disprove an earlier possibly committed request. */
+export function retainStaffCreateKey(
+  retrying: boolean,
+  error: unknown,
+): boolean {
+  return (
+    retrying ||
+    !(error instanceof StaffApiFailure) ||
+    error.reason === "unavailable" ||
+    error.reason === "invalid-response"
+  );
+}
+
 export async function createRealStaff(
   session: VerifiedOwnerSession,
   draft: RealStaffDraft,
@@ -211,5 +225,55 @@ export async function createRealStaff(
   ) {
     throw new StaffApiFailure("invalid-response");
   }
-  return (result.body as { staff: RealStaff }).staff;
+  const staff = (result.body as { staff: RealStaff }).staff;
+  const assigned = staff.assignments.some(
+    (assignment) =>
+      assignment.locationId === draft.locationId &&
+      assignment.serviceIds.includes(draft.serviceId),
+  );
+  if (
+    staff.displayName !== draft.displayName.trim().normalize("NFC") ||
+    staff.positionTitle !== draft.positionTitle.trim().normalize("NFC") ||
+    !assigned ||
+    (result.status === 201 &&
+      (!staff.active ||
+        staff.bookable ||
+        staff.assignments.length !== 1 ||
+        staff.assignments[0]?.serviceIds.length !== 1))
+  ) {
+    throw new StaffApiFailure("invalid-response");
+  }
+  // A 200 replay returns the current profile, which may since be published.
+  return staff;
+}
+
+/** Only a positive, strictly shaped receipt resolves an uncertain creation. */
+export async function recoverRealStaffCreate(
+  session: VerifiedOwnerSession,
+  key: string,
+  fetcher: typeof fetch = globalThis.fetch,
+): Promise<{ staffId: string } | null> {
+  if (!UUID.test(key)) return null;
+  try {
+    const result = await request(
+      session,
+      { method: "GET", headers: { "idempotency-key": key } },
+      fetcher,
+      "/receipt",
+    );
+    if (
+      result.status !== 200 ||
+      !result.body ||
+      typeof result.body !== "object" ||
+      Array.isArray(result.body) ||
+      Object.keys(result.body).length !== 1
+    ) {
+      return null;
+    }
+    const { staffId } = result.body as { staffId?: unknown };
+    if (typeof staffId !== "string" || !UUID.test(staffId)) return null;
+    return { staffId };
+  } catch {
+    return null;
+  }
 }

@@ -6,6 +6,8 @@
   import {
     createRealStaff,
     readRealStaff,
+    recoverRealStaffCreate,
+    retainStaffCreateKey,
     StaffApiFailure,
     type RealStaff,
     type RealStaffLocation,
@@ -32,6 +34,8 @@
   // A failed/unknown response must reuse its key with unchanged request values.
   let pendingKey = "";
   let publicationPending = false;
+  let recovering = false;
+  let mounted = false;
 
   function message(error: unknown): string {
     if (error instanceof StaffApiFailure) {
@@ -45,27 +49,28 @@
   }
 
   function editName(value: string): void {
+    if (pendingKey) return;
     staffName = value;
-    pendingKey = "";
     writeError = "";
   }
   function editTitle(value: string): void {
+    if (pendingKey) return;
     staffTitle = value;
-    pendingKey = "";
     writeError = "";
   }
   function editLocation(value: string): void {
+    if (pendingKey) return;
     staffLocation = value;
-    pendingKey = "";
     writeError = "";
   }
   function editService(value: string): void {
+    if (pendingKey) return;
     staffService = value;
-    pendingKey = "";
     writeError = "";
   }
 
   async function refresh(): Promise<void> {
+    if (pendingKey) return;
     loading = true;
     readError = "";
     try {
@@ -95,7 +100,7 @@
   }
 
   async function save(): Promise<void> {
-    if (!loaded || loading || saving || publicationPending) return;
+    if (!loaded || loading || saving || publicationPending || recovering) return;
     if (
       !staffName.trim() ||
       [...staffName.trim()].length > 200 ||
@@ -109,6 +114,7 @@
     saving = true;
     writeError = "";
     notice = "";
+    const retrying = Boolean(pendingKey);
     pendingKey ||= crypto.randomUUID();
     try {
       const created = await createRealStaff(
@@ -125,12 +131,41 @@
       pendingKey = "";
       staffName = "";
       staffTitle = "";
-      notice = "Профиль и назначения сохранены. Для записи клиентов мастер пока недоступен.";
+      notice = created.bookable
+        ? "Профиль и назначения подтверждены. Мастер доступен для записи."
+        : "Профиль и назначения сохранены. Для записи клиентов мастер пока недоступен.";
       await refresh();
     } catch (reason) {
-      writeError = message(reason);
+      if (!retainStaffCreateKey(retrying, reason)) pendingKey = "";
+      writeError = pendingKey
+        ? "Сервер не подтвердил результат создания профиля."
+        : message(reason);
     } finally {
       saving = false;
+    }
+  }
+
+  async function recoverPending(): Promise<void> {
+    if (!pendingKey || saving || recovering || loading || publicationPending) return;
+    const key = pendingKey;
+    const activeSession = session;
+    recovering = true;
+    writeError = "";
+    try {
+      const receipt = await recoverRealStaffCreate(activeSession, key);
+      if (!mounted || session.accessToken !== activeSession.accessToken ||
+        Date.now() / 1000 >= session.expiresAtUnixSeconds || pendingKey !== key) return;
+      if (!receipt) {
+        writeError = "Сервер не подтвердил исходную операцию. Не создавайте новый профиль.";
+        return;
+      }
+      pendingKey = "";
+      staffName = "";
+      staffTitle = "";
+      notice = "Сервер подтвердил сохранение исходного профиля. Проверяем актуальный список мастеров.";
+      await refresh();
+    } finally {
+      if (mounted) recovering = false;
     }
   }
 
@@ -146,7 +181,9 @@
   }
 
   onMount(() => {
+    mounted = true;
     void refresh();
+    return () => { mounted = false; };
   });
 </script>
 
@@ -165,7 +202,18 @@
   </div>
 {/if}
 {#if writeError}
-  <div class="alert-error" role="alert"><p>{writeError}</p></div>
+  <div class="alert-error" role="alert"><p>{writeError}</p>
+    {#if pendingKey}<p>Результат создания неизвестен. Проверьте исходную операцию или повторите сохранение с теми же данными.</p>{/if}
+  </div>
+{/if}
+{#if pendingKey}
+  <div class="owner-form-note">
+    <p>Не покидайте страницу до подтверждения результата.</p>
+    <Button variant="outline" type="button" disabled={saving || recovering || loading || publicationPending}
+      onclick={() => void recoverPending()}>
+      {recovering ? "Проверяем…" : "Проверить сохранение"}
+    </Button>
+  </div>
 {/if}
 {#if notice}
   <div class="alert-ok" role="status"><p>{notice}</p></div>
@@ -175,7 +223,7 @@
   <section class="card">
     <div class="card-title">
       <div><span class="eyebrow">КОМАНДА</span><h2>Профили мастеров</h2></div>
-      <Button variant="outline" type="button" onclick={() => void refresh()} disabled={loading || saving || publicationPending}>Обновить</Button>
+      <Button variant="outline" type="button" onclick={() => void refresh()} disabled={loading || saving || publicationPending || !!pendingKey}>Обновить</Button>
     </div>
     {#if loading}
       <p role="status">Загружаем профили…</p>
@@ -211,13 +259,14 @@
       onOpenServices={onOpenServices}
       onSubmit={() => void save()}
       apiMode={true}
-      busy={saving || loading || publicationPending}
+      busy={saving || loading || publicationPending || recovering}
+      locked={!!pendingKey}
     />
   {/if}
 </div>
 
 {#if loaded}
   <StagingPublicationPanel {session} {staff} {locations} {services}
-    disabled={loading || saving} bind:pending={publicationPending}
+    disabled={loading || saving || !!pendingKey} bind:pending={publicationPending}
     onPublished={refresh} />
 {/if}
