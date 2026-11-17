@@ -300,8 +300,10 @@ test(
         // Attach observers immediately, so early failures never become
         // unhandled rejections while the lock oracle is being evaluated.
         void lead.catch(() => undefined);
-        let follower: ReturnType<typeof cancelBookingInternal> |
-          ReturnType<typeof rescheduleBookingInternal> | undefined;
+        let follower:
+          | ReturnType<typeof cancelBookingInternal>
+          | ReturnType<typeof rescheduleBookingInternal>
+          | undefined;
         let next: ReturnType<typeof createBookingInternal> | undefined;
         let provedWait = false;
         try {
