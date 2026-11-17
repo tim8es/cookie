@@ -36,7 +36,8 @@ test(
     const original = "synthetic original password";
     const changed = "synthetic changed password";
     const gate = new PasswordWorkGate(2);
-    const sessions = new IdentitySessions(pool, "cookie-email", "test-web", 900);
+    const issuer = "cookie-email";
+    const sessions = new IdentitySessions(pool, issuer, "test-web", 900);
     const otherId = randomUUID();
     let identityId: string | null = null;
 
@@ -60,8 +61,9 @@ test(
         "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
         [otherId],
       );
-      const previousSession =
-        await sessions.issueForVerifiedIdentity(identityId);
+      const previousSession = await sessions.issueForVerifiedIdentity(
+        identityId,
+      );
       const unrelatedSession = await sessions.issueForVerifiedIdentity(otherId);
 
       const unknownEmail = randomUUID() + "@example.invalid";
