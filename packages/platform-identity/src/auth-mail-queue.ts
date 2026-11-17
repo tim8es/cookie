@@ -19,7 +19,7 @@ export interface AuthMailLease {
   readonly id: string;
   readonly lease_token: string;
 }
-interface LeaseRow extends QueryResultRow, AuthMailLease {}
+type LeaseRow = QueryResultRow & AuthMailLease;
 interface StartRow extends QueryResultRow {
   purpose: AuthMailPurpose;
   sealed_recipient: Buffer;
@@ -41,7 +41,8 @@ export function createAuthMailQueue(config: {
   leaseSeconds: number;
   dispatchSeconds: number;
 }) {
-  const { transaction, queueTtlSeconds, leaseSeconds, dispatchSeconds } = config;
+  const { transaction, queueTtlSeconds, leaseSeconds, dispatchSeconds } =
+    config;
   if (
     !Buffer.isBuffer(config.fingerprintSecret) ||
     config.fingerprintSecret.length < 32 ||
