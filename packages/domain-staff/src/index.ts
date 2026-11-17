@@ -8,3 +8,11 @@ export {
   listTenantStaff,
   validateStaffDraft,
 } from "./draft-staff.js";
+
+/** Explicit staging-only publication capability. */
+export {
+  publishStaffForStaging,
+  StagingStaffPublicationConflict,
+  type StagingStaffPublicationInput,
+  type StagingStaffPublicationReceipt,
+} from "./staging-publication.js";

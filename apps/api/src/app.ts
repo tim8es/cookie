@@ -18,6 +18,10 @@ import {
 } from "./workspace-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
 import {
+  registerStagingPublicationRoutes,
+  type StagingPublicationDependencies,
+} from "./staging-publication-http.js";
+import {
   registerOwnerShiftPlanRoutes,
   type OwnerShiftPlanRouteDependencies,
 } from "./owner-shift-plan-http.js";
@@ -57,6 +61,7 @@ export function createApp(
     readonly staffRoutes?: RealStaffRoutesDependencies;
     readonly locationRoutes?: RealLocationRouteDependencies;
     readonly shiftPlanRoutes?: OwnerShiftPlanRouteDependencies;
+    readonly stagingPublicationRoutes?: StagingPublicationDependencies;
     readonly telegramAuthRoutes?: {
       readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
@@ -110,6 +115,9 @@ export function createApp(
 
   if (options.shiftPlanRoutes)
     registerOwnerShiftPlanRoutes(app, options.shiftPlanRoutes);
+
+  if (options.stagingPublicationRoutes)
+    registerStagingPublicationRoutes(app, options.stagingPublicationRoutes);
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.

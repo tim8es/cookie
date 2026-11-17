@@ -26,6 +26,8 @@
     "check:boundaries": "node scripts/check-boundaries.mjs && node --test scripts/check-boundaries.test.mjs",
     "check:ui": "node apps/web/scripts/check-ui-structure.mjs",
     "build:runtime": "pnpm build && node scripts/link-runtime-modules.mjs && VITE_COOKIE_DATA_MODE=api pnpm build:web",
+    "db:staging-publication-grant": "tsx packages/domain-entitlement/src/operator-cli.ts",
+    "start:staging-publication-grant": "node dist/packages/domain-entitlement/src/operator-cli.js",
     "db:provision-owner": "tsx packages/platform-identity/src/bootstrap-owner-cli.ts",
     "start:provision-owner": "node dist/packages/platform-identity/src/bootstrap-owner-cli.js",
     "db:link-telegram-owner": "tsx packages/platform-identity/src/operator-link-telegram-cli.ts",
