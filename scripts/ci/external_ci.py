@@ -240,7 +240,7 @@ def dispatch(source, commit):
             api(registry_token, "/repos/" + registry + "/contents/jobs/" + job + ".json",
                 "PUT", {"message": "Create execution request", "content": encoded, "branch": ref})
             result = api(runner_token, "/repos/" + runner + "/actions/workflows/universal.yml/dispatches",
-                         "POST", {"ref": "main", "inputs": {"job_id": job}, "return_run_details": True})
+                         "POST", {"ref": "main", "inputs": {"job_id": job}})
             run_id = result.get("workflow_run_id") if isinstance(result, dict) else None
             if type(run_id) is not int or run_id < 1:
                 raise ValueError("No verified run ID returned")
