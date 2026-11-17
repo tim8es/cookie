@@ -6,6 +6,7 @@ export {
   StaffReplayConflict,
   createTenantDraftStaff,
   listTenantStaff,
+  readTenantStaffCreateReceipt,
   validateStaffDraft,
 } from "./draft-staff.js";
 

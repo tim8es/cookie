@@ -11,7 +11,10 @@ import { linkVerifiedTelegramOwner } from "../../../packages/platform-identity/s
 import { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/opaque-sessions.js";
 import { provisionOwnerWorkspace } from "../../../packages/platform-identity/src/provision-owner-workspace.js";
 import { createTelegramMiniAppProofVerifier } from "../../../packages/platform-identity/src/telegram-init-data.js";
-import { createPostgresVerifiedTelegramLinkResolver } from "../../../packages/platform-identity/src/telegram-links.js";
+import {
+  createPostgresVerifiedTelegramLinkResolver,
+  telegramUserFingerprint,
+} from "../../../packages/platform-identity/src/telegram-links.js";
 
 const BOT = "123456789:synthetic_catalog_not_real_bot";
 const SECRET = Buffer.alloc(32, 0x3d);
@@ -159,6 +162,42 @@ test(
         serviceId,
       };
       const key = randomUUID();
+      const recover = (receiptKey = key, receiptHeaders = headers) =>
+        app.inject({
+          method: "GET",
+          url: path + "/receipt",
+          headers: { ...receiptHeaders, "idempotency-key": receiptKey },
+        });
+      const missing = await recover();
+      assert.equal(missing.statusCode, 404);
+      assert.deepEqual(missing.json(), { error: "receipt-unavailable" });
+      assert.equal(missing.headers["cache-control"], "no-store");
+      assert.equal((await recover("short")).statusCode, 400);
+      assert.equal(
+        (await app.inject({ method: "GET", url: path + "/receipt" }))
+          .statusCode,
+        401,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url: path + "/receipt?key=" + key,
+            headers: { ...headers, "idempotency-key": key },
+          })
+        ).statusCode,
+        400,
+      );
+      assert.equal(
+        (
+          await disabled.inject({
+            method: "GET",
+            url: path + "/receipt",
+            headers: { ...headers, "idempotency-key": key },
+          })
+        ).statusCode,
+        404,
+      );
       const submit = () =>
         app.inject({
           method: "POST",
@@ -180,6 +219,85 @@ test(
       assert.deepEqual(staff.assignments, [
         { locationId: owner.locationId, serviceIds: [serviceId] },
       ]);
+      // The response can be lost after COMMIT. Only the original receipt
+      // proves the operation; polling must not create another profile.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const receipt = await recover();
+        assert.equal(receipt.statusCode, 200);
+        assert.deepEqual(receipt.json(), { staffId: staff.id });
+        assert.equal(receipt.headers["cache-control"], "no-store");
+        assert.equal(receipt.headers.vary, "Authorization, Idempotency-Key");
+      }
+      assert.equal((await recover(randomUUID())).statusCode, 404);
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url: "/v1/organizations/" + foreign.tenantId + "/staff/receipt",
+            headers: { ...headers, "idempotency-key": key },
+          })
+        ).statusCode,
+        403,
+      );
+
+      // Another real verified bearer in the SAME tenant with the very same
+      // permission cannot recover the owner's key. Seed a synthetic trusted
+      // admin link explicitly (no public provisioning path).
+      const otherId = randomUUID();
+      const otherRole = randomUUID();
+      const otherTelegramId = 19190003;
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [otherId],
+      );
+      await pool.query(
+        `INSERT INTO cookie_identity.memberships(tenant_id,identity_id)
+         VALUES($1::uuid,$2::uuid)`,
+        [owner.tenantId, otherId],
+      );
+      await pool.query(
+        `INSERT INTO cookie_identity.roles
+         (tenant_id,id,base_type,display_name,permissions)
+         VALUES($1::uuid,$2::uuid,'admin','Synthetic admin',
+           ARRAY['staff.profile.create','staff.profile.read'])`,
+        [owner.tenantId, otherRole],
+      );
+      await pool.query(
+        `INSERT INTO cookie_identity.role_assignments
+         (tenant_id,id,identity_id,role_id,location_id)
+         VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,NULL)`,
+        [owner.tenantId, randomUUID(), otherId, otherRole],
+      );
+      await pool.query(
+        `INSERT INTO cookie_identity.telegram_identity_links
+         (tenant_id,id,identity_id,telegram_user_hmac_sha256,
+          proof_verified_at,consent_confirmed_at)
+         VALUES($1::uuid,$2::uuid,$3::uuid,$4::bytea,now(),now())`,
+        [
+          owner.tenantId,
+          randomUUID(),
+          otherId,
+          telegramUserFingerprint(SECRET, String(otherTelegramId)),
+        ],
+      );
+      const otherExchange = await app.inject({
+        method: "POST",
+        url: "/v1/auth/telegram/exchange",
+        payload: { initData: proof(otherTelegramId) },
+      });
+      assert.equal(otherExchange.statusCode, 201);
+      const otherHeaders = {
+        authorization: "Bearer " + otherExchange.json().accessToken,
+      };
+      assert.equal(
+        (await app.inject({ method: "GET", url: path, headers: otherHeaders }))
+          .statusCode,
+        200,
+      );
+      const isolated = await recover(key, otherHeaders);
+      assert.equal(isolated.statusCode, 404);
+      assert.deepEqual(isolated.json(), { error: "receipt-unavailable" });
+
       const persisted = await app.inject({ method: "GET", url: path, headers });
       assert.equal(persisted.statusCode, 200);
       assert.deepEqual(persisted.json().staff, [staff]);
@@ -273,7 +391,9 @@ test(
         403,
       );
       assert.equal((await submit()).statusCode, 403);
+      assert.equal((await recover()).statusCode, 403);
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
+      assert.equal((await recover()).statusCode, 401);
       assert.equal(
         (await app.inject({ method: "GET", url: path, headers })).statusCode,
         401,
