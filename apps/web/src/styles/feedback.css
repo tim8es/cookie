@@ -318,3 +318,21 @@
   .booking-attempt-receipt dd { text-align: left; margin-top: 5px; }
   .booking-attempt-slot-options button[data-slot=button] { flex: 1 1 72px; }
 }
+
+/* Guest receipt follows the salon appearance, never owner Calendar chrome. */
+.public-shell .booking-confirmation .confirmation-top {
+  background: var(--salon-ticket, var(--cookie-ticket));
+}
+.public-shell .booking-confirmation .confirmation-seal {
+  background: var(--salon-accent, var(--cookie-lime));
+}
+.public-shell .booking-confirmation .confirmation-top h2 em {
+  color: var(--salon-accent, var(--cookie-lime));
+}
+.public-shell .booking-confirmation .confirmation-actions button.confirmation-primary[data-slot=button] {
+  background: var(--salon-action, var(--cookie-brand));
+}
+.public-shell .booking-confirmation .confirmation-actions button.confirmation-primary[data-slot=button]:hover {
+  background: var(--salon-action-hover, #3d2946);
+}
+.public-shell .confirmation-edition { overflow-wrap: anywhere; }

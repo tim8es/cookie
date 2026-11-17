@@ -77,7 +77,7 @@ pg_tool pg_restore -h 127.0.0.1 -U cookie_ci -d cookie_ci_restore_smoke \
 result="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
   -h 127.0.0.1 -U cookie_ci -d cookie_ci_restore_smoke -c "
     SELECT CASE WHEN
-      (SELECT count(*) FROM public.cookie_schema_migrations) = 23
+      (SELECT count(*) FROM public.cookie_schema_migrations) = 24
       AND EXISTS (
         SELECT 1 FROM cookie_jobs.outbox_events AS event
         JOIN cookie_tenancy.organizations AS org ON org.id = event.tenant_id
@@ -91,6 +91,8 @@ result="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
       AND to_regclass('cookie_identity.telegram_identity_links') IS NOT NULL
       AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='revoke_opaque_sessions_on_telegram_unlink' AND NOT tgisinternal)
       AND EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='cookie_identity' AND indexname='telegram_link_active_tenant_user')
+      AND EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='cookie_identity' AND indexname='opaque_sessions_retention_oldest_idx')
+      AND EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='cookie_identity' AND indexname='opaque_sessions_retention_member_idx')
       AND EXISTS (SELECT 1 FROM information_schema.columns
         WHERE table_schema='cookie_identity' AND table_name='opaque_sessions'
           AND column_name='telegram_link_id')

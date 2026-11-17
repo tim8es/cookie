@@ -49,8 +49,15 @@ export interface BookingView {
   clientAlias: string;
   status: DemoBookingStatus;
 }
+export type SalonTheme = "atelier" | "forest" | "ocean" | "clay";
+export interface SalonAppearance {
+  theme: SalonTheme;
+  introduction: string;
+}
+
 export interface DemoSnapshot {
   organization: Organization | null;
+  appearance: SalonAppearance;
   locations: Location[];
   services: Service[];
   staff: StaffMember[];
@@ -87,6 +94,7 @@ export interface CookieUiPort {
   readonly mode: DataMode;
   getSnapshot(): Promise<DemoSnapshot>;
   createOrganization(name: string): Promise<Organization>;
+  saveAppearance(appearance: SalonAppearance): Promise<SalonAppearance>;
   addLocation(name: string, address: string): Promise<Location>;
   addService(
     name: string,
