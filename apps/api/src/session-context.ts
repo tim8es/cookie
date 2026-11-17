@@ -10,6 +10,7 @@ import {
   type TrustedActor,
 } from "../../../packages/platform-identity/src/authorization.js";
 import { requireTenantPermission } from "../../../packages/platform-identity/src/postgres.js";
+import { runProtectedTransaction } from "./protected-tenant-transaction.js";
 
 /**
  * This is a trusted AuthN port, NOT a bearer token parser/verifier. A provider
@@ -178,28 +179,12 @@ export function registerProtectedSessionContext(
 export function postgresTenantPolicyGuard(pool: Pool): TenantPolicyGuard {
   return {
     async assertPermission(actor, resource, permission) {
-      const client = await pool.connect();
-      let active = false;
-      try {
-        await client.query("BEGIN");
-        active = true;
-        await requireTenantPermission(client, actor, resource, permission);
-        await client.query("COMMIT");
-        active = false;
-      } catch (error) {
-        if (active) {
-          if (error instanceof AuthorizationDeniedError) {
-            // A denied policy decision carries a sanitized audit entry
-            // that must survive; no protected data write occurred.
-            await client.query("COMMIT");
-          } else {
-            await client.query("ROLLBACK").catch(() => undefined);
-          }
-        }
-        throw error;
-      } finally {
-        client.release();
-      }
+      await runProtectedTransaction(
+        pool,
+        (client) =>
+          requireTenantPermission(client, actor, resource, permission),
+        async () => undefined,
+      );
     },
   };
 }

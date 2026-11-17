@@ -24,20 +24,20 @@
       <label class="field">
         Название услуги
         <Input value={serviceName} oninput={(event) => onNameChange(event.currentTarget.value)}
-          required maxlength={100} placeholder="Например, женская стрижка" />
+          required disabled={busy} maxlength={100} placeholder="Например, женская стрижка" />
       </label>
       <div class="form-pair">
         <label class="field">
           Длительность · мин
           <Input type="number" value={serviceDuration}
             oninput={(event) => onDurationChange(event.currentTarget.valueAsNumber)}
-            min={1} max={1440} step={1} required />
+            min={1} max={1440} step={1} required disabled={busy} />
         </label>
         <label class="field">
           Базовая цена · ₽
           <Input type="number" value={servicePrice}
             oninput={(event) => onPriceChange(event.currentTarget.valueAsNumber)}
-            min={0} max={9999999999} step={1} required />
+            min={0} max={9999999999} step={1} required disabled={busy} />
         </label>
       </div>
     </div>
