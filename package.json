@@ -36,6 +36,7 @@
     "start:link-telegram-owner": "node dist/packages/platform-identity/src/operator-link-telegram-cli.js",
     "staging:local": "pnpm build:runtime && node scripts/local-staging.mjs",
     "demo:local": "pnpm build:runtime && node --import tsx scripts/local-staging.mjs demo",
+    "demo:verify-isolation": "node --import tsx scripts/private-demo-isolation-smoke.mjs",
     "staging:local:stop": "node scripts/local-staging.mjs stop"
   },
   "dependencies": {
