@@ -1,25 +1,54 @@
 import type { PoolClient } from "pg";
+
 import { withVerifiedEmailPassword } from "./email-login.js";
+import {
+  reserveEmailLoginAttempt,
+  type EmailLoginLimits,
+} from "./email-login-throttle.js";
+import {
+  canonicalRegistrationEmail,
+  emailFingerprint,
+} from "./email-registration.js";
 import type { IdentitySessions } from "./identity-sessions.js";
 import type { PasswordWorkGate } from "./password-work-gate.js";
 
 type Transaction = <T>(work: (client: PoolClient) => Promise<T>) => Promise<T>;
 
-export function loginEmailPassword(
+export type EmailLoginResult =
+  | { status: "denied" | "throttled" }
+  | { status: "authenticated"; token: string; expiresAtUnixSeconds: number };
+
+/** Internal only; the source fingerprint is computed by trusted ingress. */
+export async function loginEmailPassword(
   transaction: Transaction,
   passwordWork: PasswordWorkGate,
   fingerprintSecret: Buffer,
   email: unknown,
   password: unknown,
   sessions: IdentitySessions,
-): Promise<{ token: string; expiresAtUnixSeconds: number } | null> {
-  return withVerifiedEmailPassword(
+  limits: EmailLoginLimits,
+  sourceFingerprint: Buffer,
+): Promise<EmailLoginResult> {
+  const address = canonicalRegistrationEmail(email);
+  const account = address ? emailFingerprint(fingerprintSecret, address) : null;
+  const admitted = await reserveEmailLoginAttempt(
+    transaction,
+    limits,
+    sourceFingerprint,
+    account,
+  );
+  if (!admitted) return { status: "throttled" };
+  if (!address) return { status: "denied" };
+
+  const session = await withVerifiedEmailPassword(
     transaction,
     passwordWork,
     fingerprintSecret,
-    email,
+    address,
     password,
     (client, identityId) =>
       sessions.issueForVerifiedIdentityInTransaction(client, identityId),
   );
+  if (!session) return { status: "denied" };
+  return { status: "authenticated", ...session };
 }
