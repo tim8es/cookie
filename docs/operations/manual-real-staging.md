@@ -14,6 +14,12 @@
 
 Демо воспроизводит реально подключённые функции текущего staging build; отсутствующие рабочие сценарии не эмулируются. Скомпилированный API возвращает 404 на старом `/demo` и его подмаршрутах. Browser-local fixture сохраняется только для отдельной сборки `pnpm --filter @cookie/web build:fixture` / `dev:fixture`. Сборка runtime проверяет отсутствие mock controller/adapter по графу модулей. Fixture build сохраняется в `.tmp/ui-fixture-dist`, отдельно от `dist`; это не продуктовый деморежим и не доказательство паритета. Публичное демо, автоматизированное сравнение всех экранов и полное удаление legacy fixture остаются в #311. Это локальный synthetic launcher, не разрешение на публикацию synthetic login или коммерческий пилот.
 
+### Private headless demo worker — только инженерная проверка
+
+Внутренний `serve-demo` получает управляющий IPC-канал от доверенного родительского процесса и обязательный `COOKIE_DEMO_WORKER_TTL_SECONDS` (1–900); прямой запуск без IPC запрещён. Это тот же compiled runtime, bootstrap и seed, но без Chromium. Сервер привязан только к 127.0.0.1, у каждой сессии собственные Compose project, database/volume, tenant, keys и port. Одноразовый signed proof выдаётся только по IPC для заранее созданных synthetic owner/client; в HTTP, URL, stdout и пользовательские настройки он не попадает. Stop, завершение TTL или потеря IPC запускают штатную очистку только своего disposable проекта; SIGKILL и остановка Docker требуют ручного восстановления по state. Не публиковать этот IPC за HTTP proxy.
+
+`pnpm demo:verify-isolation` (CI=true, Docker и готовый runtime) создаёт две одновременно живущие сессии, проверяет отсутствие доступа с чужим proof и bearer, сохранение собственного изменения и отсутствие его в соседней БД, остановку/удаление только своего проекта, чистый третий запуск и expiry. Это foundation для будущего доверенного supervisor, не публичный login flow; публичная выдача сессий, квоты, rate limits, abuse protection, маршрутизация, удалённый доступ и recovery after host crash требуют reviewed архитектуры и отдельного разрешения. Никакого deployment в рамках данного среза.
+
 ### Постоянный локальный QA-контур
 
 Требуются Git, Node.js 26, Docker Desktop/Engine + Compose v2, Chrome/Chromium или Edge. Запускайте из корня checkout.
