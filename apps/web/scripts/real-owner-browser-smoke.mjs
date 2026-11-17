@@ -581,7 +581,7 @@ async function main() {
     // The previous browser path proved default-off. Restart with the separate
     // write switch only in this isolated synthetic CI process.
     await stopServer(api);
-    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled" }, origin);
+    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60" }, origin);
     script = await load(cdp, origin+"?surface=customer-staging", signedProof(botToken,customerUserId), script);
     await requireDom(cdp,"write-enabled customer catalog","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
     for(let i=0;i<3;i++){
@@ -614,9 +614,16 @@ async function main() {
       await viewport(cdp,width,height);
       await checkWidth(cdp,"confirmed customer booking "+width+"px");
     }
+    await requireDom(cdp,"real cancel action","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)");
+    await button(cdp,"Отменить запись");
+    await button(cdp,"Подтвердить отмену");
+    await requireDom(cdp,"confirmed persisted cancellation","document.querySelector("+JSON.stringify(historyPanel)+")?.innerText.includes('Отменена клиентом')");
+    const realCancelled=await pool.query("SELECT status FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",[owner.tenantId,realBooking.rows[0].id]);
+    assert.deepEqual(realCancelled.rows,[{status:"CancelledByClient"}]);
+    await checkWidth(cdp,"cancelled customer booking");
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
-    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
+    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation and own cancellation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
   } finally {
     if (cdp) cdp.close();
     try {
