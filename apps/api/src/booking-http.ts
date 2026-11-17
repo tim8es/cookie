@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { Pool, PoolClient, QueryResultRow } from "pg";
+import type { Pool, QueryResultRow } from "pg";
 
 import {
   CreateBookingFailure,
@@ -7,6 +7,7 @@ import {
   type AssertBookingEntitlement,
 } from "../../../packages/domain-booking/src/create.js";
 import { readBookingAvailability } from "../../../packages/booking-read-adapter/src/index.js";
+import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
 import {
   AuthorizationDeniedError,
   type TrustedActor,
@@ -118,27 +119,6 @@ function validCreateBody(body: unknown): body is CreateBody {
   );
 }
 
-async function inReadTransaction<T>(
-  pool: Pool,
-  action: (client: PoolClient) => Promise<T>,
-): Promise<T> {
-  const client = await pool.connect();
-  let active = false;
-  try {
-    await client.query("BEGIN");
-    active = true;
-    const result = await action(client);
-    await client.query("COMMIT");
-    active = false;
-    return result;
-  } catch (error) {
-    if (active) await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
 function bookingDto(row: BookingReadRow) {
   return {
     bookingId: row.id,
@@ -214,7 +194,7 @@ export function registerSyntheticBookingHttp(
       if (!UUID.test(request.params.locationId))
         return fail(reply, 400, "INVALID_REQUEST");
       try {
-        const offers = await inReadTransaction(pool, async (client) => {
+        const offers = await runSqlTransaction(pool, async (client) => {
           await requireTenantPermission(
             client,
             actor,
@@ -300,7 +280,7 @@ export function registerSyntheticBookingHttp(
       )
         return fail(reply, 400, "INVALID_REQUEST");
       try {
-        const snapshot = await inReadTransaction(pool, (client) =>
+        const snapshot = await runSqlTransaction(pool, (client) =>
           readBookingAvailability(client, {
             actor,
             locationId,
@@ -353,7 +333,7 @@ export function registerSyntheticBookingHttp(
       )
         return fail(reply, 400, "INVALID_REQUEST");
       try {
-        const snapshot = await inReadTransaction(pool, (client) =>
+        const snapshot = await runSqlTransaction(pool, (client) =>
           readBookingAvailability(client, {
             actor,
             locationId,
@@ -435,7 +415,7 @@ export function registerSyntheticBookingHttp(
       if (!UUID.test(request.params.bookingId))
         return fail(reply, 400, "INVALID_REQUEST");
       try {
-        const booking = await inReadTransaction(pool, async (client) => {
+        const booking = await runSqlTransaction(pool, async (client) => {
           const rows = await client.query<BookingReadRow>(
             BOOKING_SELECT + " WHERE tenant_id=$1::uuid AND id=$2::uuid",
             [actor.tenantId, request.params.bookingId],
@@ -486,7 +466,7 @@ export function registerSyntheticBookingHttp(
       )
         return fail(reply, 400, "INVALID_REQUEST");
       try {
-        const bookings = await inReadTransaction(pool, async (client) => {
+        const bookings = await runSqlTransaction(pool, async (client) => {
           await requireTenantPermission(
             client,
             actor,

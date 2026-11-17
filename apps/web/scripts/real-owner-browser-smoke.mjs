@@ -390,7 +390,7 @@ async function main() {
     await button(cdp, "Расписание");
     await requireDom(cdp, "real schedule loaded with assigned branch",
       "document.querySelector('h1')?.textContent.trim()==='Расписание' && document.querySelectorAll('.owner-form input[type=datetime-local]').length===2 && " +
-      "document.querySelector('.owner-form-note')?.innerText.includes(" + JSON.stringify(BRANCH_ZONE) + ")");
+      "document.querySelector('.owner-form .owner-form-note')?.innerText.includes(" + JSON.stringify(BRANCH_ZONE) + ")");
     await checkWidth(cdp, "real schedule 375px");
     await checkLabeledControls(cdp, "real schedule form");
     const date = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
