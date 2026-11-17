@@ -150,12 +150,17 @@ def publish(token, repo, job, report, archive):
         raise ValueError("Evidence publication failed")
 
 
-def worker(suite, commit):
-    job = os.environ["TASK_JOB_ID"]
-    run_id = int(os.environ["GITHUB_RUN_ID"])
-    attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
+def task_runner_provenance():
+    run_id = int(os.environ["TASK_RUNNER_RUN_ID"])
+    attempt = int(os.environ["TASK_RUNNER_RUN_ATTEMPT"])
     if run_id < 1 or attempt < 1:
         raise ValueError("Invalid runner provenance")
+    return run_id, attempt
+
+
+def worker(suite, commit):
+    job = os.environ["TASK_JOB_ID"]
+    run_id, attempt = task_runner_provenance()
     token = os.environ["CI_EVIDENCE_TOKEN"]
     repo = private_repo(token, os.environ["CI_EVIDENCE_REPO"])
     if not JOB.fullmatch(job) or not SHA.fullmatch(commit) or suite not in SUITES:
