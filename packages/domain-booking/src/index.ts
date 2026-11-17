@@ -7,4 +7,7 @@ export {
 
 /** Read-only controlled staging customer booking history. */
 export { listOwnStagingBookings } from "./staging-customer-history.js";
-export { cancelStagingCustomerBooking, CancelBookingFailure } from "./cancel.js";
+export {
+  cancelStagingCustomerBooking,
+  CancelBookingFailure,
+} from "./cancel.js";
