@@ -42,6 +42,13 @@ test(
     const sessions = new IdentitySessions(pool, issuer, "cookie-web", 900);
     const otherAudience = new IdentitySessions(pool, issuer, "other", 900);
     let identityId: string | null = null;
+    const audit = async () => {
+      const result = await pool.query<{ event_type: string }>(
+        "SELECT event_type FROM cookie_identity.auth_security_events WHERE identity_id=$1::uuid ORDER BY id",
+        [identityId],
+      );
+      return result.rows.map((row) => row.event_type);
+    };
     const countSessions = async () =>
       (
         await pool.query(
@@ -67,6 +74,7 @@ test(
       );
       assert.ok(identityId);
       assert.equal(await countSessions(), 0);
+      assert.deepEqual(await audit(), ["email_registered"]);
 
       const login = (address: string, candidate: string) =>
         loginEmailPassword(
@@ -151,8 +159,15 @@ test(
       assert.deepEqual(blocked, { status: "throttled" });
       assert.equal(await countSessions(), 1);
 
+      assert.deepEqual(await audit(), ["email_registered", "email_login"]);
+      await sessions.revoke(session.token);
       await sessions.revoke(session.token);
       assert.equal(await sessions.resolve(session.token), null);
+      assert.deepEqual(await audit(), [
+        "email_registered",
+        "email_login",
+        "identity_session_revoked",
+      ]);
     } finally {
       try {
         await pool.query(
@@ -172,6 +187,10 @@ test(
         await pool.query(
           "DELETE FROM cookie_identity.email_credentials WHERE email_hmac_sha256=$1",
           [fingerprint],
+        );
+        await pool.query(
+          "DELETE FROM cookie_identity.auth_security_events WHERE identity_id=$1::uuid",
+          [identityId],
         );
         if (identityId) {
           await pool.query(
