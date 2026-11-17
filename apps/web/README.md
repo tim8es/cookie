@@ -12,23 +12,11 @@ pnpm install --frozen-lockfile
 pnpm dev:web
 ```
 
-Open **http://127.0.0.1:5173/**. Mock mode is the default. To be explicit:
+Open **http://127.0.0.1:5173/demo** for an explicitly isolated UI preview. Its data lives only in the synthetic browser-local adapter. Root **http://127.0.0.1:5173/** is the API-backed application; without the compiled runtime and verified Telegram session, it remains on its authentication gate. It never falls back to demo. The build-time mode switch is no longer used; both routes are served from the same build.
 
-```sh
-VITE_COOKIE_DATA_MODE=mock pnpm dev:web
-```
+For real manual staging, build the runtime with `pnpm build:runtime` and follow the [staging operations runbook](../../docs/operations/staging-local-altare.md); the one-command local launcher is tracked in [PR #270](https://github.com/tim8es/cookie/pull/270). Protected pages share the same sidebar and header as the demo. Calendar, catalog, staff, locations and schedule use their existing server adapters; appearance and owner-originated booking show an explicit unavailable state until the corresponding protected flows exist. The customer staging surface requires a separate verified customer session at `/?surface=customer-staging`.
 
-On Windows PowerShell: `$env:VITE_COOKIE_DATA_MODE='mock'; pnpm dev:web`.
-
-To verify the *fail-closed* API adapter (no invented endpoints):
-
-```sh
-VITE_COOKIE_DATA_MODE=api pnpm dev:web
-```
-
-This shows the "API not connected" error; it **does not** send requests to backend.
-
-## First walkthrough
+## Demo walkthrough
 
 1. Open the Overview page and create a **test organization** with a synthetic name.
 2. Add a service with one base price and organization-wide duration.
@@ -131,7 +119,7 @@ Repo-wide `pnpm lint`, `pnpm format:check` and GitHub F1 quality gate remain app
 - Keyboard: Tab through owner navigation and booking form; open a calendar record with Enter; drawer must focus its close control, cycle focus between dialog buttons and close on Escape, returning focus to the invoking control.
 - Preview selector: empty, error, permission-denied and forced slot conflict are visual fixtures only. Real authorization remains API-enforced.
 - Reload page in same tab to verify synthetic state restoration; use Reset demo to clear it. Opening an independent browser session must not share state.
-- API mode: run with `VITE_COOKIE_DATA_MODE=api`; verify **only** the explicit disconnected error is shown, no fake success or network request.
+- API mode: open `/` without a verified session; verify that the protected owner workspace and every demo control remain hidden. With the real runtime and verified session, use the shared navigation; only `/demo` permits mock operations.
 
 **Important:** GitHub CI does not replace physical device or browser visual QA. Do not close the mobile UX portion of Issue #13 solely from typecheck/CI.
 
@@ -201,8 +189,7 @@ not establish real iOS, Android or Telegram client compatibility.
 The contract-neutral `src/lib/transport.ts` has an explicitly injected
 fetch implementation, classifies generic HTTP failures and never retries
 unsafe requests on its own. Its response remains `unknown` until a reviewed
-OpenAPI/JSON Schema mapper exists. `api.ts` continues to fail closed in API
-mode; mock mode remains network-isolated.
+OpenAPI/JSON Schema mapper exists. The legacy demo port in `api.ts` fails closed on the API route; real pages use their reviewed server-specific adapters. The explicit `/demo` route remains network-isolated.
 
 **Acceptance still outstanding:** iOS Safari and Android Chrome physical
 device checks, Telegram iOS/Android/Desktop launch and keyboard/viewport

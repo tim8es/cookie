@@ -1,68 +1,36 @@
 <script lang="ts">
-  import { Button } from "../components/ui/button/index.js";
   import type { VerifiedOwnerSession } from "../owner-auth";
+  import type { Screen } from "../navigation";
   import RealOwnerServicesPage from "./RealOwnerServicesPage.svelte";
   import RealOwnerStaffPage from "./RealOwnerStaffPage.svelte";
   import RealOwnerLocationsPage from "./RealOwnerLocationsPage.svelte";
   import RealOwnerSchedulePage from "./RealOwnerSchedulePage.svelte";
   import RealOwnerCalendarPage from "./RealOwnerCalendarPage.svelte";
   import RealOwnerOverviewPage from "./RealOwnerOverviewPage.svelte";
+  import RealOwnerUnavailablePage from "./RealOwnerUnavailablePage.svelte";
 
   export let session: VerifiedOwnerSession;
-  export let onLogout: () => void;
-
-  let section: "overview" | "services" | "staff" | "locations" | "schedule" | "calendar" = "services";
+  export let screen: Screen;
+  export let onNavigate: (next: Screen) => void;
 </script>
 
-<nav class="real-owner-nav" aria-label="Разделы кабинета владельца">
-  <Button
-    type="button"
-    variant={section === "overview" ? "default" : "outline"}
-    aria-current={section === "overview" ? "page" : undefined}
-    onclick={() => (section = "overview")}
-  >Обзор</Button>
-  <Button
-    type="button"
-    variant={section === "services" ? "default" : "outline"}
-    aria-current={section === "services" ? "page" : undefined}
-    onclick={() => (section = "services")}
-  >Услуги</Button>
-  <Button
-    type="button"
-    variant={section === "staff" ? "default" : "outline"}
-    aria-current={section === "staff" ? "page" : undefined}
-    onclick={() => (section = "staff")}
-  >Мастера</Button>
-  <Button
-    type="button"
-    variant={section === "locations" ? "default" : "outline"}
-    aria-current={section === "locations" ? "page" : undefined}
-    onclick={() => (section = "locations")}
-  >Филиалы</Button>
-  <Button
-    type="button"
-    variant={section === "schedule" ? "default" : "outline"}
-    aria-current={section === "schedule" ? "page" : undefined}
-    onclick={() => (section = "schedule")}
-  >Расписание</Button>
-  <Button type="button" variant={section === "calendar" ? "default" : "outline"} aria-current={section === "calendar" ? "page" : undefined} onclick={() => (section = "calendar")}>Календарь</Button>
-  <Button type="button" variant="outline" onclick={onLogout}>Выйти</Button>
-</nav>
-{#if section === "overview"}
+{#if screen === "home"}
   <RealOwnerOverviewPage
     {session}
-    onOpenLocations={() => (section = "locations")}
-    onOpenServices={() => (section = "services")}
-    onOpenStaff={() => (section = "staff")}
+    onOpenLocations={() => onNavigate("locations")}
+    onOpenServices={() => onNavigate("services")}
+    onOpenStaff={() => onNavigate("staff")}
   />
-{:else if section === "services"}
-  <RealOwnerServicesPage {session} {onLogout} />
-{:else if section === "staff"}
-  <RealOwnerStaffPage {session} onOpenServices={() => (section = "services")} />
-{:else if section === "locations"}
+{:else if screen === "services"}
+  <RealOwnerServicesPage {session} />
+{:else if screen === "staff"}
+  <RealOwnerStaffPage {session} onOpenServices={() => onNavigate("services")} />
+{:else if screen === "locations"}
   <RealOwnerLocationsPage {session} />
-{:else if section === "calendar"}
+{:else if screen === "calendar"}
   <RealOwnerCalendarPage {session} />
-{:else}
-  <RealOwnerSchedulePage {session} onOpenStaff={() => (section = "staff")} />
+{:else if screen === "schedule"}
+  <RealOwnerSchedulePage {session} onOpenStaff={() => onNavigate("staff")} />
+{:else if screen === "appearance" || screen === "booking"}
+  <RealOwnerUnavailablePage {screen} onReturn={() => onNavigate("home")} />
 {/if}
