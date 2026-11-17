@@ -112,7 +112,7 @@ test("sendmail submits MIME and sanitizes failures", async () => {
     const body = Buffer.from(encoded ?? "", "base64").toString("utf8");
     assert.ok(body.includes("#token=" + regToken));
 
-    await writeFile(executable, '#!/bin/sh\ncat >/dev/null\nexit 7\n');
+    await writeFile(executable, "#!/bin/sh\ncat >/dev/null\nexit 7\n");
     await assert.rejects(
       delivery.send("registration", {
         address: recipient,
