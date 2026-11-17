@@ -2,6 +2,7 @@ import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 
 import type { PoolClient, QueryResultRow } from "pg";
 
+import { appendAuthIdentityAudit } from "./auth-security-audit.js";
 import { hashPassword } from "./password-crypto.js";
 import type { PasswordWorkGate } from "./password-work-gate.js";
 
@@ -153,6 +154,7 @@ export async function completeEmailRegistration(
       "INSERT INTO cookie_identity.email_credentials(email_hmac_sha256,identity_id,password_hash) VALUES ($1,$2::uuid,$3)",
       [fingerprint, identityId, passwordHash],
     );
+    await appendAuthIdentityAudit(client, "email_registered", identityId);
     return identityId;
   });
 }
