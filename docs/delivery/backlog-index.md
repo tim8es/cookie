@@ -65,3 +65,11 @@
 
 ## Как читать
 В каждой задаче указаны parent epic, P0–P2, F0–F3, ссылки на REQ/документы, dependencies и checklist приёмки. Изменения Issue требуют синхронизации roadmap и PRD, если меняется содержание продуктового релиза.
+
+## Дополнение F2/F3 — табличный обмен и администрирование (2026-11-17)
+| Issue | Фаза / приоритет | Scope / зависимость |
+|---|---|---|
+| [#252](https://github.com/tim8es/cookie/issues/252) | F2 early / P0 | Data Exchange XLSX/CSV; после real-mode F1 #203 и domain/Policy readiness |
+| [#253](https://github.com/tim8es/cookie/issues/253) | F2 / P1 | Telegram admin + файлы; после #252, #29, #24 и соответствующих security gates |
+| [#254](https://github.com/tim8es/cookie/issues/254) | F3 / P2 PROPOSED | Sheets integration / scheduled exchange; после #252/#253 и evidence спроса |
+REQ-068–073, DEC-116/117, [спецификация](../product/tabular-and-telegram-admin.md). GitHub Issues — источник статусов; ни одна задача не считается реализованной по документации.
