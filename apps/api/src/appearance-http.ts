@@ -50,7 +50,12 @@ function revision(value: unknown, allowZero: boolean): value is number {
  */
 export function registerRealAppearanceRoutes(
   app: FastifyInstance,
-  { pool, verifier, assets, draftOnly = false }: RealAppearanceRouteDependencies,
+  {
+    pool,
+    verifier,
+    assets,
+    draftOnly = false,
+  }: RealAppearanceRouteDependencies,
 ): void {
   async function authenticated(
     authorization: string | undefined,
