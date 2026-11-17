@@ -49,6 +49,12 @@ test("compiled static web never enables Booking", async (t) => {
     "/assets/missing.js",
     "/assets/%2e%2e%2fsecret.js",
     "/secret.txt",
+    "/demo",
+    "/demo/",
+    "/demo?browser-smoke=1",
+    "/demo/example",
+    "/DEMO",
+    "/%64emo",
   ]) {
     const response = await app.inject({ method: "GET", url });
     assert.ok(response.statusCode >= 400, `unsafe static fallback for ${url}`);
