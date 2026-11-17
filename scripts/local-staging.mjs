@@ -294,6 +294,18 @@ async function main() {
     const cutoff = parseStagingCancellationCutoff(process.env.COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES);
     const binary = mode.worker ? null : browser();
     checkInterrupted();
+    if (mode.worker) {
+      // Announce the exact resource identity before Docker can create it.
+      // A failed/disconnected parent prevents allocating an untracked project.
+      if (!process.connected) throw new Error("Private demo parent disconnected");
+      await new Promise((resolve, reject) => {
+        process.send({ type: "allocated", project: state.project }, error => {
+          if (error) reject(new Error("Private demo allocation was not announced"));
+          else resolve();
+        });
+      });
+      checkInterrupted();
+    }
     composeAttempted = true;
     compose(state, ["up", "-d", "--wait"]);
     const databaseUrl = "postgresql://cookie:" + state.password +
