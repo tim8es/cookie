@@ -291,7 +291,7 @@ test(
         await assertCommitWireFailure("after-commit", (faultPool) =>
           createBookingInternal(faultPool, createCommand, pass),
         );
-        t.diagnostic("create: real TCP loss before COMMIT and after commit accepted");
+        t.diagnostic("create: wire fault both sides of COMMIT");
       } else {
         const createFault = loseFirstCommitAcknowledgement(pool);
         await assert.rejects(
@@ -365,7 +365,7 @@ test(
         await assertCommitWireFailure("after-commit", (faultPool) =>
           rescheduleBookingInternal(faultPool, moveCommand, pass),
         );
-        t.diagnostic("move: real TCP loss before COMMIT and after commit accepted");
+        t.diagnostic("move: wire fault both sides of COMMIT");
       } else {
         const moveFault = loseFirstCommitAcknowledgement(pool);
         await assert.rejects(
@@ -438,7 +438,7 @@ test(
         await assertCommitWireFailure("after-commit", (faultPool) =>
           cancelBookingInternal(faultPool, cancelCommand, pass),
         );
-        t.diagnostic("cancel: real TCP loss before COMMIT and after commit accepted");
+        t.diagnostic("cancel: wire fault both sides of COMMIT");
       } else {
         const cancelFault = loseFirstCommitAcknowledgement(pool);
         await assert.rejects(
