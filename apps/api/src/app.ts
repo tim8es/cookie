@@ -18,6 +18,10 @@ import {
 } from "./workspace-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
 import {
+  registerRealStaffRoutes,
+  type RealStaffRoutesDependencies,
+} from "./staff-http.js";
+import {
   registerRealCatalogRoutes,
   type RealCatalogRouteDependencies,
 } from "./catalog-http.js";
@@ -37,6 +41,7 @@ export function createApp(
     readonly logger?: boolean;
     readonly sessionRoutes?: ProtectedSessionDependencies;
     readonly catalogRoutes?: RealCatalogRouteDependencies;
+    readonly staffRoutes?: RealStaffRoutesDependencies;
     readonly telegramAuthRoutes?: {
       readonly sessions: import("../../../packages/platform-identity/src/opaque-sessions.js").PostgresOpaqueTelegramSessions;
     };
@@ -82,6 +87,10 @@ export function createApp(
   // Real Catalog requires an independently verified bearer and transactional SQL policy.
   if (options.catalogRoutes)
     registerRealCatalogRoutes(app, options.catalogRoutes);
+
+  // Real, tenant-scoped draft StaffProfiles require verified Cookie sessions.
+  if (options.staffRoutes)
+    registerRealStaffRoutes(app, options.staffRoutes);
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.

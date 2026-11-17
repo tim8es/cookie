@@ -10,6 +10,7 @@
     type RealService,
   } from "../services-api";
   import ServiceForm from "./ServiceForm.svelte";
+  import RealOwnerStaffSection from "./RealOwnerStaffSection.svelte";
 
   export let session: VerifiedOwnerSession;
   export let onLogout: () => void;
@@ -179,3 +180,5 @@
     />
   {/if}
 </div>
+
+<RealOwnerStaffSection {session} />
