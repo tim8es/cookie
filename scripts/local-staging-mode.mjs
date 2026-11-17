@@ -24,3 +24,22 @@ export function isLocalStagingProject(mode, name) {
     name.startsWith(mode.projectPrefix) &&
     /^[0-9a-f]{12}$/.test(name.slice(mode.projectPrefix.length));
 }
+
+/** Restrict seed credentials to the exact ephemeral loopback API; reject redirects. */
+export function localDemoFetch(origin, fetcher = globalThis.fetch) {
+  const url = new URL(origin);
+  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" ||
+      !url.port || url.origin !== origin || url.username || url.password) {
+    throw new Error("Demo seeding requires an explicit loopback origin");
+  }
+  return async (path, init) => {
+    if (typeof path !== "string" || !path.startsWith("/v1/")) {
+      throw new Error("Only local API paths are permitted");
+    }
+    const target = new URL(path, origin);
+    if (target.origin !== origin || !target.pathname.startsWith("/v1/")) {
+      throw new Error("Demo API destination rejected");
+    }
+    return fetcher(target.href, { ...init, redirect: "error", credentials: "omit" });
+  };
+}
