@@ -218,3 +218,10 @@
 
 ## Gate документации перед coding
 REQ подтверждены, ADR ключевых tradeoffs решены или помечены как unblockable; декомпозиция с критериями приёмки, CI-план и risk register просмотрены; PR с документацией review/merge. После этого отдельно стартовать код.
+
+## Data Exchange + Telegram Admin regression matrix (REQ-068–072, #252/#253)
+**Not executed.** Detailed [acceptance](../product/tabular-and-telegram-admin.md#qa-acceptance-не-выполнено). Required evidence on exact final SHA:
+- Unit/contract: XLSX and CSV equivalence, version/references/duplicate keys, locale/IANA/DST, bounded malformed file/zip/parser/formula rules, immutable export fields and formula injection prevention.
+- PostgreSQL integration: one import → real domain data → availability, repeat no-op, stale dry-run/changed payload, failed transaction rollback, booking-vs-schedule race, concurrent activation cap, tenant/location/permission/session/link revocation, audit/outbox idempotency.
+- Web E2E: authenticated new tenant, template → preview → confirm/publish → client books → admin completes visit → export shows authoritative status; safe reimport. No mock/sessionStorage.
+- Bot/Mini App E2E: linked authorized staff with private message and explicit tenant selection, switch modes, upload/download, no customer/admin leakage, revoked callback, expired link, post-trial export. No real PII or live provider before approved gates. Independent security/QA review, CI evidence and negative tests mandatory.
