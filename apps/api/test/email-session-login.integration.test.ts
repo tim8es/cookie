@@ -81,7 +81,9 @@ test(
         );
 
       assert.deepEqual(await login(email, "incorrect"), { status: "denied" });
-      assert.deepEqual(await login(unknownEmail, password), { status: "denied" });
+      assert.deepEqual(await login(unknownEmail, password), {
+        status: "denied",
+      });
       assert.equal(await countSessions(), 0);
 
       const session = await login(email, password);
