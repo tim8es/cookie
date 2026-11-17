@@ -2,8 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { PoolClient, QueryResultRow } from "pg";
 
-import { AppearanceAssetNotVerified } from "./postgres.js";
-import type { AssetKind, TenantAssetOwnership } from "./postgres.js";
+import {
+  AppearanceAssetNotVerified,
+  type AssetKind,
+  type TenantAssetOwnership,
+} from "../../domain-appearance/src/index.js";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -188,6 +191,11 @@ export async function deleteUnusedAppearanceAsset(
   kind: AssetKind,
 ): Promise<boolean> {
   if (!validScope(tenantId, kind) || !UUID.test(assetId)) return false;
+  const isolation = await client.query<{ transaction_isolation: string }>(
+    "SHOW transaction_isolation",
+  );
+  if (isolation.rows[0]?.transaction_isolation !== "read committed")
+    throw new Error("Appearance asset deletion requires READ COMMITTED");
   const locked = await client.query(
     `SELECT id FROM cookie_appearance.assets
       WHERE tenant_id=$1::uuid AND id=$2::uuid AND kind=$3
@@ -198,10 +206,10 @@ export async function deleteUnusedAppearanceAsset(
   const referenced = await client.query(
     `SELECT tenant_id FROM cookie_appearance.organization_branding
       WHERE tenant_id=$1::uuid AND (
-        draft_config->>'logoAssetId'=$2 OR
-        draft_config->>'backgroundAssetId'=$2 OR
-        published_config->>'logoAssetId'=$2 OR
-        published_config->>'backgroundAssetId'=$2
+        lower(draft_config->>'logoAssetId')=lower($2) OR
+        lower(draft_config->>'backgroundAssetId')=lower($2) OR
+        lower(published_config->>'logoAssetId')=lower($2) OR
+        lower(published_config->>'backgroundAssetId')=lower($2)
       )`,
     [tenantId, assetId],
   );

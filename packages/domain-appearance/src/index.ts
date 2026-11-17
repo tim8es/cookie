@@ -31,12 +31,3 @@ export type {
   AssetKind,
   TenantAssetOwnership,
 } from "./postgres.js";
-
-export {
-  AppearanceAssetReferenced,
-  storeNormalizedAppearanceAsset,
-  postgresAppearanceAssetOwnership,
-  readTenantAppearanceAsset,
-  deleteUnusedAppearanceAsset,
-} from "./assets.js";
-export type { AppearanceAsset, NormalizedAppearanceImage } from "./assets.js";

@@ -7,15 +7,17 @@ import { Pool, type PoolClient } from "pg";
 
 import {
   AppearanceAssetNotVerified,
-  AppearanceAssetReferenced,
   createBrandConfig,
+  publishTenantBrandDraft,
+  saveTenantBrandDraft,
+} from "../../../packages/domain-appearance/src/index.js";
+import {
+  AppearanceAssetReferenced,
   deleteUnusedAppearanceAsset,
   postgresAppearanceAssetOwnership,
-  publishTenantBrandDraft,
   readTenantAppearanceAsset,
-  saveTenantBrandDraft,
   storeNormalizedAppearanceAsset,
-} from "../../../packages/domain-appearance/src/index.js";
+} from "../../../packages/appearance-asset-adapter/src/index.js";
 import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 
@@ -28,6 +30,23 @@ const image = {
   width: 1,
   height: 1,
 };
+
+async function waitForBlocked(
+  pool: Pool,
+  pid: number,
+  blocker: number,
+): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const result = await pool.query<{ blocked: boolean }>(
+      "SELECT $2::integer = ANY(pg_blocking_pids($1::integer)) AS blocked",
+      [pid, blocker],
+    );
+    if (result.rows[0]?.blocked) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("Expected asset lock contention was not observed");
+}
 
 test(
   "PostgreSQL stores normalized Appearance assets by tenant and kind and preserves referenced bytes",
@@ -106,7 +125,7 @@ test(
       );
       const config = {
         ...createBrandConfig("forest"),
-        logoAssetId: logo.id,
+        logoAssetId: logo.id.toUpperCase(),
       };
       await assert.rejects(
         tx((client) =>
@@ -202,6 +221,55 @@ test(
         ),
         AppearanceAssetNotVerified,
       );
+      // Initial save has no branding row to lock yet. It must still protect
+      // the asset until COMMIT, including during concurrent deletion.
+      const writer = await pool.connect();
+      const deleter = await pool.connect();
+      try {
+        await writer.query("BEGIN");
+        await deleter.query("BEGIN");
+        const writerPid = await writer.query<{ pid: number }>(
+          "SELECT pg_backend_pid() AS pid",
+        );
+        const deleterPid = await deleter.query<{ pid: number }>(
+          "SELECT pg_backend_pid() AS pid",
+        );
+        await saveTenantBrandDraft(
+          writer,
+          tenantB,
+          0,
+          { ...createBrandConfig("forest"), logoAssetId: foreign.id },
+          postgresAppearanceAssetOwnership,
+        );
+        const deletion = deleteUnusedAppearanceAsset(
+          deleter,
+          tenantB,
+          foreign.id,
+          "logo",
+        ).then(
+          (result) => ({ result }),
+          (error: unknown) => ({ error }),
+        );
+        try {
+          await waitForBlocked(
+            pool,
+            deleterPid.rows[0]!.pid,
+            writerPid.rows[0]!.pid,
+          );
+          await writer.query("COMMIT");
+          const outcome = await deletion;
+          assert.ok("error" in outcome);
+          assert.ok(outcome.error instanceof AppearanceAssetReferenced);
+        } finally {
+          await writer.query("ROLLBACK");
+          await deletion;
+        }
+      } finally {
+        await writer.query("ROLLBACK").catch(() => undefined);
+        await deleter.query("ROLLBACK").catch(() => undefined);
+        writer.release();
+        deleter.release();
+      }
     } finally {
       try {
         await pool.query(
