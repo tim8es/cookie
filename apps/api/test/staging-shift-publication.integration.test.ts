@@ -265,7 +265,7 @@ test(
       );
       assert.deepEqual(counts.rows[0], { shifts: 1, receipts: 1, audits: 1, events: 1 });
       await pool.query(
-        "UPDATE cookie_entitlement.staging_publication_grants SET expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1::uuid",
+        "UPDATE cookie_entitlement.staging_publication_grants SET issued_at=clock_timestamp()-interval '1 hour',expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1::uuid",
         [owner.tenantId],
       );
       assert.equal((await submit()).json().error, "grant-unavailable");

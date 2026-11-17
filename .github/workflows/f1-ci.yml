@@ -53,6 +53,13 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
+      - name: Temporary formatter diagnostics for new public source only
+        run: |
+          for file in apps/api/test/staging-shift-publication.integration.test.ts packages/domain-scheduling/src/publish-shift.ts packages/domain-scheduling/src/staging-shift-publication.ts; do
+            printf 'COOKIE_SHIFT_FMT %s ' "$file"
+            pnpm exec prettier "$file" | base64 -w0
+            printf '\n'
+          done
       - name: Check source formatting
         run: pnpm format:check
       - name: Check kernel and contract module boundaries
