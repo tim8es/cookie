@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowUpRight, CalendarDays, Check, Clock3, LayoutDashboard, MapPin, Menu, Scissors, UsersRound } from "@lucide/svelte";
+  import { ArrowUpRight, CalendarDays, Check, Clock3, LayoutDashboard, MapPin, Menu, Palette, Scissors, UsersRound } from "@lucide/svelte";
   import { screens, type Screen } from "../navigation";
 
   export let screen: Screen;
@@ -41,6 +41,8 @@
             <Clock3 size={18} strokeWidth={1.85}/>
           {:else if item.id === "locations"}
             <MapPin size={18} strokeWidth={1.85}/>
+          {:else if item.id === "appearance"}
+            <Palette size={18} strokeWidth={1.85}/>
           {:else}
             <ArrowUpRight size={18} strokeWidth={1.85}/>
           {/if}
@@ -60,14 +62,14 @@
     <button type="button" class:active={screen === "booking"} aria-current={screen === "booking" ? "page" : undefined} onclick={() => navigate("booking")}>
       <ArrowUpRight size={20} aria-hidden="true"/><span>Запись</span>
     </button>
-    <button type="button" class:active={moreOpen || ["services", "staff", "schedule", "locations"].includes(screen)}
+    <button type="button" class:active={moreOpen || ["services", "staff", "schedule", "locations", "appearance"].includes(screen)}
       aria-expanded={moreOpen} aria-controls="mobile-more-panel" onclick={() => moreOpen = !moreOpen}>
       <Menu size={20} aria-hidden="true"/><span>Ещё</span>
     </button>
   </nav>
   {#if moreOpen}
     <nav class="mobile-more-panel" id="mobile-more-panel" aria-label="Дополнительные разделы">
-      {#each screens.filter((item) => ["services", "staff", "schedule", "locations"].includes(item.id)) as item (item.id)}
+      {#each screens.filter((item) => ["services", "staff", "schedule", "locations", "appearance"].includes(item.id)) as item (item.id)}
         <button type="button" aria-current={screen === item.id ? "page" : undefined} onclick={() => navigate(item.id)}>{item.label}</button>
       {/each}
     </nav>

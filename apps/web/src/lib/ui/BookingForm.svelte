@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { ArrowUpRight, CalendarDays, Clock3, LockKeyhole, Scissors, UserRound, MapPin } from "@lucide/svelte";
+  import { ArrowRight, ArrowUpRight, CalendarDays, Clock3, LockKeyhole, Scissors, UserRound, MapPin } from "@lucide/svelte";
   import { Button } from "../components/ui/button/index.js";
   import * as Card from "../components/ui/card/index.js";
   import { Input } from "../components/ui/input/index.js";
-  import { localDay, money } from "../dates";
+  import { localDay, money, offsetDay } from "../dates";
   import type { DemoSnapshot, SlotView, StaffMember } from "../model";
   import BookingSummary from "./BookingSummary.svelte";
 
@@ -17,6 +17,7 @@
   export let clientAlias: string;
   export let busySlots: boolean;
   export let slotSuggestions: SlotView[];
+  export let slotLoadError: string;
   export let canBook: boolean;
 
   export let staffName: (id: string) => string;
@@ -25,6 +26,7 @@
   export let onStaffChange: (id: string) => void;
   export let onDateChange: (date: string) => void;
   export let onTimeChange: (time: string) => void;
+  export let onRetrySlots: () => void;
   export let onAliasChange: (alias: string) => void;
   export let onSubmit: () => void;
 
@@ -57,10 +59,16 @@
             <select value={bookingService} onchange={(event) => onServiceChange(event.currentTarget.value)} required>
               <option value="" disabled>Выберите услугу</option>
               {#each data.services as service (service.id)}
-                <option value={service.id}>{service.name} · {service.durationMinutes} мин</option>
+                <option value={service.id}>{service.name} · {money(service.basePriceRub)}</option>
               {/each}
             </select>
           </label>
+          {#if selectedService}
+            <div class="booking-service-meta" aria-live="polite">
+              <span><Clock3 size={14} aria-hidden="true" /> {selectedService.durationMinutes} мин</span>
+              <span class="booking-service-price">По каталогу <strong>{money(selectedService.basePriceRub)}</strong></span>
+            </div>
+          {/if}
           <div class="form-pair">
             {#if data.locations.length > 1}
               <label class="field">
@@ -106,11 +114,30 @@
         </label>
         <div class="field slot-field">
           <span class="field-label"><Clock3 size={15} aria-hidden="true" /> Время визита</span>
-          {#if busySlots}
-            <div class="inline-note" role="status">Подбираем демонстрационные слоты…</div>
+          {#if !bookingStaff || !bookingLocation || !bookingDate}
+            <div class="slot-feedback slot-feedback-hint" role="status">
+              Выберите мастера и дату, чтобы посмотреть время для записи.
+            </div>
+          {:else if busySlots}
+            <div class="slot-feedback slot-feedback-hint" role="status">
+              Проверяем демонстрационное расписание…
+            </div>
+          {:else if slotLoadError}
+            <div class="slot-feedback slot-feedback-error" role="alert">
+              <strong>Не удалось проверить время</strong>
+              <p>Проверьте подключение и повторите запрос. Выбранные услуга и мастер сохранятся.</p>
+              <Button type="button" variant="outline" onclick={onRetrySlots}>
+                Повторить проверку
+              </Button>
+            </div>
           {:else if slotSuggestions.length === 0}
-            <div class="empty-slots" role="status">
-              Свободных демонстрационных интервалов нет. Выберите другой день или настройте график мастера.
+            <div class="slot-feedback slot-feedback-empty" role="status">
+              <strong>На выбранный день нет свободного времени</strong>
+              <p>Попробуйте другую дату или проверьте следующий день. Свободное время заранее не гарантировано.</p>
+              <Button type="button" variant="outline" onclick={() => onDateChange(offsetDay(bookingDate, 1))}>
+                Проверить следующий день
+                <ArrowRight size={16} aria-hidden="true" />
+              </Button>
             </div>
           {:else}
             <div class="slot-grid" aria-label="Доступное время">
