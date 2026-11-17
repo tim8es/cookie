@@ -61,6 +61,24 @@ async function waitForAdvisoryWaiters(
   throw new Error(`Expected ${expected} Telegram identity lock waiters`);
 }
 
+async function waitForIdentitySessionRevocationWaiter(
+  pool: Pool,
+): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const result = await pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM pg_stat_activity
+        WHERE application_name='cookie-telegram-identity-link'
+          AND state='active' AND wait_event_type='Lock'
+          AND query LIKE 'UPDATE cookie_identity.identity_sessions SET revoked_at%'`,
+    );
+    if (result.rows[0]?.count === 1) return;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 10));
+  }
+  throw new Error(
+    "Identity session revocation did not wait for the link transaction",
+  );
+}
+
 test(
   "verified Telegram self-registration is atomic, one-time and tenant independent",
   { skip: !process.env.TEST_DATABASE_URL },
@@ -427,7 +445,7 @@ test(
   async () => {
     const pool = new Pool({
       connectionString: process.env.TEST_DATABASE_URL,
-      application_name: "cookie-telegram-identity-link-integration",
+      application_name: "cookie-telegram-identity-link",
       max: 4,
     });
     const secret = Buffer.alloc(32, 0x67);
@@ -532,6 +550,49 @@ test(
         ),
         false,
       );
+      const raceSession =
+        await emailSessions.issueForVerifiedIdentity(primaryIdentityId);
+      let releaseCommit: (() => void) | undefined;
+      let linkWorkReady: (() => void) | undefined;
+      const commitGate = new Promise<void>((resolveGate) => {
+        releaseCommit = resolveGate;
+      });
+      const linkReady = new Promise<void>((resolveReady) => {
+        linkWorkReady = resolveReady;
+      });
+      const gatedTransaction = <T>(
+        work: Parameters<typeof runSqlTransaction<T>>[1],
+      ) =>
+        runSqlTransaction(pool, async (client) => {
+          const result = await work(client);
+          linkWorkReady?.();
+          await commitGate;
+          return result;
+        });
+      const racedLink = linkSelfServiceTelegram(
+        gatedTransaction,
+        providers,
+        verifier,
+        secret,
+        signedInitData(TEST_BOT, users[0]!),
+        raceSession.token,
+      );
+      await linkReady;
+      const revokeRace = emailSessions.revoke(raceSession.token);
+      let revokeWaitedForLink = false;
+      try {
+        await waitForIdentitySessionRevocationWaiter(pool);
+        revokeWaitedForLink = true;
+      } catch {
+        // Assert below; still release the transaction and settle both promises.
+      } finally {
+        releaseCommit?.();
+      }
+      assert.equal(revokeWaitedForLink, true);
+      assert.equal(await racedLink, true);
+      await revokeRace;
+      assert.equal(await emailSessions.resolve(raceSession.token), null);
+
       assert.equal(
         await linkSelfServiceTelegram(
           transaction,
