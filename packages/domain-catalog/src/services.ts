@@ -35,6 +35,7 @@ interface ServiceRow extends QueryResultRow {
   active: boolean;
   created_at: Date;
   draft_revision: number;
+  first_published_at: Date | null;
 }
 interface ReceiptRow extends QueryResultRow {
   request_sha256: string;
@@ -97,7 +98,7 @@ function mapService(row: ServiceRow): ServiceRecord {
 }
 
 const SELECT_FIELDS = `id::text, display_name, duration_minutes,
-  base_price_kopecks::text, active, created_at, draft_revision`;
+  base_price_kopecks::text, active, created_at, draft_revision, first_published_at`;
 
 /** Stable, bounded tenant list; never silently return a truncated catalog. */
 export async function listTenantServices(
@@ -257,7 +258,8 @@ export async function editTenantDraftService(
     [tenantId, serviceId],
   );
   const row = current.rows[0];
-  if (!row || row.active) throw new CatalogDraftUnavailable();
+  if (!row || row.active || row.first_published_at !== null)
+    throw new CatalogDraftUnavailable();
   const eligibility = await client.query<{ eligible: boolean }>(
     `SELECT EXISTS (
          SELECT 1 FROM cookie_catalog.service_create_receipts
