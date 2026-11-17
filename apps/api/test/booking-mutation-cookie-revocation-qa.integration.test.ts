@@ -15,7 +15,7 @@ import type { BearerSessionVerifier } from "../src/session-context.js";
 test(
   "cancel and reschedule reject revoked or expired exact Cookie bearer after successful HTTP preflight",
   { skip: !process.env.TEST_DATABASE_URL },
-  async () => {
+  async (t) => {
     const pool = new Pool({
       connectionString: process.env.TEST_DATABASE_URL,
       application_name: "cookie-qa-mutation-cookie-preflight-revoke",
@@ -289,6 +289,125 @@ test(
         assert.equal(after.rows[0]?.status, target.rows[0].status);
         assert.deepEqual(after.rows[0]?.start_at, target.rows[0].start_at);
         await app.close();
+      }
+
+      // Complement revoke-first tests: the exact Cookie session must remain
+      // locked through each mutation's commit, not merely through preflight.
+      for (const operation of ["create", "cancel", "reschedule"] as const) {
+        await t.test(operation + " serializes bearer revoke", async () => {
+          const token = await sessionToken();
+          let reached!: () => void;
+          const checkpoint = new Promise<void>((done) => {
+            reached = done;
+          });
+          let release!: () => void;
+          const resume = new Promise<void>((done) => {
+            release = done;
+          });
+          const hold = async () => {
+            reached();
+            await resume;
+          };
+          const app = createApp(pool, {
+            syntheticBookingRoutes: {
+              pool,
+              verifier: sessions,
+              assertEntitled: hold,
+            },
+            syntheticBookingMutations: {
+              pool,
+              verifier: sessions,
+              assertMayCancel: hold,
+              assertMayReschedule: hold,
+            },
+          });
+          apps.push(app);
+          const request = {
+            method: "POST" as const,
+            url:
+              operation === "create"
+                ? "/v1/organizations/" + tenantId + "/bookings"
+                : url(
+                    operation === "cancel"
+                      ? cancelBlockedId
+                      : rescheduleBlockedId,
+                    operation,
+                  ),
+            headers: {
+              authorization: "Bearer " + token,
+              "idempotency-key": "qa-command-first-" + operation,
+            },
+            payload:
+              operation === "create"
+                ? {
+                    customerId,
+                    locationId,
+                    staffId,
+                    serviceId,
+                    startAt: "2028-09-20T19:30:00Z",
+                  }
+                : operation === "cancel"
+                  ? {}
+                  : { newStartAt: "2028-09-20T12:00:00Z" },
+          };
+          const before = await snapshot();
+          const revoker = await pool.connect();
+          const pending = app.inject(request).then((response) => response);
+          try {
+            assert.equal(
+              await Promise.race([
+                checkpoint.then(() => true),
+                pending.then(() => false),
+              ]),
+              true,
+              "mutation must reach the policy callback after AuthN/AuthZ",
+            );
+            await revoker.query("BEGIN");
+            await revoker.query("SET LOCAL lock_timeout='500ms'");
+            try {
+              await assert.rejects(
+                revoker.query(
+                  `UPDATE cookie_identity.opaque_sessions
+                      SET revoked_at=clock_timestamp()
+                    WHERE tenant_id=$1::uuid AND token_sha256=$2::bytea
+                      AND revoked_at IS NULL`,
+                  [tenantId, createHash("sha256").update(token).digest()],
+                ),
+                { code: "55P03" },
+                "exact bearer revocation must wait for Booking COMMIT",
+              );
+            } finally {
+              await revoker.query("ROLLBACK");
+            }
+          } finally {
+            revoker.release();
+            release();
+            await pending;
+          }
+          const response = await pending;
+          assert.equal(
+            response.statusCode,
+            operation === "create" ? 201 : 200,
+            response.body,
+          );
+          assert.equal(
+            response.json().status,
+            operation === "cancel" ? "CancelledByBusiness" : "Confirmed",
+          );
+          const after = await snapshot();
+          assert.equal(after.receipts, before.receipts! + 1);
+          assert.equal(after.events, before.events! + 1);
+          assert.equal(
+            after.bookings,
+            before.bookings! + (operation === "create" ? 1 : 0),
+          );
+          assert.equal(await sessions.revokeBearerToken(token), true);
+          assert.equal(await sessions.verifyBearerToken(token), null);
+          const replay = await app.inject(request);
+          assert.equal(replay.statusCode, 401);
+          assert.deepEqual(await snapshot(), after);
+          await app.close();
+        });
       }
     } finally {
       for (const app of apps) await app.close().catch(() => undefined);
