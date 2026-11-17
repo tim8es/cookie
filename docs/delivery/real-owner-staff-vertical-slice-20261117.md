@@ -29,3 +29,5 @@
 ## Не реализовано
 
 Мастер **не опубликован** и не может принимать бронирования. Настройка графика, включение bookable с entitlement/tier, перенос/отмена бронирований, платёжный провайдер, self signup, браузерный real-mode E2E с Telegram, законная работа с ПДн и production approval — отдельные контрольные точки. #113/#165/#175/#218 не закрыты; не утверждать готовность #20/#23/#203.
+
+Temporary F1 directory safety bound: new draft profiles stop at 100 per tenant (409 `staff-capacity-reached`); a tenant-scoped transaction advisory lock serializes creation and exact replay still succeeds at capacity. This is not a commercial seat quota; active/bookable entitlement is independent. Future assignment and location writers must preserve read bounds or implement pagination.

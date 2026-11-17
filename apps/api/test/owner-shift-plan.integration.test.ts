@@ -241,6 +241,14 @@ test(
         403,
       );
       assert.equal((await submit()).statusCode, 403);
+      const denial = await pool.query(
+        `SELECT count(*)::int AS total
+           FROM cookie_identity.authorization_audit
+          WHERE tenant_id=$1::uuid
+            AND permission='schedule.shift.plan.create' AND NOT allowed`,
+        [owner.tenantId],
+      );
+      assert.equal(denial.rows[0]?.total, 1);
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal(
         (await app.inject({ method: "GET", url, headers })).statusCode,

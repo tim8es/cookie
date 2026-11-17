@@ -202,17 +202,21 @@ test(
       await pool.query(
         `INSERT INTO cookie_tenancy.locations(tenant_id,id,display_name,time_zone)
           SELECT $1::uuid, gen_random_uuid(), 'Synthetic branch ' || n, 'UTC'
-            FROM generate_series(1,98) AS n`,
+            FROM generate_series(1,97) AS n`,
         [owner.tenantId],
       );
-      const capped = await app.inject({
-        method: "POST",
-        url,
-        headers: { ...headers, "idempotency-key": randomUUID() },
-        payload: { displayName: "Too many", timeZone: "UTC" },
-      });
-      assert.equal(capped.statusCode, 409);
-      assert.equal(capped.json().error, "location-limit");
+      const last = () =>
+        app.inject({
+          method: "POST",
+          url,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: { displayName: "Final branch", timeZone: "UTC" },
+        });
+      const outcomes = await Promise.all([last(), last()]);
+      const statuses = outcomes.map((item) => item.statusCode).sort();
+      assert.deepEqual(statuses, [201, 409]);
+      const capped = outcomes.find((item) => item.statusCode === 409);
+      assert.equal(capped?.json().error, "location-limit");
       assert.equal((await submit()).statusCode, 200);
       assert.equal(
         (await app.inject({ method: "GET", url, headers })).json().locations

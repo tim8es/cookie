@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 
 import {
+  CatalogCapacityReached,
   CatalogInputError,
   CatalogReplayConflict,
   CatalogRevisionConflict,
@@ -11,8 +12,8 @@ import {
   createTenantDraftService,
   listTenantServices,
   validateDraftService,
-} from "../../../packages/domain-catalog/src/services.js";
-import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/authorization.js";
+} from "../../../packages/domain-catalog/src/index.js";
+import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
 import {
   type BearerSessionVerifier,
   verifyTenantActor,
@@ -117,6 +118,9 @@ export function registerRealCatalogRoutes(
           .code(result.replayed ? 200 : 201)
           .send({ service: result.service });
       } catch (reason) {
+        if (reason instanceof CatalogCapacityReached) {
+          return reply.code(409).send({ error: "catalog-capacity-reached" });
+        }
         if (reason instanceof CatalogReplayConflict) {
           return reply.code(409).send({ error: "idempotency-conflict" });
         }

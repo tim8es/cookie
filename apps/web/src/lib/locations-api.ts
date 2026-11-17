@@ -38,7 +38,7 @@ function isLocation(value: unknown): value is RealLocation {
     UUID.test(data.id) &&
     typeof data.displayName === "string" &&
     !!data.displayName.trim() &&
-    data.displayName.length <= 200 &&
+    [...data.displayName].length <= 200 &&
     (data.timeZone === null ||
       (typeof data.timeZone === "string" &&
         data.timeZone.length <= 128 &&

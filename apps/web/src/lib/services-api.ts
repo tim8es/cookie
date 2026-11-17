@@ -13,6 +13,7 @@ export interface RealService {
 export type ServiceFailureReason =
   | "unauthorized"
   | "conflict"
+  | "capacity"
   | "stale-revision"
   | "draft-unavailable"
   | "unavailable"
@@ -91,6 +92,14 @@ async function request(
       problem.error === "stale-revision"
     ) {
       throw new ServiceApiFailure("stale-revision");
+    }
+    if (
+      problem &&
+      typeof problem === "object" &&
+      "error" in problem &&
+      problem.error === "catalog-capacity-reached"
+    ) {
+      throw new ServiceApiFailure("capacity");
     }
     throw new ServiceApiFailure("conflict");
   }

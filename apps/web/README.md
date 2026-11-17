@@ -36,10 +36,11 @@ This shows the "API not connected" error; it **does not** send requests to backe
 4. Choose staff, location, working days and hours on Schedule.
 5. Use Online booking: service → location → staff → date → fixture time → synthetic client alias → submit.
 6. Open Calendar; choose day or week, click the booking card.
+7. Under **Оформление**, choose a salon palette, edit the short invitation and save; open Online booking to preview the selected brand. This is only a browser-local F2 design prototype, not real tenant branding.
 
 Navigation is non-linear: services, staff, schedule, locations and calendar are also available from the menu. The dashboard guides the initial steps. Owner forms use controlled values and callbacks; their submission still goes through the same frontend-only mock adapter.
 
-**Persistence:** browser `sessionStorage` only (key `cookie.frontend-demo.v1`). Refresh within the same tab retains demo data. Closing the tab or selecting "Сбросить демо-данные" clears them. No real personal data, logins, phone numbers, emails, payments, network writes or reservations.
+**Persistence:** browser `sessionStorage` only (key `cookie.frontend-demo.v1`), including synthetic salon appearance. Refresh within the same tab retains demo data. Closing the tab or selecting "Сбросить демо-данные" clears them. No real personal data, logins, phone numbers, emails, payments, network writes or reservations.
 
 **Synthetic slot semantics:** 10:00, 12:00 and 15:00 are fixture suggestions filtered to demo weekday/hour settings; they are **not calculated availability**. The fake adapter can demonstrate a same-slot collision in its own session. A scenario selector also previews loading/error/empty/forbidden and forced slot conflict UI. This does not enforce a real booking rule or role permission. All confirmed-looking records are explicitly labeled **демо**, never real backend Confirmed.
 

@@ -15,6 +15,7 @@
 - Таблица `cookie_catalog.service_create_receipts` создана миграцией `0026`; Service уже существует в схеме `0004`. SQL сохраняет Service и receipt в одной транзакции. Все строки обязательно tenant-scoped; повтор сериализован transaction advisory lock + UNIQUE.
 - Привилегии `catalog.service.read/create` назначаются реальной owner-роли при provision и существующим owner-ролям отдельной миграцией. Сессия/ссылка Telegram, tenant, membership, roles и permission повторно проверяются и блокируются PostgreSQL до COMMIT через `requireTenantPermission`. Роль, tenant или Permission не берутся из браузерного запроса.
 - Продаж, publish, override-цен, скидок, staff assignment, клиентских данных или Booking в этом срезе нет. Стоимость — целые копейки без JS float на API; ввод в UI — целые рубли.
+- Временная техническая граница F1 — 100 услуг на tenant: новый create сверх границы отклоняется с `409 catalog-capacity-reached`, а ранее успешный идемпотентный replay по-прежнему возвращает 200. Tenant advisory lock сериализует конкурирующие create. Это не коммерческая квота; пагинация — будущая работа.
 - Server DTO, ошибки и лимит выдачи (100 услуг) проверяются до отображения, в том числе отсутствие 200 на невалидный ответ. Нет повторного использования `sessionStorage` API mode.
 - Ответы и ошибки защищённых маршрутов: `Cache-Control: no-store`; закэшированная авторизация не должна открыть чужой салон.
 

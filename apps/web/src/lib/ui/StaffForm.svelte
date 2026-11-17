@@ -30,18 +30,18 @@
       <label class="field">
         Псевдоним мастера
         <Input value={staffName} oninput={(event) => onNameChange(event.currentTarget.value)}
-          required maxlength={80} placeholder="Алекс Демо" />
+          required disabled={busy} maxlength={80} placeholder="Алекс Демо" />
       </label>
       <label class="field">
         Роль на витрине
         <Input value={staffTitle} oninput={(event) => onTitleChange(event.currentTarget.value)}
-          maxlength={80} placeholder="Стилист" />
+          maxlength={80} disabled={busy} placeholder="Стилист" />
       </label>
       {#if apiMode}
         <label class="field">
           Филиал
           <select value={staffLocation}
-            onchange={(event) => onLocationChange(event.currentTarget.value)} required>
+            onchange={(event) => onLocationChange(event.currentTarget.value)} required disabled={busy}>
             <option value="" disabled>Выберите филиал</option>
             {#each locations as location (location.id)}
               <option value={location.id}>{location.displayName}</option>
@@ -52,7 +52,7 @@
       <label class="field">
         Услуга мастера
         <select value={staffService}
-          onchange={(event) => onServiceChange(event.currentTarget.value)} required>
+          onchange={(event) => onServiceChange(event.currentTarget.value)} required disabled={busy}>
           <option value="" disabled>Выберите услугу</option>
           {#each services as service (service.id)}
             <option value={service.id}>{service.name}</option>

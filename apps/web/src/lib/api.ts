@@ -6,6 +6,7 @@ import type {
   Location,
   Organization,
   Service,
+  SalonAppearance,
   SlotView,
   StaffMember,
   WorkSchedule,
@@ -29,6 +30,9 @@ class NotConnectedApi implements CookieUiPort {
     return this.unavailable();
   }
   async createOrganization(): Promise<Organization> {
+    return this.unavailable();
+  }
+  async saveAppearance(): Promise<SalonAppearance> {
     return this.unavailable();
   }
   async addLocation(): Promise<Location> {

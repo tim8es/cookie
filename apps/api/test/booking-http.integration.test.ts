@@ -43,6 +43,38 @@ test(
     let entitlementChecks = 0;
     let cancellationDenied = false;
     let rescheduleDenied = false;
+    let failAvailabilityRefresh = false;
+    // Synthetic fault injection on a REAL Fastify/PG16 GET. Only the
+    // availability service SELECT is interrupted; the Booking POST SQL,
+    // transaction boundaries and entitlement checks remain unmodified.
+    const availabilityFaultPool = {
+      connect: async () => {
+        const client = await pool.connect();
+        return new Proxy(client, {
+          get(target, property) {
+            if (property === "query") {
+              return (statement: string, values?: unknown[]) => {
+                if (
+                  failAvailabilityRefresh &&
+                  statement.includes("SELECT service.duration_minutes") &&
+                  statement.includes(
+                    "FROM cookie_staff.service_assignments assignment",
+                  ) &&
+                  !statement.includes("FOR SHARE")
+                ) {
+                  throw new Error(
+                    "Synthetic post-409 availability service failure",
+                  );
+                }
+                return target.query(statement, values);
+              };
+            }
+            if (property === "release") return target.release.bind(target);
+            return Reflect.get(target, property, target);
+          },
+        });
+      },
+    } as unknown as Pool;
     const verifier = {
       verifyBearerToken: async (token: string) => {
         const identities: Record<string, string> = {
@@ -64,7 +96,7 @@ test(
     let browserFixtureModulesLink: string | undefined;
     const app = createApp(pool, {
       syntheticBookingRoutes: {
-        pool,
+        pool: availabilityFaultPool,
         verifier,
         assertEntitled: async () => {
           entitlementChecks++;
@@ -976,6 +1008,118 @@ test(
         bookings: "5",
         receipts: "7",
         events: "7",
+      });
+
+      // #197 negative UI path #3: server availability is legitimately empty
+      // after another actor commits the selected slot and the working shift
+      // closes. The real post-409 GET is HTTP 200/slots=[], not an error.
+      // Preserve the previous deny result before re-enabling this synthetic
+      // owner exclusively for additional browser QA.
+      const restoredOwner = await pool.query(
+        "UPDATE cookie_identity.memberships SET active=true WHERE tenant_id=$1 AND identity_id=$2",
+        [tenant, owner],
+      );
+      assert.equal(restoredOwner.rowCount, 1);
+      let emptyBrowser;
+      try {
+        emptyBrowser = await runF1BrowserBooking(
+          fixtureUrl.toString(),
+          "synthetic-owner",
+          {
+            slotTime: "14:00",
+            outcome: "conflict-empty",
+            viewportWidth: 375,
+            beforeSubmit: async () => {
+              const winner = await app.inject({
+                method: "POST",
+                url: `${base}/bookings`,
+                headers: {
+                  authorization: "Bearer synthetic-owner",
+                  "idempotency-key": "browser-competitor-empty",
+                },
+                payload: {
+                  customerId: customer,
+                  locationId: locationA,
+                  staffId: staff,
+                  serviceId: service,
+                  startAt: "2027-04-13T14:00:00Z",
+                },
+              });
+              assert.equal(winner.statusCode, 201, winner.body);
+              const closedShift = await pool.query(
+                `UPDATE cookie_scheduling.shift_windows SET active=false
+                  WHERE tenant_id=$1 AND staff_id=$2 AND location_id=$3
+                    AND start_at='2027-04-13T09:00:00Z'::timestamptz
+                    AND active`,
+                [tenant, staff, locationA],
+              );
+              assert.equal(closedShift.rowCount, 1);
+            },
+          },
+        );
+      } finally {
+        await pool.query(
+          `UPDATE cookie_scheduling.shift_windows SET active=true
+            WHERE tenant_id=$1 AND staff_id=$2 AND location_id=$3
+              AND start_at='2027-04-13T09:00:00Z'::timestamptz`,
+          [tenant, staff, locationA],
+        );
+      }
+      assert.deepEqual(emptyBrowser, {
+        outcome: "conflict-empty",
+        requests: 1,
+      });
+      assert.deepEqual((await stateCounts()).rows[0], {
+        bookings: "6",
+        receipts: "8",
+        events: "8",
+      });
+
+      // #197 negative UI path #4: same real Booking POST 409, but the
+      // subsequent server availability SELECT raises a test-only fault.
+      // Browser must observe HTTP 503, hide stale alternatives and expose
+      // selection recovery at desktop width without replaying the POST.
+      let failedRefreshBrowser;
+      try {
+        failedRefreshBrowser = await runF1BrowserBooking(
+          fixtureUrl.toString(),
+          "synthetic-owner",
+          {
+            slotTime: "16:00",
+            outcome: "conflict-error",
+            viewportWidth: 1280,
+            beforeSubmit: async () => {
+              const winner = await app.inject({
+                method: "POST",
+                url: `${base}/bookings`,
+                headers: {
+                  authorization: "Bearer synthetic-owner",
+                  "idempotency-key": "browser-competitor-refresh-unavailable",
+                },
+                payload: {
+                  customerId: customer,
+                  locationId: locationA,
+                  staffId: staff,
+                  serviceId: service,
+                  startAt: "2027-04-13T16:00:00Z",
+                },
+              });
+              assert.equal(winner.statusCode, 201, winner.body);
+              failAvailabilityRefresh = true;
+            },
+          },
+        );
+      } finally {
+        failAvailabilityRefresh = false;
+      }
+      assert.deepEqual(failedRefreshBrowser, {
+        outcome: "conflict-error",
+        requests: 1,
+      });
+      assert.deepEqual((await stateCounts()).rows[0], {
+        bookings: "7",
+        receipts: "9",
+        events: "9",
       });
     } finally {
       await browserFixtureServer?.close();
