@@ -119,7 +119,6 @@ export async function cancelBookingInternal(
   const keyHash = sha256(input.idempotencyKey);
   const requestHash = sha256(JSON.stringify([input.bookingId]));
   return runSqlTransaction(pool, async (client) => {
-
     // Read only immutable Staff/Location reference for deterministic lock
     // order. Never trust a staff or location value passed by a caller.
     const reference = await client.query<BookingRow>(

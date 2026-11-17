@@ -271,7 +271,6 @@ export async function createBookingInternal(
   );
   try {
     return await runSqlTransaction(pool, async (client) => {
-
       // A location-scoped permission is checked even on idempotent replay.
       // Client/customer roles cannot pass without verified customer binding.
       await requireTenantPermission(

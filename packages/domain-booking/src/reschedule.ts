@@ -265,7 +265,6 @@ export async function rescheduleBookingInternal(
   const requestHash = hash(JSON.stringify([input.bookingId, newStartAt]));
   try {
     return await runSqlTransaction(pool, async (client) => {
-
       // The actor never chooses staff/location via request parameters.
       const initial = await client.query<{
         staff_id: string;
@@ -351,7 +350,12 @@ export async function rescheduleBookingInternal(
         throw new RescheduleBookingFailure("RESCHEDULE_POLICY_DENIED");
       }
 
-      const slot = await readAvailableSlot(client, tenantId, booking, newStartAt);
+      const slot = await readAvailableSlot(
+        client,
+        tenantId,
+        booking,
+        newStartAt,
+      );
       const updated = await client.query(
         `UPDATE cookie_booking.bookings
            SET start_at=$3::timestamptz, end_at=$4::timestamptz,
