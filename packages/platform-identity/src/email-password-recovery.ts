@@ -152,3 +152,31 @@ export async function completeEmailPasswordRecovery(
     return true;
   });
 }
+
+/** Bounded maintenance; callers must schedule it outside the request path. */
+export async function purgeExpiredEmailRecoveryChallenges(
+  transaction: Transaction,
+  batchSize: number,
+): Promise<number> {
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 10000) {
+    throw new Error("Invalid recovery cleanup batch");
+  }
+  return transaction(async (client) => {
+    const result = await client.query(
+      `WITH expired AS (
+        SELECT token_sha256
+        FROM cookie_identity.email_password_recovery_challenges
+        WHERE expires_at<=statement_timestamp()
+        ORDER BY expires_at
+        LIMIT $1 FOR UPDATE SKIP LOCKED
+      )
+      DELETE FROM cookie_identity.email_password_recovery_challenges AS r
+      USING expired WHERE r.token_sha256=expired.token_sha256`,
+      [batchSize],
+    );
+    if (result.rowCount === null) {
+      throw new Error("Recovery cleanup failed");
+    }
+    return result.rowCount;
+  });
+}
