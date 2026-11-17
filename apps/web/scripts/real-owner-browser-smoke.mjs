@@ -634,6 +634,71 @@ async function main() {
     }
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
+    // The actual client-created record (not the seeded calendar fixture)
+    // must survive a fresh API process, fresh verified sessions and UI reads.
+    const createdId = realBooking.rows[0].id;
+    const durableBooking = async () => {
+      const result = await pool.query(
+        `SELECT
+          (SELECT to_jsonb(b) FROM cookie_booking.bookings b
+            WHERE b.tenant_id=$1::uuid AND b.id=$2::uuid) AS booking,
+          (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.operation,r.key_sha256),'[]'::jsonb)
+            FROM cookie_booking.command_receipts r
+            WHERE r.tenant_id=$1::uuid AND r.booking_id=$2::uuid) AS receipts,
+          (SELECT COALESCE(jsonb_agg(to_jsonb(e) ORDER BY e.id),'[]'::jsonb)
+            FROM cookie_jobs.outbox_events e
+            WHERE e.tenant_id=$1::uuid AND e.payload->>'bookingId'=$2::text) AS events,
+          (SELECT count(*)::int FROM cookie_booking.bookings b
+            WHERE b.tenant_id=$1::uuid) AS tenant_count`,
+        [owner.tenantId,createdId],
+      );
+      return result.rows[0];
+    };
+    const beforeBookingRestart = await durableBooking();
+    assert.equal(beforeBookingRestart.booking.id,createdId);
+    assert.equal(beforeBookingRestart.booking.status,"Confirmed");
+    assert.equal(beforeBookingRestart.tenant_count,2,"Expected seeded fixture plus client-created booking");
+    assert.equal(beforeBookingRestart.receipts.length,1);
+    assert.equal(beforeBookingRestart.receipts[0].operation,"booking.create");
+    assert.equal(beforeBookingRestart.receipts[0].result.bookingId,createdId);
+    assert.equal(beforeBookingRestart.events.length,1);
+    assert.equal(beforeBookingRestart.events[0].topic,"booking.confirmed");
+    const originalReceipt = beforeBookingRestart.receipts[0].result;
+    const writesBeforeRestart = responses.filter(r=>r.status===201&&r.path.endsWith("/staging-customer-bookings")).length;
+    assert.equal(writesBeforeRestart,1);
+    await button(cdp,"Выйти");
+    await requireDom(cdp,"customer logout before actual Booking restart","document.querySelector('[aria-label=\\\"Клиентский вход staging\\\"] h1')?.innerText==='Вы вышли' && !document.querySelector('[aria-label=\\\"Мои записи\\\"]')");
+    await stopServer(api);
+    api = await startServer({...env,COOKIE_STAGING_CUSTOMER_BOOKING_MODE:"enabled"},origin);
+    const historyResponseStart = responses.length;
+    script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script);
+    await requireDom(cdp,"own Booking survives API restart with original ID, status and times",
+      "(()=>{const rows=document.querySelectorAll('[aria-label=\\\"Мои записи\\\"] .customer-history li');const row=rows[0];return rows.length===1&&row.innerText.includes("+JSON.stringify(createdId)+")&&row.innerText.includes('Подтверждена')&&row.querySelectorAll('time')[0]?.dateTime==="+JSON.stringify(originalReceipt.startAt)+"&&row.querySelectorAll('time')[1]?.dateTime==="+JSON.stringify(originalReceipt.endAt)+"&&row.innerText.replace(/\\s/g,'').includes('1250,50');})()");
+    await poll("fresh customer history HTTP 200 after restart",()=>responses.slice(historyResponseStart).some(r=>r.status===200&&r.path.endsWith("/staging-customer-history")));
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0,"Reloaded history must not require browser-local state");
+    assert.deepEqual(await durableBooking(),beforeBookingRestart,"Client reload changed Booking business state");
+    await button(cdp,"Выйти");
+    await requireDom(cdp,"customer logout before verified owner calendar","document.querySelector('[aria-label=\\\"Клиентский вход staging\\\"] h1')?.innerText==='Вы вышли'");
+    script=await load(cdp,origin,signedProof(botToken,userId),script);
+    await requireDom(cdp,"fresh owner after actual Booking restart","document.querySelector('.real-owner-nav')");
+    const calendarResponseStart=responses.length;
+    await button(cdp,"Календарь");
+    await requireDom(cdp,"owner calendar initialized after Booking restart","document.querySelector('.owner-calendar select')?.options.length===2 && !document.querySelector('.owner-calendar select')?.disabled");
+    await evaluate(cdp,"(()=>{const s=document.querySelector('.owner-calendar select');s.value="+JSON.stringify(locationId)+";s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await requireDom(cdp,"persisted branch selected after restart","document.querySelector('.owner-calendar select')?.value==="+JSON.stringify(locationId)+" && !document.querySelector('.owner-calendar input[type=date]')?.disabled");
+    await fill(cdp,".owner-calendar input[type=date]",date,"change");
+    // Calendar intentionally does not render customer/Booking IDs. Match the
+    // actual receipt interval, service, staff, price and status in its own row.
+    await requireDom(cdp,"owner calendar displays actual customer Booking after restart",
+      "(()=>{const rows=[...document.querySelectorAll('[aria-label=\\\"Записи за выбранный период\\\"] .schedule-summary')];const fmt=value=>new Intl.DateTimeFormat('ru-RU',{timeZone:"+JSON.stringify(BRANCH_ZONE)+",dateStyle:'short',timeStyle:'short'}).format(new Date(value));const interval=fmt("+JSON.stringify(originalReceipt.startAt)+")+' — '+fmt("+JSON.stringify(originalReceipt.endAt)+");const price=new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(1250.5);return rows.length===2&&rows.filter(row=>row.innerText.includes(interval)&&row.innerText.includes(price)&&row.innerText.includes('Synthetic E2E Edited Service')&&row.innerText.includes('Synthetic E2E Staff')&&row.querySelector('.status-pill')?.innerText==='Подтверждена').length===1;})()");
+    await poll("fresh owner calendar HTTP 200 after restart",()=>responses.slice(calendarResponseStart).some(r=>r.status===200&&r.path.endsWith("/owner-calendar")));
+    assert.deepEqual(await durableBooking(),beforeBookingRestart,"Owner calendar read changed Booking business state");
+    assert.equal(responses.filter(r=>r.status===201&&r.path.endsWith("/staging-customer-bookings")).length,writesBeforeRestart);
+    await button(cdp,"Выйти");
+    await requireDom(cdp,"owner logout after restart verification","document.body.innerText.includes('Вы вышли') && !document.querySelector('.real-owner-nav')");
+    assert.deepEqual(errors,[],"Unexpected browser runtime errors during Booking restart");
+    assert.deepEqual(external,[],"Unexpected external requests during Booking restart");
+    console.log("PASS actual UI-created Booking after compiled API restart: fresh client history and owner calendar, exact durable Booking/receipt/outbox, no repeated create.");
     const demoApiRequests = [];
     cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
       if (request.url.startsWith(origin + "v1/")) demoApiRequests.push(new URL(request.url).pathname);
@@ -642,7 +707,7 @@ async function main() {
     await requireDom(cdp, "explicit demo route uses demo shell even in runtime build", "document.querySelector(\'[data-cookie-mode=mock] .welcome-form\')");
     assert.deepEqual(demoApiRequests, [], "Demo called real API");
     assert.deepEqual(external, [], "Demo made external requests");
-    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
+    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation, seeded and actual Booking owner Calendar, compiled API restart persistence, owner/client local expiry and logout, 3 viewports.");
   } finally {
     if (cdp) cdp.close();
     try {
