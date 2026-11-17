@@ -150,8 +150,9 @@ async function seed(state, databaseUrl) {
   }
 }
 
-function child(command, args, env) {
-  const processHandle = spawn(command, args, { cwd: root, env, stdio: "ignore" });
+function child(command, args, env, parentBound = false) {
+  const processHandle = spawn(command, args, { cwd: root, env,
+    stdio: parentBound ? ["ignore", "ignore", "ignore", "ipc"] : "ignore" });
   processHandle.once("error", () => { processHandle.startFailed = true; });
   return processHandle;
 }
@@ -393,7 +394,7 @@ async function main() {
     const origin = "http://127.0.0.1:" + port;
     const env = Object.fromEntries(Object.entries(process.env)
       .filter(([key]) => !/^(COOKIE_|DATABASE_URL$|PG|NODE_OPTIONS$)/i.test(key)));
-    api = child(process.execPath, ["dist/apps/api/src/main.js"], {
+    api = child(process.execPath, [mode.worker ? "scripts/private-demo-api-host.mjs" : "dist/apps/api/src/main.js"], {
       ...env, HOST: "127.0.0.1", PORT: String(port),
       DATABASE_URL: databaseUrl, COOKIE_WEB_DIST: join(root, "apps/web/dist"),
       COOKIE_TELEGRAM_AUTH_MODE: "enabled",
@@ -403,7 +404,7 @@ async function main() {
       COOKIE_PUBLIC_ORIGIN: "https://cookie-manual.invalid",
       COOKIE_TELEGRAM_BOT_TOKEN: state.botToken,
       COOKIE_TELEGRAM_USER_HMAC_SECRET: state.secret,
-    });
+    }, mode.worker);
     await poll("compiled API readiness", async () => {
       if (api.startFailed || api.exitCode !== null) return false;
       return (await getLocal(origin + "/health/ready")).status === 200;
