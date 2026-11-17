@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 import type { PoolClient, QueryResultRow } from "pg";
 
+import { appendAuthIdentityAudit } from "./auth-security-audit.js";
 import {
   canonicalRegistrationEmail,
   emailFingerprint,
@@ -148,6 +149,11 @@ export async function completeEmailPasswordRecovery(
       `UPDATE cookie_identity.identity_sessions SET revoked_at=clock_timestamp()
        WHERE identity_id=$1::uuid AND revoked_at IS NULL`,
       [pending.identity_id],
+    );
+    await appendAuthIdentityAudit(
+      client,
+      "password_recovered",
+      pending.identity_id,
     );
     return true;
   });
