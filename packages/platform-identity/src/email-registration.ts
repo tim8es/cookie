@@ -3,6 +3,7 @@ import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import type { PoolClient, QueryResultRow } from "pg";
 
 import { hashPassword } from "./password-crypto.js";
+import type { PasswordWorkGate } from "./password-work-gate.js";
 
 type Transaction = <T>(work: (client: PoolClient) => Promise<T>) => Promise<T>;
 
@@ -46,7 +47,7 @@ export function canonicalRegistrationEmail(value: unknown): string | null {
   return local + "@" + domain.toLowerCase();
 }
 
-function emailFingerprint(secret: Buffer, address: string): Buffer {
+export function emailFingerprint(secret: Buffer, address: string): Buffer {
   if (!Buffer.isBuffer(secret) || secret.length < 32) {
     throw new Error("Invalid email fingerprint secret");
   }
@@ -100,6 +101,7 @@ export async function issueEmailRegistrationChallenge(
  */
 export async function completeEmailRegistration(
   transaction: Transaction,
+  passwordWork: PasswordWorkGate,
   token: unknown,
   password: unknown,
 ): Promise<string | null> {
@@ -121,7 +123,7 @@ export async function completeEmailRegistration(
     return result.rowCount === 1;
   });
   if (!pending) return null;
-  const passwordHash = await hashPassword(password);
+  const passwordHash = await passwordWork.run(() => hashPassword(password));
 
   return transaction(async (client) => {
     const consumed = await client.query<FingerprintRow>(
