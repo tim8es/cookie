@@ -2,14 +2,18 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
 
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
+
+import { cancelBookingInternal } from "../../../packages/domain-booking/src/cancel.js";
 
 import {
   createBookingInternal,
   type ConfirmedBookingReceipt,
   type InternalCreateBooking,
 } from "../../../packages/domain-booking/src/create.js";
+import { rescheduleBookingInternal } from "../../../packages/domain-booking/src/reschedule.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 
 interface SyntheticTenant {
@@ -70,7 +74,7 @@ test(
           `INSERT INTO cookie_identity.roles
              (tenant_id, id, base_type, display_name, permissions)
            VALUES ($1::uuid, $2::uuid, 'owner', 'Synthetic owner',
-                   ARRAY['booking.create'])`,
+                   ARRAY['booking.create','booking.cancel','booking.reschedule'])`,
           [tenant.id, tenant.role],
         );
         await pool.query(
@@ -255,6 +259,154 @@ test(
             allowedSyntheticEntitlement,
           ),
           { code: "IDEMPOTENCY_KEY_REUSED" },
+        );
+        // Serialize competing operations in both possible leading orders.
+        // The first command pauses inside its trusted callback AFTER it
+        // takes Staff and Booking locks. Other commands really wait in PG.
+        const move = {
+          actor: winner.command.actor,
+          bookingId: winner.receipt.bookingId,
+          idempotencyKey: "mixed-move",
+          newStartAt: "2027-07-20T13:00:00Z",
+        };
+        const cancel = {
+          actor: winner.command.actor,
+          bookingId: winner.receipt.bookingId,
+          idempotencyKey: "mixed-cancel",
+        };
+        const replacement = {
+          ...winner.command,
+          idempotencyKey: "mixed-create",
+        };
+        let entered: (pid: number) => void = () => undefined;
+        let release: () => void = () => undefined;
+        const firstEntered = new Promise<number>((done) => {
+          entered = done;
+        });
+        const gate = new Promise<void>((done) => {
+          release = done;
+        });
+        const hold = async (client: PoolClient): Promise<void> => {
+          const pid = await client.query<{ pid: number }>(
+            "SELECT pg_backend_pid() AS pid",
+          );
+          entered(pid.rows[0]!.pid);
+          await gate;
+        };
+        const moveFirst = index === 0;
+        const lead = moveFirst
+          ? rescheduleBookingInternal(pool, move, hold)
+          : cancelBookingInternal(pool, cancel, hold);
+        // Attach observers immediately, so early failures never become
+        // unhandled rejections while the lock oracle is being evaluated.
+        void lead.catch(() => undefined);
+        let follower: ReturnType<typeof cancelBookingInternal> |
+          ReturnType<typeof rescheduleBookingInternal> | undefined;
+        let next: ReturnType<typeof createBookingInternal> | undefined;
+        let provedWait = false;
+        try {
+          const pid = await Promise.race([
+            firstEntered,
+            lead.then(() => {
+              throw new Error("Lead completed before entering lock gate");
+            }),
+            sleep(5000, undefined, { ref: false }).then(() => {
+              throw new Error("Lead did not acquire the booking locks");
+            }),
+          ]);
+          follower = moveFirst
+            ? cancelBookingInternal(pool, cancel, allowedSyntheticEntitlement)
+            : rescheduleBookingInternal(pool, move, allowedSyntheticEntitlement);
+          next = createBookingInternal(
+            pool,
+            replacement,
+            allowedSyntheticEntitlement,
+          );
+          void follower.catch(() => undefined);
+          void next.catch(() => undefined);
+          const deadline = Date.now() + 5000;
+          while (Date.now() < deadline) {
+            const waiting = await pool.query<{ count: number }>(
+              `SELECT count(*)::int AS count FROM pg_stat_activity
+                 WHERE datname=current_database()
+                   AND application_name='cookie-qa-booking-concurrency'
+                   AND wait_event_type='Lock'
+                   AND cardinality(pg_blocking_pids(pid))>0`,
+            );
+            const direct = await pool.query<{ count: number }>(
+              `SELECT count(*)::int AS count FROM pg_stat_activity
+                 WHERE $1::integer=ANY(pg_blocking_pids(pid))`,
+              [pid],
+            );
+            if (waiting.rows[0]!.count >= 2 && direct.rows[0]!.count >= 1) {
+              provedWait = true;
+              break;
+            }
+            await sleep(25);
+          }
+        } finally {
+          release();
+          await Promise.allSettled([lead, follower, next]);
+        }
+        assert.ok(provedWait, "Both contenders must wait on actual PG locks");
+        assert.ok(follower && next);
+        const [firstResult, secondResult, createdAgain] =
+          await Promise.allSettled([lead, follower, next]);
+        assert.equal(firstResult.status, "fulfilled");
+        assert.equal(createdAgain.status, "fulfilled");
+        if (moveFirst) {
+          assert.equal(secondResult.status, "fulfilled");
+        } else {
+          assert.equal(secondResult.status, "rejected");
+          assert.equal(
+            (secondResult.reason as { code?: string }).code,
+            "BOOKING_NOT_CONFIRMED",
+          );
+        }
+        const final = await pool.query(
+          `SELECT id::text,status,start_at,price_kopecks_snapshot::text
+             FROM cookie_booking.bookings WHERE tenant_id=$1::uuid
+             ORDER BY status,id`,
+          [tenant.id],
+        );
+        assert.equal(final.rows.length, 2);
+        const cancelled = final.rows.find(
+          (row) => row.id === winner.receipt.bookingId,
+        );
+        assert.equal(cancelled?.status, "CancelledByBusiness");
+        assert.equal(
+          cancelled?.start_at.toISOString(),
+          moveFirst
+            ? "2027-07-20T13:00:00.000Z"
+            : winner.receipt.startAt,
+        );
+        const rebooked = final.rows.find(
+          (row) => row.id === createdAgain.value.bookingId,
+        );
+        assert.equal(rebooked?.status, "Confirmed");
+        assert.equal(rebooked?.start_at.toISOString(), winner.receipt.startAt);
+        assert.ok(final.rows.every((r) => r.price_kopecks_snapshot === "150000"));
+        const ledger = await pool.query(
+          `SELECT
+            (SELECT count(*)::int FROM cookie_booking.command_receipts
+              WHERE tenant_id=$1::uuid) AS receipts,
+            (SELECT count(*)::int FROM cookie_jobs.outbox_events
+              WHERE tenant_id=$1::uuid) AS events,
+            (SELECT count(*)::int FROM cookie_booking.booking_state_audit
+              WHERE tenant_id=$1::uuid) AS cancellations,
+            (SELECT count(*)::int FROM cookie_booking.time_change_audit
+              WHERE tenant_id=$1::uuid) AS moves`,
+          [tenant.id],
+        );
+        assert.deepEqual(ledger.rows[0], {
+          receipts: moveFirst ? 4 : 3,
+          events: moveFirst ? 4 : 3,
+          cancellations: 1,
+          moves: moveFirst ? 1 : 0,
+        });
+        console.log(
+          "PASS: mixed Booking contention " +
+            (moveFirst ? "move-first" : "cancel-first"),
         );
       }
 
