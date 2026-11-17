@@ -109,19 +109,13 @@ test("config is versioned and cannot silently accept old or future shapes", () =
   assert.deepEqual(validateBrandConfig(base), base);
 });
 
-test("invalid preview and reset recover without weakening save validation", () => {
+test("invalid preview and reset recover safely", () => {
   const atelier = createBrandConfig("atelier");
   const forest = createBrandConfig("forest");
   const unknown = { ...forest, presetId: "future-preset" };
   const invalidColor = { ...forest, primaryColor: "not-a-color" };
-  assert.deepEqual(
-    compileBrandPreviewTokens(atelier),
-    compileBrandTokens(atelier),
-  );
-  assert.deepEqual(
-    compileBrandPreviewTokens(unknown),
-    compileBrandTokens(atelier),
-  );
+  assert.deepEqual(compileBrandPreviewTokens(atelier), compileBrandTokens(atelier));
+  assert.deepEqual(compileBrandPreviewTokens(unknown), compileBrandTokens(atelier));
   assert.deepEqual(
     compileBrandPreviewTokens(invalidColor),
     compileBrandTokens(forest),
