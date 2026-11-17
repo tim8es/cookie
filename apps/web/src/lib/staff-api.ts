@@ -30,6 +30,7 @@ export interface RealStaffDraft {
 export type StaffFailureReason =
   | "unauthorized"
   | "conflict"
+  | "capacity"
   | "missing-reference"
   | "unavailable"
   | "invalid-response";
@@ -51,7 +52,7 @@ function isLocation(value: unknown): value is RealStaffLocation {
     UUID.test(data.id) &&
     typeof data.displayName === "string" &&
     !!data.displayName.trim() &&
-    data.displayName.length <= 200
+    [...data.displayName].length <= 200
   );
 }
 function isAssignment(value: unknown): value is RealStaffAssignment {
@@ -76,9 +77,9 @@ function isStaff(value: unknown): value is RealStaff {
     UUID.test(data.id) &&
     typeof data.displayName === "string" &&
     !!data.displayName.trim() &&
-    data.displayName.length <= 200 &&
+    [...data.displayName].length <= 200 &&
     typeof data.positionTitle === "string" &&
-    data.positionTitle.length <= 80 &&
+    [...data.positionTitle].length <= 80 &&
     typeof data.active === "boolean" &&
     typeof data.bookable === "boolean" &&
     typeof data.createdAt === "string" &&
@@ -123,7 +124,14 @@ async function request(
   if (response.status === 401 || response.status === 403) {
     throw new StaffApiFailure("unauthorized");
   }
-  if (response.status === 409) throw new StaffApiFailure("conflict");
+  if (response.status === 409) {
+    const body = (await response.json().catch(() => null)) as {
+      error?: unknown;
+    } | null;
+    throw new StaffApiFailure(
+      body?.error === "staff-capacity-reached" ? "capacity" : "conflict",
+    );
+  }
   if (response.status === 404) throw new StaffApiFailure("missing-reference");
   if (!response.ok) throw new StaffApiFailure("unavailable");
   try {

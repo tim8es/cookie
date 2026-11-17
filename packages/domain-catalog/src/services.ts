@@ -23,6 +23,7 @@ export interface ServiceRecord {
 
 export class CatalogInputError extends Error {}
 export class CatalogReplayConflict extends Error {}
+export class CatalogCapacityReached extends Error {}
 
 interface ServiceRow extends QueryResultRow {
   id: string;
@@ -39,6 +40,7 @@ interface ReceiptRow extends QueryResultRow {
 
 const KEY = /^[A-Za-z0-9._:-]{16,128}$/;
 const MAX_PRICE_KOPECKS = 999_999_999_999;
+const MAX_TENANT_SERVICES = 100;
 
 export function validateDraftService(input: unknown): CreateDraftServiceInput {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -100,17 +102,17 @@ export async function listTenantServices(
 ): Promise<ServiceRecord[]> {
   const result = await client.query<ServiceRow>(
     `SELECT ${SELECT_FIELDS} FROM cookie_catalog.services
-      WHERE tenant_id=$1::uuid ORDER BY created_at, id LIMIT 101`,
-    [tenantId],
+      WHERE tenant_id=$1::uuid ORDER BY created_at, id LIMIT $2`,
+    [tenantId, MAX_TENANT_SERVICES + 1],
   );
-  if (result.rows.length > 100)
+  if (result.rows.length > MAX_TENANT_SERVICES)
     throw new Error("Service catalog exceeds F1 limit");
   return result.rows.map(mapService);
 }
 
 /**
  * Must run inside the SAME open transaction as requireTenantPermission.
- * The advisory lock serializes same-actor/key requests before reading receipt.
+ * The tenant advisory lock serializes creates, including same-key replay.
  * DB uniqueness is the final arbiter; changed payload with same key is a 409.
  * This never activates/publishes a service for bookings.
  */
@@ -133,7 +135,7 @@ export async function createTenantDraftService(
     )
     .digest("hex");
 
-  const scope = JSON.stringify([tenantId, actorIdentityId, key]);
+  const scope = JSON.stringify(["catalog.service.create", tenantId]);
   await client.query(
     "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
     [scope],
@@ -152,6 +154,12 @@ export async function createTenantDraftService(
   }
   const serviceId = existing.rows[0]?.service_id ?? randomUUID();
   if (!existing.rows[0]) {
+    const full = await client.query(
+      `SELECT 1 FROM cookie_catalog.services
+        WHERE tenant_id=$1::uuid LIMIT 1 OFFSET $2`,
+      [tenantId, MAX_TENANT_SERVICES - 1],
+    );
+    if (full.rows.length) throw new CatalogCapacityReached();
     await client.query(
       `INSERT INTO cookie_catalog.services
        (tenant_id,id,display_name,duration_minutes,base_price_kopecks,active)

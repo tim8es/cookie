@@ -8,8 +8,8 @@ import {
   createTenantLocation,
   listTenantLocations,
   validateCreateLocation,
-} from "../../../packages/domain-tenancy/src/locations.js";
-import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/authorization.js";
+} from "../../../packages/domain-tenancy/src/index.js";
+import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
 import { withTenantPermission } from "./protected-tenant-transaction.js";
 import {
   type BearerSessionVerifier,

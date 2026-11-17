@@ -5,22 +5,30 @@
   padding: 0 clamp(20px,5vw,72px);
 }
 .public-brand { gap: 12px; }
-.public-brand .brand-seal { height: 38px; width: 38px; }
-.public-brand strong { color: #30263a; font-size: 23px; letter-spacing: -.075em; }
-.public-brand strong span { color: #785587; }
+.public-header .salon-monogram {
+  display: grid; place-items: center; flex: 0 0 38px; width: 38px; height: 38px;
+  border-radius: 10px; background: #ede5ef; color: #4a3153;
+  font-family: var(--cookie-font-editorial); font-size: 22px; font-weight: 700;
+}
+.public-brand strong { color: #30263a; font-size: 23px; letter-spacing: -.035em; }
 .public-brand small { color: #918396; font-size: 10px; margin-top: 3px; }
 .public-header-actions { gap: 19px; }
-.preview-stamp { color: #806f86; font-size: 12px; }
-.public-header button.public-back[data-slot=button] {
-  color: #4d3954; background: var(--cookie-surface); border-color: #e6dfe8;
-  font-size: 12px; font-weight: 700; height: 38px;
-}
-.public-header button.public-back[data-slot=button]:hover { background: #f4eff5; }
+.public-service-label { color: #74687a; font-size: 12px; }
 .public-demo-notice {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 4px clamp(20px,5vw,72px);
   background: #f0ebf2; color: #75687a; border-bottom: 1px solid #e9e0ed;
-  font-size: 11px; min-height: 31px;
+  font-size: 11px; min-height: 40px;
 }
-.public-demo-notice svg { color: #755983; }
+.public-demo-notice svg { color: #755983; flex-shrink: 0; }
+.public-demo-copy { flex: 1 1 170px; line-height: 1.45; }
+.public-demo-back {
+  display: inline-flex; align-items: center; justify-content: flex-start; gap: 6px;
+  min-height: 44px; padding: 8px 0; border: 0; background: transparent;
+  font: inherit; font-size: 12px; font-weight: 650; color: #5c4265; cursor: pointer;
+}
+.public-demo-back:hover { color: #38233f; text-decoration: underline; }
+.public-demo-back:focus-visible { outline: 3px solid #8e6b99; outline-offset: 2px; border-radius: 4px; }
 .content.public-content { max-width: 1190px; padding: 28px 24px 10px; }
 .public-content .booking-head.booking-hero {
   position: relative; isolation: isolate; overflow: hidden;
@@ -48,12 +56,7 @@
   width: 193px; flex: 0 0 193px; border-left: 1px solid #7a667e;
   padding: 2px 0 0 26px; color: white; min-width: 0;
 }
-.hero-mark { position: relative; width: 54px; height: 54px; margin: 0 0 auto; }
-.hero-mark i { position: absolute; top: 3px; left: 22px; width: 12px; height: 21px; background: #dcf0ac; border-radius: 100% 100% 25% 25%; transform-origin: 6px 24px; }
-.hero-mark i:nth-child(2) { transform: rotate(90deg); }
-.hero-mark i:nth-child(3) { transform: rotate(180deg); }
-.hero-mark i:nth-child(4) { transform: rotate(270deg); }
-.booking-hero-studio > span { color: #c4b7c8; font-size: 11px; margin-bottom: 6px; }
+.booking-hero-studio > span { color: var(--salon-hero-overline, #c4b7c8); font-size: 11px; margin-bottom: 6px; }
 .booking-hero-studio strong { color: var(--cookie-surface); font-size: 15px; line-height: 1.4; font-weight: 700; overflow-wrap: anywhere; }
 .booking-hero-studio small { margin-top: 6px; color: #cbbbce; font-size: 10px; }
 .public-content .booking-layout { grid-template-columns: minmax(0, 1.42fr) minmax(310px, .82fr); gap: 22px; align-items: start; }
@@ -83,7 +86,42 @@
 .booking-form .field input:focus-visible,.booking-form .field select:focus-visible {
   border-color: #8b6994; outline: 3px solid #eadfee; outline-offset: 1px;
 }
+.booking-service-meta {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: 6px 13px; margin: -8px 0 16px; padding: 0 2px;
+  color: #706278; font-size: 12px; line-height: 1.5;
+}
+.booking-service-meta > span { display: inline-flex; gap: 6px; align-items: center; }
+.booking-service-meta svg { color: #87718f; flex-shrink: 0; }
+.booking-service-meta strong { font-size: 13px; font-weight: 750; color: #423047; white-space: nowrap; }
 .booking-form .form-pair { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.booking-form .slot-feedback {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 10px; margin: 0; padding: 17px 18px;
+  border: 1px solid #e8e0eb; border-radius: var(--cookie-radius-control);
+  background: #f8f6fa; color: #594a62;
+  font-size: 13px; line-height: 1.55;
+}
+.booking-form .slot-feedback strong { font-size: 14px; font-weight: 750; color: #3e3045; }
+.booking-form .slot-feedback p { max-width: 49ch; margin: 0; color: #74657b; }
+.booking-form .slot-feedback button[data-slot=button] {
+  min-height: 44px; display: inline-flex; align-items: center; gap: 9px;
+  background: var(--cookie-surface); color: #4d3656;
+  border: 1px solid #d9ccdd; border-radius: var(--cookie-radius-control);
+  font-size: 12px; font-weight: 750;
+}
+.booking-form .slot-feedback button[data-slot=button]:hover {
+  background: #f0eaf3; border-color: #ab96b3;
+}
+.booking-form .slot-feedback button[data-slot=button]:focus-visible {
+  outline: 3px solid #8e6b99; outline-offset: 2px;
+}
+.booking-form .slot-feedback-error { border-color: #d9aeb7; background: #fdf7f8; }
+.booking-form .slot-feedback-error strong { color: #823c4b; }
+@media (max-width: 400px) {
+  .booking-form .slot-feedback { padding: 15px 13px; }
+  .booking-form .slot-feedback button[data-slot=button] { width: 100%; justify-content: center; }
+}
 .booking-form .slot-field { margin: 12px 0 18px; }
 .booking-form .slot-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
 .slot-grid button[data-slot=button] {
@@ -117,20 +155,15 @@
 .ticket-top {
   position: relative; overflow: hidden; color: var(--cookie-surface);
   border-radius: var(--cookie-radius-surface) 14px 0 0; background: var(--cookie-ticket);
-  padding: 24px 28px 27px;
+  padding: 23px 28px 22px;
 }
-.ticket-topline { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 11px; color: #ddd2e1; }
+.ticket-topline { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 11px; color: var(--salon-ticket-overline, #ddd2e1); }
 .ticket-demo { font-size: 9px; letter-spacing: .08em; border: 1px solid #a18ba6; padding: 4px 8px; border-radius: 99px; color: #f1ebf2; }
-.ticket-mark { position: relative; width: 42px; height: 42px; margin: 27px 0 10px; }
-.ticket-mark span { position: absolute; left: 17px; top: 0; width: 9px; height: 16px; border-radius: 100% 100% 30% 30%; background: #e0f5a5; transform-origin: 4.5px 20px; }
-.ticket-mark span:nth-child(2) { transform: rotate(90deg); }
-.ticket-mark span:nth-child(3) { transform: rotate(180deg); }
-.ticket-mark span:nth-child(4) { transform: rotate(270deg); }
 .ticket-top h2 {
   color: var(--cookie-surface); font-weight: 400; font-family: var(--cookie-font-editorial);
-  line-height: 1.13; font-size: 26px; letter-spacing: -.045em; margin: 15px 0 9px;
+  line-height: 1.13; font-size: 27px; letter-spacing: -.045em; margin: 18px 0 8px;
 }
-.ticket-top p { color: #d4c4d9; font-size: 11px; line-height: 1.55; margin: 0; }
+.ticket-top p { color: var(--salon-ticket-description, #d4c4d9); font-size: 11px; line-height: 1.55; margin: 0; }
 .ticket-stitch { position: relative; height: 1px; border-top: 1px dashed #c9b8ce; background: #eee8f1; }
 .ticket-stitch:before,.ticket-stitch:after { content: ""; position: absolute; top: -12px; width: 24px; height: 24px; background: var(--cookie-paper); border-radius: 50%; z-index: 1; }
 .ticket-stitch:before { left: 0; } .ticket-stitch:after { right: 0; }
@@ -152,6 +185,13 @@
 .ticket-fineprint p { color: #837087; font-size: 10px; line-height: 1.55; margin: 0; }
 .footer { color: #9a8e9e; padding-top: 27px; }
 .footer button { color: #74637b; }
+.public-attribution {
+  display: flex; justify-content: center; align-items: center;
+  margin-top: 35px; padding: 18px 0 25px;
+  border-top: 1px solid var(--cookie-border); color: #877e8c;
+  font-size: 11px; line-height: 1.5; letter-spacing: .005em;
+}
+.public-attribution strong { color: #64556c; font-weight: 700; }
 
 
 /* The salon owns the public identity; Cookie is a quiet platform credit. */
@@ -198,4 +238,83 @@
   .booking-summary-container:not(.expanded) .booking-summary-content { display: none; }
   .booking-summary-container.expanded .booking-summary-content { margin-top: 9px; }
   .booking-single-location { font-size: 12px; padding: 8px 10px; }
+}
+
+/* Curated presentation themes: synthetic organization appearance, never URL-sourced CSS. */
+.public-shell {
+  --salon-hero: #3d2a48;
+  --salon-ticket: #4e345a;
+  --salon-accent: #e0f2a5;
+  --salon-action: #4c3358;
+  --salon-action-hover: #35243f;
+  --salon-monogram-bg: #ede5ef;
+  --salon-monogram-ink: #4a3153;
+}
+.public-shell.salonThemeForest {
+  --salon-hero: #24483b;
+  --salon-ticket: #315646;
+  --salon-accent: #e4eeb9;
+  --salon-action: #275144;
+  --salon-action-hover: #19392e;
+  --salon-monogram-bg: #e3efe6;
+  --salon-monogram-ink: #275144;
+}
+.public-shell.salonThemeOcean {
+  --salon-hero: #23455e;
+  --salon-ticket: #30556d;
+  --salon-accent: #cce8f2;
+  --salon-action: #28516e;
+  --salon-action-hover: #1a394d;
+  --salon-monogram-bg: #e5eef5;
+  --salon-monogram-ink: #23455e;
+}
+.public-shell.salonThemeClay {
+  --salon-hero: #704234;
+  --salon-ticket: #805344;
+  --salon-accent: #f1dfa9;
+  --salon-action: #784736;
+  --salon-action-hover: #553025;
+  --salon-monogram-bg: #f4e9e2;
+  --salon-monogram-ink: #784736;
+  /* Clay is lighter than the other dark themes: raise secondary text contrast. */
+  --salon-hero-overline: #e5dad9;
+  --salon-ticket-overline: #e9dfe0;
+  --salon-ticket-description: #e9dfe0;
+}
+.public-shell .public-content .booking-head.booking-hero { background: var(--salon-hero); }
+.public-shell .public-content .booking-hero h1 em { color: var(--salon-accent); }
+.public-shell .public-header .salon-monogram {
+  background: var(--salon-monogram-bg); color: var(--salon-monogram-ink);
+}
+.public-shell .ticket-top { background: var(--salon-ticket); }
+.public-shell .slot-grid button[data-slot=button].selected {
+  background: var(--salon-action); border-color: var(--salon-action);
+}
+.public-shell .public-content button.book-submit[data-slot=button] {
+  background: var(--salon-action);
+}
+.public-shell .public-content button.book-submit[data-slot=button]:hover:not(:disabled) {
+  background: var(--salon-action-hover);
+}
+
+/* Customer-facing unavailable state. Missing owner setup belongs in Workspace. */
+.public-content .booking-unavailable {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 10px; width: min(100%, 720px); padding: clamp(24px, 5vw, 36px);
+  border: 1px solid #e9e1eb; border-radius: var(--cookie-radius-surface);
+  background: #fff; color: var(--cookie-ink);
+}
+.public-content .booking-unavailable-icon {
+  display: grid; place-items: center; width: 44px; height: 44px;
+  color: #604c69; background: #f0eaf3; border-radius: 12px;
+}
+.public-content .booking-unavailable h2 {
+  margin: 5px 0 0; font-size: clamp(21px, 4vw, 27px); line-height: 1.2;
+}
+.public-content .booking-unavailable p {
+  margin: 0; max-width: 44ch; font-size: 14px; line-height: 1.6;
+  color: #6c6071;
+}
+@media (max-width: 400px) {
+  .public-content .booking-unavailable { padding: 23px 20px; }
 }

@@ -28,10 +28,12 @@ export interface StaffLocation {
 export class StaffInputError extends Error {}
 export class StaffReferenceNotFound extends Error {}
 export class StaffReplayConflict extends Error {}
+export class StaffCapacityReached extends Error {}
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9._:-]{16,128}$/;
+const MAX_STAFF = 100;
 
 function canonicalText(
   value: unknown,
@@ -156,15 +158,15 @@ export async function listTenantStaff(
   const profiles = await client.query<ProfileRow>(
     `SELECT id::text,display_name,position_title,active,bookable,created_at
        FROM cookie_staff.staff_profiles
-      WHERE tenant_id=$1::uuid ORDER BY created_at,id LIMIT 101`,
-    [tenantId],
+      WHERE tenant_id=$1::uuid ORDER BY created_at,id LIMIT $2`,
+    [tenantId, MAX_STAFF + 1],
   );
   const locationRows = await client.query<LocationRow>(
     `SELECT id::text,display_name FROM cookie_tenancy.locations
       WHERE tenant_id=$1::uuid ORDER BY display_name,id LIMIT 101`,
     [tenantId],
   );
-  if (profiles.rows.length > 100 || locationRows.rows.length > 100) {
+  if (profiles.rows.length > MAX_STAFF || locationRows.rows.length > 100) {
     throw new Error("Staff directory exceeds F1 limit");
   }
   const assignments = await readAssignments(
@@ -205,7 +207,7 @@ export async function createTenantDraftStaff(
     .digest("hex");
   await client.query(
     "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
-    [JSON.stringify([tenantId, actorIdentityId, key])],
+    [JSON.stringify(["staff.profile.create", tenantId])],
   );
   const existing = await client.query<ReceiptRow>(
     `SELECT request_sha256,staff_id::text FROM cookie_staff.staff_create_receipts
@@ -217,6 +219,12 @@ export async function createTenantDraftStaff(
   }
   const staffId = existing.rows[0]?.staff_id ?? randomUUID();
   if (!existing.rows[0]) {
+    const full = await client.query(
+      `SELECT 1 FROM cookie_staff.staff_profiles
+        WHERE tenant_id=$1::uuid LIMIT 1 OFFSET $2`,
+      [tenantId, MAX_STAFF - 1],
+    );
+    if (full.rows.length) throw new StaffCapacityReached();
     const location = await client.query(
       "SELECT id FROM cookie_tenancy.locations WHERE tenant_id=$1::uuid AND id=$2::uuid",
       [tenantId, draft.locationId],

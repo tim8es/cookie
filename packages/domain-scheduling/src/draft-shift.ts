@@ -6,6 +6,7 @@ import { enqueueOutbox } from "../../platform-db/src/outbox.js";
 import type { TrustedActor } from "../../platform-identity/src/authorization.js";
 import { requireTenantPermission } from "../../platform-identity/src/postgres.js";
 import { resolveLocalMinute, validateLocalMinute } from "./local-minute.js";
+import { withDraftTransaction } from "./draft-transaction.js";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -424,13 +425,7 @@ async function createShiftDraft(
           ],
     ),
   );
-  const client = transactionClient ?? (await pool.connect());
-  const ownsTransaction = transactionClient === undefined;
-  let active = false;
-  try {
-    if (ownsTransaction) await client.query("BEGIN");
-    active = true;
-
+  return withDraftTransaction(pool, transactionClient, async (client) => {
     // Preserve the shared Staff-first mutation lock order. The planning
     // permission is deliberately owner-only, not a synthetic approval callback.
     const staff = await client.query(
@@ -471,8 +466,6 @@ async function createShiftDraft(
       requestHash,
     );
     if (previous) {
-      if (ownsTransaction) await client.query("COMMIT");
-      active = false;
       return { receipt: previous, replayed: true };
     }
 
@@ -529,17 +522,8 @@ async function createShiftDraft(
       requestHash,
       receipt,
     });
-    if (ownsTransaction) await client.query("COMMIT");
-    active = false;
     return { receipt, replayed: false };
-  } catch (error) {
-    if (active && ownsTransaction) {
-      await client.query("ROLLBACK").catch(() => undefined);
-    }
-    throw error;
-  } finally {
-    if (ownsTransaction) client.release();
-  }
+  });
 }
 
 /**
@@ -569,13 +553,7 @@ export async function editShiftDraftInternal(
   const requestHash = digest(
     JSON.stringify([input.shiftId, input.expectedRevision, startAt, endAt]),
   );
-  const client = transactionClient ?? (await pool.connect());
-  const ownsTransaction = transactionClient === undefined;
-  let active = false;
-  try {
-    if (ownsTransaction) await client.query("BEGIN");
-    active = true;
-
+  return withDraftTransaction(pool, transactionClient, async (client) => {
     // Immutable staff/location are resolved before the staff lock.
     const reference = await client.query<DraftRow>(
       `SELECT staff_id::text,location_id::text
@@ -618,8 +596,6 @@ export async function editShiftDraftInternal(
       requestHash,
     );
     if (previous) {
-      if (ownsTransaction) await client.query("COMMIT");
-      active = false;
       return previous;
     }
 
@@ -704,15 +680,6 @@ export async function editShiftDraftInternal(
       oldEndAt,
       oldRevision: shift.draft_revision,
     });
-    if (ownsTransaction) await client.query("COMMIT");
-    active = false;
     return receipt;
-  } catch (error) {
-    if (active && ownsTransaction) {
-      await client.query("ROLLBACK").catch(() => undefined);
-    }
-    throw error;
-  } finally {
-    if (ownsTransaction) client.release();
-  }
+  });
 }

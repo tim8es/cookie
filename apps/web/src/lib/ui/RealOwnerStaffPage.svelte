@@ -35,6 +35,7 @@
     if (error instanceof StaffApiFailure) {
       if (error.reason === "unauthorized") return "Сеанс или права изменились. Выполните вход заново.";
       if (error.reason === "missing-reference") return "Филиал или услуга больше не существуют. Обновите страницу.";
+      if (error.reason === "capacity") return "Достигнут технический предел F1 (100 профилей мастеров).";
       if (error.reason === "conflict") return "Ключ уже использован для другого профиля. Измените форму.";
       if (error.reason === "invalid-response") return "Сервер вернул неподтверждённые данные.";
     }
