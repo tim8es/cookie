@@ -5,6 +5,7 @@ import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { enqueueOutbox } from "../../platform-db/src/outbox.js";
 import type { TrustedActor } from "../../platform-identity/src/authorization.js";
 import { requireTenantPermission } from "../../platform-identity/src/postgres.js";
+import { resolveLocalMinute, validateLocalMinute } from "./local-minute.js";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -19,7 +20,8 @@ export type DraftShiftFailureCode =
   | "DRAFT_STALE_REVISION"
   | "DRAFT_UNCHANGED"
   | "DRAFT_POLICY_DENIED"
-  | "DRAFT_KEY_REUSED";
+  | "DRAFT_KEY_REUSED"
+  | "DRAFT_LOCAL_TIME_INVALID";
 
 export class DraftShiftFailure extends Error {
   constructor(readonly code: DraftShiftFailureCode) {
@@ -101,7 +103,7 @@ function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-function validateBase(input: DraftCommandBase): void {
+function validateBase(input: Pick<DraftCommandBase, "actor" | "idempotencyKey">): void {
   if (
     !input ||
     !input.actor ||
@@ -162,7 +164,8 @@ async function assertTarget(
   tenantId: string,
   staffId: string,
   locationId: string,
-): Promise<void> {
+  allowUnpublishedAssignment = false,
+): Promise<string> {
   const target = await client.query<TargetRow>(
     `SELECT location.time_zone
        FROM cookie_staff.location_assignments AS assignment
@@ -175,9 +178,10 @@ async function assertTarget(
       WHERE assignment.tenant_id=$1::uuid
         AND assignment.staff_id=$2::uuid
         AND assignment.location_id=$3::uuid
-        AND assignment.active AND staff.active
+        AND staff.active
+        AND (assignment.active OR ($4::boolean AND NOT staff.bookable))
       FOR SHARE OF assignment, location`,
-    [tenantId, staffId, locationId],
+    [tenantId, staffId, locationId, allowUnpublishedAssignment],
   );
   const zone = target.rows[0]?.time_zone;
   if (!zone) fail("DRAFT_TARGET_UNAVAILABLE");
@@ -186,6 +190,7 @@ async function assertTarget(
   } catch {
     fail("DRAFT_TARGET_UNAVAILABLE");
   }
+  return zone;
 }
 
 async function authorize(
@@ -316,12 +321,32 @@ async function persistSuccess(
   );
 }
 
-/** Internal F1 draft creation. Never publishes or opens booking availability. */
+/** Owner-only unpublished planning; local times are resolved using locked Location IANA data. */
+export interface OwnerShiftPlanInput {
+  readonly actor: TrustedActor;
+  readonly idempotencyKey: string;
+  readonly staffId: string;
+  readonly locationId: string;
+  readonly startLocal: string;
+  readonly endLocal: string;
+}
+
+type CreateMode =
+  | {
+      readonly kind: "standard";
+      readonly range: { startAt: string; endAt: string };
+      readonly policy: AssertMayChangeDraft;
+    }
+  | {
+      readonly kind: "owner-plan";
+      readonly startLocal: string;
+      readonly endLocal: string;
+    };
+
 export async function createShiftDraftInternal(
   pool: Pool,
   input: InternalCreateShiftDraft,
   assertMayChange: AssertMayChangeDraft,
-  /** Trusted composition: caller owns SQL transaction and connection. */
   transactionClient?: PoolClient,
 ): Promise<ShiftDraftReceipt> {
   validateBase(input);
@@ -332,11 +357,54 @@ export async function createShiftDraftInternal(
   ) {
     fail("INVALID_DRAFT_COMMAND");
   }
-  const { startAt, endAt } = parseRange(input);
+  const result = await createShiftDraft(
+    pool,
+    input,
+    { kind: "standard", range: parseRange(input), policy: assertMayChange },
+    transactionClient,
+  );
+  return result.receipt;
+}
+
+/**
+ * The genuine owner can plan a shift for an existing configured assignment
+ * before publication. Does not turn on the assignment, Staff.bookable, or
+ * Service.active. This is NOT the admin/staff edit/approval command.
+ */
+export async function createOwnerShiftPlan(
+  pool: Pool,
+  input: OwnerShiftPlanInput,
+): Promise<{ receipt: ShiftDraftReceipt; replayed: boolean }> {
+  validateBase(input);
+  if (!UUID.test(input.staffId) || !UUID.test(input.locationId)) {
+    fail("INVALID_DRAFT_COMMAND");
+  }
+  try {
+    validateLocalMinute(input.startLocal);
+    validateLocalMinute(input.endLocal);
+  } catch {
+    fail("DRAFT_LOCAL_TIME_INVALID");
+  }
+  return createShiftDraft(pool, input, {
+    kind: "owner-plan",
+    startLocal: input.startLocal,
+    endLocal: input.endLocal,
+  });
+}
+
+async function createShiftDraft(
+  pool: Pool,
+  input: Pick<OwnerShiftPlanInput, "actor" | "idempotencyKey" | "staffId" | "locationId">,
+  mode: CreateMode,
+  transactionClient?: PoolClient,
+): Promise<{ receipt: ShiftDraftReceipt; replayed: boolean }> {
   const tenantId = input.actor.tenantId;
   const keyHash = digest(input.idempotencyKey);
+  // Preserve historical request fingerprints for existing standard commands.
   const requestHash = digest(
-    JSON.stringify([input.staffId, input.locationId, startAt, endAt]),
+    JSON.stringify(mode.kind === "standard"
+      ? [input.staffId, input.locationId, mode.range.startAt, mode.range.endAt]
+      : ["owner-plan-v1", input.staffId, input.locationId, mode.startLocal, mode.endLocal]),
   );
   const client = transactionClient ?? (await pool.connect());
   const ownsTransaction = transactionClient === undefined;
@@ -345,15 +413,32 @@ export async function createShiftDraftInternal(
     if (ownsTransaction) await client.query("BEGIN");
     active = true;
 
-    // Every scheduler and booking mutation first holds this tenant/staff row.
+    // Preserve the shared Staff-first mutation lock order. The planning
+    // permission is deliberately owner-only, not a synthetic approval callback.
     const staff = await client.query(
       `SELECT id FROM cookie_staff.staff_profiles
         WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
       [tenantId, input.staffId],
     );
+    if (mode.kind === "owner-plan") {
+      await requireTenantPermission(
+        client,
+        input.actor,
+        { kind: "schedule", tenantId, staffProfileId: input.staffId, locationId: input.locationId },
+        "schedule.shift.plan.create",
+      );
+    }
     if (staff.rowCount !== 1) fail("DRAFT_TARGET_UNAVAILABLE");
-    await assertTarget(client, tenantId, input.staffId, input.locationId);
-    await authorize(client, input.actor, input.staffId, input.locationId);
+    const timeZone = await assertTarget(
+      client,
+      tenantId,
+      input.staffId,
+      input.locationId,
+      mode.kind === "owner-plan",
+    );
+    if (mode.kind === "standard") {
+      await authorize(client, input.actor, input.staffId, input.locationId);
+    }
 
     const previous = await receiptFor(
       client,
@@ -365,17 +450,35 @@ export async function createShiftDraftInternal(
     if (previous) {
       if (ownsTransaction) await client.query("COMMIT");
       active = false;
-      return previous;
+      return { receipt: previous, replayed: true };
     }
+
+    let range: { startAt: string; endAt: string };
+    if (mode.kind === "standard") {
+      range = mode.range;
+    } else {
+      try {
+        const startAt = resolveLocalMinute(mode.startLocal, timeZone);
+        const endAt = resolveLocalMinute(mode.endLocal, timeZone);
+        const delta = Date.parse(endAt) - Date.parse(startAt);
+        if (delta <= 0 || delta > MAX_INTERVAL_MS) fail("DRAFT_LOCAL_TIME_INVALID");
+        range = { startAt, endAt };
+      } catch {
+        fail("DRAFT_LOCAL_TIME_INVALID");
+      }
+    }
+    const { startAt, endAt } = range;
     await assertFuture(client, startAt);
-    await assertPolicy(client, assertMayChange, {
-      operation: "create",
-      actor: input.actor,
-      staffId: input.staffId,
-      locationId: input.locationId,
-      startAt,
-      endAt,
-    });
+    if (mode.kind === "standard") {
+      await assertPolicy(client, mode.policy, {
+        operation: "create",
+        actor: input.actor,
+        staffId: input.staffId,
+        locationId: input.locationId,
+        startAt,
+        endAt,
+      });
+    }
 
     const shiftId = randomUUID();
     await client.query(
@@ -404,7 +507,7 @@ export async function createShiftDraftInternal(
     });
     if (ownsTransaction) await client.query("COMMIT");
     active = false;
-    return receipt;
+    return { receipt, replayed: false };
   } catch (error) {
     if (active && ownsTransaction) {
       await client.query("ROLLBACK").catch(() => undefined);
