@@ -33,7 +33,7 @@ export function createApp(
     readonly logger?: boolean;
     readonly sessionRoutes?: ProtectedSessionDependencies;
     readonly telegramAuthRoutes?: {
-      readonly sessions: import("../../../packages/platform-identity/src/opaque-sessions.js").PostgresOpaqueTelegramSessions;
+      readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
     readonly syntheticBookingRoutes?: SyntheticBookingHttpDependencies;
     readonly syntheticBookingMutations?: SyntheticBookingMutationDependencies;

@@ -1,13 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { createCookieUiApi } from "./lib/api";
+  import { defaultSalonAppearance } from "./lib/appearance";
   import { localDay, upcomingWeekday } from "./lib/dates";
   import { UiFailure } from "./lib/model";
-  import type { BookingView, DemoSnapshot, SlotView, ViewState } from "./lib/model";
+  import type { BookingView, DemoSnapshot, SalonTheme, SlotView, ViewState } from "./lib/model";
   import type { Screen } from "./lib/navigation";
   import Sidebar from "./lib/ui/Sidebar.svelte";
   import Topbar from "./lib/ui/Topbar.svelte";
   import PublicHeader from "./lib/ui/PublicHeader.svelte";
+  import PublicAttribution from "./lib/ui/PublicAttribution.svelte";
   import OnboardingHeader from "./lib/ui/OnboardingHeader.svelte";
   import OnboardingScreen from "./lib/ui/OnboardingScreen.svelte";
   import OwnerOverview from "./lib/ui/OwnerOverview.svelte";
@@ -15,6 +17,7 @@
   import OwnerStaffPage from "./lib/ui/OwnerStaffPage.svelte";
   import OwnerSchedulePage from "./lib/ui/OwnerSchedulePage.svelte";
   import OwnerLocationsPage from "./lib/ui/OwnerLocationsPage.svelte";
+  import OwnerAppearancePage from "./lib/ui/OwnerAppearancePage.svelte";
   import BookingConfirmation from "./lib/ui/BookingConfirmation.svelte";
   import PublicBookingHero from "./lib/ui/PublicBookingHero.svelte";
   import DemoFooter from "./lib/ui/DemoFooter.svelte";
@@ -36,7 +39,7 @@
   const api = createCookieUiApi();
   // Presentation-only Telegram-sized preview; no Telegram API, initData or auth.
   const telegramPreview = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "telegram-preview";
-  const blank: DemoSnapshot = { organization: null, locations: [], services: [], staff: [], schedules: [], bookings: [] };
+  const blank: DemoSnapshot = { organization: null, appearance: { ...defaultSalonAppearance }, locations: [], services: [], staff: [], schedules: [], bookings: [] };
 
   let screen: Screen = "home";
   let data: DemoSnapshot = blank;
@@ -58,6 +61,8 @@
   let staffService = "";
   let locationName = "Второй филиал (демо)";
   let locationAddress = "Тестовый адрес";
+  let appearanceTheme: SalonTheme = defaultSalonAppearance.theme;
+  let appearanceIntroduction = defaultSalonAppearance.introduction;
   let scheduleStaff = "";
   let scheduleLocation = "";
   let scheduleDays: number[] = [1, 2, 3, 4, 5, 6];
@@ -70,11 +75,14 @@
   let bookingTime = "";
   let clientAlias = "Тестовый клиент";
   let slotSuggestions: SlotView[] = [];
+  let slotLoadError = "";
   let createdBooking: BookingView | null = null;
   let calendarDate = localDay(new Date());
   let calendarMode: "day" | "week" = typeof window !== "undefined" && window.innerWidth <= 900 ? "day" : "week";
 
   $: org = data.organization;
+  $: hasUnsavedAppearance = appearanceTheme !== data.appearance.theme ||
+    appearanceIntroduction.trim() !== data.appearance.introduction;
   $: stepCount = Number(!!org) + Number(data.services.length > 0) +
     Number(data.staff.length > 0) + Number(data.schedules.length > 0) +
     Number(data.bookings.length > 0);
@@ -127,6 +135,8 @@
   async function reload(): Promise<void> {
     try {
       data = await api.getSnapshot();
+      appearanceTheme = data.appearance.theme;
+      appearanceIntroduction = data.appearance.introduction;
       apiDisconnected = false;
       if (!staffService) staffService = data.services[0]?.id ?? "";
       if (!scheduleStaff) scheduleStaff = data.staff[0]?.id ?? "";
@@ -190,6 +200,7 @@
     const version = ++slotRequestVersion;
     bookingTime = "";
     slotSuggestions = [];
+    slotLoadError = "";
     busySlots = false;
     if (!bookingStaff || !bookingLocation || !bookingDate) return;
     busySlots = true;
@@ -200,7 +211,7 @@
       const suggested = await api.getSlotSuggestions(staffId, locationId, date);
       if (version === slotRequestVersion) slotSuggestions = suggested;
     } catch (reason) {
-      if (version === slotRequestVersion) error = describe(reason);
+      if (version === slotRequestVersion) slotLoadError = describe(reason);
     } finally {
       if (version === slotRequestVersion) busySlots = false;
     }
@@ -245,6 +256,13 @@
   }
   async function createLocation(): Promise<void> {
     await transact(() => api.addLocation(locationName, locationAddress), "locations");
+  }
+  async function saveAppearance(): Promise<void> {
+    await transact(
+      () => api.saveAppearance({ theme: appearanceTheme, introduction: appearanceIntroduction }),
+      "appearance",
+      "Демо-оформление сохранено в этой вкладке. Сервер и реальные страницы не изменены.",
+    );
   }
   async function submitBooking(): Promise<void> {
     if (!canBook) return;
@@ -293,18 +311,18 @@
 </script>
 
 <svelte:head>
-  <title>{apiDisconnected ? "Cookie — вход владельца" : screen === "booking" ? "Cookie — онлайн-запись · демо" : "Cookie — кабинет салона · демо"}</title>
+  <title>{apiDisconnected ? "Cookie — вход владельца" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
   <meta name="description" content={api.mode === "api" ? "Cookie: тестовое подключение Backend API пока недоступно." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
-<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org} class:telegramPreview={telegramPreview && screen === "booking"}>
+<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org} class:telegramPreview={telegramPreview && screen === "booking"} class:salonThemeForest={data.appearance.theme === "forest"} class:salonThemeOcean={data.appearance.theme === "ocean"} class:salonThemeClay={data.appearance.theme === "clay"}>
   {#if screen !== "booking" && !(screen === "home" && !org)}
     <Sidebar {screen} {stepCount} onNavigate={goto} />
   {/if}
 
   <div class="main-area">
     {#if screen === "booking"}
-      <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} onBack={() => goto("home")} />
+      <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} demoMode={api.mode === "mock"} onBack={() => goto("home")} />
     {:else if screen === "home" && !org}
       <OnboardingHeader apiMode={apiDisconnected} />
     {:else}
@@ -385,6 +403,17 @@
           onAddressChange={(value) => locationAddress = value}
           onSubmit={() => void createLocation()}
         />
+      {:else if screen === "appearance"}
+        <OwnerAppearancePage
+          organizationName={org.name}
+          theme={appearanceTheme}
+          introduction={appearanceIntroduction}
+          {hasUnsavedAppearance}
+          onThemeChange={(value) => appearanceTheme = value}
+          onIntroductionChange={(value) => appearanceIntroduction = value}
+          onSave={() => void saveAppearance()}
+          onOpenBooking={() => goto("booking")}
+        />
       {:else if screen === "calendar"}
         <CalendarView
           bookings={data.bookings}
@@ -404,14 +433,17 @@
         {#if createdBooking}
           <BookingConfirmation
             booking={createdBooking}
+            organizationName={org.name}
             location={data.locations.find((item) => item.id === createdBooking?.locationId)}
             serviceName={getService}
             staffName={getStaff}
-            onOpenCalendar={() => { calendarDate = createdBooking!.date; goto("calendar"); }}
             onCreateAnother={() => goto("booking")}
           />
         {:else}
-          <PublicBookingHero organizationName={org.name} />
+          <PublicBookingHero organizationName={org.name} introduction={data.appearance.introduction} />
+          {#if data.services.length === 0 || data.staff.length === 0 || data.schedules.length === 0}
+            <BookingSetupHint />
+          {:else}
           <BookingForm
             {data}
             staffOptions={bookingStaffOptions}
@@ -423,6 +455,7 @@
             {clientAlias}
             {busySlots}
             {slotSuggestions}
+            {slotLoadError}
             {canBook}
             staffName={getStaff}
             onServiceChange={syncStaffSelection}
@@ -430,19 +463,18 @@
             onStaffChange={(value) => { bookingStaff = value; void loadSlots(); }}
             onDateChange={(value) => { bookingDate = value; void loadSlots(); }}
             onTimeChange={(value) => bookingTime = value}
+            onRetrySlots={() => void loadSlots()}
             onAliasChange={(value) => clientAlias = value}
             onSubmit={() => void submitBooking()}
           />
-          {#if data.services.length === 0 || data.staff.length === 0 || data.schedules.length === 0}
-            <BookingSetupHint
-              onContinueSetup={() => goto(currentOnboardingStep === "services" ? "services" : currentOnboardingStep === "staff" ? "staff" : "schedule")}
-            />
           {/if}
         {/if}
       {/if}
 
-      {#if !initializing && api.mode === "mock"}
-        <DemoFooter showReset={screen !== "booking"} {busy} onReset={() => void resetDemo()} />
+      {#if screen === "booking"}
+        <PublicAttribution />
+      {:else if !initializing && api.mode === "mock"}
+        <DemoFooter showReset={true} {busy} onReset={() => void resetDemo()} />
       {/if}
     </main>
   </div>

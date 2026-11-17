@@ -55,9 +55,7 @@ try {
   process.stdout.write(JSON.stringify(outcome) + "\n");
 } catch (error) {
   const code =
-    error instanceof TrustedOwnerTelegramLinkError
-      ? error.code
-      : "LINK_FAILED";
+    error instanceof TrustedOwnerTelegramLinkError ? error.code : "LINK_FAILED";
   process.stderr.write(`Telegram owner link failed: ${code}\n`);
   process.exitCode = 1;
 } finally {

@@ -7,9 +7,9 @@ import {
   type StaffOccupancy,
   type UtcInterval,
 } from "../../domain-scheduling/src/index.js";
-import { enqueueOutbox } from "../../platform-db/src/outbox.js";
-import { requireTenantPermission } from "../../platform-identity/src/postgres.js";
-import type { TrustedActor } from "../../platform-identity/src/authorization.js";
+import { enqueueOutbox } from "../../platform-db/src/index.js";
+import { requireTenantPermission } from "../../platform-identity/src/index.js";
+import type { TrustedActor } from "../../platform-identity/src/index.js";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
