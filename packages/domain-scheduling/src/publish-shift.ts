@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
+import { lockLiveStagingGrant } from "../../domain-entitlement/src/staging.js";
 import { enqueueOutbox } from "../../platform-db/src/outbox.js";
 import type { TrustedActor } from "../../platform-identity/src/authorization.js";
 import { requireTenantPermission } from "../../platform-identity/src/postgres.js";
@@ -18,7 +19,8 @@ export type PublishShiftFailureCode =
   | "SHIFT_CROSS_LOCATION_CONFLICT"
   | "SHIFT_REACTIVATION_REQUIRES_REVIEW"
   | "SHIFT_POLICY_DENIED"
-  | "SHIFT_KEY_REUSED";
+  | "SHIFT_KEY_REUSED"
+  | "SHIFT_STALE_REVISION";
 
 export class PublishShiftFailure extends Error {
   constructor(readonly code: PublishShiftFailureCode) {
@@ -64,6 +66,7 @@ interface ShiftRow extends QueryResultRow {
   start_at: Date;
   end_at: Date;
   active: boolean;
+  draft_revision: number;
 }
 
 interface TargetRow extends QueryResultRow {
@@ -117,17 +120,39 @@ export async function publishShiftInternal(
   /** For trusted internal approval composition; caller manages SQL transaction. */
   transactionClient?: PoolClient,
 ): Promise<PublishedShiftReceipt> {
+  return publishShift(pool, input, assertMayPublish, transactionClient);
+}
+
+/** Controlled staging only. The caller cannot supply a policy callback. */
+export async function publishStagingOwnerShift(
+  pool: Pool,
+  input: InternalPublishShift & { readonly expectedRevision: number },
+): Promise<PublishedShiftReceipt> {
+  if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0 ||
+      input.expectedRevision >= 2147483647) reject("INVALID_SHIFT_PUBLISH");
+  return publishShift(pool, input, undefined, undefined, input.expectedRevision);
+}
+
+async function publishShift(
+  pool: Pool,
+  input: InternalPublishShift,
+  assertMayPublish: AssertMayPublishShift | undefined,
+  transactionClient?: PoolClient,
+  stagingRevision?: number,
+): Promise<PublishedShiftReceipt> {
   validate(input);
-  if (typeof assertMayPublish !== "function") {
+  const staging = stagingRevision !== undefined;
+  if (!staging && typeof assertMayPublish !== "function") {
     reject("INVALID_SHIFT_PUBLISH");
   }
   const tenantId = input.actor.tenantId;
   const actorId = input.actor.identityId;
-  const keyHash = digest(input.idempotencyKey);
-  const requestHash = digest(JSON.stringify([input.shiftId]));
+  const keyHash = digest(staging ? "staging-owner-v1:" + input.idempotencyKey : input.idempotencyKey);
+  const requestHash = digest(JSON.stringify(staging ? ["staging-owner-v1", input.shiftId, stagingRevision] : [input.shiftId]));
   const client = transactionClient ?? (await pool.connect());
   const ownsTransaction = transactionClient === undefined;
   let active = false;
+  let discard = false;
   try {
     if (ownsTransaction) await client.query("BEGIN");
     active = true;
@@ -151,7 +176,7 @@ export async function publishShiftInternal(
 
     const current = await client.query<ShiftRow>(
       `SELECT id::text, staff_id::text, location_id::text,
-              start_at, end_at, active
+              start_at, end_at, active, draft_revision
          FROM cookie_scheduling.shift_windows
         WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
       [tenantId, input.shiftId],
@@ -174,7 +199,7 @@ export async function publishShiftInternal(
         staffProfileId: shift.staff_id,
         locationId: shift.location_id,
       },
-      "schedule.manage",
+      staging ? "staging.shift.publish" : "schedule.manage",
     );
 
     await client.query(
@@ -189,6 +214,8 @@ export async function publishShiftInternal(
       [tenantId, actorId, keyHash],
     );
     const previous = old.rows[0];
+    // Current grant is required even on a historical receipt replay.
+    const grant = staging ? await lockLiveStagingGrant(client, tenantId) : undefined;
     if (previous) {
       if (previous.request_sha256 !== requestHash) reject("SHIFT_KEY_REUSED");
       if (ownsTransaction) await client.query("COMMIT");
@@ -197,6 +224,7 @@ export async function publishShiftInternal(
     }
 
     if (shift.active) reject("SHIFT_ALREADY_ACTIVE");
+    if (staging && shift.draft_revision !== stagingRevision) reject("SHIFT_STALE_REVISION");
 
     const originalPublication = await client.query(
       `SELECT id FROM cookie_scheduling.shift_publish_audit
@@ -248,8 +276,27 @@ export async function publishShiftInternal(
       reject("SHIFT_TARGET_UNAVAILABLE");
     }
 
-    try {
-      await assertMayPublish(client, {
+    if (staging) {
+      // Require the exact active placement previously published against this
+      // grant, not an arbitrary bookable flag or borrowed active service.
+      const placement = await client.query(
+        `SELECT sa.service_id FROM cookie_staff.staging_publication_receipts receipt
+          JOIN cookie_staff.service_assignments sa ON sa.tenant_id=receipt.tenant_id
+            AND sa.staff_id=receipt.staff_id AND sa.location_id=receipt.location_id AND sa.service_id=receipt.service_id
+          JOIN cookie_catalog.services s ON s.tenant_id=sa.tenant_id AND s.id=sa.service_id
+         WHERE receipt.tenant_id=$1::uuid AND receipt.staff_id=$2::uuid AND receipt.location_id=$3::uuid
+           AND receipt.grant_id=$4::uuid AND sa.active AND s.active
+         ORDER BY sa.service_id LIMIT 1 FOR SHARE OF sa,s`,
+        [tenantId,shift.staff_id,shift.location_id,grant!.id],
+      );
+      if (!placement.rowCount) reject("SHIFT_TARGET_UNAVAILABLE");
+      const draft = await client.query(
+        "SELECT 1 FROM cookie_scheduling.shift_draft_audit WHERE tenant_id=$1::uuid AND shift_id=$2::uuid AND operation=\'create\' LIMIT 1",
+        [tenantId,shift.id],
+      );
+      if (!draft.rowCount) reject("SHIFT_NOT_FOUND");
+    } else try {
+      await assertMayPublish!(client, {
         tenantId,
         shiftId: shift.id,
         staffId: shift.staff_id,
@@ -332,15 +379,20 @@ export async function publishShiftInternal(
       ],
     );
 
+    if (staging) {
+      await lockLiveStagingGrant(client, tenantId);
+      const check = await client.query("SELECT 1 WHERE $1::timestamptz > clock_timestamp()", [shift.start_at]);
+      if (!check.rowCount) reject("SHIFT_NOT_FUTURE");
+    }
     if (ownsTransaction) await client.query("COMMIT");
     active = false;
     return receipt;
   } catch (error) {
     if (active && ownsTransaction) {
-      await client.query("ROLLBACK").catch(() => undefined);
+      await client.query("ROLLBACK").catch(() => { discard = true; });
     }
     throw error;
   } finally {
-    if (ownsTransaction) client.release();
+    if (ownsTransaction) client.release(discard);
   }
 }
