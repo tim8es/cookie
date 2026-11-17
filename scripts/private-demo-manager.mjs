@@ -57,9 +57,10 @@ export class PrivateDemoManager {
   #ttl;
   #startup;
   #stopTimeout;
+  #fetch;
 
   constructor({ maxSessions, ttlSeconds, startupMs = 120000, stopMs = 90000,
-    spawnWorker = spawnPrivateDemoWorker, verifyCleanup = cleanProject }) {
+    spawnWorker = spawnPrivateDemoWorker, verifyCleanup = cleanProject, fetcher = globalThis.fetch }) {
     if (!Number.isInteger(maxSessions) || maxSessions < 1 || maxSessions > 16 ||
         !Number.isInteger(startupMs) || startupMs < 1 || startupMs > 120000 ||
         !Number.isInteger(stopMs) || stopMs < 1 || stopMs > 120000) {
@@ -72,6 +73,7 @@ export class PrivateDemoManager {
     this.#stopTimeout = stopMs;
     this.#launch = spawnWorker;
     this.#clean = verifyCleanup;
+    this.#fetch = fetcher;
   }
 
   get status() {
@@ -84,7 +86,8 @@ export class PrivateDemoManager {
     if (this.#closed || this.#records.size >= this.#max) throw new Error("Private demo capacity unavailable");
     const id = randomUUID();
     const record = { id, state: "starting", started: deferred(), exited: deferred(),
-      pending: new Map(), project: null, child: null, info: null, finalizing: false };
+      pending: new Map(), project: null, child: null, info: null, finalizing: false,
+      routeAbort: new AbortController() };
     // Reserve synchronously, before spawning or awaiting network readiness.
     this.#records.set(id, record);
     try {
@@ -92,6 +95,7 @@ export class PrivateDemoManager {
       const child = record.child;
       child.on("message", message => this.#message(record, message));
       child.once("exit", (code, signal) => void this.#exit(record, code, signal));
+      child.once("disconnect", () => this.#requestStop(record));
       child.once("error", () => {
         // A spawn error can mean there was no child. Fail closed; do not
         // release a slot just because the process handle emitted an error.
@@ -140,6 +144,55 @@ export class PrivateDemoManager {
     }
   }
 
+  // Trusted in-process routing. The caller supplies a session id once;
+  // no URL, host, role or tenant from request parameters can retarget it.
+  // Existing server auth still verifies every operation independently.
+  route(id) {
+    const record = this.#records.get(id);
+    const available = () => !this.#closed && this.#records.get(id) === record &&
+      record?.state === "ready" && record.child.connected && !record.routeAbort.signal.aborted;
+    if (!available()) throw new Error("Private demo route unavailable");
+    const transport = localDemoFetch(record.info.origin, this.#fetch);
+    return async (path, init = {}) => {
+      if (!available()) throw new Error("Private demo route unavailable");
+      const method = String(init.method ?? "GET").toUpperCase();
+      if (!["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"].includes(method)) {
+        throw new Error("Private demo method rejected");
+      }
+      // Only canonical API paths; no absolute URLs, encoded segments,
+      // repeated slashes, traversal, fragments or ambiguous path separators.
+      if (typeof path !== "string" || path.length > 4096 ||
+          !/^\/v1\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+(?:\?[^#\\\x00-\x20]*)?$/.test(path)) {
+        throw new Error("Private demo API path rejected");
+      }
+      const headers = new Headers(init.headers);
+      for (const name of headers.keys()) {
+        if (!["accept", "authorization", "content-type", "idempotency-key"].includes(name)) {
+          throw new Error("Private demo header rejected");
+        }
+      }
+      if (init.body != null && (typeof init.body !== "string" ||
+          Buffer.byteLength(init.body, "utf8") > 256 * 1024 ||
+          ["GET", "HEAD"].includes(method))) {
+        throw new Error("Private demo request body rejected");
+      }
+      // Ignore other fetch options (dispatcher, credentials, redirect, etc).
+      // Cancellation is scoped to this exact record, not its reusable port.
+      const signals = [record.routeAbort.signal, AbortSignal.timeout(15000)];
+      if (init.signal) signals.push(init.signal);
+      const signal = AbortSignal.any(signals);
+      const response = await transport(path, {
+        method, headers, ...(init.body == null ? {} : { body: init.body }),
+        signal, cache: "no-store", referrerPolicy: "no-referrer",
+      });
+      if (!available() || signal.aborted) {
+        await response.body?.cancel().catch(() => {});
+        throw new Error("Private demo route unavailable");
+      }
+      return response;
+    };
+  }
+
   async proof(id, role) {
     const record = this.#records.get(id);
     if (this.#closed || record?.state !== "ready" || !record.child.connected ||
@@ -161,6 +214,7 @@ export class PrivateDemoManager {
     if (record.finalizing || record.state === "quarantined" || record.state === "stopping") return;
     const wasReady = record.state === "ready";
     record.state = "stopping";
+    record.routeAbort.abort();
     record.started.reject(new Error("Private demo stopped before readiness"));
     for (const pending of record.pending.values()) pending.reject(new Error("Private demo stopped"));
     record.pending.clear();
@@ -180,6 +234,7 @@ export class PrivateDemoManager {
     if (record.finalizing) return;
     record.finalizing = true;
     record.state = "stopping";
+    record.routeAbort.abort();
     record.started.reject(new Error("Private demo exited before readiness"));
     for (const pending of record.pending.values()) pending.reject(new Error("Private demo exited"));
     record.pending.clear();
