@@ -1,7 +1,10 @@
 import { spawn } from "node:child_process";
 import { isAbsolute } from "node:path";
 
-import type { AuthMailMessage, AuthMailTransport } from "./auth-mail-delivery.js";
+import type {
+  AuthMailMessage,
+  AuthMailTransport,
+} from "./auth-mail-delivery.js";
 import { canonicalRegistrationEmail } from "./email-registration.js";
 
 export interface SendmailAuthMailConfig {
