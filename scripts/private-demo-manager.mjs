@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { isLocalStagingProject, localDemoFetch, privateDemoLifetime, resolveLocalStagingMode } from "./local-staging-mode.mjs";
 
+import { recoverPrivateDemoProject } from "./private-demo-recovery.mjs";
+
 const launcher = fileURLToPath(new URL("./local-staging.mjs", import.meta.url));
 const mode = resolveLocalStagingMode(["demo"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -58,9 +60,11 @@ export class PrivateDemoManager {
   #startup;
   #stopTimeout;
   #fetch;
+  #recover;
 
   constructor({ maxSessions, ttlSeconds, startupMs = 120000, stopMs = 90000,
-    spawnWorker = spawnPrivateDemoWorker, verifyCleanup = cleanProject, fetcher = globalThis.fetch }) {
+    spawnWorker = spawnPrivateDemoWorker, verifyCleanup = cleanProject, fetcher = globalThis.fetch,
+    recoverProject = recoverPrivateDemoProject }) {
     if (!Number.isInteger(maxSessions) || maxSessions < 1 || maxSessions > 16 ||
         !Number.isInteger(startupMs) || startupMs < 1 || startupMs > 120000 ||
         !Number.isInteger(stopMs) || stopMs < 1 || stopMs > 120000) {
@@ -74,6 +78,7 @@ export class PrivateDemoManager {
     this.#launch = spawnWorker;
     this.#clean = verifyCleanup;
     this.#fetch = fetcher;
+    this.#recover = recoverProject;
   }
 
   get status() {
@@ -233,6 +238,7 @@ export class PrivateDemoManager {
   async #exit(record, code, signal) {
     if (record.finalizing) return;
     record.finalizing = true;
+    record.exitObserved = { code, signal };
     record.state = "stopping";
     record.routeAbort.abort();
     record.started.reject(new Error("Private demo exited before readiness"));
@@ -260,6 +266,26 @@ export class PrivateDemoManager {
     const exit = await bounded(record.exited.promise, this.#stopTimeout, "Private demo cleanup timeout");
     if (exit.code !== 0 || exit.signal !== null) throw new Error("Private demo exited abnormally after cleanup");
     return exit;
+  }
+
+  // Operator-only retry for an observed crash after a verified readiness.
+  // No caller-supplied project, port, credentials, or destructive sweep.
+  async recover(id) {
+    const record = this.#records.get(id);
+    if (this.#closed || record?.state !== "quarantined" || !record.exitObserved ||
+        !record.info || !record.project) throw new Error("Private demo recovery unavailable");
+    record.state = "stopping";
+    try {
+      const recovered = await this.#recover(record.project, record.info.origin);
+      if (recovered !== true || await this.#clean(record.project) !== true) {
+        throw new Error("Private demo recovery unconfirmed");
+      }
+      this.#records.delete(record.id);
+      return true;
+    } catch {
+      record.state = "quarantined";
+      throw new Error("Private demo recovery unconfirmed");
+    }
   }
 
   async close() {
