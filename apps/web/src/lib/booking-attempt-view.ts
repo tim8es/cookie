@@ -85,6 +85,7 @@ export function bookingFeedback(
       };
     case "error":
       if (
+        state.reason === "outcome-unknown" ||
         state.reason === "unverified-conflict" ||
         state.reason === "idempotency-key-reused"
       ) {

@@ -63,3 +63,13 @@ test("failed refresh cannot suggest availability that was not returned", () => {
     /Не удалось обновить/,
   );
 });
+
+test("a denied retry after an uncertain result requests reconciliation", () => {
+  const feedback = bookingFeedback({
+    phase: "error",
+    reason: "outcome-unknown",
+    retryable: false,
+  });
+  assert.equal(feedback?.canRetry, false);
+  assert.match(feedback?.description ?? "", /Не создавайте новую/);
+});

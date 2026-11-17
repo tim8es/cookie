@@ -23,6 +23,7 @@ test("Appearance owner HTTP boundary fails closed without real authorization", a
 
   registerRealAppearanceRoutes(app, {
     pool,
+    stagingPublicationEnabled: true,
     verifier: {
       async verifyBearerToken(token) {
         if (token !== "test-session") return null;

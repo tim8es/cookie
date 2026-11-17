@@ -1,0 +1,3 @@
+# Customer booking receipt and live history consistency
+
+Refs #23 #203. Candidate stacked on #274 at 666fe0fe. Creation receipt remains operation evidence only. The exact validated history row establishes whether the original booking status/time/price still match; missing, failed or in-flight history is unverified, not cancelled. On cancellation submission and history refresh invalidate prior history snapshot; after successful cancellation/history fetch the creation section no longer presents the old time or active status. No changes to Create attempt recovery, backend commands, price rounding, authorization, public routes or deployment. Browser regression extends real create/cancel flow and returns to fresh selection. CI pending; no local execution.

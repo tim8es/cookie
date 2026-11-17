@@ -1,6 +1,11 @@
 import Fastify, { type FastifyInstance } from "fastify";
 
 import {
+  registerRealAppearanceRoutes,
+  type RealAppearanceRouteDependencies,
+} from "./appearance-http.js";
+
+import {
   SERVICE_NAME,
   type HealthResponse,
 } from "../../../packages/contracts/src/index.js";
@@ -16,11 +21,24 @@ import {
   registerSyntheticWorkspaceReads,
   type SyntheticWorkspaceReadDependencies,
 } from "./workspace-http.js";
+import { registerStagingAvailabilityRoutes } from "./staging-availability-http.js";
+import {
+  registerStagingCustomerCancellation,
+  type StagingCancellationDependencies,
+} from "./staging-customer-cancellation-http.js";
+import { registerStagingCustomerBooking } from "./staging-customer-booking-http.js";
+import { registerStagingCustomerHistory } from "./staging-customer-history-http.js";
+import { registerStagingCustomerOffers } from "./staging-customer-offers-http.js";
+import { registerStagingCustomerContext } from "./staging-customer-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
 import {
   registerStagingPublicationRoutes,
   type StagingPublicationDependencies,
 } from "./staging-publication-http.js";
+import {
+  registerOwnerCalendar,
+  type OwnerCalendarDependencies,
+} from "./owner-calendar-http.js";
 import {
   registerOwnerShiftPlanRoutes,
   type OwnerShiftPlanRouteDependencies,
@@ -56,6 +74,10 @@ export function createApp(
   options: {
     readonly logger?: boolean;
     readonly databaseReadiness?: () => Promise<void>;
+    readonly appearanceDraftRoutes?: Pick<
+      RealAppearanceRouteDependencies,
+      "pool" | "verifier"
+    >;
     readonly sessionRoutes?: ProtectedSessionDependencies;
     readonly liveWorkspaceReads?: LiveWorkspaceReadDependencies;
     readonly catalogRoutes?: RealCatalogRouteDependencies;
@@ -63,6 +85,9 @@ export function createApp(
     readonly locationRoutes?: RealLocationRouteDependencies;
     readonly shiftPlanRoutes?: OwnerShiftPlanRouteDependencies;
     readonly stagingPublicationRoutes?: StagingPublicationDependencies;
+    readonly stagingCustomerBookingRoutes?: StagingPublicationDependencies;
+    readonly stagingCustomerCancellationRoutes?: StagingCancellationDependencies;
+    readonly ownerCalendar?: OwnerCalendarDependencies;
     readonly telegramAuthRoutes?: {
       readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
@@ -110,6 +135,12 @@ export function createApp(
   if (options.telegramAuthRoutes)
     registerTelegramAuthExchange(app, options.telegramAuthRoutes.sessions);
 
+  if (options.appearanceDraftRoutes)
+    registerRealAppearanceRoutes(app, {
+      ...options.appearanceDraftRoutes,
+      draftOnly: true,
+    });
+
   if (options.catalogRoutes)
     registerRealCatalogRoutes(app, options.catalogRoutes);
 
@@ -122,8 +153,24 @@ export function createApp(
   if (options.shiftPlanRoutes)
     registerOwnerShiftPlanRoutes(app, options.shiftPlanRoutes);
 
-  if (options.stagingPublicationRoutes)
+  if (options.ownerCalendar) registerOwnerCalendar(app, options.ownerCalendar);
+
+  if (options.stagingPublicationRoutes) {
     registerStagingPublicationRoutes(app, options.stagingPublicationRoutes);
+    registerStagingCustomerContext(app, options.stagingPublicationRoutes);
+    registerStagingCustomerOffers(app, options.stagingPublicationRoutes);
+    registerStagingCustomerHistory(app, options.stagingPublicationRoutes);
+    registerStagingAvailabilityRoutes(app, options.stagingPublicationRoutes);
+  }
+
+  // Independent opt-in. Normal runtime cannot mount this candidate yet.
+  if (options.stagingCustomerBookingRoutes)
+    registerStagingCustomerBooking(app, options.stagingCustomerBookingRoutes);
+  if (options.stagingCustomerCancellationRoutes)
+    registerStagingCustomerCancellation(
+      app,
+      options.stagingCustomerCancellationRoutes,
+    );
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.
