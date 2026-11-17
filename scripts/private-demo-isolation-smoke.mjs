@@ -6,6 +6,7 @@ import { setTimeout as pause } from "node:timers/promises";
 import { authenticateTelegramOwner, exchangeTelegramSession, revokeTelegramOwnerSession } from "../apps/web/src/lib/owner-auth.ts";
 import { createRealService, readRealServices } from "../apps/web/src/lib/services-api.ts";
 import { PrivateDemoManager, spawnPrivateDemoWorker } from "./private-demo-manager.mjs";
+import { portRefused } from "./private-demo-recovery.mjs";
 
 if (process.env.CI !== "true") throw new Error("CI=true required for disposable isolation smoke");
 const children = [];
@@ -23,7 +24,7 @@ const expiry = new PrivateDemoManager({ maxSessions: 1, ttlSeconds: 10, spawnWor
 
 async function until(predicate) {
   const end = Date.now() + 90000;
-  while (!predicate()) {
+  while (!await predicate()) {
     if (Date.now() >= end) throw new Error("Private demo cleanup timed out");
     await pause(100);
   }
@@ -76,6 +77,23 @@ async function verify() {
   await assert.rejects(aa.fetcher("/v1/organizations/" + a.tenantId + "/services"), /route unavailable/);
   assert.equal(manager.status.ready, 1);
   assert.equal((await readRealServices(bb.session, bb.fetcher)).length, 1);
+  // Abruptly terminate a third worker while B remains active. Its API
+  // must disappear by parent IPC loss, without killing unrelated processes.
+  const crashed = await manager.start();
+  const crashLogin = await login(manager, crashed);
+  assert.equal((await readRealServices(crashLogin.session, crashLogin.fetcher)).length, 1);
+  assert.equal(children[2].child.kill("SIGKILL"), true);
+  assert.deepEqual(await children[2].exited, { code: null, signal: "SIGKILL" });
+  await until(() => manager.status.quarantined === 1);
+  await assert.rejects(manager.start(), /capacity/);
+  await assert.rejects(crashLogin.fetcher("/v1/organizations/" + crashed.tenantId + "/services"), /route unavailable/);
+  await until(() => portRefused(crashed.origin));
+  assert.equal(await manager.recover(crashed.id), true);
+  assert.equal(manager.status.quarantined, 0);
+  assert.equal(manager.status.ready, 1);
+  assert.equal((await readRealServices(bb.session, bb.fetcher)).length, 1);
+  console.log("PASS private demo crash recovery: SIGKILL, orphan API shutdown, quarantine, exact project removal, surviving independent session");
+
   await revokeTelegramOwnerSession(bb.session, bb.fetcher);
   // The second live worker must clean itself on loss of its parent IPC.
   children[1].child.disconnect();
@@ -91,7 +109,7 @@ async function verify() {
   await revokeTelegramOwnerSession(cc.session, cc.fetcher);
   await until(() => expiry.status.ready + expiry.status.stopping === 0);
   assert.equal(expiry.status.quarantined, 0);
-  assert.deepEqual(await children[2].exited, { code: 0, signal: null });
+  assert.deepEqual(await children[3].exited, { code: 0, signal: null });
   await assert.rejects(expiry.proof(c.id, "owner"), /unavailable/);
   await assert.rejects(cc.fetcher("/v1/organizations/" + c.tenantId + "/services"), /route unavailable/);
   console.log("PASS private demo isolation: manager admission, bound routes, independent live databases, foreign proof/bearer denial, write isolation, targeted cleanup, disconnect, reset and TTL");
