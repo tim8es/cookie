@@ -18,6 +18,10 @@ import {
 } from "./workspace-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
 import {
+  registerRealLocationRoutes,
+  type RealLocationRouteDependencies,
+} from "./locations-http.js";
+import {
   registerRealCatalogRoutes,
   type RealCatalogRouteDependencies,
 } from "./catalog-http.js";
@@ -47,6 +51,7 @@ export function createApp(
     readonly liveWorkspaceReads?: LiveWorkspaceReadDependencies;
     readonly catalogRoutes?: RealCatalogRouteDependencies;
     readonly staffRoutes?: RealStaffRoutesDependencies;
+    readonly locationRoutes?: RealLocationRouteDependencies;
     readonly telegramAuthRoutes?: {
       readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
@@ -93,6 +98,10 @@ export function createApp(
     registerRealCatalogRoutes(app, options.catalogRoutes);
 
   if (options.staffRoutes) registerRealStaffRoutes(app, options.staffRoutes);
+
+  // Owner-controlled Locations are tenant-scoped rows, never anonymous.
+  if (options.locationRoutes)
+    registerRealLocationRoutes(app, options.locationRoutes);
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.

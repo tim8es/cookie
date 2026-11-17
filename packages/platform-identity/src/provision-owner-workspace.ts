@@ -60,6 +60,8 @@ const OWNER_PERMISSIONS = [
   "catalog.service.create",
   "staff.profile.read",
   "staff.profile.create",
+  "location.read",
+  "location.create",
 ] as const;
 
 function canonicalName(value: unknown): string {
