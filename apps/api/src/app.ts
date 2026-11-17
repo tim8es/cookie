@@ -16,7 +16,18 @@ import {
   registerSyntheticWorkspaceReads,
   type SyntheticWorkspaceReadDependencies,
 } from "./workspace-http.js";
+import { registerStagingAvailabilityRoutes } from "./staging-availability-http.js";
+import { registerStagingCustomerOffers } from "./staging-customer-offers-http.js";
+import { registerStagingCustomerContext } from "./staging-customer-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
+import {
+  registerStagingPublicationRoutes,
+  type StagingPublicationDependencies,
+} from "./staging-publication-http.js";
+import {
+  registerOwnerCalendar,
+  type OwnerCalendarDependencies,
+} from "./owner-calendar-http.js";
 import {
   registerOwnerShiftPlanRoutes,
   type OwnerShiftPlanRouteDependencies,
@@ -57,6 +68,8 @@ export function createApp(
     readonly staffRoutes?: RealStaffRoutesDependencies;
     readonly locationRoutes?: RealLocationRouteDependencies;
     readonly shiftPlanRoutes?: OwnerShiftPlanRouteDependencies;
+    readonly stagingPublicationRoutes?: StagingPublicationDependencies;
+    readonly ownerCalendar?: OwnerCalendarDependencies;
     readonly telegramAuthRoutes?: {
       readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
@@ -110,6 +123,15 @@ export function createApp(
 
   if (options.shiftPlanRoutes)
     registerOwnerShiftPlanRoutes(app, options.shiftPlanRoutes);
+
+  if (options.ownerCalendar) registerOwnerCalendar(app, options.ownerCalendar);
+
+  if (options.stagingPublicationRoutes) {
+    registerStagingPublicationRoutes(app, options.stagingPublicationRoutes);
+    registerStagingCustomerContext(app, options.stagingPublicationRoutes);
+    registerStagingCustomerOffers(app, options.stagingPublicationRoutes);
+    registerStagingAvailabilityRoutes(app, options.stagingPublicationRoutes);
+  }
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.
