@@ -10,6 +10,7 @@ import {
   completeEmailRegistration,
   issueEmailRegistrationChallenge,
 } from "../../../packages/platform-identity/src/email-registration.js";
+import { withVerifiedEmailPassword } from "../../../packages/platform-identity/src/email-login.js";
 import { verifyPassword } from "../../../packages/platform-identity/src/password-crypto.js";
 import { PasswordWorkGate } from "../../../packages/platform-identity/src/password-work-gate.js";
 
@@ -89,6 +90,64 @@ test(
       assert.equal(
         await verifyPassword(password, credentials.rows[0]?.password_hash),
         true,
+      );
+      assert.equal(
+        await withVerifiedEmailPassword(
+          transaction,
+          passwordWork,
+          secret,
+          email,
+          password,
+          async (_client, id) => id,
+        ),
+        identityId,
+      );
+      for (const [attemptEmail, attemptPassword] of [
+        [email, "wrong password"],
+        [expiredEmail, password],
+      ]) {
+        assert.equal(
+          await withVerifiedEmailPassword(
+            transaction,
+            passwordWork,
+            secret,
+            attemptEmail,
+            attemptPassword,
+            async () => assert.fail("unauthenticated continuation"),
+          ),
+          null,
+        );
+      }
+
+      // Simulate a committed rotation after the credential lookup but before
+      // the second transaction. A correct old password must not authorize.
+      let rotate = true;
+      const rotatingTransaction = async <T>(
+        work: Parameters<typeof runSqlTransaction<T>>[1],
+      ): Promise<T> => {
+        const result = await transaction(work);
+        if (rotate) {
+          rotate = false;
+          const replacement = ["scrypt-v1", "0".repeat(32), "0".repeat(64)].join(
+            "$",
+          );
+          await pool.query(
+            "UPDATE cookie_identity.email_credentials SET password_hash=$1 WHERE email_hmac_sha256=$2",
+            [replacement, fingerprint],
+          );
+        }
+        return result;
+      };
+      assert.equal(
+        await withVerifiedEmailPassword(
+          rotatingTransaction,
+          passwordWork,
+          secret,
+          email,
+          password,
+          async () => assert.fail("stale credential continuation"),
+        ),
+        null,
       );
       assert.equal(
         (
