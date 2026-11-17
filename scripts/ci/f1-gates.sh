@@ -14,7 +14,8 @@ ui() { pnpm check:ui; }
 types() { pnpm typecheck; }
 unit() { pnpm test; }
 integration() { pnpm test:integration; }
-restore() { bash scripts/ci-restore-smoke.sh; }
+restore() { bash scripts/ci-restore-smoke.sh 16; }
+pg17_restore() { bash scripts/ci-restore-smoke.sh 17; }
 build() { pnpm build; }
 worker() { bash scripts/ci-compiled-synthetic-worker-smoke.sh; }
 web() {
@@ -40,7 +41,7 @@ if [[ $# != 1 ]]; then
   exit 2
 fi
 case "$1" in
-  install|lint|format_check|boundaries|ui|types|unit|integration|restore|build|worker|web|browser|browser_evidence|real_owner|staging_readiness|staging_runtime|pg17_verify)
+  install|lint|format_check|boundaries|ui|types|unit|integration|restore|build|worker|web|browser|browser_evidence|real_owner|staging_readiness|staging_runtime|pg17_verify|pg17_restore)
     "$1"
     ;;
   quality)
@@ -68,6 +69,7 @@ case "$1" in
     install
     pg17_verify
     integration
+    pg17_restore
     ;;
   *)
     echo "Unknown F1 gate" >&2
