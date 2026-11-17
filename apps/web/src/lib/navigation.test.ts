@@ -11,5 +11,6 @@ test("demo navigation contains unique screen targets for the owner and public fl
   assert.ok(ids.includes("staff"));
   assert.ok(ids.includes("schedule"));
   assert.ok(ids.includes("locations"));
+  assert.ok(ids.includes("appearance"));
   assert.ok(ids.includes("booking"));
 });

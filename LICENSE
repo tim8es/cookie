@@ -1,0 +1,72 @@
+Cookie / Kuki — Proprietary Copyright Notice
+Copyright (c) 2026 tim8es (https://github.com/tim8es).
+All rights reserved.
+
+1. Reserved rights
+
+The original source code, object code, documentation, designs, assets and
+other copyrightable materials of the Cookie / Kuki project (the "Project")
+are proprietary to their respective rights holders. This notice applies
+to Project materials over which the copyright holder identified above
+holds the relevant rights, including original portions of combined works.
+
+Public availability of this repository is for viewing and transparency.
+It does not constitute an open-source license, a grant of a commercial or
+non-commercial software license, or permission to use the Project beyond
+the limited exceptions set out below.
+
+2. Restrictions
+
+Except as expressly permitted by the applicable GitHub terms, mandatory
+applicable law, or a separate written license from the relevant rights
+holder, no person or entity is authorized to:
+
+- copy, reproduce, download for reuse, mirror, publish, redistribute or
+  otherwise make available the Project or any protected portion of it;
+- install, execute, deploy, host, operate, integrate or otherwise use
+  the Project, whether for personal, educational, internal, commercial
+  or non-commercial purposes;
+- modify, adapt, translate, port or create derivative works based on
+  the Project, including incorporation of protected code into another work;
+- sell, resell, rent, sublicense, monetize or commercially exploit the
+  Project, including offering it as a hosted service, SaaS or white-label
+  product;
+- reproduce or otherwise use protected Project materials for AI/ML
+  training, fine-tuning or dataset creation, to the extent such rights
+  are reserved under applicable law and platform terms;
+- remove or alter copyright or proprietary notices in authorized copies.
+
+These restrictions apply to all protected portions of the Project in
+source, compiled or other forms, regardless of whether a fee is charged.
+
+3. GitHub and legal exceptions
+
+Nothing in this notice limits rights expressly granted under the applicable
+GitHub Terms of Service (including viewing and forking within GitHub as
+permitted by those terms) or rights that cannot lawfully be restricted.
+A GitHub fork does not, by itself, grant an independent license to deploy,
+redistribute, modify or commercially exploit the Project beyond the rights
+granted under those terms or applicable law.
+
+4. Third-party materials and prior grants
+
+Third-party components, dependencies and other materials identified as
+subject to separate licenses remain governed by their respective terms.
+This notice does not claim ownership of third-party materials, override
+their licenses or revoke any previously valid rights or permissions.
+
+5. Written permission and licensing inquiries
+
+To request permission, commercial licensing, partnership or other
+authorized use, contact the repository owner through the contact details
+available at https://github.com/tim8es. Contacting the owner alone does
+not grant permission. Any additional use requires express prior written
+authorization from the relevant rights holder.
+
+6. Disclaimer
+
+To the extent permitted by applicable law, the publicly viewable Project
+is provided "AS IS", without warranties of any kind. This notice grants
+no trademark, patent or other intellectual property license.
+
+All rights not expressly granted are reserved.

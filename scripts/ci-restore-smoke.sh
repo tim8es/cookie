@@ -9,10 +9,6 @@ if [[ "${CI:-}" != "true" || "${TEST_DATABASE_URL:-}" != "$EXPECTED_URL" ]]; the
 fi
 
 expected_migration_count="$(find db/migrations -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d '[:space:]')"
-retention_indexes_expected=0
-if [[ -f db/migrations/0024_opaque_session_retention_indexes.sql ]]; then
-  retention_indexes_expected=1
-fi
 temp_dir="$(mktemp -d)"
 restore_created=false
 pg_tool() {
@@ -83,6 +79,7 @@ result="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
   -h 127.0.0.1 -U cookie_ci -d cookie_ci_restore_smoke -c "
     SELECT CASE WHEN
       (SELECT count(*) FROM public.cookie_schema_migrations) = ${expected_migration_count}
+      AND to_regclass('cookie_tenancy.owner_setup_receipts') IS NOT NULL
       AND EXISTS (
         SELECT 1 FROM cookie_jobs.outbox_events AS event
         JOIN cookie_tenancy.organizations AS org ON org.id = event.tenant_id
@@ -91,27 +88,13 @@ result="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
           AND event.payload = '{\"synthetic\":true}'::jsonb
           AND org.display_name = 'Synthetic restore smoke'
       )
-      AND to_regclass('cookie_tenancy.owner_setup_receipts') IS NOT NULL
-      AND (
-        ${retention_indexes_expected} = 0
-        OR (
-          EXISTS (
-            SELECT 1 FROM pg_indexes
-             WHERE schemaname='cookie_identity'
-               AND indexname='opaque_sessions_retention_oldest_idx'
-          )
-          AND EXISTS (
-            SELECT 1 FROM pg_indexes
-             WHERE schemaname='cookie_identity'
-               AND indexname='opaque_sessions_retention_member_idx'
-          )
-        )
-      )
       AND to_regclass('cookie_customers.customers') IS NOT NULL
       AND to_regclass('cookie_identity.opaque_sessions') IS NOT NULL
       AND to_regclass('cookie_identity.telegram_identity_links') IS NOT NULL
       AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='revoke_opaque_sessions_on_telegram_unlink' AND NOT tgisinternal)
       AND EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='cookie_identity' AND indexname='telegram_link_active_tenant_user')
+      AND EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='cookie_identity' AND indexname='opaque_sessions_retention_oldest_idx')
+      AND EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='cookie_identity' AND indexname='opaque_sessions_retention_member_idx')
       AND EXISTS (SELECT 1 FROM information_schema.columns
         WHERE table_schema='cookie_identity' AND table_name='opaque_sessions'
           AND column_name='telegram_link_id')

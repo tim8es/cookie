@@ -26,6 +26,10 @@ import {
   type RealStaffRoutesDependencies,
 } from "./staff-http.js";
 import {
+  registerLiveWorkspaceRead,
+  type LiveWorkspaceReadDependencies,
+} from "./live-workspace-http.js";
+import {
   registerProtectedSessionContext,
   type ProtectedSessionDependencies,
 } from "./session-context.js";
@@ -40,10 +44,11 @@ export function createApp(
   options: {
     readonly logger?: boolean;
     readonly sessionRoutes?: ProtectedSessionDependencies;
+    readonly liveWorkspaceReads?: LiveWorkspaceReadDependencies;
     readonly catalogRoutes?: RealCatalogRouteDependencies;
     readonly staffRoutes?: RealStaffRoutesDependencies;
     readonly telegramAuthRoutes?: {
-      readonly sessions: import("../../../packages/platform-identity/src/opaque-sessions.js").PostgresOpaqueTelegramSessions;
+      readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
     readonly syntheticBookingRoutes?: SyntheticBookingHttpDependencies;
     readonly syntheticBookingMutations?: SyntheticBookingMutationDependencies;
@@ -84,7 +89,6 @@ export function createApp(
   if (options.telegramAuthRoutes)
     registerTelegramAuthExchange(app, options.telegramAuthRoutes.sessions);
 
-  // Real Catalog requires an independently verified bearer and transactional SQL policy.
   if (options.catalogRoutes)
     registerRealCatalogRoutes(app, options.catalogRoutes);
 
@@ -100,7 +104,13 @@ export function createApp(
   if (options.syntheticBookingMutations)
     registerSyntheticBookingMutations(app, options.syntheticBookingMutations);
 
-  // No workspace or staff schedule read route in normal production startup.
+  if (options.liveWorkspaceReads && options.syntheticWorkspaceReads) {
+    throw new Error("Cannot mix production and synthetic Workspace routes");
+  }
+  if (options.liveWorkspaceReads)
+    registerLiveWorkspaceRead(app, options.liveWorkspaceReads);
+
+  // Synthetic workspace reads remain test-only.
   if (options.syntheticWorkspaceReads)
     registerSyntheticWorkspaceReads(app, options.syntheticWorkspaceReads);
 
