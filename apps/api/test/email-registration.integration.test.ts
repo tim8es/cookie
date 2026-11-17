@@ -128,9 +128,9 @@ test(
         const result = await transaction(work);
         if (rotate) {
           rotate = false;
-          const replacement = ["scrypt-v1", "0".repeat(32), "0".repeat(64)].join(
-            "$",
-          );
+          const salt = "0".repeat(32);
+          const key = "0".repeat(64);
+          const replacement = ["scrypt-v1", salt, key].join("$");
           await pool.query(
             "UPDATE cookie_identity.email_credentials SET password_hash=$1 WHERE email_hmac_sha256=$2",
             [replacement, fingerprint],
