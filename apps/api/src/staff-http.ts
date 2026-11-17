@@ -81,7 +81,8 @@ export function registerRealStaffRoutes(
       const key = request.headers["idempotency-key"];
       let draft;
       try {
-        if (typeof key !== "string" || !KEY.test(key)) throw new StaffInputError();
+        if (typeof key !== "string" || !KEY.test(key))
+          throw new StaffInputError();
         draft = validateStaffDraft(request.body);
       } catch {
         return reply.code(400).send({ error: "invalid-request" });
@@ -100,7 +101,9 @@ export function registerRealStaffRoutes(
               draft,
             ),
         );
-        return reply.code(result.replayed ? 200 : 201).send({ staff: result.staff });
+        return reply
+          .code(result.replayed ? 200 : 201)
+          .send({ staff: result.staff });
       } catch (reason) {
         if (reason instanceof StaffReplayConflict) {
           return reply.code(409).send({ error: "idempotency-conflict" });

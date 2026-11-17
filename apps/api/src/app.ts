@@ -88,8 +88,7 @@ export function createApp(
   if (options.catalogRoutes)
     registerRealCatalogRoutes(app, options.catalogRoutes);
 
-  if (options.staffRoutes)
-    registerRealStaffRoutes(app, options.staffRoutes);
+  if (options.staffRoutes) registerRealStaffRoutes(app, options.staffRoutes);
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.

@@ -46,31 +46,49 @@ const UUID =
 function isLocation(value: unknown): value is RealStaffLocation {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const data = value as Partial<RealStaffLocation>;
-  return typeof data.id === "string" && UUID.test(data.id) &&
-    typeof data.displayName === "string" && !!data.displayName.trim() &&
-    data.displayName.length <= 200;
+  return (
+    typeof data.id === "string" &&
+    UUID.test(data.id) &&
+    typeof data.displayName === "string" &&
+    !!data.displayName.trim() &&
+    data.displayName.length <= 200
+  );
 }
 function isAssignment(value: unknown): value is RealStaffAssignment {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const data = value as Partial<RealStaffAssignment>;
-  return typeof data.locationId === "string" && UUID.test(data.locationId) &&
-    Array.isArray(data.serviceIds) && data.serviceIds.length <= 100 &&
-    data.serviceIds.every((id: unknown) => typeof id === "string" && UUID.test(id)) &&
-    new Set(data.serviceIds).size === data.serviceIds.length;
+  return (
+    typeof data.locationId === "string" &&
+    UUID.test(data.locationId) &&
+    Array.isArray(data.serviceIds) &&
+    data.serviceIds.length <= 100 &&
+    data.serviceIds.every(
+      (id: unknown) => typeof id === "string" && UUID.test(id),
+    ) &&
+    new Set(data.serviceIds).size === data.serviceIds.length
+  );
 }
 function isStaff(value: unknown): value is RealStaff {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const data = value as Partial<RealStaff>;
-  return typeof data.id === "string" && UUID.test(data.id) &&
-    typeof data.displayName === "string" && !!data.displayName.trim() &&
+  return (
+    typeof data.id === "string" &&
+    UUID.test(data.id) &&
+    typeof data.displayName === "string" &&
+    !!data.displayName.trim() &&
     data.displayName.length <= 200 &&
-    typeof data.positionTitle === "string" && data.positionTitle.length <= 80 &&
-    typeof data.active === "boolean" && typeof data.bookable === "boolean" &&
+    typeof data.positionTitle === "string" &&
+    data.positionTitle.length <= 80 &&
+    typeof data.active === "boolean" &&
+    typeof data.bookable === "boolean" &&
     typeof data.createdAt === "string" &&
     Number.isFinite(Date.parse(data.createdAt)) &&
-    Array.isArray(data.assignments) && data.assignments.length <= 100 &&
+    Array.isArray(data.assignments) &&
+    data.assignments.length <= 100 &&
     data.assignments.every(isAssignment) &&
-    new Set(data.assignments.map((a: RealStaffAssignment) => a.locationId)).size === data.assignments.length;
+    new Set(data.assignments.map((a: RealStaffAssignment) => a.locationId))
+      .size === data.assignments.length
+  );
 }
 function uniqueIds(rows: readonly { id: string }[]): boolean {
   return new Set(rows.map((row) => row.id)).size === rows.length;
@@ -85,17 +103,20 @@ async function request(
   }
   let response: Response;
   try {
-    response = await fetcher("/v1/organizations/" + session.tenantId + "/staff", {
-      ...init,
-      credentials: "omit",
-      cache: "no-store",
-      redirect: "error",
-      referrerPolicy: "no-referrer",
-      headers: {
-        ...(init.headers as Record<string, string>),
-        authorization: "Bearer " + session.accessToken,
+    response = await fetcher(
+      "/v1/organizations/" + session.tenantId + "/staff",
+      {
+        ...init,
+        credentials: "omit",
+        cache: "no-store",
+        redirect: "error",
+        referrerPolicy: "no-referrer",
+        headers: {
+          ...(init.headers as Record<string, string>),
+          authorization: "Bearer " + session.accessToken,
+        },
       },
-    });
+    );
   } catch {
     throw new StaffApiFailure("unavailable");
   }
@@ -106,7 +127,10 @@ async function request(
   if (response.status === 404) throw new StaffApiFailure("missing-reference");
   if (!response.ok) throw new StaffApiFailure("unavailable");
   try {
-    return { status: response.status, body: (await response.json()) as unknown };
+    return {
+      status: response.status,
+      body: (await response.json()) as unknown,
+    };
   } catch {
     throw new StaffApiFailure("invalid-response");
   }
@@ -117,19 +141,36 @@ export async function readRealStaff(
   fetcher: typeof fetch = globalThis.fetch,
 ): Promise<StaffDirectory> {
   const result = await request(session, { method: "GET" }, fetcher);
-  if (result.status !== 200 || !result.body || typeof result.body !== "object") {
+  if (
+    result.status !== 200 ||
+    !result.body ||
+    typeof result.body !== "object"
+  ) {
     throw new StaffApiFailure("invalid-response");
   }
   const candidate = result.body as Partial<StaffDirectory>;
-  if (!Array.isArray(candidate.staff) || !Array.isArray(candidate.locations) ||
-    candidate.staff.length > 100 || candidate.locations.length > 100 ||
-    !candidate.staff.every(isStaff) || !candidate.locations.every(isLocation) ||
-    !uniqueIds(candidate.staff) || !uniqueIds(candidate.locations)) {
+  if (
+    !Array.isArray(candidate.staff) ||
+    !Array.isArray(candidate.locations) ||
+    candidate.staff.length > 100 ||
+    candidate.locations.length > 100 ||
+    !candidate.staff.every(isStaff) ||
+    !candidate.locations.every(isLocation) ||
+    !uniqueIds(candidate.staff) ||
+    !uniqueIds(candidate.locations)
+  ) {
     throw new StaffApiFailure("invalid-response");
   }
-  const locationIds = new Set(candidate.locations.map((location) => location.id));
-  if (candidate.staff.some((staff) =>
-    staff.assignments.some((assignment) => !locationIds.has(assignment.locationId)))) {
+  const locationIds = new Set(
+    candidate.locations.map((location) => location.id),
+  );
+  if (
+    candidate.staff.some((staff) =>
+      staff.assignments.some(
+        (assignment) => !locationIds.has(assignment.locationId),
+      ),
+    )
+  ) {
     throw new StaffApiFailure("invalid-response");
   }
   return { staff: candidate.staff, locations: candidate.locations };
@@ -142,14 +183,24 @@ export async function createRealStaff(
   fetcher: typeof fetch = globalThis.fetch,
 ): Promise<RealStaff> {
   if (!UUID.test(idempotencyKey)) throw new StaffApiFailure("invalid-response");
-  const result = await request(session, {
-    method: "POST",
-    headers: { "content-type": "application/json", "idempotency-key": idempotencyKey },
-    body: JSON.stringify(draft),
-  }, fetcher);
-  if ((result.status !== 200 && result.status !== 201) ||
-    !result.body || typeof result.body !== "object" ||
-    !isStaff((result.body as { staff?: unknown }).staff)) {
+  const result = await request(
+    session,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": idempotencyKey,
+      },
+      body: JSON.stringify(draft),
+    },
+    fetcher,
+  );
+  if (
+    (result.status !== 200 && result.status !== 201) ||
+    !result.body ||
+    typeof result.body !== "object" ||
+    !isStaff((result.body as { staff?: unknown }).staff)
+  ) {
     throw new StaffApiFailure("invalid-response");
   }
   return (result.body as { staff: RealStaff }).staff;

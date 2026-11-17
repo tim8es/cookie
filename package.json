@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"apps/**/*.ts\" \"packages/**/*.ts\" --max-warnings=0",
     "format": "prettier --write \"apps/**/*.ts\" \"packages/**/*.ts\"",
-    "format:check": "prettier --check \"apps/**/*.ts\" \"packages/**/*.ts\" || (prettier --write \"apps/**/*.ts\" \"packages/**/*.ts\" && git diff -- apps/api/src/app.ts apps/api/src/staff-http.ts apps/api/test/owner-staff.integration.test.ts apps/web/src/lib/staff-api.test.ts apps/web/src/lib/staff-api.ts packages/domain-staff/src/draft-staff.ts && exit 1)",
+    "format:check": "prettier --check \"apps/**/*.ts\" \"packages/**/*.ts\"",
     "test": "tsx --test apps/api/test/*.unit.test.ts packages/contracts/test/*.unit.test.ts packages/kernel/test/*.unit.test.ts packages/platform-identity/test/*.unit.test.ts packages/domain-scheduling/test/*.unit.test.ts",
     "test:integration": "tsx --test --test-concurrency=1 apps/api/test/*.integration.test.ts",
     "db:migrate": "tsx packages/platform-db/src/cli.ts",
