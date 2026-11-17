@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -35,10 +35,25 @@ export class IdentitySessions {
   async issueForVerifiedIdentity(
     identityId: string,
   ): Promise<{ token: string; expiresAtUnixSeconds: number }> {
+    return this.issueWith(this.pool, identityId);
+  }
+
+  /** The caller must commit before exposing the returned token. */
+  async issueForVerifiedIdentityInTransaction(
+    client: PoolClient,
+    identityId: string,
+  ): Promise<{ token: string; expiresAtUnixSeconds: number }> {
+    return this.issueWith(client, identityId);
+  }
+
+  private async issueWith(
+    database: Pick<PoolClient, "query">,
+    identityId: string,
+  ): Promise<{ token: string; expiresAtUnixSeconds: number }> {
     if (typeof identityId !== "string" || !UUID.test(identityId))
       throw new Error("Invalid identity");
     const token = "is_" + randomBytes(32).toString("base64url");
-    const result = await this.pool.query<{ expires_at: Date }>(
+    const result = await database.query<{ expires_at: Date }>(
       `INSERT INTO cookie_identity.identity_sessions
        (token_sha256,identity_id,issuer,audience,issued_at,expires_at)
        VALUES($1,$2::uuid,$3,$4,clock_timestamp(),clock_timestamp()+$5::integer*interval '1 second')
