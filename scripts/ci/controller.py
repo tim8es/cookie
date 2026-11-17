@@ -116,10 +116,15 @@ class Controller:
     def run_api(self, suffix, method="GET", data=None):
         return ci.api(self.runner_token, "/repos/" + self.runner + suffix, method, data)
 
-    def status(self, record, suite, value, description):
-        self.src("/statuses/" + record["commit"], "POST", {
-            "state": value, "context": CONTEXT + suite, "description": description,
-        })
+    def status(self, record, suite, value, description, *, evidence_job=None):
+        payload = {"state": value, "context": CONTEXT + suite, "description": description}
+        if evidence_job is not None:
+            if not ci.JOB.fullmatch(evidence_job):
+                raise ValueError("Invalid evidence identifier")
+            ci.private_repo(self.source_token, self.source)
+            ci.private_repo(self.evidence_token, self.evidence)
+            payload["target_url"] = "https://github.com/" + self.evidence + "/releases/tag/" + evidence_job
+        self.src("/statuses/" + record["commit"], "POST", payload)
 
     def main_sha(self):
         result = self.src("/git/ref/heads/main")
@@ -209,15 +214,19 @@ class Controller:
             if run.get("status") != "completed":
                 return
             passed = False
+            evidence_job = None
             if (run.get("id") == item["run"] and run.get("event") == "workflow_dispatch"
                     and run.get("head_branch") == "main"
                     and run.get("path", "").split("@")[0] == ".github/workflows/universal.yml"
-                    and run.get("run_attempt") == 1 and run.get("conclusion") == "success"):
+                    and run.get("run_attempt") == 1):
                 try:
                     release = ci.api(self.evidence_token, "/repos/" + self.evidence +
                                      "/releases/tags/" + item["job"])
-                    passed = ci.valid_evidence(release, item["job"], record["commit"],
-                                               suite, item["run"], 1)
+                    if ci.valid_evidence(release, item["job"], record["commit"],
+                                         suite, item["run"], 1, require_success=False):
+                        evidence_job = item["job"]
+                        passed = run.get("conclusion") == "success" and ci.valid_evidence(
+                            release, item["job"], record["commit"], suite, item["run"], 1)
                 except urllib.error.HTTPError as error:
                     if error.code != 404:
                         raise
@@ -231,7 +240,8 @@ class Controller:
                 item["phase"] = "obsolete"
             else:
                 self.status(record, suite, "success" if passed else "failure",
-                            "Verified private evidence" if passed else "Execution or evidence failed")
+                            "Verified private evidence" if passed else "Execution or evidence failed",
+                            evidence_job=evidence_job)
                 item["phase"] = "success" if passed else "failure"
             self.save()
 
