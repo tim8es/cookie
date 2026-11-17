@@ -134,13 +134,12 @@ ephemeral self-hosted runner in the private source repository, retaining native
 F1 checks. Never attach a privileged persistent runner to a public repository.
 
 
-The native F1 workflow has a provider switch limited to a private source
-repository. Register a dedicated, disposable Linux x64 self-hosted runner
-with the custom label `cookie-ci-private`, Docker/Compose, Chromium/Chrome and
-the dependencies required by the pinned actions, then set the repository
-Actions variable `F1_EXECUTION_BACKEND=self-hosted`. Existing F1 job names,
-services, checks and artifact settings are retained. Removing the variable
-restores the GitHub-hosted default. Public repositories always use the
-native GitHub-hosted default even if the variable exists. Do not set this
-variable until a matching private runner is ready. GitHub-hosted fees and
-self-hosted infrastructure costs are separate; no free compute is assumed.
+The native F1 workflow routes every private-repository job to the self-hosted
+`cookie-ci-private` runner; public repositories use `ubuntu-latest`. This is
+automatic and has no variable override. If Cookie is private and no matching
+runner is registered, jobs stay queued and never fall back to a public hosted
+runner. Register a dedicated, ephemeral Linux x64 runner with Docker/Compose,
+Chromium/Chrome and the dependencies required by the pinned actions before
+switching Cookie to private. Do not share it with other projects or untrusted
+workflows. GitHub-hosted fees and self-hosted infrastructure costs are
+separate; no free compute is assumed.
