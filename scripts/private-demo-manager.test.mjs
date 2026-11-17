@@ -114,3 +114,75 @@ test("manager closure during startup reserves resources until worker has exited"
   assert.equal(manager.status.stopping, 0);
   assert.equal(manager.status.closed, true);
 });
+
+test("routes use only a live bound worker, canonical API paths and allowed headers", async () => {
+  const calls = [];
+  const { manager, children } = harness({ fetcher: async (url, init) => {
+    calls.push({ url, init });
+    return new Response("{}");
+  } });
+  assert.throws(() => manager.route("foreign"), /unavailable/);
+  const starting = manager.start();
+  ready(children[0]);
+  const a = await starting;
+  const route = manager.route(a.id);
+  for (const path of ["https://example.invalid/v1/test", "//127.0.0.1:9999/v1/test",
+    "/v1/../test", "/v1/%2e%2e/test", "/v1//test", "/v1/test#fragment",
+    "/v1/test\\other", "/assets/test.js", "/v1/test?x=bad space"]) {
+    await assert.rejects(route(path), /path rejected/);
+  }
+  for (const headers of [{ host: "other" }, { cookie: "sid=synthetic" },
+    { "x-forwarded-host": "other" }, { "x-demo-session": "other" }]) {
+    await assert.rejects(route("/v1/test", { headers }), /header rejected/);
+  }
+  await assert.rejects(route("/v1/test", { method: "CONNECT" }), /method/);
+  await assert.rejects(route("/v1/test", { body: "{}" }), /body/);
+  await assert.rejects(route("/v1/test", { method: "POST", body: "x".repeat(256 * 1024 + 1) }), /body/);
+  assert.equal(calls.length, 0);
+  await route("/v1/organizations/" + tenantId + "/services?limit=1", {
+    headers: { authorization: "Bearer synthetic", accept: "application/json" },
+    redirect: "follow", credentials: "include", dispatcher: "ignored",
+  });
+  assert.equal(calls[0].url, "http://127.0.0.1:1234/v1/organizations/" + tenantId + "/services?limit=1");
+  assert.equal(calls[0].init.headers.get("authorization"), "Bearer synthetic");
+  assert.equal(calls[0].init.redirect, "error");
+  assert.equal(calls[0].init.credentials, "omit");
+  assert.equal(calls[0].init.dispatcher, undefined);
+
+  const stopping = manager.stop(a.id);
+  assert.equal(calls[0].init.signal.aborted, true);
+  await assert.rejects(route("/v1/test"), /unavailable/);
+  children[0].emit("exit", 0, null);
+  await stopping;
+  const second = manager.start();
+  ready(children[1], 2); // reuse the same port with a different session id
+  const b = await second;
+  await assert.rejects(route("/v1/test"), /unavailable/);
+  await manager.route(b.id)("/v1/test");
+  assert.equal(calls.length, 2);
+  const closing = manager.close();
+  children[1].emit("exit", 0, null);
+  await closing;
+});
+
+test("in-flight route rejects a late response after IPC disconnect", async () => {
+  let deliver;
+  let forwarded;
+  const { manager, children } = harness({ fetcher: (_url, init) => {
+    forwarded = init.signal;
+    return new Promise(resolve => { deliver = resolve; });
+  } });
+  const starting = manager.start();
+  ready(children[0]);
+  const a = await starting;
+  const route = manager.route(a.id);
+  const pending = route("/v1/test");
+  children[0].disconnect();
+  assert.equal(forwarded.aborted, true);
+  deliver(new Response("late"));
+  await assert.rejects(pending, /unavailable/);
+  await assert.rejects(route("/v1/test"), /unavailable/);
+  children[0].emit("exit", 0, null);
+  await tick();
+  await manager.close();
+});
