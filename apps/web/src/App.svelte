@@ -25,6 +25,7 @@
   import BookingSetupHint from "./lib/ui/BookingSetupHint.svelte";
   import DemoState from "./lib/ui/DemoState.svelte";
   import OwnerAuthGate from "./lib/ui/OwnerAuthGate.svelte";
+  import RealOwnerServicesPage from "./lib/ui/RealOwnerServicesPage.svelte";
   import {
     authenticateTelegramOwner,
     loadTelegramInitData,
@@ -311,11 +312,11 @@
 </script>
 
 <svelte:head>
-  <title>{apiDisconnected ? "Cookie — вход владельца" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
-  <meta name="description" content={api.mode === "api" ? "Cookie: тестовое подключение Backend API пока недоступно." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
+  <title>{api.mode === "api" ? "Cookie — услуги салона" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
+  <meta name="description" content={api.mode === "api" ? "Cookie: защищённый каталог услуг владельца." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
-<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org} class:telegramPreview={telegramPreview && screen === "booking"} class:salonThemeForest={data.appearance.theme === "forest"} class:salonThemeOcean={data.appearance.theme === "ocean"} class:salonThemeClay={data.appearance.theme === "clay"}>
+<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org && api.mode === "mock"} class:telegramPreview={telegramPreview && screen === "booking"} class:salonThemeForest={data.appearance.theme === "forest"} class:salonThemeOcean={data.appearance.theme === "ocean"} class:salonThemeClay={data.appearance.theme === "clay"}>
   {#if screen !== "booking" && !(screen === "home" && !org)}
     <Sidebar {screen} {stepCount} onNavigate={goto} />
   {/if}
@@ -324,7 +325,7 @@
     {#if screen === "booking"}
       <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} demoMode={api.mode === "mock"} onBack={() => goto("home")} />
     {:else if screen === "home" && !org}
-      <OnboardingHeader apiMode={apiDisconnected} />
+      <OnboardingHeader apiMode={api.mode === "api"} />
     {:else}
       <Topbar {screen} bind:preview canCreateBooking={!!org} onNavigate={goto} />
     {/if}
@@ -335,8 +336,12 @@
         onDismissError={() => error = ""}
         onDismissNotice={() => notice = ""}
       />
-      {#if apiDisconnected}
-        <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
+      {#if api.mode === "api"}
+        {#if ownerAuthPhase === "verified" && ownerSession}
+          <RealOwnerServicesPage session={ownerSession} onLogout={() => void logoutOwner()} />
+        {:else}
+          <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
+        {/if}
       {:else if initializing || busy}
         <div class="loading-card" role="status"><div class="spinner"></div><span>{initializing ? "Загружаем демо-пространство…" : "Обновляем данные в браузерной сессии…"}</span></div>
       {:else if preview === "error"}

@@ -18,6 +18,10 @@ import {
 } from "./workspace-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
 import {
+  registerRealCatalogRoutes,
+  type RealCatalogRouteDependencies,
+} from "./catalog-http.js";
+import {
   registerLiveWorkspaceRead,
   type LiveWorkspaceReadDependencies,
 } from "./live-workspace-http.js";
@@ -37,6 +41,7 @@ export function createApp(
     readonly logger?: boolean;
     readonly sessionRoutes?: ProtectedSessionDependencies;
     readonly liveWorkspaceReads?: LiveWorkspaceReadDependencies;
+    readonly catalogRoutes?: RealCatalogRouteDependencies;
     readonly telegramAuthRoutes?: {
       readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
@@ -78,6 +83,9 @@ export function createApp(
   // a database-resolved trusted link and HTTPS origin. No Booking enabled.
   if (options.telegramAuthRoutes)
     registerTelegramAuthExchange(app, options.telegramAuthRoutes.sessions);
+
+  if (options.catalogRoutes)
+    registerRealCatalogRoutes(app, options.catalogRoutes);
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.
