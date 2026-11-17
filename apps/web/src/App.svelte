@@ -309,7 +309,7 @@
     {:else if screen === "booking"}
       <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} onBack={() => goto("home")} />
     {:else if screen === "home" && !org}
-      <OnboardingHeader apiMode={api.mode === "api"} />
+      <OnboardingHeader apiMode={false} />
     {:else}
       <Topbar {screen} bind:preview canCreateBooking={!!org} onNavigate={goto} />
     {/if}
