@@ -6,6 +6,9 @@
   import {
     LocationApiFailure,
     createRealLocation,
+    emptyLocationDraft,
+    locationCreateIsUncertain,
+    locationDraftFromForm,
     readRealLocations,
     type RealLocation,
   } from "../locations-api";
@@ -19,9 +22,9 @@
   let readError = "";
   let saveError = "";
   let notice = "";
-  let displayName = "";
-  let timeZone = "Europe/Moscow";
+  let { displayName, timeZone } = emptyLocationDraft();
   let pendingKey = "";
+  let uncertain = false;
 
   function description(reason: unknown): string {
     if (reason instanceof LocationApiFailure) {
@@ -31,6 +34,8 @@
         return "Этот ключ уже использован с другим филиалом. Измените форму.";
       if (reason.reason === "limit")
         return "Достигнут лимит из 100 филиалов в текущей версии.";
+      if (reason.reason === "invalid-request")
+        return "Сервер отклонил название или часовой пояс филиала.";
       if (reason.reason === "invalid-response")
         return "Сервер вернул неподтверждённый формат филиалов.";
     }
@@ -53,12 +58,14 @@
   }
 
   function editName(value: string): void {
+    if (saving || uncertain) return;
     displayName = value;
     pendingKey = "";
     saveError = "";
   }
 
   function editZone(value: string): void {
+    if (saving || uncertain) return;
     timeZone = value;
     pendingKey = "";
     saveError = "";
@@ -66,17 +73,9 @@
 
   async function save(): Promise<void> {
     if (!loaded || saving || loading) return;
-    const name = displayName.normalize("NFC").trim();
-    const zone = timeZone.trim();
-    if (!name || [...name].length > 200) {
-      saveError = "Название филиала должно содержать от 1 до 200 символов.";
-      return;
-    }
-    try {
-      if (!zone || zone.length > 128) throw new RangeError("Invalid zone");
-      new Intl.DateTimeFormat("ru-RU", { timeZone: zone }).format(new Date());
-    } catch {
-      saveError = "Укажите существующий IANA-часовой пояс, например Europe/Moscow.";
+    const draft = locationDraftFromForm(displayName, timeZone);
+    if (!draft) {
+      saveError = "Укажите корректное название и существующий IANA-часовой пояс, например Europe/Moscow.";
       return;
     }
 
@@ -88,17 +87,19 @@
     try {
       const saved = await createRealLocation(
         session,
-        { displayName: name, timeZone: zone },
+        draft,
         key,
       );
       // No optimistic success: the record came from a committed PG transaction.
       locations = [...locations.filter((branch) => branch.id !== saved.id), saved];
       pendingKey = "";
-      displayName = "";
+      uncertain = false;
+      ({ displayName, timeZone } = emptyLocationDraft());
       notice = "Филиал сохранён в PostgreSQL. Графики и запись клиентов пока не опубликованы.";
       await refresh();
     } catch (reason) {
-      // Unknown COMMIT may have succeeded; same key is retained for exact retry.
+      // An unknown COMMIT may have succeeded; do not allow a changed payload/key.
+      uncertain = locationCreateIsUncertain(uncertain, reason);
       saveError = description(reason);
     } finally {
       saving = false;
@@ -178,7 +179,7 @@
               placeholder="Студия на Невском"
               maxlength={200}
               required
-              disabled={saving}
+              disabled={saving || uncertain}
             />
           </label>
           <label class="field">
@@ -189,7 +190,7 @@
               placeholder="Europe/Moscow"
               maxlength={128}
               required
-              disabled={saving}
+              disabled={saving || uncertain}
             />
           </label>
         </div>
@@ -197,8 +198,11 @@
           Например: Europe/Moscow, Europe/Kaliningrad или Asia/Yekaterinburg.
           Сервер проверяет пояс и сохраняет его вместе с филиалом.
         </p>
+        {#if uncertain}
+          <p class="owner-form-note" role="status">Результат создания не подтверждён. Повторите запрос с прежними параметрами; не создавайте другой филиал до подтверждения.</p>
+        {/if}
         <Button class="owner-submit" type="submit" disabled={saving || loading}>
-          {saving ? "Сохраняем…" : "Создать филиал"}
+          {saving ? "Сохраняем…" : uncertain ? "Повторить создание" : "Создать филиал"}
         </Button>
       </form>
     </section>
