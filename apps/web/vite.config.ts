@@ -14,12 +14,16 @@ function runtimeWithoutMock(): Plugin {
         if (item.type !== "chunk") continue;
         for (const id of Object.keys(item.modules)) {
           const name = id.replaceAll("\\", "/").split("?")[0] ?? "";
-          if (/\/src\/(?:LegacyFixture\.svelte|lib\/(?:mock|api)\.ts)$/.test(name)) {
+          if (
+            /\/src\/(?:LegacyFixture\.svelte|lib\/(?:mock|api)\.ts)$/.test(name)
+          ) {
             this.error("Legacy fixture leaked into compiled runtime: " + name);
           }
         }
       }
-      console.log("PASS compiled runtime excludes the legacy mock controller and adapters");
+      console.log(
+        "PASS compiled runtime excludes the legacy mock controller and adapters",
+      );
     },
   };
 }
