@@ -215,6 +215,7 @@
     />
   {/if}
 </div>
+
 {#if loaded}
   <StagingPublicationPanel {session} {staff} {locations} {services}
     disabled={loading || saving} bind:pending={publicationPending}

@@ -1,12 +1,15 @@
 import { createHash } from "node:crypto";
-import { runSqlTransaction } from "../../platform-db/src/index.js";
 import type { Pool, QueryResultRow } from "pg";
 import {
   assertNewStagingSeat,
   lockLiveStagingGrant,
 } from "../../domain-entitlement/src/index.js";
-import type { TrustedActor } from "../../platform-identity/src/index.js";
-import { requireTenantPermission } from "../../platform-identity/src/index.js";
+import { runSqlTransaction } from "../../platform-db/src/index.js";
+import {
+  AuthorizationDeniedError,
+  requireTenantPermission,
+  type TrustedActor,
+} from "../../platform-identity/src/index.js";
 
 export interface StagingStaffPublicationInput {
   readonly staffId: string;
@@ -70,17 +73,25 @@ export async function publishStaffForStaging(
     )
     .digest("hex");
   const tenantId = actor.tenantId;
-  return runSqlTransaction(pool, async (client) => {
+  const result = await runSqlTransaction(pool, async (client) => {
     const profile = await client.query<ProfileRow>(
       "SELECT active,bookable FROM cookie_staff.staff_profiles WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE",
       [tenantId, staffId],
     );
-    await requireTenantPermission(
-      client,
-      actor,
-      { kind: "organization", tenantId },
-      "staging.staff.publish",
-    );
+    try {
+      await requireTenantPermission(
+        client,
+        actor,
+        { kind: "organization", tenantId },
+        "staging.staff.publish",
+      );
+    } catch (error) {
+      // No domain mutation has run. Preserve only the authorization audit.
+      if (error instanceof AuthorizationDeniedError) {
+        return { denied: error };
+      }
+      throw error;
+    }
     if (!profile.rows[0]?.active)
       throw new StagingStaffPublicationConflict("target-unavailable");
     const grant = await lockLiveStagingGrant(client, tenantId);
@@ -163,4 +174,6 @@ export async function publishStaffForStaging(
     await lockLiveStagingGrant(client, tenantId);
     return { publication: { staffId, locationId, serviceId }, replayed: false };
   });
+  if (result.denied) throw result.denied;
+  return result;
 }

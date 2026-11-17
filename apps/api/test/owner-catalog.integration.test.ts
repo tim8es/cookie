@@ -306,6 +306,16 @@ test(
           .statusCode,
         404,
       );
+      // Deactivation cannot make a previously published service a draft.
+      await pool.query(
+        "UPDATE cookie_catalog.services SET active=false WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [owner.tenantId, a.id],
+      );
+      assert.equal(
+        (await change({ ...edit, expectedRevision: 3 }, randomUUID()))
+          .statusCode,
+        404,
+      );
       const count = await pool.query(
         `SELECT
           (SELECT count(*)::int FROM cookie_catalog.service_create_receipts WHERE tenant_id=$1::uuid) AS creates,

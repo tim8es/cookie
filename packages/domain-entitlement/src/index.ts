@@ -1,2 +1,9 @@
-/** Controlled-staging capability; no commercial subscription policy. */
-export { parseStagingPublicationMode, readStagingCapacity, lockLiveStagingGrant, assertNewStagingSeat, StagingPublicationDenied } from "./staging.js";
+/** Controlled staging capacity capability, not commercial billing. */
+export {
+  assertNewStagingSeat,
+  lockLiveStagingGrant,
+  parseStagingPublicationMode,
+  readStagingCapacity,
+  StagingPublicationDenied,
+  type StagingCapacity,
+} from "./staging.js";
