@@ -12,6 +12,7 @@ type Transaction = <T>(work: (client: PoolClient) => Promise<T>) => Promise<T>;
 interface CredentialRow extends QueryResultRow {
   identity_id: string;
   password_hash: string;
+  credential_version: string;
 }
 
 // Valid encoding at the same KDF cost; never grants an identity.
@@ -38,7 +39,7 @@ export async function withVerifiedEmailPassword<T>(
 
   const credential = await transaction(async (client) => {
     const result = await client.query<CredentialRow>(
-      "SELECT identity_id::text,password_hash FROM cookie_identity.email_credentials WHERE email_hmac_sha256=$1",
+      "SELECT identity_id::text,password_hash,credential_version::text FROM cookie_identity.email_credentials WHERE email_hmac_sha256=$1",
       [fingerprint],
     );
     return result.rows[0];
@@ -55,13 +56,14 @@ export async function withVerifiedEmailPassword<T>(
     // Re-read and lock after verification. Credential removal or password
     // rotation during the KDF must not authorize session issuance.
     const current = await client.query<CredentialRow>(
-      "SELECT identity_id::text,password_hash FROM cookie_identity.email_credentials WHERE email_hmac_sha256=$1 FOR SHARE",
+      "SELECT identity_id::text,password_hash,credential_version::text FROM cookie_identity.email_credentials WHERE email_hmac_sha256=$1 FOR SHARE",
       [fingerprint],
     );
     const row = current.rows[0];
     if (
       !row ||
       row.identity_id !== credential.identity_id ||
+      row.credential_version !== credential.credential_version ||
       row.password_hash !== credential.password_hash
     ) {
       return null;
