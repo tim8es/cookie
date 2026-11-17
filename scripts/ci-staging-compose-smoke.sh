@@ -98,7 +98,7 @@ api_process_stamp() {
 api_stamp_before="$(api_process_stamp)"
 # Confirm direct API health before disrupting the private Compose database.
 probe_api_health() {
-  "${compose[@]}" exec -T api node - "$1" "$2" "$3" <<'NODE'
+  "${compose[@]}" exec -T api node --input-type=module - "$1" "$2" "$3" <<'NODE'
 const [path, expectedCode, expectedStatus] = process.argv.slice(2);
 const response = await fetch("http://127.0.0.1:3000" + path, {
   signal: AbortSignal.timeout(8000),
