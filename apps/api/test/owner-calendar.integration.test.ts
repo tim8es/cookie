@@ -91,7 +91,11 @@ test(
       });
       const prefix = "/v1/organizations/" + owner.tenantId;
       const calendarUrl = prefix + "/owner-calendar";
-      const url = calendarUrl + "?locationId=" + owner.locationId + "&date=2027-03-14&days=1";
+      const url =
+        calendarUrl +
+        "?locationId=" +
+        owner.locationId +
+        "&date=2027-03-14&days=1";
       assert.equal(
         (await disabled.inject({ method: "GET", url })).statusCode,
         404,
@@ -118,7 +122,12 @@ test(
       });
       const foreign = await app.inject({
         method: "GET",
-        url: "/v1/organizations/" + randomUUID() + "/owner-calendar?locationId=" + owner.locationId + "&date=2027-03-14&days=1",
+        url:
+          "/v1/organizations/" +
+          randomUUID() +
+          "/owner-calendar?locationId=" +
+          owner.locationId +
+          "&date=2027-03-14&days=1",
         headers,
       });
       assert.equal(foreign.statusCode, 403);
@@ -183,21 +192,41 @@ test(
            VALUES($1,$2,$3,$4,$5,$6,$7,$8::timestamptz,
             $8::timestamptz+interval '60 minutes',$8::timestamptz+interval '70 minutes',
             60,10,123456,CASE WHEN $7='CancelledByBusiness' THEN clock_timestamp() ELSE NULL END)`,
-          [tenant, id, customerId, staffId, locationId, serviceId, status, startAt],
+          [
+            tenant,
+            id,
+            customerId,
+            staffId,
+            locationId,
+            serviceId,
+            status,
+            startAt,
+          ],
         );
         return id;
       };
       // New York spring-forward: 05:00Z to next day 04:00Z (23 hours).
       const carry = await seed("2027-03-14T04:30:00Z", "Completed");
       const confirmed = await seed("2027-03-14T12:00:00Z", "Confirmed");
-      const cancelled = await seed("2027-03-15T03:00:00Z", "CancelledByBusiness");
+      const cancelled = await seed(
+        "2027-03-15T03:00:00Z",
+        "CancelledByBusiness",
+      );
       const next = await seed("2027-03-15T04:00:00Z", "NoShow");
       await seed("2027-03-14T04:00:00Z", "Completed");
-      const outside = await seed("2027-03-14T15:00:00Z", "Completed", otherBranch);
-      const read = async (path = url) => app.inject({ method: "GET", url: path, headers });
+      const outside = await seed(
+        "2027-03-14T15:00:00Z",
+        "Completed",
+        otherBranch,
+      );
+      const read = async (path = url) =>
+        app.inject({ method: "GET", url: path, headers });
       const day = await read();
       assert.equal(day.statusCode, 200);
-      assert.deepEqual(day.json().entries.map((entry: { id: string }) => entry.id), [carry, confirmed, cancelled]);
+      assert.deepEqual(
+        day.json().entries.map((entry: { id: string }) => entry.id),
+        [carry, confirmed, cancelled],
+      );
       const record = day.json().entries[1];
       assert.deepEqual(record, {
         id: confirmed,
@@ -210,19 +239,43 @@ test(
       });
       assert.ok(!day.body.includes(customerId));
       assert.ok(!day.body.includes(outside));
-      assert.deepEqual((await read(url.replace("days=1", "days=7"))).json().entries.map((entry: { id: string }) => entry.id), [carry, confirmed, cancelled, next]);
-      assert.deepEqual((await read(url.replace(owner.locationId, otherBranch))).json().entries.map((entry: { id: string }) => entry.id), [outside]);
-      assert.equal((await read(url.replace(owner.locationId, randomUUID()))).statusCode, 404);
+      assert.deepEqual(
+        (await read(url.replace("days=1", "days=7")))
+          .json()
+          .entries.map((entry: { id: string }) => entry.id),
+        [carry, confirmed, cancelled, next],
+      );
+      assert.deepEqual(
+        (await read(url.replace(owner.locationId, otherBranch)))
+          .json()
+          .entries.map((entry: { id: string }) => entry.id),
+        [outside],
+      );
+      assert.equal(
+        (await read(url.replace(owner.locationId, randomUUID()))).statusCode,
+        404,
+      );
       for (const invalid of [
         url.replace("2027-03-14", "2027-02-30"),
         url.replace("days=1", "days=8"),
         url + "&days=7",
         url + "&customerId=" + customerId,
-      ]) assert.equal((await read(invalid)).statusCode, 400);
+      ])
+        assert.equal((await read(invalid)).statusCode, 400);
 
       // Read works without staging grant and without active offers. No Booking
       // write route is wired, and no customer field is returned.
-      assert.equal((await app.inject({ method: "POST", url: calendarUrl, headers, payload: {} })).statusCode, 404);
+      assert.equal(
+        (
+          await app.inject({
+            method: "POST",
+            url: calendarUrl,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+        404,
+      );
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'booking.read') WHERE tenant_id=$1::uuid",
         [tenant],

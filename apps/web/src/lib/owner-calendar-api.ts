@@ -50,9 +50,7 @@ function instant(value: unknown): value is string {
 }
 function name(value: unknown): value is string {
   return (
-    typeof value === "string" &&
-    !!value.trim() &&
-    [...value].length <= 200
+    typeof value === "string" && !!value.trim() && [...value].length <= 200
   );
 }
 function zone(value: unknown): value is string {
@@ -127,8 +125,7 @@ export async function readOwnerCalendar(
     throw new CalendarReadError("branch-unavailable");
   if (response.status === 400 || response.status === 422)
     throw new CalendarReadError("invalid-period");
-  if (response.status === 409)
-    throw new CalendarReadError("period-too-dense");
+  if (response.status === 409) throw new CalendarReadError("period-too-dense");
   if (response.status !== 200) throw new CalendarReadError("unavailable");
   try {
     const data = (await response.json()) as Partial<OwnerCalendar>;
@@ -150,7 +147,15 @@ export async function readOwnerCalendar(
       days,
       timeZone: data.timeZone,
       entries: data.entries.map(
-        ({ id, status, startAt, endAt, staffName, serviceName, priceKopecks }) => ({
+        ({
+          id,
+          status,
+          startAt,
+          endAt,
+          staffName,
+          serviceName,
+          priceKopecks,
+        }) => ({
           id,
           status,
           startAt,
