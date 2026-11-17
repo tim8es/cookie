@@ -162,10 +162,12 @@ export function brandContrast(a: string, b: string): number {
 function readableInk(background: string): string {
   const nearBlack = "#151820";
   const nearWhite = "#ffffff";
-  return brandContrast(nearBlack, background) >=
-    brandContrast(nearWhite, background)
-    ? nearBlack
-    : nearWhite;
+  const darkContrast = brandContrast(nearBlack, background);
+  const lightContrast = brandContrast(nearWhite, background);
+  if (darkContrast >= 4.5 && darkContrast >= lightContrast) return nearBlack;
+  if (lightContrast >= 4.5) return nearWhite;
+  // For midtones, true black guarantees contrast where near-black fails.
+  return "#000000";
 }
 
 export function createBrandConfig(

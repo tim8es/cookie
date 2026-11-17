@@ -114,15 +114,23 @@ test("invalid preview and reset recover safely", () => {
   const forest = createBrandConfig("forest");
   const unknown = { ...forest, presetId: "future-preset" };
   const invalidColor = { ...forest, primaryColor: "not-a-color" };
-  assert.deepEqual(compileBrandPreviewTokens(atelier), compileBrandTokens(atelier));
-  assert.deepEqual(compileBrandPreviewTokens(unknown), compileBrandTokens(atelier));
-  assert.deepEqual(
-    compileBrandPreviewTokens(invalidColor),
-    compileBrandTokens(forest),
-  );
-  assert.deepEqual(compileBrandPreviewTokens(null), compileBrandTokens(atelier));
+  const preview = compileBrandPreviewTokens;
+  const tokens = compileBrandTokens;
+  assert.deepEqual(preview(atelier), tokens(atelier));
+  assert.deepEqual(preview(unknown), tokens(atelier));
+  assert.deepEqual(preview(invalidColor), tokens(forest));
+  assert.deepEqual(preview(null), tokens(atelier));
   assert.equal(safeBrandPresetId(unknown.presetId), "atelier");
   assert.equal(safeBrandPresetId("forest"), "forest");
   assert.throws(() => validateBrandConfig(unknown));
   assert.throws(() => validateBrandConfig(invalidColor));
+});
+
+test("custom midtone backgrounds retain readable text", () => {
+  const config = createBrandConfig();
+  for (const color of ["#777777", "#808080", "#858585"]) {
+    const settings = { ...config, backgroundColor: color };
+    const tokens = compileBrandTokens(settings);
+    assert.ok(brandContrast(color, tokens["--salon-page-ink"]!) >= 4.5);
+  }
 });
