@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -15,7 +15,8 @@ import { createTelegramMiniAppProofVerifier } from "../../../packages/platform-i
 import { createPostgresVerifiedTelegramLinkResolver } from "../../../packages/platform-identity/src/telegram-links.js";
 
 const BOT = "123456789:synthetic_catalog_not_real_bot";
-const SECRET = Buffer.alloc(32, 0x3d);
+// A disposable test-specific HMAC namespace avoids collisions with merged suites.
+const SECRET = randomBytes(32);
 
 function proof(userId: number): string {
   const fields = {
