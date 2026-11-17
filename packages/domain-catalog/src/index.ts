@@ -12,3 +12,4 @@ export {
   listTenantServices,
   validateDraftService,
 } from "./services.js";
+export { lockStagingServiceForPublication } from "./staging-publication.js";
