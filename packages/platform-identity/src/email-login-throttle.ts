@@ -61,6 +61,7 @@ export async function reserveEmailLoginAttempt(
   limits: EmailLoginLimits,
   sourceFingerprint: Buffer,
   accountFingerprint: Buffer | null,
+  globalBudget?: { readonly fingerprint: Buffer; readonly attempts: number },
 ): Promise<boolean> {
   const { windowSeconds, accountAttempts, sourceAttempts } = limits;
   if (
@@ -68,7 +69,11 @@ export async function reserveEmailLoginAttempt(
     !validLimit(accountAttempts, 1000000) ||
     !validLimit(sourceAttempts, 1000000) ||
     !validFingerprint(sourceFingerprint) ||
-    (accountFingerprint !== null && !validFingerprint(accountFingerprint))
+    (accountFingerprint !== null && !validFingerprint(accountFingerprint)) ||
+    (globalBudget !== undefined &&
+      (!validFingerprint(globalBudget.fingerprint) ||
+        globalBudget.fingerprint.equals(sourceFingerprint) ||
+        !validLimit(globalBudget.attempts, 1000000)))
   ) {
     throw new Error("Invalid login throttle configuration or fingerprint");
   }
@@ -82,6 +87,18 @@ export async function reserveEmailLoginAttempt(
     const start = result.rows[0]?.window_start;
     if (!start || !/^[0-9]+$/.test(start)) {
       throw new Error("Login throttle clock unavailable");
+    }
+    // Optional mail-global budget precedes source and account. All budgets
+    // use the same database-clock window and the same transaction.
+    if (globalBudget) {
+      const global = await increment(
+        client,
+        "source",
+        globalBudget.fingerprint,
+        windowSeconds,
+        start,
+      );
+      if (global > globalBudget.attempts) return false;
     }
     // Every transaction acquires source before account, avoiding lock cycles.
     const source = await increment(
