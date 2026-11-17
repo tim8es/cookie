@@ -677,16 +677,11 @@ test(
       }> = [];
       for (let index = 0; index < 12; index++) {
         const signedCustomer = proof(19220000 + index);
-        const context = await provisionStagingCustomer(
-          pool,
-          verifier,
-          SECRET,
-          {
-            tenantId: owner.tenantId,
-            rawInitData: signedCustomer,
-            consentConfirmed: true,
-          },
-        );
+        const context = await provisionStagingCustomer(pool, verifier, SECRET, {
+          tenantId: owner.tenantId,
+          rawInitData: signedCustomer,
+          consentConfirmed: true,
+        });
         const login = await app.inject({
           method: "POST",
           url: "/v1/auth/telegram/exchange",
