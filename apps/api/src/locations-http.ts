@@ -24,7 +24,9 @@ export interface RealLocationRouteDependencies {
 type Params = { tenantId: string };
 const KEY = /^[A-Za-z0-9._:-]{16,128}$/;
 
-function privateReply(reply: { header(key: string, value: string): unknown }): void {
+function privateReply(reply: {
+  header(key: string, value: string): unknown;
+}): void {
   reply.header("Cache-Control", "no-store");
   reply.header("Pragma", "no-cache");
   reply.header("Vary", "Authorization");

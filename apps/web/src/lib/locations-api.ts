@@ -88,11 +88,16 @@ async function request(
     } catch {
       // Unknown conflict still cannot appear as a successful response.
     }
-    throw new LocationApiFailure(code === "location-limit" ? "limit" : "conflict");
+    throw new LocationApiFailure(
+      code === "location-limit" ? "limit" : "conflict",
+    );
   }
   if (!response.ok) throw new LocationApiFailure("unavailable");
   try {
-    return { status: response.status, body: (await response.json()) as unknown };
+    return {
+      status: response.status,
+      body: (await response.json()) as unknown,
+    };
   } catch {
     throw new LocationApiFailure("invalid-response");
   }
@@ -103,7 +108,11 @@ export async function readRealLocations(
   fetcher: typeof fetch = globalThis.fetch,
 ): Promise<RealLocation[]> {
   const result = await request(session, { method: "GET" }, fetcher);
-  if (result.status !== 200 || !result.body || typeof result.body !== "object") {
+  if (
+    result.status !== 200 ||
+    !result.body ||
+    typeof result.body !== "object"
+  ) {
     throw new LocationApiFailure("invalid-response");
   }
   const locations = (result.body as { locations?: unknown }).locations;
@@ -111,7 +120,8 @@ export async function readRealLocations(
     !Array.isArray(locations) ||
     locations.length > 100 ||
     !locations.every(isLocation) ||
-    new Set(locations.map((item: RealLocation) => item.id)).size !== locations.length
+    new Set(locations.map((item: RealLocation) => item.id)).size !==
+      locations.length
   ) {
     throw new LocationApiFailure("invalid-response");
   }

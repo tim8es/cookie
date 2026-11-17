@@ -33,10 +33,18 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9._:-]{16,128}$/;
 
-function canonicalText(value: unknown, max: number, allowEmpty = false): string {
+function canonicalText(
+  value: unknown,
+  max: number,
+  allowEmpty = false,
+): string {
   if (typeof value !== "string") throw new StaffInputError("invalid text");
   const normalized = value.normalize("NFC").trim();
-  if ((!allowEmpty && !normalized) || [...normalized].length > max || /\p{Cc}/u.test(normalized)) {
+  if (
+    (!allowEmpty && !normalized) ||
+    [...normalized].length > max ||
+    /\p{Cc}/u.test(normalized)
+  ) {
     throw new StaffInputError("invalid text");
   }
   return normalized;
@@ -57,7 +65,8 @@ export function validateStaffDraft(raw: unknown): DraftStaffInput {
     typeof data.serviceId !== "string" ||
     !UUID.test(data.locationId) ||
     !UUID.test(data.serviceId)
-  ) throw new StaffInputError("invalid fields");
+  )
+    throw new StaffInputError("invalid fields");
   return {
     displayName: canonicalText(data.displayName, 200),
     positionTitle: canonicalText(data.positionTitle, 80, true),
@@ -88,7 +97,10 @@ interface ReceiptRow extends QueryResultRow {
   readonly staff_id: string;
 }
 
-function mapStaff(row: ProfileRow, assignments: readonly StaffLocationAssignment[]): StaffRecord {
+function mapStaff(
+  row: ProfileRow,
+  assignments: readonly StaffLocationAssignment[],
+): StaffRecord {
   return {
     id: row.id,
     displayName: row.display_name,
@@ -117,7 +129,8 @@ async function readAssignments(
       ORDER BY la.staff_id,la.location_id,sa.service_id LIMIT 1001`,
     [tenantId, [...staffIds]],
   );
-  if (rows.rows.length > 1000) throw new Error("Staff assignments exceed F1 limit");
+  if (rows.rows.length > 1000)
+    throw new Error("Staff assignments exceed F1 limit");
   for (const row of rows.rows) {
     if (!collected.has(row.staff_id)) collected.set(row.staff_id, new Map());
     const byLocation = collected.get(row.staff_id)!;
@@ -127,7 +140,10 @@ async function readAssignments(
   return new Map(
     [...collected].map(([id, perLocation]) => [
       id,
-      [...perLocation].map(([locationId, serviceIds]) => ({ locationId, serviceIds })),
+      [...perLocation].map(([locationId, serviceIds]) => ({
+        locationId,
+        serviceIds,
+      })),
     ]),
   );
 }
@@ -157,7 +173,9 @@ export async function listTenantStaff(
     profiles.rows.map((row) => row.id),
   );
   return {
-    staff: profiles.rows.map((row) => mapStaff(row, assignments.get(row.id) ?? [])),
+    staff: profiles.rows.map((row) =>
+      mapStaff(row, assignments.get(row.id) ?? []),
+    ),
     locations: locationRows.rows.map((row) => ({
       id: row.id,
       displayName: row.display_name,
@@ -175,7 +193,15 @@ export async function createTenantDraftStaff(
 ): Promise<{ staff: StaffRecord; replayed: boolean }> {
   if (!KEY.test(key)) throw new StaffInputError("invalid idempotency key");
   const sha = createHash("sha256")
-    .update(JSON.stringify([1,draft.displayName,draft.positionTitle,draft.locationId,draft.serviceId]))
+    .update(
+      JSON.stringify([
+        1,
+        draft.displayName,
+        draft.positionTitle,
+        draft.locationId,
+        draft.serviceId,
+      ]),
+    )
     .digest("hex");
   await client.query(
     "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",

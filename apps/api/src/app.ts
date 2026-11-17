@@ -93,8 +93,7 @@ export function createApp(
   if (options.catalogRoutes)
     registerRealCatalogRoutes(app, options.catalogRoutes);
 
-  if (options.staffRoutes)
-    registerRealStaffRoutes(app, options.staffRoutes);
+  if (options.staffRoutes) registerRealStaffRoutes(app, options.staffRoutes);
 
   // Owner-controlled Locations are real tenant-scoped rows, never anonymous.
   if (options.locationRoutes)

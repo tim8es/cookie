@@ -37,7 +37,6 @@ function proof(userId: number): string {
   );
 }
 
-
 test(
   "verified Telegram owner staff draft creation is persistent, idempotent and tenant-scoped",
   { skip: !process.env.TEST_DATABASE_URL },
@@ -98,15 +97,23 @@ test(
         consentConfirmed: true,
       });
       const path = "/v1/organizations/" + owner.tenantId + "/staff";
-      assert.equal((await disabled.inject({ method: "GET", url: path })).statusCode, 404);
-      assert.equal((await app.inject({ method: "GET", url: path })).statusCode, 401);
+      assert.equal(
+        (await disabled.inject({ method: "GET", url: path })).statusCode,
+        404,
+      );
+      assert.equal(
+        (await app.inject({ method: "GET", url: path })).statusCode,
+        401,
+      );
       const exchanged = await app.inject({
         method: "POST",
         url: "/v1/auth/telegram/exchange",
         payload: { initData: signed },
       });
       assert.equal(exchanged.statusCode, 201);
-      const headers = { authorization: "Bearer " + exchanged.json().accessToken };
+      const headers = {
+        authorization: "Bearer " + exchanged.json().accessToken,
+      };
       const empty = await app.inject({ method: "GET", url: path, headers });
       assert.equal(empty.statusCode, 200);
       assert.equal(empty.headers["cache-control"], "no-store");
@@ -115,11 +122,13 @@ test(
         { id: owner.locationId, displayName: "First branch" },
       ]);
       assert.equal(
-        (await app.inject({
-          method: "GET",
-          url: "/v1/organizations/" + foreign.tenantId + "/staff",
-          headers,
-        })).statusCode,
+        (
+          await app.inject({
+            method: "GET",
+            url: "/v1/organizations/" + foreign.tenantId + "/staff",
+            headers,
+          })
+        ).statusCode,
         403,
       );
 
@@ -158,7 +167,10 @@ test(
           payload: draft,
         });
       const [first, second] = await Promise.all([submit(), submit()]);
-      assert.deepEqual([first.statusCode, second.statusCode].sort(), [200, 201]);
+      assert.deepEqual(
+        [first.statusCode, second.statusCode].sort(),
+        [200, 201],
+      );
       const staff = first.json().staff;
       assert.deepEqual(second.json().staff, staff);
       assert.equal(staff.displayName, "Synthetic Ada");

@@ -88,7 +88,10 @@ test(
         idempotencyKey: "branch-foreign-" + randomUUID(),
       });
       const url = "/v1/organizations/" + owner.tenantId + "/locations";
-      assert.equal((await disabled.inject({ method: "GET", url })).statusCode, 404);
+      assert.equal(
+        (await disabled.inject({ method: "GET", url })).statusCode,
+        404,
+      );
       assert.equal((await app.inject({ method: "GET", url })).statusCode, 401);
       const proof = signedProof();
       await linkVerifiedTelegramOwner(pool, verifier, SECRET, {
@@ -120,7 +123,10 @@ test(
         headers,
       });
       assert.equal(foreign.statusCode, 403);
-      assert.doesNotMatch(foreign.body, /Other tenant secret|Foreign branch secret/);
+      assert.doesNotMatch(
+        foreign.body,
+        /Other tenant secret|Foreign branch secret/,
+      );
 
       const draft = {
         displayName: "  Вторая студия  ",
@@ -176,7 +182,9 @@ test(
       assert.equal(list.statusCode, 200);
       assert.equal(list.json().locations.length, 2);
       assert.deepEqual(
-        new Set(list.json().locations.map((branch: { id: string }) => branch.id)),
+        new Set(
+          list.json().locations.map((branch: { id: string }) => branch.id),
+        ),
         new Set([owner.locationId, saved.id]),
       );
 
@@ -207,7 +215,8 @@ test(
       assert.equal(capped.json().error, "location-limit");
       assert.equal((await submit()).statusCode, 200);
       assert.equal(
-        (await app.inject({ method: "GET", url, headers })).json().locations.length,
+        (await app.inject({ method: "GET", url, headers })).json().locations
+          .length,
         100,
       );
 
@@ -217,10 +226,16 @@ test(
           WHERE tenant_id=$1::uuid AND base_type='owner'`,
         [owner.tenantId],
       );
-      assert.equal((await app.inject({ method: "GET", url, headers })).statusCode, 403);
+      assert.equal(
+        (await app.inject({ method: "GET", url, headers })).statusCode,
+        403,
+      );
       assert.equal((await submit()).statusCode, 403);
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
-      assert.equal((await app.inject({ method: "GET", url, headers })).statusCode, 401);
+      assert.equal(
+        (await app.inject({ method: "GET", url, headers })).statusCode,
+        401,
+      );
     } finally {
       await disabled.close();
       await app.close();

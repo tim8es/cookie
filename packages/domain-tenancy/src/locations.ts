@@ -33,8 +33,7 @@ interface ReceiptRow extends QueryResultRow {
 const KEY = /^[A-Za-z0-9._:-]{16,128}$/;
 const ZONE = /^[A-Za-z][A-Za-z0-9_+./-]*$/;
 const MAX_LOCATIONS = 100;
-const SELECT_LOCATION =
-  "id::text, display_name, time_zone, created_at";
+const SELECT_LOCATION = "id::text, display_name, time_zone, created_at";
 
 export function validateCreateLocation(input: unknown): CreateLocationInput {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -135,7 +134,9 @@ export async function createTenantLocation(
   );
   const previous = receipt.rows[0];
   if (previous && previous.request_sha256 !== requestHash) {
-    throw new LocationReplayConflict("idempotency key used with changed request");
+    throw new LocationReplayConflict(
+      "idempotency key used with changed request",
+    );
   }
   const locationId = previous?.location_id ?? randomUUID();
   if (!previous) {

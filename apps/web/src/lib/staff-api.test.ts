@@ -40,7 +40,10 @@ function mock(
 
 test("staff query is bearer-scoped, no-store and validates location relationships", async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
-  const result = await readRealStaff(session, mock(Response.json(directory), calls));
+  const result = await readRealStaff(
+    session,
+    mock(Response.json(directory), calls),
+  );
   assert.deepEqual(result, directory);
   assert.equal(calls[0]?.url, "/v1/organizations/" + TENANT + "/staff");
   assert.equal(calls[0]?.init.cache, "no-store");
@@ -78,15 +81,34 @@ test("malformed or foreign staff directory never renders as success", async () =
   for (const invalid of [
     { staff: [staff, staff], locations: directory.locations },
     { staff: [{ ...staff, bookable: "yes" }], locations: directory.locations },
-    { staff: [{ ...staff, assignments: [{ locationId: STAFF, serviceIds: [SERVICE] }] }], locations: directory.locations },
-    { staff: [{ ...staff, assignments: [{ locationId: LOCATION, serviceIds: [SERVICE, SERVICE] }] }], locations: directory.locations },
+    {
+      staff: [
+        {
+          ...staff,
+          assignments: [{ locationId: STAFF, serviceIds: [SERVICE] }],
+        },
+      ],
+      locations: directory.locations,
+    },
+    {
+      staff: [
+        {
+          ...staff,
+          assignments: [
+            { locationId: LOCATION, serviceIds: [SERVICE, SERVICE] },
+          ],
+        },
+      ],
+      locations: directory.locations,
+    },
     { staff: [staff], locations: [] },
     { staff: "yes", locations: directory.locations },
   ]) {
     await assert.rejects(
       readRealStaff(session, mock(Response.json(invalid), [])),
       (reason: unknown) =>
-        reason instanceof StaffApiFailure && reason.reason === "invalid-response",
+        reason instanceof StaffApiFailure &&
+        reason.reason === "invalid-response",
     );
   }
 });
@@ -107,13 +129,18 @@ test("denied, unknown reference, conflict and offline staff write fail closed", 
   ] as const) {
     await assert.rejects(
       createRealStaff(
-        session, draft, KEY, mock(new Response(null, { status }), []),
+        session,
+        draft,
+        KEY,
+        mock(new Response(null, { status }), []),
       ),
       (error: unknown) =>
         error instanceof StaffApiFailure && error.reason === reason,
     );
   }
-  const offline = (async () => { throw new Error("offline"); }) as typeof fetch;
+  const offline = (async () => {
+    throw new Error("offline");
+  }) as typeof fetch;
   await assert.rejects(
     readRealStaff(session, offline),
     (error: unknown) =>

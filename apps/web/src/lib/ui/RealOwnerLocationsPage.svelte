@@ -157,7 +157,7 @@
           <div class="entity-row">
             <div class="entity-text">
               <strong>{location.displayName}</strong>
-              <small>{location.timeZone ?? "Часовой пояс не задан"} · Без опубликованного графика</small>
+              <small>{location.timeZone ?? "Часовой пояс не задан"}</small>
             </div>
           </div>
         {/each}

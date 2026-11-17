@@ -76,7 +76,12 @@ test("bad, duplicate, excessive or missing-zone Location DTO is never accepted",
     { locations: [{ ...branch, timeZone: "Mars/Olympus?" }] },
     { locations: [{ ...branch, createdAt: "not-a-date" }] },
     { locations: { status: "ok" } },
-    { locations: Array.from({ length: 101 }, (_, index) => ({ ...branch, id: String(index) })) },
+    {
+      locations: Array.from({ length: 101 }, (_, index) => ({
+        ...branch,
+        id: String(index),
+      })),
+    },
   ]) {
     await assert.rejects(
       readRealLocations(session, mock(Response.json(payload), [])),
