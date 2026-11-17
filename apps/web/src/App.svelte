@@ -30,6 +30,7 @@
     authenticateTelegramOwner,
     loadTelegramInitData,
     revokeTelegramOwnerSession,
+    watchOwnerSessionExpiry,
     type VerifiedOwnerSession,
   } from "./lib/owner-auth";
   import CalendarView from "./lib/ui/CalendarView.svelte";
@@ -47,7 +48,9 @@
   let initializing = true;
   let apiDisconnected = false;
   let ownerSession: VerifiedOwnerSession | null = null;
-  let ownerAuthPhase: "unavailable" | "loading" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" = "unavailable";
+  let ownerAuthPhase: "unavailable" | "loading" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
+  let stopOwnerExpiry: (() => void) | null = null;
+  let ownerMounted = false;
   let busy = false;
   let busySlots = false;
   let error = "";
@@ -95,21 +98,45 @@
     !data.bookings.length ? "booking" : "complete";
 
   onMount(() => {
+    ownerMounted = true;
     void reload();
     if (api.mode === "api") void authenticateOwner();
+    return () => {
+      ownerMounted = false;
+      stopOwnerExpiry?.();
+      ownerSession = null;
+    };
   });
 
   async function authenticateOwner(): Promise<void> {
     ownerAuthPhase = "loading";
     try {
       const initData = await loadTelegramInitData(window, document);
+      if (!ownerMounted) return;
       if (!initData) {
         ownerAuthPhase = "unavailable";
         return;
       }
-      ownerSession = await authenticateTelegramOwner(initData);
+      const session = await authenticateTelegramOwner(initData);
+      if (!ownerMounted) {
+        await revokeTelegramOwnerSession(session).catch(() => undefined);
+        return;
+      }
+      stopOwnerExpiry?.();
+      ownerSession = session;
       ownerAuthPhase = "verified";
+      stopOwnerExpiry = watchOwnerSessionExpiry(
+        session.expiresAtUnixSeconds,
+        () => {
+          if (ownerSession !== session) return;
+          ownerSession = null;
+          ownerAuthPhase = "expired";
+        },
+        window,
+        document,
+      );
     } catch {
+      if (!ownerMounted) return;
       ownerSession = null;
       ownerAuthPhase = "error";
     }
@@ -120,6 +147,8 @@
     if (!session || ownerAuthPhase !== "verified") return;
     // Discard the bearer immediately; even failed remote revocation cannot
     // restore any owner permissions in the current browser session.
+    stopOwnerExpiry?.();
+    stopOwnerExpiry = null;
     ownerSession = null;
     ownerAuthPhase = "signing-out";
     try {
