@@ -227,15 +227,22 @@ async function verifySharedCatalog(cdp, databaseUrl, tenantId, example) {
   return marker;
 }
 
+async function pressButton(cdp, label) {
+  const button = "Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===" + JSON.stringify(label) + "&&!b.disabled&&b.getClientRects().length)";
+  await requireDom(cdp, label, button);
+  await evaluate(cdp, button + ".click()");
+}
+
+async function logoutVerified(cdp) {
+  await pressButton(cdp, "Выйти");
+  await requireDom(cdp, "server-confirmed logout",
+    "document.querySelector('.feedback-state h1')?.innerText==='Вы вышли' && !document.querySelector('.real-owner-nav')");
+}
+
 // Check the seeded offer via the real customer surface and persist a real booking.
 async function verifyDemoBooking(cdp, databaseUrl, tenantId, example) {
   const panel = '[aria-label="Клиентская витрина staging"]';
   const selector = JSON.stringify(panel + " select");
-  const press = async (label) => {
-    const button = "Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===" + JSON.stringify(label) + "&&!b.disabled)";
-    await requireDom(cdp, label, button);
-    await evaluate(cdp, button + ".click()");
-  };
   for (let i = 0; i < 3; i++) {
     const select = "document.querySelectorAll(" + selector + ")[" + i + "]";
     await requireDom(cdp, "seeded catalog option " + i, select + "?.options.length===2 && !" + select + ".disabled");
@@ -243,11 +250,11 @@ async function verifyDemoBooking(cdp, databaseUrl, tenantId, example) {
   }
   await requireDom(cdp, "date selection", "document.querySelector(" + JSON.stringify(panel + " input[type=date]") + ")?.disabled===false");
   await fill(cdp, panel + " input[type=date]", example.date, "change");
-  await press("Найти свободное время");
+  await pressButton(cdp, "Найти свободное время");
   const slot = "document.querySelector(" + JSON.stringify(panel + " .customer-slot-choice") + ")";
   await requireDom(cdp, "real available slot", slot);
   await evaluate(cdp, slot + ".click()");
-  await press("Записаться");
+  await pressButton(cdp, "Записаться");
   await requireDom(cdp, "server-confirmed demo booking", "document.querySelector(" + JSON.stringify(panel) + ")?.innerText.includes('Создание записи подтверждено')");
   const pool = new Pool({ connectionString: databaseUrl, max: 1 });
   try {
@@ -260,8 +267,68 @@ async function verifyDemoBooking(cdp, databaseUrl, tenantId, example) {
     assert.deepEqual(booking, { status: "Confirmed", staff_id: example.staffId,
       service_id: example.serviceId, location_id: example.locationId, price: example.price });
     await requireDom(cdp, "demo booking in client history", "document.querySelector('[aria-label=\\\"Мои записи\\\"]')?.innerText.includes(" + JSON.stringify(id) + ")");
+    assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0);
     console.log("PASS seeded demo: verified client offer and PostgreSQL-backed booking");
+    return id;
   } finally { await pool.end(); }
+}
+
+async function verifyDemoCalendar(cdp, example, expectedStatus) {
+  await cdp.send("Emulation.setDeviceMetricsOverride", {
+    width: 1280, height: 800, deviceScaleFactor: 1, mobile: false,
+  });
+  await pressButton(cdp, "Календарь");
+  const select = "document.querySelector('.owner-calendar select')";
+  await requireDom(cdp, "demo owner calendar branch ready",
+    select + "?.value===" + JSON.stringify(example.locationId) +
+      " && document.querySelector('.owner-calendar input[type=date]')?.disabled===false");
+  await fill(cdp, ".owner-calendar input[type=date]", example.date, "change");
+  const rows = "document.querySelector('[aria-label=\\\"Записи за выбранный период\\\"]')";
+  const expected = rows + "?.innerText.includes(" + JSON.stringify(example.name) + ") && " +
+    rows + "?.querySelectorAll('.schedule-summary').length===1 && " +
+    rows + "?.querySelector('.status-pill')?.innerText.includes(" + JSON.stringify(expectedStatus) + ")";
+  await requireDom(cdp, "demo owner calendar: " + expectedStatus, expected);
+  await pressButton(cdp, "Неделя");
+  await requireDom(cdp, "same demo booking in weekly calendar", expected);
+  for (const [width, height] of [[320,568],[375,812],[1280,800]]) {
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width, height, deviceScaleFactor: 1, mobile: width < 600,
+    });
+    await checkWidth(cdp, "demo owner calendar " + expectedStatus + " " + width + "px");
+  }
+  await cdp.send("Emulation.clearDeviceMetricsOverride");
+}
+
+async function verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example) {
+  // Both roles use their own ordinary verified session and the exact same
+  // compiled application. Every mutation goes through the actual browser UI.
+  const id = await verifyDemoBooking(cdp, databaseUrl, tenantId, example);
+  await logoutVerified(cdp);
+  await signIn(cdp, origin, state, "owner");
+  await verifyDemoCalendar(cdp, example, "Подтверждена");
+  await logoutVerified(cdp);
+  await signIn(cdp, origin, state, "client");
+  const history = "document.querySelector('[aria-label=\\\"Мои записи\\\"]')";
+  await requireDom(cdp, "same booking after new client authentication",
+    history + "?.innerText.includes(" + JSON.stringify(id) + ")");
+  await pressButton(cdp, "Отменить запись");
+  await pressButton(cdp, "Подтвердить отмену");
+  await requireDom(cdp, "client cancellation on real runtime",
+    history + "?.innerText.includes('Отменена клиентом')");
+  const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+  try {
+    const result = await pool.query(
+      "SELECT id::text, status, price_kopecks_snapshot::text AS price FROM cookie_booking.bookings WHERE tenant_id=$1::uuid",
+      [tenantId],
+    );
+    assert.deepEqual(result.rows, [{ id, status: "CancelledByClient", price: example.price }]);
+  } finally { await pool.end(); }
+  assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0);
+  await logoutVerified(cdp);
+  await signIn(cdp, origin, state, "owner");
+  await verifyDemoCalendar(cdp, example, "Отменена клиентом");
+  await logoutVerified(cdp);
+  console.log("PASS seeded demo lifecycle: client booking, owner calendar, client cancellation, owner calendar, PostgreSQL, role logout and fresh login");
 }
 
 async function main() {
@@ -370,7 +437,10 @@ async function main() {
       const policyText = cutoff === undefined ? "Отмена в тестовом режиме недоступна." : "более чем " + cutoff + " мин.";
       await requireDom(cdp, "explicit cancellation cutoff (no implicit default)", "document.querySelector(\'[aria-label=\\\"Мои записи\\\"]\')?.innerText.includes(" + JSON.stringify(policyText) + ")");
       await requireDom(cdp, "actual client workspace without owner navigation", "document.querySelector(\'[aria-label=\\\"Клиентский вход staging\\\"]\') && !document.querySelector(\'.real-owner-nav\')");
-      if (example) await verifyDemoBooking(cdp, databaseUrl, tenantId, example);
+      if (example) {
+        if (cutoff === undefined) throw new Error("Demo lifecycle verification requires explicit synthetic cutoff");
+        await verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example);
+      }
       await cdp.send("Page.navigate", { url: origin + "/" });
       await requireDom(cdp, "no owner authorization without fresh signed proof",
         "document.querySelector('[data-cookie-mode=api] .feedback-state h1') && !document.querySelector('.verified-owner-shell') && !document.querySelector('.sidebar')");
@@ -382,8 +452,8 @@ async function main() {
       await signIn(cdp, origin, state, "owner");
       await requireDom(cdp, "shared catalog survives role switch and fresh authentication",
         "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(marker) + ")");
-      await requireDom(cdp, "no browser-local mock catalog",
-        "sessionStorage.getItem('cookie.frontend-demo.v1') === null");
+      assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0,
+        "No browser-local mock, pending mutation or session data remains");
       console.log("PASS shared " + (demo ? "demo" : "QA") + " runtime catalog: browser write, real DB/receipt, role switch, fail-closed entry, three viewport widths");
       console.log("PASS actual local launcher: dedicated PostgreSQL, migrations, compiled runtime, signed owner/client and demo isolation");
       return;
