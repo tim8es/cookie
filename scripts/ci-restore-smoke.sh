@@ -220,6 +220,8 @@ SQL
 
 verify_booking_fixture cookie_ci
 source_booking_projection="$(booking_projection cookie_ci)"
+source_command_projection="$(pnpm exec tsx scripts/ci-booking-restore-replay.ts seed)"
+[[ -n "$source_command_projection" ]] || { echo "Missing source command evidence" >&2; exit 1; }
 
 # Use the same PostgreSQL major version on both sides. No dump is uploaded.
 pg_tool pg_dump -h 127.0.0.1 -U cookie_ci -d cookie_ci \
@@ -327,4 +329,10 @@ if [[ "$(booking_projection cookie_ci_restore_smoke)" != "$source_booking_projec
   exit 1
 fi
 
+restored_command_projection="$(pnpm exec tsx scripts/ci-booking-restore-replay.ts replay)"
+if [[ "$restored_command_projection" != "$source_command_projection" ]]; then
+  echo "Restored real Booking command state differs from source" >&2
+  exit 1
+fi
 echo "PASS: PostgreSQL 16 synthetic backup; migration history, tenant/event, Booking snapshots, receipts, audit and live exclusion verified"
+echo "PASS: restored real Create/Reschedule/Cancel receipts replay; revoked role denied; business state unchanged"
