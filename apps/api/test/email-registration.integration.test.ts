@@ -64,8 +64,18 @@ test(
         ),
       );
       const results = await Promise.all([
-        completeEmailRegistration(transaction, passwordWork, first.token, password),
-        completeEmailRegistration(transaction, passwordWork, second.token, password),
+        completeEmailRegistration(
+          transaction,
+          passwordWork,
+          first.token,
+          password,
+        ),
+        completeEmailRegistration(
+          transaction,
+          passwordWork,
+          second.token,
+          password,
+        ),
       ]);
       const identities = results.filter((result) => result !== null);
       assert.equal(identities.length, 1);
