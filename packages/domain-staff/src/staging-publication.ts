@@ -19,7 +19,13 @@ export interface StagingStaffPublicationReceipt {
   readonly serviceId: string;
 }
 export class StagingStaffPublicationConflict extends Error {
-  constructor(readonly code: "target-unavailable" | "already-bookable" | "stale-revision" | "idempotency-conflict") {
+  constructor(
+    readonly code:
+      | "target-unavailable"
+      | "already-bookable"
+      | "stale-revision"
+      | "idempotency-conflict",
+  ) {
     super(code);
   }
 }
@@ -52,7 +58,15 @@ export async function publishStaffForStaging(
 ): Promise<{ publication: StagingStaffPublicationReceipt; replayed: boolean }> {
   const { staffId, locationId, serviceId, expectedServiceRevision } = input;
   const hash = createHash("sha256")
-    .update(JSON.stringify([1, staffId, locationId, serviceId, expectedServiceRevision]))
+    .update(
+      JSON.stringify([
+        1,
+        staffId,
+        locationId,
+        serviceId,
+        expectedServiceRevision,
+      ]),
+    )
     .digest("hex");
   const tenantId = actor.tenantId;
   const client = await pool.connect();
@@ -62,8 +76,14 @@ export async function publishStaffForStaging(
       "SELECT active,bookable FROM cookie_staff.staff_profiles WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE",
       [tenantId, staffId],
     );
-    await requireTenantPermission(client, actor, { kind: "organization", tenantId }, "staging.staff.publish");
-    if (!profile.rows[0]?.active) throw new StagingStaffPublicationConflict("target-unavailable");
+    await requireTenantPermission(
+      client,
+      actor,
+      { kind: "organization", tenantId },
+      "staging.staff.publish",
+    );
+    if (!profile.rows[0]?.active)
+      throw new StagingStaffPublicationConflict("target-unavailable");
     const grant = await lockLiveStagingGrant(client, tenantId);
     const prior = await client.query<ReceiptRow>(
       "SELECT request_sha256,staff_id::text,location_id::text,service_id::text FROM cookie_staff.staging_publication_receipts WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid AND idempotency_key=$3",
@@ -74,7 +94,10 @@ export async function publishStaffForStaging(
         throw new StagingStaffPublicationConflict("idempotency-conflict");
       await lockLiveStagingGrant(client, tenantId);
       await client.query("COMMIT");
-      return { publication: { staffId, locationId, serviceId }, replayed: true };
+      return {
+        publication: { staffId, locationId, serviceId },
+        replayed: true,
+      };
     }
     if (profile.rows[0].bookable)
       throw new StagingStaffPublicationConflict("already-bookable");
@@ -83,7 +106,8 @@ export async function publishStaffForStaging(
       "SELECT active,draft_revision FROM cookie_catalog.services WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE",
       [tenantId, serviceId],
     );
-    if (!service.rows[0]) throw new StagingStaffPublicationConflict("target-unavailable");
+    if (!service.rows[0])
+      throw new StagingStaffPublicationConflict("target-unavailable");
     if (service.rows[0].draft_revision !== expectedServiceRevision)
       throw new StagingStaffPublicationConflict("stale-revision");
     const branch = await client.query(
@@ -98,7 +122,11 @@ export async function publishStaffForStaging(
       "SELECT active FROM cookie_staff.service_assignments WHERE tenant_id=$1::uuid AND staff_id=$2::uuid AND location_id=$3::uuid AND service_id=$4::uuid FOR UPDATE",
       [tenantId, staffId, locationId, serviceId],
     );
-    if (branch.rowCount !== 1 || assignment.rowCount !== 1 || serviceAssignment.rowCount !== 1)
+    if (
+      branch.rowCount !== 1 ||
+      assignment.rowCount !== 1 ||
+      serviceAssignment.rowCount !== 1
+    )
       throw new StagingStaffPublicationConflict("target-unavailable");
     // Explicitly selected service only. Shared active services are reused.
     if (!service.rows[0].active) {
@@ -121,7 +149,16 @@ export async function publishStaffForStaging(
     );
     await client.query(
       "INSERT INTO cookie_staff.staging_publication_receipts(tenant_id,actor_identity_id,idempotency_key,request_sha256,staff_id,location_id,service_id,grant_id) VALUES($1::uuid,$2::uuid,$3,$4,$5::uuid,$6::uuid,$7::uuid,$8::uuid)",
-      [tenantId, actor.identityId, key, hash, staffId, locationId, serviceId, grant.id],
+      [
+        tenantId,
+        actor.identityId,
+        key,
+        hash,
+        staffId,
+        locationId,
+        serviceId,
+        grant.id,
+      ],
     );
     // Recheck database time just before commit, including time spent waiting
     // on service/assignment locks. Revocation cannot pass the grant lock.

@@ -17,7 +17,10 @@ import {
   type SyntheticWorkspaceReadDependencies,
 } from "./workspace-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
-import { registerStagingPublicationRoutes, type StagingPublicationDependencies } from "./staging-publication-http.js";
+import {
+  registerStagingPublicationRoutes,
+  type StagingPublicationDependencies,
+} from "./staging-publication-http.js";
 import {
   registerOwnerShiftPlanRoutes,
   type OwnerShiftPlanRouteDependencies,

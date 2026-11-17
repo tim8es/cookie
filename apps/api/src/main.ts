@@ -8,7 +8,9 @@ import { createLiveTelegramSessionProvider } from "./telegram-auth-runtime.js";
 import { postgresTenantPolicyGuard } from "./session-context.js";
 
 const config = parseConfig(process.env);
-const stagingPublicationEnabled = parseStagingPublicationMode(process.env.COOKIE_STAGING_PUBLICATION_MODE);
+const stagingPublicationEnabled = parseStagingPublicationMode(
+  process.env.COOKIE_STAGING_PUBLICATION_MODE,
+);
 const pool = new Pool({
   connectionString: config.databaseUrl,
   application_name: "cookie-api",
@@ -25,7 +27,11 @@ const app = createApp(pool, {
         staffRoutes: { pool, verifier: telegramSessions },
         locationRoutes: { pool, verifier: telegramSessions },
         shiftPlanRoutes: { pool, verifier: telegramSessions },
-        stagingPublicationRoutes: { pool, verifier: telegramSessions, enabled: stagingPublicationEnabled },
+        stagingPublicationRoutes: {
+          pool,
+          verifier: telegramSessions,
+          enabled: stagingPublicationEnabled,
+        },
         sessionRoutes: {
           verifier: telegramSessions,
           policy: postgresTenantPolicyGuard(pool),

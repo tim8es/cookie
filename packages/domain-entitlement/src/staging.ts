@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
 export interface StagingCapacity {
-  readonly state: "disabled" | "unconfigured" | "active" | "expired" | "revoked";
+  readonly state:
+    | "disabled"
+    | "unconfigured"
+    | "active"
+    | "expired"
+    | "revoked";
   readonly seatLimit: number | null;
   readonly usedSeats: number;
   readonly expiresAt: string | null;
@@ -30,7 +35,11 @@ export function parseStagingPublicationMode(raw: string | undefined): boolean {
   throw new Error("Invalid staging publication mode");
 }
 
-async function grantRow(client: PoolClient, tenantId: string, lock: boolean): Promise<GrantRow | undefined> {
+async function grantRow(
+  client: PoolClient,
+  tenantId: string,
+  lock: boolean,
+): Promise<GrantRow | undefined> {
   const result = await client.query<GrantRow>(
     "SELECT id::text,seat_limit,expires_at,revoked_at,expires_at>clock_timestamp() AS live FROM cookie_entitlement.staging_publication_grants WHERE tenant_id=$1::uuid" +
       (lock ? " FOR UPDATE" : ""),
@@ -39,7 +48,10 @@ async function grantRow(client: PoolClient, tenantId: string, lock: boolean): Pr
   return result.rows[0];
 }
 
-async function countSeats(client: PoolClient, tenantId: string): Promise<number> {
+async function countSeats(
+  client: PoolClient,
+  tenantId: string,
+): Promise<number> {
   // Count each unique active bookable profile once, regardless of shifts or
   // assignments. A missing assignment must not free a previously used seat.
   const result = await client.query<{ count: string }>(
@@ -47,7 +59,8 @@ async function countSeats(client: PoolClient, tenantId: string): Promise<number>
     [tenantId],
   );
   const count = Number(result.rows[0]?.count);
-  if (!Number.isSafeInteger(count) || count < 0) throw new Error("Invalid seat count");
+  if (!Number.isSafeInteger(count) || count < 0)
+    throw new Error("Invalid seat count");
   return count;
 }
 
@@ -66,9 +79,17 @@ export async function readStagingCapacity(
   const row = result.rows[0];
   if (!row) throw new Error("Missing capacity result");
   const usedSeats = Number(row.count);
-  if (!Number.isSafeInteger(usedSeats) || usedSeats < 0) throw new Error("Invalid seat count");
-  if (!enabled) return { state: "disabled", seatLimit: null, usedSeats, expiresAt: null };
-  if (!row.id) return { state: "unconfigured", seatLimit: null, usedSeats, expiresAt: null };
+  if (!Number.isSafeInteger(usedSeats) || usedSeats < 0)
+    throw new Error("Invalid seat count");
+  if (!enabled)
+    return { state: "disabled", seatLimit: null, usedSeats, expiresAt: null };
+  if (!row.id)
+    return {
+      state: "unconfigured",
+      seatLimit: null,
+      usedSeats,
+      expiresAt: null,
+    };
   return {
     state: row.revoked_at ? "revoked" : row.live ? "active" : "expired",
     seatLimit: row.seat_limit,
@@ -86,7 +107,7 @@ export async function lockLiveStagingGrant(
   tenantId: string,
 ): Promise<{ id: string; seatLimit: number }> {
   const locked = await grantRow(client, tenantId, true);
-  const row = locked && await grantRow(client, tenantId, false);
+  const row = locked && (await grantRow(client, tenantId, false));
   if (!row || row.revoked_at || !row.live)
     throw new StagingPublicationDenied("grant-unavailable");
   return { id: row.id, seatLimit: row.seat_limit };
@@ -111,18 +132,27 @@ export async function issueStagingGrant(
   seatLimit: number,
   expiresAt: string,
 ): Promise<string> {
-  if (!UUID.test(tenantId) || !Number.isSafeInteger(seatLimit) ||
-      seatLimit < 1 || seatLimit > 2147483647 ||
-      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(expiresAt) ||
-      !Number.isFinite(Date.parse(expiresAt)) || new Date(expiresAt).toISOString() !== expiresAt)
+  if (
+    !UUID.test(tenantId) ||
+    !Number.isSafeInteger(seatLimit) ||
+    seatLimit < 1 ||
+    seatLimit > 2147483647 ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(expiresAt) ||
+    !Number.isFinite(Date.parse(expiresAt)) ||
+    new Date(expiresAt).toISOString() !== expiresAt
+  )
     throw new Error("Invalid staging grant");
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const existing = await grantRow(client, tenantId, true);
     if (existing) {
-      if (existing.revoked_at || !existing.live || existing.seat_limit !== seatLimit ||
-          existing.expires_at.toISOString() !== expiresAt)
+      if (
+        existing.revoked_at ||
+        !existing.live ||
+        existing.seat_limit !== seatLimit ||
+        existing.expires_at.toISOString() !== expiresAt
+      )
         throw new Error("Existing staging grant cannot be replaced");
       await client.query("COMMIT");
       return existing.id;
@@ -130,17 +160,22 @@ export async function issueStagingGrant(
     const id = randomUUID();
     await client.query(
       "INSERT INTO cookie_entitlement.staging_publication_grants(tenant_id,id,seat_limit,expires_at) VALUES($1::uuid,$2::uuid,$3,$4::timestamptz)",
-      [tenantId,id,seatLimit,expiresAt],
+      [tenantId, id, seatLimit, expiresAt],
     );
     await client.query("COMMIT");
     return id;
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;
-  } finally { client.release(); }
+  } finally {
+    client.release();
+  }
 }
 
-export async function revokeStagingGrant(pool: Pool, tenantId: string): Promise<void> {
+export async function revokeStagingGrant(
+  pool: Pool,
+  tenantId: string,
+): Promise<void> {
   if (!UUID.test(tenantId)) throw new Error("Invalid staging tenant");
   await pool.query(
     "UPDATE cookie_entitlement.staging_publication_grants SET revoked_at=COALESCE(revoked_at,clock_timestamp()) WHERE tenant_id=$1::uuid",
