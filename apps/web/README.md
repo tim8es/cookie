@@ -14,7 +14,7 @@ pnpm dev:web
 
 Open **http://127.0.0.1:5173/demo** for an explicitly isolated UI preview. Its data lives only in the synthetic browser-local adapter. Root **http://127.0.0.1:5173/** is the API-backed application; without the compiled runtime and verified Telegram session, it remains on its authentication gate. It never falls back to demo. The build-time mode switch is no longer used; both routes are served from the same build.
 
-For real manual staging, build the runtime with `pnpm build:runtime` and follow the [staging operations runbook](../../docs/operations/staging-local-altare.md); the one-command local launcher is tracked in [PR #270](https://github.com/tim8es/cookie/pull/270). Protected pages share the same sidebar and header as the demo. Calendar, catalog, staff, locations and schedule use their existing server adapters; appearance and owner-originated booking show an explicit unavailable state until the corresponding protected flows exist. The customer staging surface requires a separate verified customer session at `/?surface=customer-staging`.
+For real manual staging, build the runtime with `pnpm build:runtime` and follow the [staging operations runbook](../../docs/operations/staging-local-altare.md); run `pnpm staging:local` in the integrated checkout (see [manual staging](../../docs/operations/manual-real-staging.md)). Protected pages share the same sidebar and header as the demo. Calendar, catalog, staff, locations and schedule use their existing server adapters; appearance and owner-originated booking show an explicit unavailable state until the corresponding protected flows exist. The customer staging surface requires a separate verified customer session at `/?surface=customer-staging`.
 
 ## Demo walkthrough
 

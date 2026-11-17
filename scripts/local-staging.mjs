@@ -16,7 +16,16 @@ import {
 } from "../apps/web/scripts/browser-smoke.mjs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const folder = join(root, ".tmp", "manual-staging");
+// The non-interactive verification never reads/writes the operator\'s state.
+const verification = process.argv[2] === "verify";
+const parent = join(root, ".tmp");
+if (verification && process.env.CI !== "true") {
+  throw new Error("The disposable verification mode requires CI=true");
+}
+if (verification) mkdirSync(parent, { recursive: true, mode: 0o700 });
+const folder = verification
+  ? mkdtempSync(join(parent, "manual-staging-ci-"))
+  : join(parent, "manual-staging");
 const settings = join(folder, "state.json");
 const lockPath = join(folder, "run.lock");
 const composeFile = join(root, "docker-compose.manual.yml");
@@ -170,7 +179,7 @@ async function signIn(cdp, origin, state, role = "owner") {
 
 async function main() {
   const command = process.argv[2] ?? "start";
-  if (!["start", "stop"].includes(command) || process.argv.length > 3) throw new Error("Use start or stop");
+  if (!["start", "stop", "verify"].includes(command) || process.argv.length > 3) throw new Error("Use start or stop (verify is CI-only)");
   mkdirSync(folder, { recursive: true, mode: 0o700 });
   if (command === "stop" && !existsSync(settings)) return;
   const lock = openSync(lockPath, "wx", 0o600);
@@ -188,6 +197,14 @@ async function main() {
     compose(state, ["up", "-d", "--wait"]);
     const databaseUrl = "postgresql://cookie:" + state.password +
       "@127.0.0.1:" + state.dbPort + "/cookie_manual";
+    // Container health can precede TCP readiness during initial DB initialization.
+    const readiness = new Pool({ connectionString: databaseUrl, max: 1, connectionTimeoutMillis: 1000 });
+    try {
+      await poll("dedicated PostgreSQL TCP readiness", async () => {
+        const result = await readiness.query("SELECT current_database() AS name");
+        return result.rows[0]?.name === "cookie_manual";
+      }, 30000);
+    } finally { await readiness.end(); }
     await seed(state, databaseUrl);
     const port = await freePort();
     const origin = "http://127.0.0.1:" + port;
@@ -211,7 +228,9 @@ async function main() {
     chrome = child(binary, [
       "--user-data-dir=" + profile, "--remote-debugging-address=127.0.0.1",
       "--remote-debugging-port=0", "--no-first-run", "--no-default-browser-check",
-      "--disable-background-networking", "about:blank",
+      "--disable-background-networking",
+      ...(verification ? ["--headless=new", "--no-sandbox", "--disable-dev-shm-usage"] : []),
+      "about:blank",
     ], process.env);
     const target = await poll("isolated Chromium DevTools", async () => {
       if (chrome.startFailed || chrome.exitCode !== null) return false;
@@ -226,6 +245,16 @@ async function main() {
     await cdp.ready;
     await cdp.send("Page.enable");
     await signIn(cdp, origin, state);
+    if (verification) {
+      await requireDom(cdp, "actual owner service form", "document.querySelector(\'.owner-form input\')");
+      await signIn(cdp, origin, state, "client");
+      await requireDom(cdp, "actual client workspace without owner navigation", "document.querySelector(\'[aria-label=\\\"Клиентский вход staging\\\"]\') && !document.querySelector(\'.real-owner-nav\')");
+      await cdp.send("Page.navigate", { url: origin + "/demo" });
+      await requireDom(cdp, "explicit demo", "document.querySelector(\'[data-cookie-mode=mock] .welcome-form\')");
+      await signIn(cdp, origin, state, "owner");
+      console.log("PASS actual local launcher: dedicated PostgreSQL, migrations, compiled runtime, signed owner/client and demo isolation");
+      return;
+    }
     console.log("Real Cookie: " + origin + " — use the opened isolated browser.");
     console.log("Synthetic records only. owner / client = switch role; Enter = fresh login; demo = isolated preview; Ctrl+C = exit. DB retained.");
     input = createInterface({ input: process.stdin, output: process.stdout });
@@ -259,11 +288,19 @@ async function main() {
     process.off("SIGTERM", closeInput);
     input?.close();
     cdp?.close();
-    await stop(chrome);
-    await stop(api);
-    if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-    closeSync(lock);
-    rmSync(lockPath, { force: true });
+    try {
+      try { await stop(chrome); } finally { await stop(api); }
+      if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } finally {
+      try {
+        // Only the fresh CI-generated project can be removed with its volume.
+        if (verification && state) compose(state, ["down", "-v"]);
+      } finally {
+        closeSync(lock);
+        rmSync(lockPath, { force: true });
+        if (verification) rmSync(folder, { recursive: true, force: true });
+      }
+    }
   }
 }
 

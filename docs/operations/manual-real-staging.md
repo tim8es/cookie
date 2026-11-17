@@ -16,7 +16,7 @@ pnpm staging:local
 Скрипт автоматически:
 - запускает отдельный PostgreSQL 16 в Docker с loopback-портом и persistent volume;
 - применяет миграции и создаёт синтетический салон с одним филиалом через операторский domain API;
-- генерирует уникальные локальные ключи, привязывает тестового владельца к подписанному synthetic Telegram proof;
+- генерирует уникальные локальные ключи, привязывает тестового владельца и отдельного клиента к подписанным synthetic Telegram proofs;
 - запускает существующий compiled Fastify и API-mode Svelte bundle на 127.0.0.1;
 - открывает отдельное окно Chrome/Edge и проходит обычный серверный HMAC exchange + проверку tenant/permissions. Не изменяет серверный AuthN, не добавляет маршрут тестового входа и не использует mock API.
 
@@ -69,4 +69,4 @@ App Hosting поддерживает Node.js 26, команды install/build/st
 
 ## Границы этого изменения
 
-Это интеграционный launcher и runbook, не production readiness. Оформление и создание записи владельцем не подключены. Не добавляется HTTP bypass, не выдаются токены с клиента, не трогаются booking/identity contracts, не включаются provider notifications. Independent review + настоящий локальный Windows/Docker/browser run + remote staging verification обязательны; #203 остаётся открытым.
+Это интеграционный launcher и runbook, не production readiness. Оформление и создание записи владельцем не подключены. Не добавляется HTTP bypass, не выдаются токены с клиента, не трогаются booking/identity contracts, не включаются provider notifications. CI дополнительно запускает `node scripts/local-staging.mjs verify` с отдельным disposable Docker-проектом: реальный compiled runtime + signed owner/client + `/demo`. Это проверка самого launcher на Linux, не Windows GUI или Altare. Independent review + настоящий локальный Windows/Docker/browser run + remote staging verification обязательны; #203 остаётся открытым.
