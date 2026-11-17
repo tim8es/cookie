@@ -95,7 +95,6 @@ export function registerLiveWorkspaceRead(
                 timeZone: location.time_zone,
               })),
             };
-
           },
         );
         return reply.send(response);
