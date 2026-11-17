@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createCookieUiApi } from "./api";
+import { createCookieUiApi, resolveCookieDataMode } from "./api";
 import { UiFailure } from "./model";
 
 test("API mode cannot invent requests or report a synthetic confirmation", async () => {
@@ -75,4 +75,20 @@ test("disconnected API mode cannot call the network from any UI operation", asyn
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("only the explicit demo route opts in; root and other paths use API", () => {
+  for (const path of [
+    "/",
+    "/booking",
+    "/demo-admin",
+    "/demo/example",
+    "/DEMO",
+    "",
+  ]) {
+    assert.equal(resolveCookieDataMode(path), "api");
+  }
+  assert.equal(resolveCookieDataMode("/demo"), "mock");
+  assert.equal(resolveCookieDataMode("/demo/"), "mock");
+  assert.equal(createCookieUiApi().mode, "api");
 });

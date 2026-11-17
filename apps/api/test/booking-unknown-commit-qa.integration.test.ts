@@ -9,6 +9,7 @@ import { cancelBookingInternal } from "../../../packages/domain-booking/src/canc
 import { createBookingInternal } from "../../../packages/domain-booking/src/create.js";
 import { rescheduleBookingInternal } from "../../../packages/domain-booking/src/reschedule.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
+import { assertCommitWireFailure } from "./pg-commit-wire-fault.js";
 
 interface DurableSnapshot {
   readonly bookings: string;
@@ -168,7 +169,9 @@ async function committedReceipt(
 test(
   "lost COMMIT acknowledgement recovers Create, Reschedule and Cancel by original keys",
   { skip: !process.env.TEST_DATABASE_URL },
-  async () => {
+  async (t) => {
+    const wire = process.env.CI === "true";
+    if (!wire) t.diagnostic("TCP fault harness is restricted to disposable CI");
     const pool = new Pool({
       connectionString: process.env.TEST_DATABASE_URL,
       application_name: "cookie-qa-lost-commit-ack",
@@ -270,6 +273,12 @@ test(
       );
 
       const beforeCreate = await snapshot(pool, tenant);
+      if (wire) {
+        await assertCommitWireFailure("before-commit", (faultPool) =>
+          createBookingInternal(faultPool, createCommand, pass),
+        );
+        assert.deepEqual(await snapshot(pool, tenant), beforeCreate);
+      }
       const createAbort = abortBeforeCommit(pool);
       await assert.rejects(
         createBookingInternal(createAbort.pool, createCommand, pass),
@@ -278,12 +287,19 @@ test(
       assert.deepEqual(createAbort.observed(), ["ROLLBACK", "discard"]);
       assert.deepEqual(await snapshot(pool, tenant), beforeCreate);
 
-      const createFault = loseFirstCommitAcknowledgement(pool);
-      await assert.rejects(
-        createBookingInternal(createFault.pool, createCommand, pass),
-        { code: "ECONNRESET" },
-      );
-      assert.equal(createFault.observed(), 1);
+      if (wire) {
+        await assertCommitWireFailure("after-commit", (faultPool) =>
+          createBookingInternal(faultPool, createCommand, pass),
+        );
+        t.diagnostic("create: wire fault both sides of COMMIT");
+      } else {
+        const createFault = loseFirstCommitAcknowledgement(pool);
+        await assert.rejects(
+          createBookingInternal(createFault.pool, createCommand, pass),
+          { code: "ECONNRESET" },
+        );
+        assert.equal(createFault.observed(), 1);
+      }
       let state = await snapshot(pool, tenant);
       assert.deepEqual(
         [
@@ -325,6 +341,15 @@ test(
         idempotencyKey: "move-retry-after-unknown-commit",
       };
       const beforeMove = await snapshot(pool, tenant, created.bookingId);
+      if (wire) {
+        await assertCommitWireFailure("before-commit", (faultPool) =>
+          rescheduleBookingInternal(faultPool, moveCommand, pass),
+        );
+        assert.deepEqual(
+          await snapshot(pool, tenant, created.bookingId),
+          beforeMove,
+        );
+      }
       const moveAbort = abortBeforeCommit(pool);
       await assert.rejects(
         rescheduleBookingInternal(moveAbort.pool, moveCommand, pass),
@@ -336,12 +361,19 @@ test(
         beforeMove,
       );
 
-      const moveFault = loseFirstCommitAcknowledgement(pool);
-      await assert.rejects(
-        rescheduleBookingInternal(moveFault.pool, moveCommand, pass),
-        { code: "ECONNRESET" },
-      );
-      assert.equal(moveFault.observed(), 1);
+      if (wire) {
+        await assertCommitWireFailure("after-commit", (faultPool) =>
+          rescheduleBookingInternal(faultPool, moveCommand, pass),
+        );
+        t.diagnostic("move: wire fault both sides of COMMIT");
+      } else {
+        const moveFault = loseFirstCommitAcknowledgement(pool);
+        await assert.rejects(
+          rescheduleBookingInternal(moveFault.pool, moveCommand, pass),
+          { code: "ECONNRESET" },
+        );
+        assert.equal(moveFault.observed(), 1);
+      }
       state = await snapshot(pool, tenant, created.bookingId);
       assert.deepEqual(
         [
@@ -382,6 +414,15 @@ test(
         idempotencyKey: "cancel-retry-after-unknown-commit",
       };
       const beforeCancel = await snapshot(pool, tenant, created.bookingId);
+      if (wire) {
+        await assertCommitWireFailure("before-commit", (faultPool) =>
+          cancelBookingInternal(faultPool, cancelCommand, pass),
+        );
+        assert.deepEqual(
+          await snapshot(pool, tenant, created.bookingId),
+          beforeCancel,
+        );
+      }
       const cancelAbort = abortBeforeCommit(pool);
       await assert.rejects(
         cancelBookingInternal(cancelAbort.pool, cancelCommand, pass),
@@ -393,12 +434,19 @@ test(
         beforeCancel,
       );
 
-      const cancelFault = loseFirstCommitAcknowledgement(pool);
-      await assert.rejects(
-        cancelBookingInternal(cancelFault.pool, cancelCommand, pass),
-        { code: "ECONNRESET" },
-      );
-      assert.equal(cancelFault.observed(), 1);
+      if (wire) {
+        await assertCommitWireFailure("after-commit", (faultPool) =>
+          cancelBookingInternal(faultPool, cancelCommand, pass),
+        );
+        t.diagnostic("cancel: wire fault both sides of COMMIT");
+      } else {
+        const cancelFault = loseFirstCommitAcknowledgement(pool);
+        await assert.rejects(
+          cancelBookingInternal(cancelFault.pool, cancelCommand, pass),
+          { code: "ECONNRESET" },
+        );
+        assert.equal(cancelFault.observed(), 1);
+      }
       state = await snapshot(pool, tenant, created.bookingId);
       assert.deepEqual(
         [

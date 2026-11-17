@@ -13,7 +13,6 @@
   import ServiceForm from "./ServiceForm.svelte";
 
   export let session: VerifiedOwnerSession;
-  export let onLogout: () => void;
 
   let services: RealService[] = [];
   let loading = true;
@@ -165,7 +164,6 @@
     <h1>Услуги салона</h1>
     <p>Изменения сохраняются в PostgreSQL. Новые услуги — черновики до публикации.</p>
   </div>
-  <Button type="button" variant="outline" onclick={onLogout}>Выйти</Button>
 </div>
 
 {#if readError}
