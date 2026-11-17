@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
-import { enqueueOutbox } from "../../platform-db/src/index.js";
+import { enqueueOutbox, runSqlTransaction } from "../../platform-db/src/index.js";
 import type { TrustedActor } from "../../platform-identity/src/index.js";
 import { requireTenantPermission } from "../../platform-identity/src/index.js";
 
@@ -118,11 +118,7 @@ export async function cancelBookingInternal(
   const actorId = input.actor.identityId;
   const keyHash = sha256(input.idempotencyKey);
   const requestHash = sha256(JSON.stringify([input.bookingId]));
-  const client = await pool.connect();
-  let active = false;
-  try {
-    await client.query("BEGIN");
-    active = true;
+  return runSqlTransaction(pool, async (client) => {
 
     // Read only immutable Staff/Location reference for deterministic lock
     // order. Never trust a staff or location value passed by a caller.
@@ -189,8 +185,6 @@ export async function cancelBookingInternal(
       if (previous.rows[0].request_sha256 !== requestHash) {
         throw new CancelBookingFailure("IDEMPOTENCY_KEY_REUSED");
       }
-      await client.query("COMMIT");
-      active = false;
       return previous.rows[0].result;
     }
     if (current.status !== "Confirmed") {
@@ -266,13 +260,7 @@ export async function cancelBookingInternal(
         JSON.stringify(receipt),
       ],
     );
-    await client.query("COMMIT");
-    active = false;
+
     return receipt;
-  } catch (error) {
-    if (active) await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }

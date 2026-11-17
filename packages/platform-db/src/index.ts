@@ -4,3 +4,5 @@
  * this entrypoint must not run a second transaction or external provider.
  */
 export { enqueueOutbox } from "./outbox.js";
+
+export { runSqlTransaction } from "./transaction.js";
