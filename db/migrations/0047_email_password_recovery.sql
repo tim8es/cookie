@@ -4,12 +4,12 @@ ALTER TABLE cookie_identity.email_credentials
 
 -- Keep the generation invariant even for later password/credential writers.
 CREATE FUNCTION cookie_identity.rotate_email_credential_version()
-RETURNS trigger LANGUAGE plpgsql AS $
+RETURNS trigger LANGUAGE plpgsql AS $recovery$
 BEGIN
   NEW.credential_version := gen_random_uuid();
   RETURN NEW;
 END;
-$;
+$recovery$;
 CREATE TRIGGER rotate_email_credential_version
 BEFORE UPDATE OF password_hash, identity_id, email_hmac_sha256
 ON cookie_identity.email_credentials
