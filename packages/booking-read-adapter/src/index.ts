@@ -4,10 +4,14 @@ import {
   listAvailableSlots,
   type AvailableSlot,
 } from "../../domain-scheduling/src/index.js";
-import type { TrustedActor } from "../../platform-identity/src/authorization.js";
-import { requireTenantPermission } from "../../platform-identity/src/postgres.js";
+import {
+  requireTenantPermission,
+  type TrustedActor,
+} from "../../platform-identity/src/index.js";
 
 /**
+ * Application-level SQL read adapter joining Staff/Catalog/Scheduling/Booking.
+ * This module owns no database tables; schema-owner ports are future #201 work.
  * Tenant-scoped F1 read port for availability and provisional base price.
  * The caller owns the SQL transaction (authorization audit is a write).
  * A read is never a hold; CreateBooking independently rechecks inside COMMIT.
