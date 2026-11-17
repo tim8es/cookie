@@ -659,6 +659,130 @@ test(
         audits: 1,
         events: 1,
       });
+      // Real independent signed Customer sessions contend for the same
+      // currently available interval, using the SAME key across identities.
+      // Existing single-customer/idempotency assertions above are retained.
+      const available = (await clientSlots()).json().slots as Array<{
+        startAt: string;
+      }>;
+      assert.ok(available.length > 0);
+      const racePayload = {
+        ...bookingPayload,
+        startAt: available[available.length - 1]!.startAt,
+      };
+      const raceKey = randomUUID();
+      const contenders: Array<{
+        customerId: string;
+        authorization: string;
+      }> = [];
+      for (let index = 0; index < 12; index++) {
+        const signedCustomer = proof(19220000 + index);
+        const context = await provisionStagingCustomer(
+          pool,
+          verifier,
+          SECRET,
+          {
+            tenantId: owner.tenantId,
+            rawInitData: signedCustomer,
+            consentConfirmed: true,
+          },
+        );
+        const login = await app.inject({
+          method: "POST",
+          url: "/v1/auth/telegram/exchange",
+          payload: { initData: signedCustomer },
+        });
+        assert.equal(login.statusCode, 201);
+        contenders.push({
+          customerId: context.customerId,
+          authorization: "Bearer " + login.json().accessToken,
+        });
+      }
+      assert.equal(new Set(contenders.map((c) => c.customerId)).size, 12);
+      const raceBook = (authorization: string) =>
+        app.inject({
+          method: "POST",
+          url: bookingUrl,
+          headers: { authorization, "idempotency-key": raceKey },
+          payload: racePayload,
+        });
+      const races = await Promise.all(
+        contenders.map(async (c) => ({
+          customerId: c.customerId,
+          authorization: c.authorization,
+          responses: await Promise.all([
+            raceBook(c.authorization),
+            raceBook(c.authorization),
+          ]),
+        })),
+      );
+      const winners = races.filter((c) =>
+        c.responses.some((response) => response.statusCode === 201),
+      );
+      assert.equal(winners.length, 1, "Only one Customer may win the slot");
+      const winner = winners[0]!;
+      const winnerResponses = winner.responses;
+      assert.ok(winnerResponses.every((r) => r.statusCode === 201));
+      assert.deepEqual(winnerResponses[0]!.json(), winnerResponses[1]!.json());
+      const receipt = winnerResponses[0]!.json();
+      assert.equal(receipt.status, "Confirmed");
+      assert.equal(receipt.startAt, racePayload.startAt);
+      assert.equal(receipt.priceKopecks, "100000");
+      for (const contender of races) {
+        if (contender.customerId === winner.customerId) continue;
+        for (const response of contender.responses) {
+          assert.equal(response.statusCode, 409, response.body);
+          assert.ok(
+            ["BOOKING_NOT_AVAILABLE", "BOOKING_CONFLICT"].includes(
+              response.json().error,
+            ),
+          );
+        }
+      }
+      const owned = await pool.query(
+        `SELECT customer_id::text,status FROM cookie_booking.bookings
+            WHERE tenant_id=$1::uuid AND id=$2::uuid`,
+        [owner.tenantId, receipt.bookingId],
+      );
+      assert.deepEqual(owned.rows, [
+        { customer_id: winner.customerId, status: "Confirmed" },
+      ]);
+      const raceState = await pool.query(
+        `SELECT
+          (SELECT count(*)::int FROM cookie_booking.bookings
+            WHERE tenant_id=$1::uuid AND customer_id=ANY($2::uuid[])) AS bookings,
+          (SELECT count(*)::int FROM cookie_booking.command_receipts
+            WHERE tenant_id=$1::uuid) AS receipts,
+          (SELECT count(*)::int FROM cookie_jobs.outbox_events
+            WHERE tenant_id=$1::uuid AND topic='booking.confirmed') AS events`,
+        [owner.tenantId, contenders.map((c) => c.customerId)],
+      );
+      assert.deepEqual(raceState.rows[0], {
+        bookings: 1,
+        receipts: 2,
+        events: 2,
+      });
+      const eventForWinner = await pool.query(
+        `SELECT count(*)::int AS count FROM cookie_jobs.outbox_events
+           WHERE tenant_id=$1::uuid AND topic='booking.confirmed'
+             AND payload->>'bookingId'=$2`,
+        [owner.tenantId, receipt.bookingId],
+      );
+      assert.equal(eventForWinner.rows[0].count, 1);
+      assert.deepEqual((await raceBook(winner.authorization)).json(), receipt);
+      const afterRace = (await clientSlots()).json().slots as Array<{
+        startAt: string;
+      }>;
+      assert.ok(!afterRace.some((s) => s.startAt === racePayload.startAt));
+      for (const c of contenders) {
+        await app.inject({
+          method: "POST",
+          url: "/v1/auth/logout",
+          headers: { authorization: c.authorization },
+        });
+      }
+      console.log("PASS: 12 signed customers, 24 requests, one slot winner");
+
       await pool.query(
         "UPDATE cookie_entitlement.staging_publication_grants SET issued_at=clock_timestamp()-interval '1 hour',expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1::uuid",
         [owner.tenantId],
