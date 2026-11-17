@@ -100,11 +100,21 @@ test(
         0,
       );
       assert.equal(
-        await completeEmailRegistration(transaction, passwordWork, first.token, password),
+        await completeEmailRegistration(
+          transaction,
+          passwordWork,
+          first.token,
+          password,
+        ),
         null,
       );
       assert.equal(
-        await completeEmailRegistration(transaction, passwordWork, "invalid", password),
+        await completeEmailRegistration(
+          transaction,
+          passwordWork,
+          "invalid",
+          password,
+        ),
         null,
       );
 
@@ -130,7 +140,12 @@ test(
         [expiredFingerprint],
       );
       assert.equal(
-        await completeEmailRegistration(transaction, passwordWork, expired.token, password),
+        await completeEmailRegistration(
+          transaction,
+          passwordWork,
+          expired.token,
+          password,
+        ),
         null,
       );
       assert.equal(
