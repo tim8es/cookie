@@ -7,7 +7,10 @@ import {
   type StaffOccupancy,
   type UtcInterval,
 } from "../../domain-scheduling/src/index.js";
-import { enqueueOutbox } from "../../platform-db/src/index.js";
+import {
+  enqueueOutbox,
+  runSqlTransaction,
+} from "../../platform-db/src/index.js";
 import { requireTenantPermission } from "../../platform-identity/src/index.js";
 import type { TrustedActor } from "../../platform-identity/src/index.js";
 
@@ -269,138 +272,129 @@ export async function createBookingInternal(
       startAt,
     ]),
   );
-  const client = await pool.connect();
-  let started = false;
   try {
-    await client.query("BEGIN");
-    started = true;
+    return await runSqlTransaction(pool, async (client) => {
+      // A location-scoped permission is checked even on idempotent replay.
+      // Client/customer roles cannot pass without verified customer binding.
+      await requireTenantPermission(
+        client,
+        input.actor,
+        {
+          kind: "booking",
+          tenantId,
+          locationId: input.locationId,
+          staffProfileId: input.staffId,
+        },
+        "booking.create",
+      );
 
-    // A location-scoped permission is checked even on idempotent replay.
-    // Client/customer roles cannot pass without verified customer binding.
-    await requireTenantPermission(
-      client,
-      input.actor,
-      {
-        kind: "booking",
-        tenantId,
-        locationId: input.locationId,
-        staffProfileId: input.staffId,
-      },
-      "booking.create",
-    );
-
-    // Hash collisions only cause unnecessary serialization, never a false
-    // idempotent response: the full scoped digest is the unique receipt key.
-    await client.query(
-      "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
-      [JSON.stringify([tenantId, actorId, "booking.create", keyHash])],
-    );
-    const prior = await client.query<ReceiptRow>(
-      `SELECT request_sha256, result
-         FROM cookie_booking.command_receipts
-        WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid
-          AND operation='booking.create' AND key_sha256=$3`,
-      [tenantId, actorId, keyHash],
-    );
-    const existing = prior.rows[0];
-    if (existing) {
-      if (existing.request_sha256 !== requestHash) {
-        throw new CreateBookingFailure("IDEMPOTENCY_KEY_REUSED");
+      // Hash collisions only cause unnecessary serialization, never a false
+      // idempotent response: the full scoped digest is the unique receipt key.
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+        [JSON.stringify([tenantId, actorId, "booking.create", keyHash])],
+      );
+      const prior = await client.query<ReceiptRow>(
+        `SELECT request_sha256, result
+           FROM cookie_booking.command_receipts
+          WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid
+            AND operation='booking.create' AND key_sha256=$3`,
+        [tenantId, actorId, keyHash],
+      );
+      const existing = prior.rows[0];
+      if (existing) {
+        if (existing.request_sha256 !== requestHash) {
+          throw new CreateBookingFailure("IDEMPOTENCY_KEY_REUSED");
+        }
+        return existing.result;
       }
-      await client.query("COMMIT");
-      started = false;
-      return existing.result;
-    }
 
-    // All CreateBooking and protected ScheduleChange handlers must share
-    // this staff lock order; the latter is still an open F1 requirement.
-    const locked = await client.query(
-      `SELECT id FROM cookie_staff.staff_profiles
-        WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
-      [tenantId, input.staffId],
-    );
-    if (locked.rowCount !== 1) {
-      throw new CreateBookingFailure("BOOKING_NOT_AVAILABLE");
-    }
-    const service = await loadService(client, input);
-    const customer = await client.query(
-      `SELECT id FROM cookie_customers.customers
-        WHERE tenant_id=$1::uuid AND id=$2::uuid FOR SHARE`,
-      [tenantId, input.customerId],
-    );
-    if (customer.rowCount !== 1) {
-      throw new CreateBookingFailure("BOOKING_NOT_AVAILABLE");
-    }
+      // All CreateBooking and protected ScheduleChange handlers must share
+      // this staff lock order; the latter is still an open F1 requirement.
+      const locked = await client.query(
+        `SELECT id FROM cookie_staff.staff_profiles
+          WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
+        [tenantId, input.staffId],
+      );
+      if (locked.rowCount !== 1) {
+        throw new CreateBookingFailure("BOOKING_NOT_AVAILABLE");
+      }
+      const service = await loadService(client, input);
+      const customer = await client.query(
+        `SELECT id FROM cookie_customers.customers
+          WHERE tenant_id=$1::uuid AND id=$2::uuid FOR SHARE`,
+        [tenantId, input.customerId],
+      );
+      if (customer.rowCount !== 1) {
+        throw new CreateBookingFailure("BOOKING_NOT_AVAILABLE");
+      }
 
-    // Mandatory callback has no default implementation and must fail closed
-    // until trial/paid entitlements are implemented and verified.
-    await assertEntitled(client, tenantId);
-    const slot = await checkSlot(client, input, startAt, service);
-    const bookingId = randomUUID();
-    const result: ConfirmedBookingReceipt = {
-      bookingId,
-      status: "Confirmed",
-      startAt,
-      endAt: slot.endAt,
-      occupiedUntil: slot.occupiedUntil,
-      priceKopecks: service.base_price_kopecks,
-    };
-
-    await client.query(
-      `INSERT INTO cookie_booking.bookings
-         (tenant_id,id,customer_id,staff_id,location_id,service_id,status,
-          start_at,end_at,occupied_until,service_duration_minutes_snapshot,
-          post_service_buffer_minutes_snapshot,price_kopecks_snapshot)
-       VALUES ($1,$2,$3,$4,$5,$6,'Confirmed',$7,$8,$9,$10,$11,$12)`,
-      [
-        tenantId,
+      // Mandatory callback has no default implementation and must fail closed
+      // until trial/paid entitlements are implemented and verified.
+      await assertEntitled(client, tenantId);
+      const slot = await checkSlot(client, input, startAt, service);
+      const bookingId = randomUUID();
+      const result: ConfirmedBookingReceipt = {
         bookingId,
-        input.customerId,
-        input.staffId,
-        input.locationId,
-        input.serviceId,
+        status: "Confirmed",
         startAt,
-        result.endAt,
-        result.occupiedUntil,
-        service.duration_minutes,
-        service.post_service_buffer_minutes,
-        result.priceKopecks,
-      ],
-    );
-    await enqueueOutbox(client, {
-      tenantId,
-      dedupeKey: `booking.created:${bookingId}`,
-      topic: "booking.confirmed",
-      payload: {
-        bookingId,
-        locationId: input.locationId,
-        staffId: input.staffId,
-      },
-    });
-    await client.query(
-      `INSERT INTO cookie_booking.command_receipts
-         (tenant_id,actor_identity_id,operation,key_sha256,request_sha256,
-          booking_id,result)
-       VALUES ($1,$2,'booking.create',$3,$4,$5,$6::jsonb)`,
-      [
+        endAt: slot.endAt,
+        occupiedUntil: slot.occupiedUntil,
+        priceKopecks: service.base_price_kopecks,
+      };
+
+      await client.query(
+        `INSERT INTO cookie_booking.bookings
+           (tenant_id,id,customer_id,staff_id,location_id,service_id,status,
+            start_at,end_at,occupied_until,service_duration_minutes_snapshot,
+            post_service_buffer_minutes_snapshot,price_kopecks_snapshot)
+         VALUES ($1,$2,$3,$4,$5,$6,'Confirmed',$7,$8,$9,$10,$11,$12)`,
+        [
+          tenantId,
+          bookingId,
+          input.customerId,
+          input.staffId,
+          input.locationId,
+          input.serviceId,
+          startAt,
+          result.endAt,
+          result.occupiedUntil,
+          service.duration_minutes,
+          service.post_service_buffer_minutes,
+          result.priceKopecks,
+        ],
+      );
+      await enqueueOutbox(client, {
         tenantId,
-        actorId,
-        keyHash,
-        requestHash,
-        bookingId,
-        JSON.stringify(result),
-      ],
-    );
-    await client.query("COMMIT");
-    started = false;
-    return result;
+        dedupeKey: `booking.created:${bookingId}`,
+        topic: "booking.confirmed",
+        payload: {
+          bookingId,
+          locationId: input.locationId,
+          staffId: input.staffId,
+        },
+      });
+      await client.query(
+        `INSERT INTO cookie_booking.command_receipts
+           (tenant_id,actor_identity_id,operation,key_sha256,request_sha256,
+            booking_id,result)
+         VALUES ($1,$2,'booking.create',$3,$4,$5,$6::jsonb)`,
+        [
+          tenantId,
+          actorId,
+          keyHash,
+          requestHash,
+          bookingId,
+          JSON.stringify(result),
+        ],
+      );
+
+      return result;
+    });
   } catch (error) {
-    if (started) await client.query("ROLLBACK").catch(() => undefined);
     if ((error as { code?: string }).code === "23P01") {
       throw new CreateBookingFailure("BOOKING_CONFLICT");
     }
     throw error;
-  } finally {
-    client.release();
   }
 }

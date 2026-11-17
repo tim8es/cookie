@@ -76,6 +76,40 @@ function loseFirstCommitAcknowledgement(realPool: Pool): {
   return { pool: simulated as unknown as Pool, observed: () => lost };
 }
 
+/** Abort a real PostgreSQL transaction immediately before COMMIT. */
+function abortBeforeCommit(realPool: Pool): {
+  readonly pool: Pool;
+  readonly observed: () => readonly string[];
+} {
+  const observations: string[] = [];
+  const simulated = {
+    async connect(): Promise<PoolClient> {
+      const physical = await realPool.connect();
+      return {
+        async query(sql: string, params?: unknown[]): Promise<unknown> {
+          if (sql.trim().toUpperCase() === "COMMIT") {
+            await assert.rejects(physical.query("SELECT 1 / 0"), {
+              code: "22012",
+            });
+            const result = await physical.query(sql, params);
+            observations.push(result.command);
+            return result;
+          }
+          return physical.query(sql, params);
+        },
+        release(discard?: boolean): void {
+          observations.push(discard ? "discard" : "reuse");
+          physical.release(discard);
+        },
+      } as unknown as PoolClient;
+    },
+  };
+  return {
+    pool: simulated as unknown as Pool,
+    observed: () => observations,
+  };
+}
+
 async function snapshot(
   pool: Pool,
   tenantId: string,
@@ -235,6 +269,15 @@ test(
         [tenant, randomUUID(), staff, location],
       );
 
+      const beforeCreate = await snapshot(pool, tenant);
+      const createAbort = abortBeforeCommit(pool);
+      await assert.rejects(
+        createBookingInternal(createAbort.pool, createCommand, pass),
+        /SQL transaction did not commit/,
+      );
+      assert.deepEqual(createAbort.observed(), ["ROLLBACK", "discard"]);
+      assert.deepEqual(await snapshot(pool, tenant), beforeCreate);
+
       const createFault = loseFirstCommitAcknowledgement(pool);
       await assert.rejects(
         createBookingInternal(createFault.pool, createCommand, pass),
@@ -281,6 +324,18 @@ test(
         newStartAt: "2027-08-20T13:00:00Z",
         idempotencyKey: "move-retry-after-unknown-commit",
       };
+      const beforeMove = await snapshot(pool, tenant, created.bookingId);
+      const moveAbort = abortBeforeCommit(pool);
+      await assert.rejects(
+        rescheduleBookingInternal(moveAbort.pool, moveCommand, pass),
+        /SQL transaction did not commit/,
+      );
+      assert.deepEqual(moveAbort.observed(), ["ROLLBACK", "discard"]);
+      assert.deepEqual(
+        await snapshot(pool, tenant, created.bookingId),
+        beforeMove,
+      );
+
       const moveFault = loseFirstCommitAcknowledgement(pool);
       await assert.rejects(
         rescheduleBookingInternal(moveFault.pool, moveCommand, pass),
@@ -326,6 +381,18 @@ test(
         bookingId: created.bookingId,
         idempotencyKey: "cancel-retry-after-unknown-commit",
       };
+      const beforeCancel = await snapshot(pool, tenant, created.bookingId);
+      const cancelAbort = abortBeforeCommit(pool);
+      await assert.rejects(
+        cancelBookingInternal(cancelAbort.pool, cancelCommand, pass),
+        /SQL transaction did not commit/,
+      );
+      assert.deepEqual(cancelAbort.observed(), ["ROLLBACK", "discard"]);
+      assert.deepEqual(
+        await snapshot(pool, tenant, created.bookingId),
+        beforeCancel,
+      );
+
       const cancelFault = loseFirstCommitAcknowledgement(pool);
       await assert.rejects(
         cancelBookingInternal(cancelFault.pool, cancelCommand, pass),
