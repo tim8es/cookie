@@ -10,8 +10,20 @@ import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 
 interface Faults {
   readonly fail?: string;
+  readonly rollbackFails?: boolean;
   readonly tag?: { readonly at: string; readonly value: string };
   readonly unlockFalse?: boolean;
+}
+
+function stepFor(sql: string): string {
+  if (sql.includes("pg_advisory_unlock")) return "unlock";
+  if (sql.includes("pg_advisory_lock")) return "lock";
+  if (sql.includes("CREATE TABLE IF NOT EXISTS")) return "history-table";
+  if (sql.startsWith("SELECT filename")) return "history-read";
+  if (sql.startsWith("INSERT INTO public.cookie_schema_migrations")) {
+    return "history-write";
+  }
+  return sql === "SELECT 42;" ? "migration" : sql;
 }
 
 function fixture(faults: Faults = {}) {
@@ -19,21 +31,11 @@ function fixture(faults: Faults = {}) {
   const releases: boolean[] = [];
   const client = {
     async query(sql: string) {
-      const step = sql.includes("pg_advisory_unlock")
-        ? "unlock"
-        : sql.includes("pg_advisory_lock")
-          ? "lock"
-          : sql.includes("CREATE TABLE IF NOT EXISTS")
-            ? "history-table"
-            : sql.startsWith("SELECT filename")
-              ? "history-read"
-              : sql.startsWith("INSERT INTO public.cookie_schema_migrations")
-                ? "history-write"
-                : sql === "SELECT 42;"
-                  ? "migration"
-                  : sql;
+      const step = stepFor(sql);
       calls.push(step);
-      if (step === faults.fail) throw new Error("driver failure");
+      if (step === faults.fail || (step === "ROLLBACK" && faults.rollbackFails)) {
+        throw new Error("driver failure");
+      }
       return {
         command: faults.tag?.at === step ? faults.tag.value : sql,
         rows: step === "unlock" ? [{ unlocked: !faults.unlockFalse }] : [],
@@ -77,10 +79,7 @@ test("migration runner discards uncertain lock acquisition and BEGIN", async () 
     for (const [faults, calls] of [
       [{ fail: "lock" }, ["lock"]],
       [{ fail: "BEGIN" }, [...prefix, "BEGIN"]],
-      [
-        { tag: { at: "BEGIN", value: "SELECT" } },
-        [...prefix, "BEGIN"],
-      ],
+      [{ tag: { at: "BEGIN", value: "SELECT" } }, [...prefix, "BEGIN"]],
     ] as const) {
       const f = fixture(faults);
       await assert.rejects(runMigrations(f.pool, directory));
@@ -104,16 +103,15 @@ test("migration runner rolls back a failed migration or history insert", async (
 
 test("migration runner fails closed when rollback is not acknowledged", async () => {
   await withMigration(async (directory) => {
-    const f = fixture({
-      fail: "migration",
-      tag: { at: "ROLLBACK", value: "SELECT" },
-    });
-    await assert.rejects(
-      runMigrations(f.pool, directory),
-      /cleanup failed/,
-    );
-    assert.deepEqual(f.calls, [...prefix, "BEGIN", "migration", "ROLLBACK"]);
-    assert.deepEqual(f.releases, [true]);
+    for (const faults of [
+      { fail: "migration", rollbackFails: true },
+      { fail: "migration", tag: { at: "ROLLBACK", value: "SELECT" } },
+    ]) {
+      const f = fixture(faults);
+      await assert.rejects(runMigrations(f.pool, directory), /cleanup failed/);
+      assert.deepEqual(f.calls, [...prefix, "BEGIN", "migration", "ROLLBACK"]);
+      assert.deepEqual(f.releases, [true]);
+    }
   });
 });
 
