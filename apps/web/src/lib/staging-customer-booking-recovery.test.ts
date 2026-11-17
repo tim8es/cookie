@@ -28,7 +28,8 @@ test("receipt recovery is a read-only request using the original key", async () 
     assert.equal(init?.redirect, "error");
     const headers = new Headers(init?.headers);
     assert.equal(headers.get("idempotency-key"), key);
-    assert.equal(headers.get("authorization"), "Bearer " + session.accessToken);
+    const auth = "Bearer " + session.accessToken;
+    assert.equal(headers.get("authorization"), auth);
     return Response.json(receipt);
   };
   assert.deepEqual(await recoverCustomerBooking(session, key, fetcher), receipt);
@@ -39,12 +40,15 @@ test("receipt absence, denial or corruption is not a resolved result", async () 
     const fetcher = async () => Response.json(receipt, { status });
     assert.equal(await recoverCustomerBooking(session, key, fetcher), null);
   }
-  const malformed = async () =>
-    Response.json({ ...receipt, status: "Pending" });
+  const pending = { ...receipt, status: "Pending" };
+  const malformed = async () => Response.json(pending);
   assert.equal(await recoverCustomerBooking(session, key, malformed), null);
   const expired = { ...session, expiresAtUnixSeconds: 0 };
+  let calls = 0;
   const never = async () => {
-    assert.fail("Expired local session must not fetch");
+    calls++;
+    return Response.json(receipt);
   };
   assert.equal(await recoverCustomerBooking(expired, key, never), null);
+  assert.equal(calls, 0);
 });
