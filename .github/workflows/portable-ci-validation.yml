@@ -1,0 +1,42 @@
+name: Portable CI validation
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/ci/**'
+      - '.github/workflows/portable-ci-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: bash -n scripts/ci/f1-gates.sh scripts/ci/run-suite.sh
+      - run: python3 -m unittest discover -s scripts/ci -p 'test_external_ci.py' -v
+
+  suites:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [quality, postgres17, staging]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Validate standalone toolchain and suite
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: npm exec --yes --package=node@26 --package=pnpm@10.24.0 -- bash scripts/ci/run-suite.sh "$SUITE"
