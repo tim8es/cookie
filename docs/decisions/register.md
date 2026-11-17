@@ -177,3 +177,12 @@
 
 ## Как менять
 При изменении решения добавлять строку/новый ADR, указывать ссылку на issue и PR; не исправлять важные договорённости без явного review.
+
+## Решение владельца 2026-11-17 — табличное управление и Telegram admin
+
+| ID | Решение | Статус | Источник / трассировка |
+|---|---|---|---|
+| DEC-116 | Cookie поддерживает массовую настройку/обновление салона через табличные файлы (XLSX/CSV), обратный экспорт данных со статусами визитов и облегчённый административный режим в том же Telegram-боте с файловым обменом и переиспользованием подходящих компонентов. Business Workspace остаётся альтернативой, полноценный клиентский путь не меняется. | ACCEPTED 2026-11-17 | явное поручение владельца включить концепцию в PRD; REQ-068–072; #252/#253 |
+| DEC-117 | Предложенный design: отдельная Data Exchange capability вне kernel, versioned schema, stable scoped IDs/revisions, preview/confirm/revalidation, atomic bounded apply, no implicit deletion, scoped export with read-only visit data; Telegram admin via verified link/session/membership with shared domain API. F2 early P0 exchange → F2 P1 Telegram admin; F3 P2 sync отдельно. | PROPOSED | [спецификация](../product/tabular-and-telegram-admin.md), #252–#254; review до coding |
+
+Сроки и расширение обязательного первого пилота не утверждались; DEC-095/097/105/111/115 и gates ПДн/production сохраняются.
