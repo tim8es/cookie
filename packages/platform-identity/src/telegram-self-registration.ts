@@ -34,6 +34,14 @@ export async function exchangeSelfServiceTelegram(
     await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [
       fingerprint.readBigInt64BE(0).toString(),
     ]);
+    const currentProof = verifier.verify(rawInitData);
+    if (
+      !currentProof ||
+      currentProof.channel !== proof.channel ||
+      currentProof.telegramUserId !== proof.telegramUserId ||
+      currentProof.authDateUnixSeconds !== proof.authDateUnixSeconds
+    )
+      return null;
     const legacy = await client.query(
       "SELECT 1 FROM cookie_identity.telegram_identity_links WHERE telegram_user_hmac_sha256=$1 LIMIT 1",
       [fingerprint],
