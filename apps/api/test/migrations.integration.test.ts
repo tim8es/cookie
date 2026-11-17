@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -36,7 +36,10 @@ test(
       const tracked = await pool.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM public.cookie_schema_migrations",
       );
-      assert.equal(tracked.rows[0]?.count, "24");
+      const onDisk = (await readdir(directory)).filter((f) =>
+        f.endsWith(".sql"),
+      );
+      assert.equal(tracked.rows[0]?.count, String(onDisk.length));
 
       tempDir = await mkdtemp(join(tmpdir(), "cookie-migration-"));
       const sql = await readFile(join(directory, "0001_bootstrap.sql"), "utf8");
