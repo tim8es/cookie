@@ -80,6 +80,7 @@ result="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 \
     SELECT CASE WHEN
       (SELECT count(*) FROM public.cookie_schema_migrations) = ${expected_migration_count}
       AND to_regclass('cookie_tenancy.owner_setup_receipts') IS NOT NULL
+      AND to_regclass('cookie_appearance.organization_branding') IS NOT NULL
       AND EXISTS (
         SELECT 1 FROM cookie_jobs.outbox_events AS event
         JOIN cookie_tenancy.organizations AS org ON org.id = event.tenant_id
