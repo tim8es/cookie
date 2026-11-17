@@ -23,6 +23,7 @@
     aria-current={section === "staff" ? "page" : undefined}
     onclick={() => (section = "staff")}
   >Мастера</Button>
+  <Button type="button" variant="outline" onclick={onLogout}>Выйти</Button>
 </nav>
 {#if section === "services"}
   <RealOwnerServicesPage {session} {onLogout} />
