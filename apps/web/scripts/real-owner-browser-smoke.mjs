@@ -602,6 +602,12 @@ async function main() {
     assert.equal(realBooking.rowCount,1);
     assert.equal(realBooking.rows[0].status,"Confirmed");
     assert.equal(realBooking.rows[0].price,"125050");
+    const historyPanel = '[aria-label="Мои записи"]';
+    const historyContains = "document.querySelector("+JSON.stringify(historyPanel)+")?.innerText.includes("+JSON.stringify(realBooking.rows[0].id)+")";
+    await requireDom(cdp,"own persisted booking in cabinet",historyContains);
+    await button(cdp,"Обновить записи");
+    await requireDom(cdp,"server history after refresh",historyContains);
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-history")));
     assert.ok(responses.some(r=>r.status===201&&r.path.endsWith("/staging-customer-bookings")));
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0,"Confirmed attempt marker must be removed");
     for(const [width,height] of [[320,568],[375,812],[1280,800]]) {

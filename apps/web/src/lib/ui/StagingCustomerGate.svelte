@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import StagingCustomerOffers from "./StagingCustomerOffers.svelte";
+  import StagingCustomerHistory from "./StagingCustomerHistory.svelte";
   import { Button } from "../components/ui/button/index.js";
   import * as Card from "../components/ui/card/index.js";
   import { authenticateTelegramCustomer, loadTelegramInitData, revokeTelegramOwnerSession, watchOwnerSessionExpiry, type VerifiedCustomerSession } from "../owner-auth";
@@ -8,6 +9,7 @@
   let phase: "loading" | "unavailable" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" = "loading";
   let stopExpiry: (() => void) | null = null;
   let mounted = true;
+  let historyVersion = 0;
   function expire(): void {
     session = null;
     phase = "error";
@@ -64,5 +66,8 @@
 </Card.Root>
 
 {#if phase === "verified" && session}
-  <StagingCustomerOffers {session} onUnauthorized={expire} />
+  <StagingCustomerOffers {session} onUnauthorized={expire} onConfirmed={() => historyVersion++} />
+  {#key historyVersion}
+    <StagingCustomerHistory {session} onUnauthorized={expire} />
+  {/key}
 {/if}

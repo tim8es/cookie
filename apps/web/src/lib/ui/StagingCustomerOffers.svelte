@@ -10,6 +10,7 @@
   import { readCustomerOffers, readCustomerSlots, CustomerOffersError, type CustomerOffer, type CustomerSlots } from "../staging-customer-offers-api";
   export let session: VerifiedCustomerSession;
   export let onUnauthorized: () => void;
+  export let onConfirmed: () => void = () => {};
   let offers: CustomerOffer[] = [];
   let locationId = "";
   let serviceId = "";
@@ -67,6 +68,7 @@
     if (result.phase === "confirmed") {
       clearPending();
       slots = null; slotId = "";
+      onConfirmed();
     } else if (result.phase === "conflict") {
       clearPending();
       slots = result.refreshFailed || !slots ? null : { ...slots, slots: [...result.slots] };
