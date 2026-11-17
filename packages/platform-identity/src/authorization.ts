@@ -71,6 +71,12 @@ export type ProtectedResource =
       readonly staffProfileId: string;
     }
   | {
+      readonly kind: "customer-self";
+      readonly tenantId: string;
+      readonly clientIdentityId: string;
+      readonly locationId?: never;
+    }
+  | {
       readonly kind: "customer";
       readonly tenantId: string;
       readonly locationId: string;
@@ -91,6 +97,10 @@ const SYSTEM_OWNER_ONLY_PERMISSIONS = new Set([
   "organization.transfer-owner",
   "schedule.shift.plan.read",
   "schedule.shift.plan.create",
+  "staging.entitlement.read",
+  "staging.staff.publish",
+  "staging.shift.publish",
+  "staging.availability.read",
 ]);
 
 export interface PolicySnapshot {
@@ -129,6 +139,12 @@ function relationAllows(
   resource: ProtectedResource,
   actorIdentityId: string,
 ): boolean {
+  if (resource.kind === "customer-self") {
+    return (
+      role.baseType === "client" &&
+      resource.clientIdentityId === actorIdentityId
+    );
+  }
   if (role.baseType === "client") {
     return (
       resource.kind === "booking" &&
@@ -170,6 +186,12 @@ export function evaluateAuthorization(
     return deny("invalid-context");
   }
   if (actor.tenantId !== resource.tenantId) return deny("foreign-tenant");
+  if (
+    (permission === "staging.customer.context.read" ||
+      permission === "staging.customer.offers.read") !==
+    (resource.kind === "customer-self")
+  )
+    return deny("permission-denied");
 
   const { membership, ownerIdentityId } = snapshot;
   if (
