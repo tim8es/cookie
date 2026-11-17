@@ -19,3 +19,6 @@ Channel transport (Telegram, web chat, future messenger), conversation/orchestra
 
 ## Fail closed
 При падении AI/канала запись через web продолжается; при невозможности определить actor/tenant изменение не исполняется.
+
+## Telegram admin and file commands (DEC-116 / DEC-117)
+Same bot, distinct customer/admin context; verified identity link + active scoped membership and server session, explicit tenant selection, private admin chat, revalidation on each protected read/commit/callback. File input untrusted; preview then explicit confirmation using shared Data Exchange capability; no AI or direct DB. Sensitive exports gated and delivered via protected short-lived authenticated link rather than raw attachments by default. See [specification](../product/tabular-and-telegram-admin.md), #252/#253. Revocation/security/legal gates unchanged.

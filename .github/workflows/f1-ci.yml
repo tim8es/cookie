@@ -88,8 +88,7 @@ jobs:
           path: apps/web/artifacts/visual-smoke/
           if-no-files-found: error
           retention-days: 7
-      # Use the actual compiled API-mode bundle + local PostgreSQL, not a
-      # mock port, and do not overwrite the previously attached mock evidence.
+      # Actual compiled API-mode + disposable PostgreSQL, separate from mock evidence.
       - name: Real owner browser E2E with PostgreSQL (synthetic signed proof)
         id: real_owner_browser
         run: |

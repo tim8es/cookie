@@ -30,3 +30,12 @@
 - Для self-hosted предоставляется совместимый образ + manifest разрешённых модулей; для SaaS общая система с tenant entitlements.
 - Нельзя обещать feature карты до проверки допустимого подключения; fallback — прямая ссылка/инструкция.
 - AI может отвечать за рекомендации и запрос намерения, но не выступает источником правды о доступных слотах.
+
+## Data Exchange и Telegram Admin (DEC-116)
+| Product capability | Ценность | Зависимости | Фаза |
+|---|---|---|---|
+| Data Exchange | Табличный onboarding, периодическое обновление и экспорт | Catalog/Staff/Scheduling, Organization, Booking/Visit read, Identity/Policy, Entitlements, Jobs/Audit | F2 early #252 |
+| Telegram Admin | Лёгкий рабочий кабинет и файловый обмен через существующего бота | Data Exchange, Telegram adapter, shared UI, Business Workspace API, Policy | F2 #253 |
+| Sheets/Scheduled connector | Автоматизация обмена при подтверждённом спросе | Data Exchange и отдельные reviewed sync contracts | F3 #254 PROPOSED |
+
+Data Exchange не является хранилищем доменных данных; наличие админского Telegram-режима не делает AI обязательным. Тарифная упаковка отдельно; [спецификация](tabular-and-telegram-admin.md).

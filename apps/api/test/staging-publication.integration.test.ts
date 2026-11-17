@@ -187,7 +187,11 @@ test(
         "grant-unavailable",
       );
       const expiry = new Date(Date.now() + 3600000).toISOString();
-      const grantId = await issueStagingGrant(pool, tenant, 1, expiry);
+      const [grantId, duplicateGrant] = await Promise.all([
+        issueStagingGrant(pool, tenant, 1, expiry),
+        issueStagingGrant(pool, tenant, 1, expiry),
+      ]);
+      assert.equal(duplicateGrant, grantId);
       assert.equal(await issueStagingGrant(pool, tenant, 1, expiry), grantId);
       await assert.rejects(issueStagingGrant(pool, tenant, 2, expiry));
       assert.deepEqual(await capacity(), {
@@ -314,6 +318,14 @@ test(
       );
       assert.equal((await read()).statusCode, 403);
       assert.equal((await post(winner, keys[won])).statusCode, 403);
+      const denied = await pool.query(
+        `SELECT count(*)::int AS total
+           FROM cookie_identity.authorization_audit
+          WHERE tenant_id=$1::uuid AND permission='staging.staff.publish'
+            AND NOT allowed`,
+        [tenant],
+      );
+      assert.ok(denied.rows[0]?.total >= 1);
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal((await read()).statusCode, 401);
     } finally {

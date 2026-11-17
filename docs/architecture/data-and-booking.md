@@ -208,3 +208,6 @@ CreateBooking, RescheduleBooking, CancelBooking; booking.created, booking.resche
 
 ## Тесты
 Массовый параллелизм; перебои после commit; дубли event; отказ интеграции; отпуск после уже назначенных броней; чужой tenant; DST и границы суток.
+
+## Дополнительный путь записи данных — массовый импорт (REQ-068/069, DEC-117 PROPOSED)
+Schedule/import commit participates in the same resource locks/transaction rules as interactive schedule updates and Booking; pre-check does not reserve slots. Stale preview, conflicting confirmed booking, permission/session/location revocation, staff activation entitlement or changed revision must abort unsafe apply. Stable scoped keys, idempotent job, explicit bounded transaction and no implicit deletion. Visit status and price snapshot are exported as server-owned/read-only; no import of arbitrary history, Customer/Identity/Booking records or lifecycle bypass without separately reviewed schema. [Detailed contract](../product/tabular-and-telegram-admin.md) #252.

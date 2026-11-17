@@ -4,10 +4,10 @@ import type { Pool } from "pg";
 import {
   createOwnerShiftPlan,
   DraftShiftFailure,
+  listOwnerShiftPlans,
   type OwnerShiftPlanInput,
-} from "../../../packages/domain-scheduling/src/draft-shift.js";
-import { listOwnerShiftPlans } from "../../../packages/domain-scheduling/src/owner-shift-plans.js";
-import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/authorization.js";
+} from "../../../packages/domain-scheduling/src/index.js";
+import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
 import { withTenantPermission } from "./protected-tenant-transaction.js";
 import {
   type BearerSessionVerifier,

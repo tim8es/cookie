@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import { parseStagingPublicationMode } from "../../../packages/domain-entitlement/src/staging.js";
+import { parseStagingPublicationMode } from "../../../packages/domain-entitlement/src/index.js";
 
 import { createApp } from "./app.js";
 import { parseConfig } from "./config.js";
@@ -23,6 +23,7 @@ const app = createApp(pool, {
   ...(telegramSessions
     ? {
         telegramAuthRoutes: { sessions: telegramSessions },
+        liveWorkspaceReads: { pool, verifier: telegramSessions },
         catalogRoutes: { pool, verifier: telegramSessions },
         staffRoutes: { pool, verifier: telegramSessions },
         locationRoutes: { pool, verifier: telegramSessions },

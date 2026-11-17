@@ -7,9 +7,12 @@ import {
   type StaffOccupancy,
   type UtcInterval,
 } from "../../domain-scheduling/src/index.js";
-import { enqueueOutbox } from "../../platform-db/src/outbox.js";
-import type { TrustedActor } from "../../platform-identity/src/authorization.js";
-import { requireTenantPermission } from "../../platform-identity/src/postgres.js";
+import {
+  enqueueOutbox,
+  runSqlTransaction,
+} from "../../platform-db/src/index.js";
+import type { TrustedActor } from "../../platform-identity/src/index.js";
+import { requireTenantPermission } from "../../platform-identity/src/index.js";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -263,170 +266,166 @@ export async function rescheduleBookingInternal(
   const actorId = input.actor.identityId;
   const keyHash = hash(input.idempotencyKey);
   const requestHash = hash(JSON.stringify([input.bookingId, newStartAt]));
-  const client = await pool.connect();
-  let active = false;
   try {
-    await client.query("BEGIN");
-    active = true;
+    return await runSqlTransaction(pool, async (client) => {
+      // The actor never chooses staff/location via request parameters.
+      const initial = await client.query<{
+        staff_id: string;
+        location_id: string;
+      }>(
+        `SELECT staff_id::text, location_id::text FROM cookie_booking.bookings
+          WHERE tenant_id=$1::uuid AND id=$2::uuid`,
+        [tenantId, input.bookingId],
+      );
+      const metadata = initial.rows[0];
+      if (!metadata) fail("BOOKING_NOT_FOUND");
+      const staffLock = await client.query(
+        `SELECT id FROM cookie_staff.staff_profiles
+          WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
+        [tenantId, metadata.staff_id],
+      );
+      if (staffLock.rowCount !== 1) fail("BOOKING_NOT_FOUND");
 
-    // The actor never chooses staff/location via request parameters.
-    const initial = await client.query<{
-      staff_id: string;
-      location_id: string;
-    }>(
-      `SELECT staff_id::text, location_id::text FROM cookie_booking.bookings
-        WHERE tenant_id=$1::uuid AND id=$2::uuid`,
-      [tenantId, input.bookingId],
-    );
-    const metadata = initial.rows[0];
-    if (!metadata) fail("BOOKING_NOT_FOUND");
-    const staffLock = await client.query(
-      `SELECT id FROM cookie_staff.staff_profiles
-        WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
-      [tenantId, metadata.staff_id],
-    );
-    if (staffLock.rowCount !== 1) fail("BOOKING_NOT_FOUND");
-
-    const currentResult = await client.query<BookingRow>(
-      `SELECT id::text, customer_id::text, staff_id::text,
-              location_id::text, service_id::text, status,
-              start_at, end_at, service_duration_minutes_snapshot,
-              post_service_buffer_minutes_snapshot,
-              price_kopecks_snapshot::text
-         FROM cookie_booking.bookings
-        WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
-      [tenantId, input.bookingId],
-    );
-    const booking = currentResult.rows[0];
-    if (
-      !booking ||
-      booking.staff_id !== metadata.staff_id ||
-      booking.location_id !== metadata.location_id
-    ) {
-      fail("BOOKING_NOT_FOUND");
-    }
-
-    await requireTenantPermission(
-      client,
-      input.actor,
-      {
-        kind: "booking",
-        tenantId,
-        locationId: booking.location_id,
-        staffProfileId: booking.staff_id,
-      },
-      "booking.reschedule",
-    );
-    await client.query(
-      "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
-      [JSON.stringify([tenantId, actorId, "booking.reschedule", keyHash])],
-    );
-    const previous = await client.query<ReceiptRow>(
-      `SELECT request_sha256, result FROM cookie_booking.command_receipts
-        WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid
-          AND operation='booking.reschedule' AND key_sha256=$3`,
-      [tenantId, actorId, keyHash],
-    );
-    if (previous.rows[0]) {
-      if (previous.rows[0].request_sha256 !== requestHash) {
-        fail("IDEMPOTENCY_KEY_REUSED");
+      const currentResult = await client.query<BookingRow>(
+        `SELECT id::text, customer_id::text, staff_id::text,
+                location_id::text, service_id::text, status,
+                start_at, end_at, service_duration_minutes_snapshot,
+                post_service_buffer_minutes_snapshot,
+                price_kopecks_snapshot::text
+           FROM cookie_booking.bookings
+          WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
+        [tenantId, input.bookingId],
+      );
+      const booking = currentResult.rows[0];
+      if (
+        !booking ||
+        booking.staff_id !== metadata.staff_id ||
+        booking.location_id !== metadata.location_id
+      ) {
+        fail("BOOKING_NOT_FOUND");
       }
-      await client.query("COMMIT");
-      active = false;
-      return previous.rows[0].result;
-    }
-    if (booking.status !== "Confirmed") fail("BOOKING_NOT_CONFIRMED");
-    const oldStartAt = booking.start_at.toISOString();
-    if (newStartAt === oldStartAt) fail("RESCHEDULE_NOT_AVAILABLE");
 
-    try {
-      await assertMayReschedule(client, {
+      await requireTenantPermission(
+        client,
+        input.actor,
+        {
+          kind: "booking",
+          tenantId,
+          locationId: booking.location_id,
+          staffProfileId: booking.staff_id,
+        },
+        "booking.reschedule",
+      );
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+        [JSON.stringify([tenantId, actorId, "booking.reschedule", keyHash])],
+      );
+      const previous = await client.query<ReceiptRow>(
+        `SELECT request_sha256, result FROM cookie_booking.command_receipts
+          WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid
+            AND operation='booking.reschedule' AND key_sha256=$3`,
+        [tenantId, actorId, keyHash],
+      );
+      if (previous.rows[0]) {
+        if (previous.rows[0].request_sha256 !== requestHash) {
+          fail("IDEMPOTENCY_KEY_REUSED");
+        }
+        return previous.rows[0].result;
+      }
+      if (booking.status !== "Confirmed") fail("BOOKING_NOT_CONFIRMED");
+      const oldStartAt = booking.start_at.toISOString();
+      if (newStartAt === oldStartAt) fail("RESCHEDULE_NOT_AVAILABLE");
+
+      try {
+        await assertMayReschedule(client, {
+          tenantId,
+          bookingId: booking.id,
+          staffId: booking.staff_id,
+          locationId: booking.location_id,
+          serviceId: booking.service_id,
+          customerId: booking.customer_id,
+          oldStartAt,
+          oldEndAt: booking.end_at.toISOString(),
+          newStartAt,
+        });
+      } catch {
+        // Do not leak internal policy diagnostics into a future API.
+        throw new RescheduleBookingFailure("RESCHEDULE_POLICY_DENIED");
+      }
+
+      const slot = await readAvailableSlot(
+        client,
         tenantId,
-        bookingId: booking.id,
-        staffId: booking.staff_id,
-        locationId: booking.location_id,
-        serviceId: booking.service_id,
-        customerId: booking.customer_id,
-        oldStartAt,
-        oldEndAt: booking.end_at.toISOString(),
+        booking,
         newStartAt,
-      });
-    } catch {
-      // Do not leak internal policy diagnostics into a future API.
-      throw new RescheduleBookingFailure("RESCHEDULE_POLICY_DENIED");
-    }
+      );
+      const updated = await client.query(
+        `UPDATE cookie_booking.bookings
+           SET start_at=$3::timestamptz, end_at=$4::timestamptz,
+               occupied_until=$5::timestamptz
+         WHERE tenant_id=$1::uuid AND id=$2::uuid AND status='Confirmed'`,
+        [tenantId, booking.id, slot.startAt, slot.endAt, slot.occupiedUntil],
+      );
+      if (updated.rowCount !== 1) fail("RESCHEDULE_CONFLICT");
 
-    const slot = await readAvailableSlot(client, tenantId, booking, newStartAt);
-    const updated = await client.query(
-      `UPDATE cookie_booking.bookings
-         SET start_at=$3::timestamptz, end_at=$4::timestamptz,
-             occupied_until=$5::timestamptz
-       WHERE tenant_id=$1::uuid AND id=$2::uuid AND status='Confirmed'`,
-      [tenantId, booking.id, slot.startAt, slot.endAt, slot.occupiedUntil],
-    );
-    if (updated.rowCount !== 1) fail("RESCHEDULE_CONFLICT");
-
-    const receipt: RescheduledBookingReceipt = {
-      bookingId: booking.id,
-      status: "Confirmed",
-      previousStartAt: oldStartAt,
-      startAt: slot.startAt,
-      endAt: slot.endAt,
-      occupiedUntil: slot.occupiedUntil,
-      priceKopecks: booking.price_kopecks_snapshot,
-    };
-    await client.query(
-      `INSERT INTO cookie_booking.time_change_audit
-         (tenant_id,id,booking_id,actor_identity_id,correlation_id,
-          old_start_at,new_start_at)
-       VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,
-               $6::timestamptz,$7::timestamptz)`,
-      [
-        tenantId,
-        randomUUID(),
-        booking.id,
-        actorId,
-        input.actor.correlationId,
-        oldStartAt,
-        slot.startAt,
-      ],
-    );
-    await enqueueOutbox(client, {
-      tenantId,
-      dedupeKey: `booking.rescheduled:${booking.id}:${keyHash}`,
-      topic: "booking.rescheduled",
-      payload: {
+      const receipt: RescheduledBookingReceipt = {
         bookingId: booking.id,
-        locationId: booking.location_id,
-        staffId: booking.staff_id,
-        oldStartAt,
-        newStartAt: slot.startAt,
-      },
-    });
-    await client.query(
-      `INSERT INTO cookie_booking.command_receipts
-         (tenant_id,actor_identity_id,operation,key_sha256,request_sha256,
-          booking_id,result)
-       VALUES ($1::uuid,$2::uuid,'booking.reschedule',$3,$4,$5::uuid,$6::jsonb)`,
-      [
+        status: "Confirmed",
+        previousStartAt: oldStartAt,
+        startAt: slot.startAt,
+        endAt: slot.endAt,
+        occupiedUntil: slot.occupiedUntil,
+        priceKopecks: booking.price_kopecks_snapshot,
+      };
+      await client.query(
+        `INSERT INTO cookie_booking.time_change_audit
+           (tenant_id,id,booking_id,actor_identity_id,correlation_id,
+            old_start_at,new_start_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,
+                 $6::timestamptz,$7::timestamptz)`,
+        [
+          tenantId,
+          randomUUID(),
+          booking.id,
+          actorId,
+          input.actor.correlationId,
+          oldStartAt,
+          slot.startAt,
+        ],
+      );
+      await enqueueOutbox(client, {
         tenantId,
-        actorId,
-        keyHash,
-        requestHash,
-        booking.id,
-        JSON.stringify(receipt),
-      ],
-    );
-    await client.query("COMMIT");
-    active = false;
-    return receipt;
+        dedupeKey: `booking.rescheduled:${booking.id}:${keyHash}`,
+        topic: "booking.rescheduled",
+        payload: {
+          bookingId: booking.id,
+          locationId: booking.location_id,
+          staffId: booking.staff_id,
+          oldStartAt,
+          newStartAt: slot.startAt,
+        },
+      });
+      await client.query(
+        `INSERT INTO cookie_booking.command_receipts
+           (tenant_id,actor_identity_id,operation,key_sha256,request_sha256,
+            booking_id,result)
+         VALUES ($1::uuid,$2::uuid,'booking.reschedule',$3,$4,$5::uuid,$6::jsonb)`,
+        [
+          tenantId,
+          actorId,
+          keyHash,
+          requestHash,
+          booking.id,
+          JSON.stringify(receipt),
+        ],
+      );
+
+      return receipt;
+    });
   } catch (error) {
-    if (active) await client.query("ROLLBACK").catch(() => undefined);
     if ((error as { code?: string }).code === "23P01") {
       throw new RescheduleBookingFailure("RESCHEDULE_CONFLICT");
     }
     throw error;
-  } finally {
-    client.release();
   }
 }

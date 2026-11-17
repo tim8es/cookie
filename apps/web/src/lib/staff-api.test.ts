@@ -160,3 +160,19 @@ test("expired owner bearer stops staff requests before HTTP", async () => {
   );
   assert.equal(calls.length, 0);
 });
+
+test("staff capacity differs from replay conflict", async () => {
+  const draft = {
+    displayName: "Synthetic Ada",
+    positionTitle: "Stylist",
+    locationId: LOCATION,
+    serviceId: SERVICE,
+  };
+  const body = { error: "staff-capacity-reached" };
+  const response = Response.json(body, { status: 409 });
+  await assert.rejects(
+    createRealStaff(session, draft, KEY, mock(response, [])),
+    (error: unknown) =>
+      error instanceof StaffApiFailure && error.reason === "capacity",
+  );
+});

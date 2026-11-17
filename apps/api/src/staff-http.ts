@@ -2,14 +2,15 @@ import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 
 import {
+  StaffCapacityReached,
   StaffInputError,
   StaffReferenceNotFound,
   StaffReplayConflict,
   createTenantDraftStaff,
   listTenantStaff,
   validateStaffDraft,
-} from "../../../packages/domain-staff/src/draft-staff.js";
-import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/authorization.js";
+} from "../../../packages/domain-staff/src/index.js";
+import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
 import { withTenantPermission } from "./protected-tenant-transaction.js";
 import {
   type BearerSessionVerifier,
@@ -105,6 +106,9 @@ export function registerRealStaffRoutes(
           .code(result.replayed ? 200 : 201)
           .send({ staff: result.staff });
       } catch (reason) {
+        if (reason instanceof StaffCapacityReached) {
+          return reply.code(409).send({ error: "staff-capacity-reached" });
+        }
         if (reason instanceof StaffReplayConflict) {
           return reply.code(409).send({ error: "idempotency-conflict" });
         }

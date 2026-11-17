@@ -1,8 +1,10 @@
 import type { Pool } from "pg";
 
-import { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/opaque-sessions.js";
-import { createTelegramMiniAppProofVerifier } from "../../../packages/platform-identity/src/telegram-init-data.js";
-import { createPostgresVerifiedTelegramLinkResolver } from "../../../packages/platform-identity/src/telegram-links.js";
+import {
+  PostgresOpaqueTelegramSessions,
+  createTelegramMiniAppProofVerifier,
+  createPostgresVerifiedTelegramLinkResolver,
+} from "../../../packages/platform-identity/src/index.js";
 
 /**
  * A disabled auth provider exposes NO login endpoint; configuration mistakes
