@@ -17,6 +17,10 @@ import {
   type SyntheticWorkspaceReadDependencies,
 } from "./workspace-http.js";
 import { registerStagingAvailabilityRoutes } from "./staging-availability-http.js";
+import {
+  registerStagingCustomerCancellation,
+  type StagingCancellationDependencies,
+} from "./staging-customer-cancellation-http.js";
 import { registerStagingCustomerBooking } from "./staging-customer-booking-http.js";
 import { registerStagingCustomerHistory } from "./staging-customer-history-http.js";
 import { registerStagingCustomerOffers } from "./staging-customer-offers-http.js";
@@ -72,6 +76,7 @@ export function createApp(
     readonly shiftPlanRoutes?: OwnerShiftPlanRouteDependencies;
     readonly stagingPublicationRoutes?: StagingPublicationDependencies;
     readonly stagingCustomerBookingRoutes?: StagingPublicationDependencies;
+    readonly stagingCustomerCancellationRoutes?: StagingCancellationDependencies;
     readonly ownerCalendar?: OwnerCalendarDependencies;
     readonly telegramAuthRoutes?: {
       readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
@@ -136,6 +141,12 @@ export function createApp(
     registerStagingCustomerHistory(app, options.stagingPublicationRoutes);
     registerStagingAvailabilityRoutes(app, options.stagingPublicationRoutes);
   }
+
+  if (options.stagingCustomerCancellationRoutes)
+    registerStagingCustomerCancellation(
+      app,
+      options.stagingCustomerCancellationRoutes,
+    );
 
   // Independent opt-in. Normal runtime cannot mount this candidate yet.
   if (options.stagingCustomerBookingRoutes)

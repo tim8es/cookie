@@ -75,6 +75,12 @@ test(
       shiftPlanRoutes: { pool, verifier: sessions },
       stagingPublicationRoutes: { pool, verifier: sessions, enabled: true },
       stagingCustomerBookingRoutes: { pool, verifier: sessions, enabled: true },
+      stagingCustomerCancellationRoutes: {
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 60,
+      },
     });
     const disabled = createApp(pool);
     try {
@@ -601,7 +607,7 @@ test(
       const durable = await pool.query(
         `SELECT
           (SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1) AS receipts,
-          (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1 AND topic='booking.confirmed') AS events`,
+          (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1 AND topic='booking.confirmed','booking.cancelled') AS events`,
         [owner.tenantId],
       );
       assert.deepEqual(durable.rows[0], { receipts: 1, events: 1 });
@@ -736,11 +742,54 @@ test(
       assert.deepEqual((await history()).json(), ownHistory.json());
       await revokeStagingGrant(pool, owner.tenantId);
       assert.deepEqual((await clientOffers()).json(), { offers: [] });
+      const cancelRoot = prefix + "/staging-customer-cancellation";
+      const cancelKey = randomUUID();
+      const cancelUrl = cancelRoot + "/" + created.json().bookingId;
+      const cancel = (key = cancelKey) =>
+        app.inject({
+          method: "POST",
+          url: cancelUrl,
+          headers: { ...clientHeaders, "idempotency-key": key },
+        });
+      const wrongBooking = await app.inject({
+        method: "POST",
+        url: cancelRoot + "/" + randomUUID(),
+        headers: { ...clientHeaders, "idempotency-key": cancelKey },
+      });
+      assert.equal(wrongBooking.statusCode, 404);
+      const ownerCancel = await app.inject({
+        method: "POST",
+        url: cancelUrl,
+        headers: { ...headers, "idempotency-key": cancelKey },
+      });
+      assert.equal(ownerCancel.statusCode, 404);
+      const [cancelled, replay] = await Promise.all([cancel(), cancel()]);
+      assert.equal(cancelled.statusCode, 200, cancelled.body);
+      assert.equal(replay.statusCode, 200, replay.body);
+      assert.deepEqual(cancelled.json(), replay.json());
+      assert.equal(cancelled.json().status, "CancelledByClient");
+      assert.equal((await cancel(randomUUID())).statusCode, 409);
+      const savedCancel = await pool.query(
+        `SELECT
+          (SELECT status FROM cookie_booking.bookings WHERE tenant_id=$1 AND id=$2) AS status,
+          (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1 AND booking_id=$2 AND next_status='CancelledByClient') AS audits,
+          (SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1 AND booking_id=$2 AND operation='booking.cancel') AS receipts,
+          (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1 AND topic='booking.cancelled') AS events`,
+        [owner.tenantId, created.json().bookingId],
+      );
+      assert.deepEqual(savedCancel.rows[0], {
+        status: "CancelledByClient",
+        audits: 1,
+        receipts: 1,
+        events: 1,
+      });
+      assert.equal((await history()).json().bookings[0].status, "CancelledByClient");
       await app.inject({
         method: "POST",
         url: "/v1/auth/logout",
         headers: clientHeaders,
       });
+      assert.equal((await cancel()).statusCode, 401);
       assert.equal((await history()).statusCode, 401);
       assert.equal((await clientOffers()).statusCode, 401);
       assert.equal((await clientSlots()).statusCode, 401);

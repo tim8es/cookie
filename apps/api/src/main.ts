@@ -2,6 +2,7 @@ import { Pool } from "pg";
 import { parseStagingPublicationMode } from "../../../packages/domain-entitlement/src/index.js";
 
 import { createApp } from "./app.js";
+import { parseStagingCancellationCutoff } from "./staging-customer-cancellation-http.js";
 import { parseConfig } from "./config.js";
 import { registerCompiledWeb } from "./static-web.js";
 import { createLiveTelegramSessionProvider } from "./telegram-auth-runtime.js";
@@ -17,6 +18,12 @@ const stagingCustomerBookingEnabled = parseStagingPublicationMode(
 );
 if (stagingCustomerBookingEnabled && !stagingPublicationEnabled) {
   throw new Error("Staging customer booking requires staging publication");
+}
+const cutoffMinutes = parseStagingCancellationCutoff(
+  process.env.COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES,
+);
+if (cutoffMinutes !== undefined && !stagingPublicationEnabled) {
+  throw new Error("Staging cancellation requires staging publication mode");
 }
 const pool = new Pool({
   connectionString: config.databaseUrl,
@@ -46,6 +53,16 @@ const app = createApp(pool, {
           verifier: telegramSessions,
           enabled: stagingCustomerBookingEnabled,
         },
+        ...(cutoffMinutes === undefined
+          ? {}
+          : {
+              stagingCustomerCancellationRoutes: {
+                pool,
+                verifier: telegramSessions,
+                enabled: true,
+                cutoffMinutes,
+              },
+            }),
         sessionRoutes: {
           verifier: telegramSessions,
           policy: postgresTenantPolicyGuard(pool),

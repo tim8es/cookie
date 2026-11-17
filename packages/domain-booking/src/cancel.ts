@@ -8,6 +8,7 @@ import {
 } from "../../platform-db/src/index.js";
 import type { TrustedActor } from "../../platform-identity/src/index.js";
 import { requireTenantPermission } from "../../platform-identity/src/index.js";
+import { readStagingCustomerContext } from "../../domain-customers/src/index.js";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -33,11 +34,16 @@ export interface InternalCancelBooking {
   readonly idempotencyKey: string;
 }
 
-export interface CancelledBookingReceipt {
+type CancelStatus = "CancelledByBusiness" | "CancelledByClient";
+interface CancellationReceipt<S extends CancelStatus> {
   readonly bookingId: string;
-  readonly status: "CancelledByBusiness";
+  readonly status: S;
   readonly cancelledAt: string;
 }
+
+export type CancelledBookingReceipt = CancellationReceipt<"CancelledByBusiness">;
+export type ClientCancelledBookingReceipt =
+  CancellationReceipt<"CancelledByClient">;
 
 /**
  * A real cancellation cutoff and exception policy is not implemented yet.
@@ -67,9 +73,9 @@ interface BookingRow extends QueryResultRow {
   start_at: Date;
   end_at: Date;
 }
-interface ReceiptRow extends QueryResultRow {
+interface ReceiptRow<S extends CancelStatus> extends QueryResultRow {
   request_sha256: string;
-  result: CancelledBookingReceipt;
+  result: CancellationReceipt<S>;
 }
 interface CancelResult extends QueryResultRow {
   cancelled_at: Date;
@@ -115,21 +121,59 @@ export async function cancelBookingInternal(
   assertMayCancel: AssertBookingMayCancel,
 ): Promise<CancelledBookingReceipt> {
   if (typeof assertMayCancel !== "function") invalid();
+  return cancelBooking(pool, input, "CancelledByBusiness", assertMayCancel);
+}
+
+/** Only controlled staging; cutoff is explicit trusted server configuration. */
+export async function cancelStagingCustomerBooking(
+  pool: Pool,
+  input: InternalCancelBooking,
+  cutoffMinutes: number,
+): Promise<ClientCancelledBookingReceipt> {
+  if (
+    !Number.isInteger(cutoffMinutes) ||
+    cutoffMinutes < 0 ||
+    cutoffMinutes > 10080
+  ) {
+    return invalid();
+  }
+  return cancelBooking(pool, input, "CancelledByClient", cutoffMinutes);
+}
+
+async function cancelBooking<S extends CancelStatus>(
+  pool: Pool,
+  input: InternalCancelBooking,
+  status: S,
+  policy: AssertBookingMayCancel | number,
+): Promise<CancellationReceipt<S>> {
   validate(input);
 
   const tenantId = input.actor.tenantId;
   const actorId = input.actor.identityId;
   const keyHash = sha256(input.idempotencyKey);
-  const requestHash = sha256(JSON.stringify([input.bookingId]));
+  const self = status === "CancelledByClient";
+  const requestHash = sha256(
+    JSON.stringify(self ? [input.bookingId, status] : [input.bookingId]),
+  );
   return runSqlTransaction(pool, async (client) => {
     // Read only immutable Staff/Location reference for deterministic lock
     // order. Never trust a staff or location value passed by a caller.
-    const reference = await client.query<BookingRow>(
-      `SELECT staff_id::text, location_id::text
-         FROM cookie_booking.bookings
-        WHERE tenant_id=$1::uuid AND id=$2::uuid`,
-      [tenantId, input.bookingId],
-    );
+    const reference = self
+      ? await client.query<BookingRow>(
+          `SELECT b.staff_id::text,b.location_id::text
+             FROM cookie_booking.bookings b
+             JOIN cookie_customers.staging_customer_identities c
+               ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id
+            WHERE b.tenant_id=$1::uuid AND b.id=$2::uuid
+              AND c.identity_id=$3::uuid`,
+          [tenantId, input.bookingId, actorId],
+        )
+      : await client.query<BookingRow>(
+          `SELECT staff_id::text, location_id::text
+             FROM cookie_booking.bookings
+            WHERE tenant_id=$1::uuid AND id=$2::uuid`,
+          [tenantId, input.bookingId],
+        );
     const preliminary = reference.rows[0];
     if (!preliminary) throw new CancelBookingFailure("BOOKING_NOT_FOUND");
 
@@ -158,17 +202,34 @@ export async function cancelBookingInternal(
       throw new CancelBookingFailure("BOOKING_NOT_FOUND");
     }
 
-    await requireTenantPermission(
-      client,
-      input.actor,
-      {
-        kind: "booking",
-        tenantId,
-        locationId: current.location_id,
-        staffProfileId: current.staff_id,
-      },
-      "booking.cancel",
-    );
+    if (self) {
+      const context = await readStagingCustomerContext(client, input.actor);
+      if (context.customerId !== current.customer_id) {
+        throw new CancelBookingFailure("BOOKING_NOT_FOUND");
+      }
+      await requireTenantPermission(
+        client,
+        input.actor,
+        {
+          kind: "customer-self",
+          tenantId,
+          clientIdentityId: actorId,
+        },
+        "staging.customer.booking.cancel",
+      );
+    } else {
+      await requireTenantPermission(
+        client,
+        input.actor,
+        {
+          kind: "booking",
+          tenantId,
+          locationId: current.location_id,
+          staffProfileId: current.staff_id,
+        },
+        "booking.cancel",
+      );
+    }
 
     // Match CreateBooking's scoped advisory lock protocol. A duplicate key
     // must yield the original committed response after authorization checks.
@@ -176,7 +237,7 @@ export async function cancelBookingInternal(
       "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
       [JSON.stringify([tenantId, actorId, "booking.cancel", keyHash])],
     );
-    const previous = await client.query<ReceiptRow>(
+    const previous = await client.query<ReceiptRow<S>>(
       `SELECT request_sha256, result
          FROM cookie_booking.command_receipts
         WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid
@@ -184,7 +245,10 @@ export async function cancelBookingInternal(
       [tenantId, actorId, keyHash],
     );
     if (previous.rows[0]) {
-      if (previous.rows[0].request_sha256 !== requestHash) {
+      if (
+        previous.rows[0].request_sha256 !== requestHash ||
+        previous.rows[0].result.status !== status
+      ) {
         throw new CancelBookingFailure("IDEMPOTENCY_KEY_REUSED");
       }
       return previous.rows[0].result;
@@ -193,35 +257,56 @@ export async function cancelBookingInternal(
       throw new CancelBookingFailure("BOOKING_NOT_CONFIRMED");
     }
 
-    try {
-      await assertMayCancel(client, {
-        tenantId,
-        bookingId: input.bookingId,
-        staffId: current.staff_id,
-        locationId: current.location_id,
-        startAt: current.start_at.toISOString(),
-        endAt: current.end_at.toISOString(),
-        customerId: current.customer_id,
-      });
-    } catch {
-      // Never expose policy-adapter internals to an eventual API.
-      throw new CancelBookingFailure("CANCELLATION_POLICY_DENIED");
+    if (typeof policy === "function") {
+      try {
+        await policy(client, {
+          tenantId,
+          bookingId: input.bookingId,
+          staffId: current.staff_id,
+          locationId: current.location_id,
+          startAt: current.start_at.toISOString(),
+          endAt: current.end_at.toISOString(),
+          customerId: current.customer_id,
+        });
+      } catch {
+        throw new CancelBookingFailure("CANCELLATION_POLICY_DENIED");
+      }
     }
 
-    const updated = await client.query<CancelResult>(
-      `UPDATE cookie_booking.bookings
-          SET status='CancelledByBusiness', cancelled_at=clock_timestamp()
-        WHERE tenant_id=$1::uuid AND id=$2::uuid AND status='Confirmed'
-        RETURNING cancelled_at`,
-      [tenantId, input.bookingId],
-    );
+    // Evaluate the staging cutoff at the actual update, not preview time.
+    // No grant check: existing obligations remain serviceable.
+    let updated;
+    if (typeof policy === "number") {
+      updated = await client.query<CancelResult>(
+        `WITH instant AS (SELECT clock_timestamp() AS at)
+         UPDATE cookie_booking.bookings b
+            SET status='CancelledByClient', cancelled_at=instant.at
+           FROM instant
+          WHERE b.tenant_id=$1::uuid AND b.id=$2::uuid
+            AND b.status='Confirmed'
+            AND b.start_at > instant.at + $3::int * interval '1 minute'
+          RETURNING b.cancelled_at`,
+        [tenantId, input.bookingId, policy],
+      );
+      if (updated.rowCount !== 1) {
+        throw new CancelBookingFailure("CANCELLATION_POLICY_DENIED");
+      }
+    } else {
+      updated = await client.query<CancelResult>(
+        `UPDATE cookie_booking.bookings
+            SET status='CancelledByBusiness', cancelled_at=clock_timestamp()
+          WHERE tenant_id=$1::uuid AND id=$2::uuid AND status='Confirmed'
+          RETURNING cancelled_at`,
+        [tenantId, input.bookingId],
+      );
+    }
     const cancelled = updated.rows[0];
     if (!cancelled) {
       throw new CancelBookingFailure("BOOKING_NOT_CONFIRMED");
     }
-    const receipt: CancelledBookingReceipt = {
+    const receipt: CancellationReceipt<S> = {
       bookingId: input.bookingId,
-      status: "CancelledByBusiness",
+      status,
       cancelledAt: cancelled.cancelled_at.toISOString(),
     };
     await client.query(
@@ -229,13 +314,14 @@ export async function cancelBookingInternal(
          (id, tenant_id, booking_id, actor_identity_id, correlation_id,
           command, previous_status, next_status)
        VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,
-               'booking.cancel','Confirmed','CancelledByBusiness')`,
+               'booking.cancel','Confirmed',$6)`,
       [
         randomUUID(),
         tenantId,
         input.bookingId,
         actorId,
         input.actor.correlationId,
+        status,
       ],
     );
     await enqueueOutbox(client, {
@@ -263,6 +349,7 @@ export async function cancelBookingInternal(
       ],
     );
 
+    if (self) await readStagingCustomerContext(client, input.actor);
     return receipt;
   });
 }
