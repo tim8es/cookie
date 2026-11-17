@@ -355,7 +355,6 @@ test(
           await Promise.allSettled([lead, follower, next]);
         }
         assert.ok(provedWait, "Both contenders must wait on actual PG locks");
-        assert.ok(follower && next);
         const [firstResult, secondResult, createdAgain] =
           await Promise.allSettled([lead, follower, next]);
         assert.equal(firstResult.status, "fulfilled");

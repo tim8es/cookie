@@ -73,6 +73,7 @@ export function createApp(
   database: DatabaseProbe,
   options: {
     readonly logger?: boolean;
+    readonly databaseReadiness?: () => Promise<void>;
     readonly appearanceDraftRoutes?: Pick<
       RealAppearanceRouteDependencies,
       "pool" | "verifier"
@@ -109,7 +110,12 @@ export function createApp(
     "/health/ready",
     async (_request, reply) => {
       try {
-        await database.query("SELECT 1");
+        if (options.databaseReadiness) {
+          await options.databaseReadiness();
+        } else {
+          // Low-level injected app fixtures use the connectivity-only probe.
+          await database.query("SELECT 1");
+        }
         return { service: SERVICE_NAME, status: "ready" };
       } catch {
         // Never return the database connection string or driver errors to clients.
