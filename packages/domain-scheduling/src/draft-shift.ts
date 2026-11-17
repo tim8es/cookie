@@ -2,10 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
-import { enqueueOutbox } from "../../platform-db/src/outbox.js";
-import type { TrustedActor } from "../../platform-identity/src/authorization.js";
-import { AuthorizationDeniedError } from "../../platform-identity/src/index.js";
-import { requireTenantPermission } from "../../platform-identity/src/postgres.js";
+import { enqueueOutbox } from "../../platform-db/src/index.js";
+import type { TrustedActor } from "../../platform-identity/src/index.js";
+import {
+  AuthorizationDeniedError,
+  requireTenantPermission,
+} from "../../platform-identity/src/index.js";
 import { resolveLocalMinute, validateLocalMinute } from "./local-minute.js";
 import { withDraftTransaction as runDraft } from "./draft-transaction.js";
 
