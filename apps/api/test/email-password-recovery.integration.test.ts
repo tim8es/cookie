@@ -10,6 +10,7 @@ import { withVerifiedEmailPassword } from "../../../packages/platform-identity/s
 import {
   completeEmailPasswordRecovery,
   issueEmailPasswordRecovery,
+  purgeExpiredEmailRecoveryChallenges,
 } from "../../../packages/platform-identity/src/email-password-recovery.js";
 import {
   completeEmailRegistration,
@@ -160,6 +161,12 @@ test(
         false,
       );
       assert.equal(await verify(changed), identityId);
+      assert.ok(await purgeExpiredEmailRecoveryChallenges(transaction, 10000));
+      const remaining = await pool.query(
+        "SELECT 1 FROM cookie_identity.email_password_recovery_challenges WHERE email_hmac_sha256=$1",
+        [fingerprint],
+      );
+      assert.equal(remaining.rowCount, 0);
     } finally {
       try {
         await pool.query(
