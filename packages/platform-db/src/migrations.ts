@@ -17,15 +17,10 @@ interface Migration {
   readonly sha256: string;
 }
 
-/**
- * Only trusted version-controlled SQL is executed. Each migration and its
- * checksum record commit atomically; a session advisory lock serializes
- * concurrent deploys using the same PostgreSQL database.
- */
-export async function runMigrations(
-  pool: Pool,
+/** Load the exact sorted, checksummed SQL manifest used by the migrator. */
+export async function loadMigrationManifest(
   directory: string,
-): Promise<string[]> {
+): Promise<Migration[]> {
   const sqlFiles = (await readdir(directory))
     .filter((name) => name.endsWith(".sql"))
     .sort();
@@ -45,7 +40,7 @@ export async function runMigrations(
     ordinals.add(ordinal);
   }
 
-  const migrations: Migration[] = await Promise.all(
+  return Promise.all(
     sqlFiles.map(async (filename) => {
       const sql = await readFile(join(directory, filename), "utf8");
       return {
@@ -55,6 +50,18 @@ export async function runMigrations(
       };
     }),
   );
+}
+
+/**
+ * Only trusted version-controlled SQL is executed. Each migration and its
+ * checksum record commit atomically; a session advisory lock serializes
+ * concurrent deploys using the same PostgreSQL database.
+ */
+export async function runMigrations(
+  pool: Pool,
+  directory: string,
+): Promise<string[]> {
+  const migrations = await loadMigrationManifest(directory);
 
   const client = await pool.connect();
   // A session-level advisory lock may survive an uncertain driver response.
