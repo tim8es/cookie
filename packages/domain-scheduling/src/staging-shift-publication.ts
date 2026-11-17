@@ -56,7 +56,8 @@ export async function publishStagingShift(
     await lockLiveStagingGrant(client, actor.tenantId);
     discard = true;
     const result = await client.query("COMMIT");
-    if (result.command !== "COMMIT") throw new Error("Publication not committed");
+    if (result.command !== "COMMIT")
+      throw new Error("Publication not committed");
     committed = true;
     discard = false;
     return receipt;

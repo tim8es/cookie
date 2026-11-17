@@ -138,7 +138,9 @@ export async function publishShiftInternal(
   }
   const requestHash = digest(
     JSON.stringify(
-      staging ? ["staging", input.shiftId, staging.expectedRevision] : [input.shiftId],
+      staging
+        ? ["staging", input.shiftId, staging.expectedRevision]
+        : [input.shiftId],
     ),
   );
   const client = transactionClient ?? (await pool.connect());

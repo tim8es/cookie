@@ -189,12 +189,17 @@ test(
         401,
       );
       assert.equal(
-        (await app.inject({
-          method: "POST",
-          url: "/v1/organizations/" + randomUUID() + "/staging-shift-publication",
-          headers,
-          payload: { shiftId: first.shiftId, expectedRevision: 0 },
-        })).statusCode,
+        (
+          await app.inject({
+            method: "POST",
+            url:
+              "/v1/organizations/" +
+              randomUUID() +
+              "/staging-shift-publication",
+            headers,
+            payload: { shiftId: first.shiftId, expectedRevision: 0 },
+          })
+        ).statusCode,
         403,
       );
       assert.equal((await submit()).json().error, "grant-unavailable");
@@ -217,7 +222,10 @@ test(
         },
       });
       assert.equal(activated.statusCode, 201);
-      assert.equal((await submit(first.shiftId, 1)).json().error, "SHIFT_STALE_REVISION");
+      assert.equal(
+        (await submit(first.shiftId, 1)).json().error,
+        "SHIFT_STALE_REVISION",
+      );
       const [left, right] = await Promise.all([submit(), submit()]);
       assert.equal(left.statusCode, 200);
       assert.equal(right.statusCode, 200);
@@ -252,7 +260,9 @@ test(
         "SHIFT_KEY_REUSED",
       );
       assert.equal(
-        (await submit(competing.shiftId, competing.revision, randomUUID())).json().error,
+        (
+          await submit(competing.shiftId, competing.revision, randomUUID())
+        ).json().error,
         "SHIFT_CROSS_LOCATION_CONFLICT",
       );
       const counts = await pool.query(
@@ -263,7 +273,12 @@ test(
           (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='schedule.shift.published') AS events`,
         [owner.tenantId],
       );
-      assert.deepEqual(counts.rows[0], { shifts: 1, receipts: 1, audits: 1, events: 1 });
+      assert.deepEqual(counts.rows[0], {
+        shifts: 1,
+        receipts: 1,
+        audits: 1,
+        events: 1,
+      });
       await pool.query(
         "UPDATE cookie_entitlement.staging_publication_grants SET issued_at=clock_timestamp()-interval '1 hour',expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1::uuid",
         [owner.tenantId],
