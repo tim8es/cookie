@@ -36,3 +36,5 @@ end-to-end browser run for this new tab is a separate acceptance
 step; the real-browser #236 candidate should extend after integration.
 
 No actual PII, real bot, production/Altare deploy, or public pilot.
+
+Current-main reconciliation: the backend is already merged (#227, #247); do not reintroduce the older adapter. Owner session expiry now belongs to the App shell rather than only the Overview tab: all protected tabs unmount and the in-memory bearer is cleared on deadline, including tab focus/visibility/pageshow after suspension. Deterministic timer/resume/cleanup tests are included. This is local expiration handling, not a guarantee of immediate remote revocation detection or production security approval.

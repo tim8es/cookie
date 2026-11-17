@@ -237,6 +237,32 @@ test(
       }
 
       await pool.query(
+        `INSERT INTO cookie_staff.staff_profiles
+           (tenant_id,id,display_name,position_title,active,bookable)
+         SELECT $1::uuid,gen_random_uuid(),'Capacity fixture ' || n,'',true,false
+           FROM generate_series(1,98) AS n`,
+        [owner.tenantId],
+      );
+      const last = () =>
+        app.inject({
+          method: "POST",
+          url: path,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: draft,
+        });
+      const outcomes = await Promise.all([last(), last()]);
+      const statuses = outcomes.map((response) => response.statusCode).sort();
+      assert.deepEqual(statuses, [201, 409]);
+      const denied = outcomes.find((response) => response.statusCode === 409);
+      assert.deepEqual(denied?.json(), { error: "staff-capacity-reached" });
+      const full = await app.inject({ method: "GET", url: path, headers });
+      assert.equal(full.statusCode, 200);
+      assert.equal(full.json().staff.length, 100);
+      const replay = await submit();
+      assert.equal(replay.statusCode, 200);
+      assert.deepEqual(replay.json().staff, staff);
+
+      await pool.query(
         `UPDATE cookie_identity.roles
           SET permissions=ARRAY['organization.context.read','catalog.service.read']::text[]
           WHERE tenant_id=$1::uuid`,

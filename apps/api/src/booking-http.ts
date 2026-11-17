@@ -6,7 +6,7 @@ import {
   createBookingInternal,
   type AssertBookingEntitlement,
 } from "../../../packages/domain-booking/src/create.js";
-import { readBookingAvailability } from "../../../packages/platform-db/src/booking-availability.js";
+import { readBookingAvailability } from "../../../packages/booking-read-adapter/src/index.js";
 import {
   AuthorizationDeniedError,
   type TrustedActor,

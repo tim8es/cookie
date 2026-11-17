@@ -18,9 +18,9 @@ import {
 } from "./workspace-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
 import {
-  registerLiveWorkspaceRead,
-  type LiveWorkspaceReadDependencies,
-} from "./live-workspace-http.js";
+  registerOwnerShiftPlanRoutes,
+  type OwnerShiftPlanRouteDependencies,
+} from "./owner-shift-plan-http.js";
 import {
   registerRealLocationRoutes,
   type RealLocationRouteDependencies,
@@ -33,6 +33,10 @@ import {
   registerRealStaffRoutes,
   type RealStaffRoutesDependencies,
 } from "./staff-http.js";
+import {
+  registerLiveWorkspaceRead,
+  type LiveWorkspaceReadDependencies,
+} from "./live-workspace-http.js";
 import {
   registerProtectedSessionContext,
   type ProtectedSessionDependencies,
@@ -52,8 +56,9 @@ export function createApp(
     readonly catalogRoutes?: RealCatalogRouteDependencies;
     readonly staffRoutes?: RealStaffRoutesDependencies;
     readonly locationRoutes?: RealLocationRouteDependencies;
+    readonly shiftPlanRoutes?: OwnerShiftPlanRouteDependencies;
     readonly telegramAuthRoutes?: {
-      readonly sessions: import("../../../packages/platform-identity/src/opaque-sessions.js").PostgresOpaqueTelegramSessions;
+      readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
     readonly syntheticBookingRoutes?: SyntheticBookingHttpDependencies;
     readonly syntheticBookingMutations?: SyntheticBookingMutationDependencies;
@@ -94,15 +99,17 @@ export function createApp(
   if (options.telegramAuthRoutes)
     registerTelegramAuthExchange(app, options.telegramAuthRoutes.sessions);
 
-  // Real Catalog requires an independently verified bearer and transactional SQL policy.
   if (options.catalogRoutes)
     registerRealCatalogRoutes(app, options.catalogRoutes);
 
   if (options.staffRoutes) registerRealStaffRoutes(app, options.staffRoutes);
 
-  // Owner-controlled Locations are real tenant-scoped rows, never anonymous.
+  // Owner-controlled Locations are tenant-scoped rows, never anonymous.
   if (options.locationRoutes)
     registerRealLocationRoutes(app, options.locationRoutes);
+
+  if (options.shiftPlanRoutes)
+    registerOwnerShiftPlanRoutes(app, options.shiftPlanRoutes);
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.

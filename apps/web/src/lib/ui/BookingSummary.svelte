@@ -15,14 +15,11 @@
 <Card.Root class="booking-summary" aria-label="Сводка демо-визита">
   <div class="ticket-top">
     <div class="ticket-topline">
-      <span>Ваш визит / детали</span>
+      <span>ДЕТАЛИ ЗАПИСИ</span>
       <span class="ticket-demo">DEMO</span>
     </div>
-    <div class="ticket-mark" aria-hidden="true">
-      <span></span><span></span><span></span><span></span>
-    </div>
-    <h2>Ваш визит<br />в одном месте.</h2>
-    <p>Проверьте выбранные детали перед записью.</p>
+    <h2>Ваш визит</h2>
+    <p>Проверьте специалиста, дату и предварительную стоимость.</p>
   </div>
   <div class="ticket-stitch" aria-hidden="true"></div>
   <div class="ticket-body">

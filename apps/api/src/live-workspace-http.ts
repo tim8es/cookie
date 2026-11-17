@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import type { Pool, QueryResultRow } from "pg";
 
-import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/authorization.js";
-import { requireTenantPermission } from "../../../packages/platform-identity/src/postgres.js";
+import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
+import { withTenantPermission } from "./protected-tenant-transaction.js";
 import {
   type BearerSessionVerifier,
   verifyTenantActor,
@@ -57,84 +57,52 @@ export function registerLiveWorkspaceRead(
       // A tenant URL is an equality check against VERIFIED session tenant.
       // Never trust a body/query/header identity, role or organization ID.
       const actor = verified.actor;
-      let client;
       try {
-        client = await pool.connect();
-      } catch {
-        return reply.code(503).send({ error: "unavailable" });
-      }
-
-      let active = false;
-      try {
-        await client.query("BEGIN");
-        active = true;
-
-        // One transaction: membership -> role/assignment -> Telegram link ->
-        // exact bearer session lock. Concurrent revocations cannot commit
-        // ahead of this authorized read's transaction boundary.
-        await requireTenantPermission(
-          client,
+        const response = await withTenantPermission(
+          pool,
           actor,
-          { kind: "organization", tenantId: actor.tenantId },
           "organization.context.read",
-        );
+          async (client) => {
+            const organization = await client.query<OrganizationRow>(
+              `SELECT display_name
+                 FROM cookie_tenancy.organizations
+                WHERE id=$1::uuid`,
+              [actor.tenantId],
+            );
+            const first = organization.rows[0];
+            if (!first) throw new AuthorizationDeniedError();
 
-        const organization = await client.query<OrganizationRow>(
-          `SELECT display_name
-             FROM cookie_tenancy.organizations
-            WHERE id=$1::uuid`,
-          [actor.tenantId],
-        );
-        const first = organization.rows[0];
-        if (!first) throw new AuthorizationDeniedError();
+            const result = await client.query<LocationRow>(
+              `SELECT id::text, display_name, time_zone
+                 FROM cookie_tenancy.locations
+                WHERE tenant_id=$1::uuid
+                ORDER BY display_name, id
+                LIMIT $2::integer`,
+              [actor.tenantId, MAX_LOCATIONS + 1],
+            );
+            if (result.rows.length > MAX_LOCATIONS) {
+              throw new Error("Organization branch listing exceeds limit");
+            }
 
-        const result = await client.query<LocationRow>(
-          `SELECT id::text, display_name, time_zone
-             FROM cookie_tenancy.locations
-            WHERE tenant_id=$1::uuid
-            ORDER BY display_name, id
-            LIMIT $2::integer`,
-          [actor.tenantId, MAX_LOCATIONS + 1],
-        );
-        if (result.rows.length > MAX_LOCATIONS) {
-          throw new Error("Organization branch listing exceeds limit");
-        }
-
-        const response = {
-          organization: {
-            organizationId: actor.tenantId,
-            displayName: first.display_name,
+            return {
+              organization: {
+                organizationId: actor.tenantId,
+                displayName: first.display_name,
+              },
+              locations: result.rows.map((location) => ({
+                locationId: location.id,
+                displayName: location.display_name,
+                timeZone: location.time_zone,
+              })),
+            };
           },
-          locations: result.rows.map((location) => ({
-            locationId: location.id,
-            displayName: location.display_name,
-            timeZone: location.time_zone,
-          })),
-        };
-
-        await client.query("COMMIT");
-        active = false;
+        );
         return reply.send(response);
       } catch (error) {
-        if (active) {
-          try {
-            if (error instanceof AuthorizationDeniedError) {
-              // A denied read must preserve sanitized authorization audit.
-              await client.query("COMMIT");
-            } else {
-              await client.query("ROLLBACK");
-            }
-            active = false;
-          } catch {
-            return reply.code(503).send({ error: "unavailable" });
-          }
-        }
         if (error instanceof AuthorizationDeniedError) {
           return reply.code(403).send({ error: "forbidden" });
         }
         return reply.code(503).send({ error: "unavailable" });
-      } finally {
-        client.release();
       }
     },
   );

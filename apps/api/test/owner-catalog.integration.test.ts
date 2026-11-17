@@ -158,6 +158,32 @@ test(
         [owner.tenantId],
       );
       assert.equal(saved.rows[0].count, 1);
+      // Two distinct keys race for the last available catalog slot.
+      await pool.query(
+        `INSERT INTO cookie_catalog.services
+           (tenant_id,id,display_name,duration_minutes,base_price_kopecks,active)
+         SELECT $1::uuid, gen_random_uuid(), 'Capacity fixture ' || n,
+                30, 100, false FROM generate_series(1,98) AS n`,
+        [owner.tenantId],
+      );
+      const last = () =>
+        app.inject({
+          method: "POST",
+          url: prefix,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: draft,
+        });
+      const outcomes = await Promise.all([last(), last()]);
+      const statuses = outcomes.map((response) => response.statusCode).sort();
+      assert.deepEqual(statuses, [201, 409]);
+      const rejected = outcomes.find((response) => response.statusCode === 409);
+      assert.deepEqual(rejected?.json(), { error: "catalog-capacity-reached" });
+      const full = await app.inject({ method: "GET", url: prefix, headers });
+      assert.equal(full.statusCode, 200);
+      assert.equal(full.json().services.length, 100);
+      const replayAtCapacity = await submit();
+      assert.equal(replayAtCapacity.statusCode, 200);
+      assert.deepEqual(replayAtCapacity.json().service, a);
       // Permission reduction denies even a still-valid authenticated bearer.
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=ARRAY[\u0027organization.context.read\u0027]::text[] WHERE tenant_id=$1::uuid",

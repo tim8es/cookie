@@ -71,13 +71,8 @@
   }
 
   onMount(() => {
-    const timer = window.setTimeout(
-      expire,
-      Math.max(0, session.expiresAtUnixSeconds * 1000 - Date.now()),
-    );
     void refresh();
     return () => {
-      window.clearTimeout(timer);
       activeRequest?.abort();
       activeRequest = null;
     };
