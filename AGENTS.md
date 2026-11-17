@@ -1,5 +1,9 @@
 # Cookie: инструкция для Codex и других агентов
 
+## Owner update — 2026-11-17: configurable business policies (ACCEPTED)
+
+See [#285](https://github.com/tim8es/cookie/issues/285). Do not hardcode configurable business parameters (cancellation/reschedule deadlines, service buffers, reminder timing, salon operating preferences and other approved settings) in application code, UI, SQL, deployment variables or local launchers. Tenant-owned settings must be editable by an authorized owner, persisted in PostgreSQL in the appropriate typed domain, validated and audited, and enforced server-side consistently across channels. Changes must not require a rebuild/restart. Missing settings must not silently adopt an unapproved business default; keep the affected action fail-closed until its policy is defined. Explicit synthetic fixture inputs and bounded private staging operator configuration are temporary test mechanisms, not product policy. Keep fixed ACCEPTED domain invariants, security checks and infrastructure controls separate; do not broaden commercial rules or resolve REQ-032's outstanding precedence/change semantics without review. PR reviewers must reject newly hardcoded configurable parameters. #285 tracks vertical implementation and audit; preserve #203 security/pilot gates.
+
 ## Owner target update — 2026-11-16: real application, local + Altare staging
 
 **New acceptance target:** [Release issue #203](https://github.com/tim8es/cookie/issues/203). The deliverable is a production-shaped **real runtime**, not mock-onboarding screenshots or a synthetic Booking API proof. Keep the current F1 security restrictions until their own gates pass.
