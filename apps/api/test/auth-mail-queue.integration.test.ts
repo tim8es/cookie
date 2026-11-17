@@ -162,9 +162,27 @@ test(
         sealed_recipient: null,
       });
       assert.ok(await queue.purge(100, 60));
+      const audit = await pool.query<{ event_type: string }>(
+        "SELECT event_type FROM cookie_identity.auth_security_events WHERE mail_job_id=ANY($1::uuid[]) ORDER BY id",
+        [jobs],
+      );
+      assert.deepEqual(
+        audit.rows.map((row) => row.event_type),
+        [
+          "mail_unknown",
+          "mail_submitted",
+          "mail_skipped",
+          "mail_unknown",
+          "mail_expired",
+        ],
+      );
     } finally {
       // Tests run serially on an isolated synthetic CI database.
       try {
+        await pool.query(
+          "DELETE FROM cookie_identity.auth_security_events WHERE mail_job_id=ANY($1::uuid[])",
+          [jobs],
+        );
         await pool.query(
           "DELETE FROM cookie_identity.auth_mail_jobs WHERE id=ANY($1::uuid[])",
           [jobs],
