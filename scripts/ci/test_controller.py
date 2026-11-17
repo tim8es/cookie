@@ -153,6 +153,12 @@ class ControllerContract(unittest.TestCase):
             c.reconcile(record, "quality", self.select())
             c.run_api.assert_not_called()
 
+    def test_private_repo_uses_only_private_self_hosted_runner(self):
+        workflow = (ctl.ROOT / ".github/workflows/f1-ci.yml").read_text()
+        selector = "runs-on: ${{ github.event.repository.private && 'cookie-ci-private' || 'ubuntu-latest' }}"
+        self.assertEqual(workflow.count(selector), 3)
+        self.assertNotIn("vars.F1_EXECUTION_BACKEND", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
