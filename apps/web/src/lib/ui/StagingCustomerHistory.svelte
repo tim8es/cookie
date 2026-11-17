@@ -7,6 +7,7 @@
 
   export let session: VerifiedCustomerSession;
   export let onUnauthorized: () => void;
+  export let onHistory: (value: OwnBookingHistory | null) => void = () => {};
   let data: OwnBookingHistory | null = null;
   let busy = true;
   let failed = false;
@@ -26,6 +27,7 @@
     if (!pending || cancellationBusy) return;
     const attempt = pending;
     cancellationBusy = true;
+    onHistory(null);
     message = "";
     try {
       await cancelOwnBooking(session, attempt.bookingId, attempt.key);
@@ -60,13 +62,16 @@
   async function refresh(): Promise<void> {
     const version = ++generation;
     data = null;
+    onHistory(null);
     cutoff = null;
     busy = true;
     failed = false;
     try {
       const result = await readOwnBookings(session);
       if (!mounted || generation !== version) return;
+      if (Date.now() / 1000 >= session.expiresAtUnixSeconds) { onUnauthorized(); return; }
       data = result;
+      onHistory(result);
       const policy = await readCancellationCutoff(session);
       if (mounted && generation === version) cutoff = policy;
     } catch (reason) {
@@ -128,6 +133,7 @@
       {#if data.hasMore}<p>Показаны 200 последних по дате записей. Для более ранних записей обратитесь в салон.</p>{/if}
     {/if}
   {/if}
+  <p class="owner-form-note">Статусы в списке отображаются на момент последнего обновления с сервера.</p>
   <p class="owner-form-note">{cutoff === null ? "Отмена в тестовом режиме недоступна." : "Отмена проверяется сервером; тестовый срок — до начала записи более чем " + cutoff + " мин."} Перенос пока недоступен. Названия услуг, филиала и мастера — текущие данные каталога.</p>
 </section>
 

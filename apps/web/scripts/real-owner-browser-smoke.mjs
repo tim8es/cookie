@@ -594,7 +594,7 @@ async function main() {
     await evaluate(cdp,"document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+").click()");
     await requireDom(cdp,"real write button","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Записаться'&&!b.disabled)");
     await button(cdp,"Записаться");
-    await requireDom(cdp,"server-confirmed real booking","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Запись подтверждена') && document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Фактическая стоимость')");
+    await requireDom(cdp,"server-confirmed real booking","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Создание записи подтверждено') && document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Фактическая стоимость')");
     const realBooking = await pool.query(
       "SELECT b.id::text,b.status,b.price_kopecks_snapshot::text AS price FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1::uuid",
       [owner.tenantId],
@@ -620,6 +620,13 @@ async function main() {
     await requireDom(cdp,"confirmed persisted cancellation","document.querySelector("+JSON.stringify(historyPanel)+")?.innerText.includes('Отменена клиентом')");
     const realCancelled=await pool.query("SELECT status FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",[owner.tenantId,realBooking.rows[0].id]);
     assert.deepEqual(realCancelled.rows,[{status:"CancelledByClient"}]);
+    const receiptCard = "document.querySelector("+JSON.stringify(panel+" .customer-choice-summary")+")";
+    await requireDom(cdp,"creation receipt no longer presents cancelled booking as active",
+      receiptCard+"?.innerText.includes('Запись изменена после создания') && !"+receiptCard+"?.innerText.includes('Время при создании') && !"+receiptCard+"?.innerText.includes('Статус на момент обновления списка: подтверждена')");
+    await button(cdp,"Создать ещё запись");
+    await requireDom(cdp,"new selection returns to live catalog after cancellation",
+      "document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2 && !"+receiptCard);
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0,"Cancellation must not create a pending Create marker");
     await checkWidth(cdp,"cancelled customer booking");
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
