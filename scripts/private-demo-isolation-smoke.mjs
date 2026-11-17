@@ -5,7 +5,6 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as pause } from "node:timers/promises";
 import { authenticateTelegramOwner, exchangeTelegramSession, revokeTelegramOwnerSession } from "../apps/web/src/lib/owner-auth.ts";
 import { createRealService, readRealServices } from "../apps/web/src/lib/services-api.ts";
-import { localDemoFetch } from "./local-staging-mode.mjs";
 import { PrivateDemoManager, spawnPrivateDemoWorker } from "./private-demo-manager.mjs";
 
 if (process.env.CI !== "true") throw new Error("CI=true required for disposable isolation smoke");
@@ -31,7 +30,7 @@ async function until(predicate) {
 }
 
 async function login(supervisor, instance) {
-  const fetcher = localDemoFetch(instance.origin);
+  const fetcher = supervisor.route(instance.id);
   const session = await authenticateTelegramOwner(await supervisor.proof(instance.id, "owner"), fetcher);
   assert.equal(session.tenantId, instance.tenantId);
   return { fetcher, session };
@@ -74,6 +73,7 @@ async function verify() {
   const stopping = manager.stop(a.id);
   await assert.rejects(manager.start(), /capacity/);
   await stopping;
+  await assert.rejects(aa.fetcher("/v1/organizations/" + a.tenantId + "/services"), /route unavailable/);
   assert.equal(manager.status.ready, 1);
   assert.equal((await readRealServices(bb.session, bb.fetcher)).length, 1);
   await revokeTelegramOwnerSession(bb.session, bb.fetcher);
@@ -93,7 +93,8 @@ async function verify() {
   assert.equal(expiry.status.quarantined, 0);
   assert.deepEqual(await children[2].exited, { code: 0, signal: null });
   await assert.rejects(expiry.proof(c.id, "owner"), /unavailable/);
-  console.log("PASS private demo isolation: manager admission, independent live databases, foreign proof/bearer denial, write isolation, targeted cleanup, disconnect, reset and TTL");
+  await assert.rejects(cc.fetcher("/v1/organizations/" + c.tenantId + "/services"), /route unavailable/);
+  console.log("PASS private demo isolation: manager admission, bound routes, independent live databases, foreign proof/bearer denial, write isolation, targeted cleanup, disconnect, reset and TTL");
 }
 try {
   await verify();
