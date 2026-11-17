@@ -7,6 +7,7 @@ test("interactive demo uses the same disposable lifecycle as CI, but never the p
   const stop = resolveLocalStagingMode(["stop"], undefined);
   const demo = resolveLocalStagingMode(["demo"], undefined);
   const verify = resolveLocalStagingMode(["verify"], "true");
+  const verifyDemo = resolveLocalStagingMode(["verify-demo"], "true");
   assert.equal(start.disposable, false);
   assert.equal(stop.disposable, false);
   assert.equal(start.folderPrefix, stop.folderPrefix);
@@ -16,6 +17,11 @@ test("interactive demo uses the same disposable lifecycle as CI, but never the p
   assert.equal(demo.disposable, true);
   assert.equal(verify.disposable, true);
   assert.equal(verify.verification, true);
+  assert.equal(verifyDemo.demo, true);
+  assert.equal(verifyDemo.verification, true);
+  assert.equal(verifyDemo.disposable, demo.disposable);
+  assert.equal(verifyDemo.folderPrefix, demo.folderPrefix);
+  assert.equal(verifyDemo.projectPrefix, demo.projectPrefix);
   assert.equal(new Set([start.folderPrefix, demo.folderPrefix, verify.folderPrefix]).size, 3);
   assert.equal(new Set([start.projectPrefix, demo.projectPrefix, verify.projectPrefix]).size, 3);
   for (const mode of [start, demo, verify]) {
@@ -29,7 +35,7 @@ test("interactive demo uses the same disposable lifecycle as CI, but never the p
 });
 
 test("invalid mode and non-CI verification fail closed", () => {
-  for (const args of [["reset"], ["demo", "extra"], ["verify"]]) {
+  for (const args of [["reset"], ["demo", "extra"], ["verify"], ["verify-demo"]]) {
     assert.throws(() => resolveLocalStagingMode(args, undefined));
   }
 });
