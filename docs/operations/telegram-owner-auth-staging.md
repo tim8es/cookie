@@ -52,20 +52,26 @@ The command prints only link ID and replay status.
 
 Global Telegram registration is a separate, disabled-by-default candidate:
 `COOKIE_TELEGRAM_SELF_REGISTRATION_MODE=enabled` mounts
-`POST /v1/auth/telegram/identity` with `intent: "login" | "register"`. It
+`POST /v1/auth/telegram/identity` with `intent: "login" | "register"` and
+`POST /v1/auth/telegram/link` for an already authenticated Identity. Registration
 creates only a pre-organization Identity session; it grants no tenant, owner,
-customer or booking permission. It uses the same per-user database lock as the
-legacy link, customer-provisioning and session-exchange paths. If a Telegram
-account already has a legacy tenant link, global registration is rejected and
-legacy login remains available; accounts are never silently merged. Do not
-enable this candidate until its exact-head CI and security review pass.
+customer or booking permission. Linking requires a live Identity session from a
+configured provider plus a fresh Telegram proof in one transaction. The API
+runtime currently registers Telegram sessions only; other providers must be
+explicitly added to its session-provider registry. Both paths use the same
+per-user database lock as legacy link, customer-provisioning and session-exchange
+paths. If a Telegram account already has a legacy tenant link, global
+registration/linking is rejected and legacy login remains available; accounts
+are never silently merged. Self-service unlink and legacy-account migration are
+not implemented. Do not enable this candidate until its exact-head CI and
+security review pass.
 
 Only the exact HMAC-verified owner can exchange a signed proof for a Cookie
 bearer; a session expires in 900 seconds and the initial proof must be no older
 than 300 seconds. Store the returned bearer in memory, not localStorage or URL.
 The bearer-only `POST /v1/auth/logout` route revokes its exact Cookie session and returns 204 without exposing tenant metadata. A new Telegram session needs a fresh launch proof; reusing previous initData
-intentionally fails as replay. User self-service linking, phone OTP, multi-
-tenant picker, secure delivery UX/cookie/CSRF, distributed rate limits,
+intentionally fails as replay. Phone OTP, multi-tenant picker, secure delivery
+UX/cookie/CSRF, distributed rate limits,
 alerting and consent/deletion runbooks remain unfinished.
 
 ## Evidence

@@ -16,7 +16,10 @@ import {
   lockTelegramUser,
   telegramUserFingerprint,
 } from "../../../packages/platform-identity/src/telegram-links.js";
-import { exchangeSelfServiceTelegram } from "../../../packages/platform-identity/src/telegram-self-registration.js";
+import {
+  exchangeSelfServiceTelegram,
+  linkSelfServiceTelegram,
+} from "../../../packages/platform-identity/src/telegram-self-registration.js";
 
 const TEST_BOT = "123456789:synthetic_NOT_A_REAL_BOT_TOKEN";
 
@@ -413,6 +416,180 @@ test(
           [identities],
         );
       }
+      await pool.end();
+    }
+  },
+);
+
+test(
+  "a verified Telegram credential links only to a live provider session's Identity",
+  { skip: !process.env.TEST_DATABASE_URL },
+  async () => {
+    const pool = new Pool({
+      connectionString: process.env.TEST_DATABASE_URL,
+      application_name: "cookie-telegram-identity-link-integration",
+      max: 4,
+    });
+    const secret = Buffer.alloc(32, 0x67);
+    const verifier = createTelegramMiniAppProofVerifier({
+      botToken: TEST_BOT,
+      maxAgeSeconds: 300,
+    });
+    const transaction = <T>(work: Parameters<typeof runSqlTransaction<T>>[1]) =>
+      runSqlTransaction(pool, work);
+    const primaryIdentityId = randomUUID();
+    const otherIdentityId = randomUUID();
+    const users = [
+      randomInt(100000000, 999999999),
+      randomInt(100000000, 999999999),
+      randomInt(100000000, 999999999),
+    ];
+    const fingerprints = users.map((user) =>
+      telegramUserFingerprint(secret, String(user)),
+    );
+    const telegramSessions = new IdentitySessions(
+      pool,
+      "cookie-telegram",
+      "cookie-web",
+      900,
+    );
+    const emailSessions = new IdentitySessions(
+      pool,
+      "cookie-email",
+      "cookie-web",
+      900,
+    );
+    try {
+      await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid),($2::uuid)",
+        [primaryIdentityId, otherIdentityId],
+      );
+      const emailSession =
+        await emailSessions.issueForVerifiedIdentity(primaryIdentityId);
+      const otherSession =
+        await emailSessions.issueForVerifiedIdentity(otherIdentityId);
+      const linkedProof = signedInitData(TEST_BOT, users[0]!);
+      const providers = [telegramSessions, emailSessions];
+
+      assert.equal(
+        await linkSelfServiceTelegram(
+          transaction,
+          providers,
+          verifier,
+          secret,
+          linkedProof,
+          emailSession.token,
+        ),
+        true,
+      );
+      assert.equal(
+        await linkSelfServiceTelegram(
+          transaction,
+          providers,
+          verifier,
+          secret,
+          linkedProof,
+          emailSession.token,
+        ),
+        false,
+      );
+      assert.equal(
+        await exchangeSelfServiceTelegram(
+          transaction,
+          verifier,
+          secret,
+          linkedProof,
+          false,
+          900,
+        ),
+        null,
+      );
+
+      const freshProof = signedInitData(TEST_BOT, users[0]!);
+      const telegramLogin = await exchangeSelfServiceTelegram(
+        transaction,
+        verifier,
+        secret,
+        freshProof,
+        false,
+        900,
+      );
+      assert.ok(telegramLogin);
+      assert.equal(
+        await telegramSessions.resolve(telegramLogin.token),
+        primaryIdentityId,
+      );
+
+      assert.equal(
+        await linkSelfServiceTelegram(
+          transaction,
+          providers,
+          verifier,
+          secret,
+          signedInitData(TEST_BOT, users[0]!),
+          otherSession.token,
+        ),
+        false,
+      );
+      assert.equal(
+        await linkSelfServiceTelegram(
+          transaction,
+          providers,
+          verifier,
+          secret,
+          signedInitData(TEST_BOT, users[1]!),
+          emailSession.token,
+        ),
+        false,
+      );
+      await emailSessions.revoke(emailSession.token);
+      assert.equal(
+        await linkSelfServiceTelegram(
+          transaction,
+          providers,
+          verifier,
+          secret,
+          signedInitData(TEST_BOT, users[2]!),
+          emailSession.token,
+        ),
+        false,
+      );
+
+      const mapping = await pool.query<{ identity_id: string }>(
+        `SELECT identity_id::text
+           FROM cookie_identity.global_telegram_identities
+          WHERE telegram_user_hmac_sha256=$1::bytea`,
+        [fingerprints[0]],
+      );
+      assert.equal(mapping.rows[0]?.identity_id, primaryIdentityId);
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT 1 FROM cookie_identity.memberships WHERE identity_id=$1::uuid",
+            [primaryIdentityId],
+          )
+        ).rowCount,
+        0,
+      );
+    } finally {
+      await pool.query(
+        "DELETE FROM cookie_identity.global_telegram_exchanges WHERE identity_id=ANY($1::uuid[])",
+        [[primaryIdentityId, otherIdentityId]],
+      );
+      await pool.query(
+        `DELETE FROM cookie_identity.global_telegram_identities
+          WHERE telegram_user_hmac_sha256 IN ($1::bytea,$2::bytea,$3::bytea)`,
+        fingerprints,
+      );
+      await pool.query(
+        "DELETE FROM cookie_identity.identity_sessions WHERE identity_id=ANY($1::uuid[])",
+        [[primaryIdentityId, otherIdentityId]],
+      );
+      await pool.query(
+        "DELETE FROM cookie_identity.identities WHERE id=ANY($1::uuid[])",
+        [[primaryIdentityId, otherIdentityId]],
+      );
       await pool.end();
     }
   },

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -61,6 +61,22 @@ export class IdentitySessions {
       `SELECT identity_id::text FROM cookie_identity.identity_sessions
        WHERE token_sha256=$1 AND issuer=$2 AND audience=$3
          AND revoked_at IS NULL AND expires_at>clock_timestamp()`,
+      [digest(token), this.issuer, this.audience],
+    );
+    return result.rows[0]?.identity_id ?? null;
+  }
+
+  /** Lock one valid Identity session for protected work in the caller transaction. */
+  async resolveWithinTransaction(
+    client: PoolClient,
+    token: unknown,
+  ): Promise<string | null> {
+    if (typeof token !== "string" || !TOKEN.test(token)) return null;
+    const result = await client.query<{ identity_id: string }>(
+      `SELECT identity_id::text FROM cookie_identity.identity_sessions
+       WHERE token_sha256=$1 AND issuer=$2 AND audience=$3
+         AND revoked_at IS NULL AND expires_at>clock_timestamp()
+       FOR SHARE`,
       [digest(token), this.issuer, this.audience],
     );
     return result.rows[0]?.identity_id ?? null;

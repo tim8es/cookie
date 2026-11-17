@@ -70,6 +70,7 @@ export function createLiveTelegramIdentityAuth(
   env: NodeJS.ProcessEnv,
   pool: Pool,
   legacySessions?: PostgresOpaqueTelegramSessions,
+  additionalIdentitySessionProviders: readonly IdentitySessions[] = [],
 ): TelegramIdentityAuthDependencies | null {
   const flag = env.COOKIE_TELEGRAM_SELF_REGISTRATION_MODE;
   if (flag === undefined) return null;
@@ -100,16 +101,20 @@ export function createLiveTelegramIdentityAuth(
     maxAgeSeconds: 300,
     maxFutureSkewSeconds: 30,
   });
+  const telegramIdentitySessions = new IdentitySessions(
+    pool,
+    "cookie-telegram",
+    "cookie-web",
+    900,
+  );
   return {
     pool,
     verifier,
     fingerprintSecret: Buffer.from(secretHex, "hex"),
-    identitySessions: new IdentitySessions(
-      pool,
-      "cookie-telegram",
-      "cookie-web",
-      900,
-    ),
+    identitySessionProviders: [
+      telegramIdentitySessions,
+      ...additionalIdentitySessionProviders,
+    ],
     legacySessions,
     ttlSeconds: 900,
   };

@@ -15,6 +15,9 @@ export { IdentitySessions } from "./identity-sessions.js";
 export { createTelegramMiniAppProofVerifier } from "./telegram-init-data.js";
 export { createPostgresVerifiedTelegramLinkResolver } from "./telegram-links.js";
 export { lockTelegramUser } from "./telegram-links.js";
-export { exchangeSelfServiceTelegram } from "./telegram-self-registration.js";
+export {
+  exchangeSelfServiceTelegram,
+  linkSelfServiceTelegram,
+} from "./telegram-self-registration.js";
 export type { TelegramMiniAppProofVerifier } from "./telegram-init-data.js";
 export { telegramUserFingerprint } from "./telegram-links.js";
