@@ -1,0 +1,20 @@
+# Dedicated manual engineering database. Never attach a real/customer DB.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      POSTGRES_USER: cookie
+      POSTGRES_DB: cookie_manual
+      POSTGRES_PASSWORD: ${COOKIE_MANUAL_DB_PASSWORD:?Use scripts/local-staging.mjs}
+    ports:
+      - "127.0.0.1:${COOKIE_MANUAL_DB_PORT:?Use scripts/local-staging.mjs}:5432"
+    volumes:
+      - data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cookie -d cookie_manual"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  data:

@@ -7,21 +7,26 @@
   export let screen: Screen;
   export let preview: ViewState;
   export let canCreateBooking: boolean;
+  export let demoMode = true;
+  export let onLogout: (() => void) | undefined = undefined;
   export let onNavigate: (next: Screen) => void;
 
   $: displayTitle = screens.find((item) => item.id === screen)?.label ?? "Cookie";
 </script>
 
+{#if demoMode}
 <div class="demo-ribbon">
   <span class="ribbon-pulse" aria-hidden="true"></span>
   Демо: изменения сохраняются только в этой вкладке
 </div>
+{/if}
 <header class="topbar">
   <div class="topbar-title">
     <span class="breadcrumb">Пространство <ArrowRight size={13} aria-hidden="true" /></span>
     <strong>{displayTitle}</strong>
   </div>
   <div class="topbar-actions">
+    {#if demoMode}
     <label class="preview-control">
       <SlidersHorizontal size={15} aria-hidden="true"/>
       <span>Состояние</span>
@@ -38,5 +43,8 @@
       <Plus size={17} strokeWidth={2} aria-hidden="true" />
       <span>Новая запись</span>
     </Button>
+    {:else}
+      <Button type="button" variant="outline" onclick={onLogout}>Выйти</Button>
+    {/if}
   </div>
 </header>

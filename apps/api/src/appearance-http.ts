@@ -28,6 +28,7 @@ export interface RealAppearanceRouteDependencies {
   readonly pool: Pool;
   readonly verifier: BearerSessionVerifier;
   readonly assets?: TenantAssetOwnership;
+  readonly draftOnly?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -49,7 +50,12 @@ function revision(value: unknown, allowZero: boolean): value is number {
  */
 export function registerRealAppearanceRoutes(
   app: FastifyInstance,
-  { pool, verifier, assets }: RealAppearanceRouteDependencies,
+  {
+    pool,
+    verifier,
+    assets,
+    draftOnly = false,
+  }: RealAppearanceRouteDependencies,
 ): void {
   async function authenticated(
     authorization: string | undefined,
@@ -170,6 +176,9 @@ export function registerRealAppearanceRoutes(
       }
     },
   );
+
+  // Runtime draft editing does not confer the publication entitlement.
+  if (draftOnly) return;
 
   app.post<{ Params: TenantParams; Body: PublishBody }>(
     "/v1/organizations/:tenantId/appearance/publish",

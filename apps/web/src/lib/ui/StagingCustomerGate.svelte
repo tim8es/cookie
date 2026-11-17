@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import StagingCustomerOffers from "./StagingCustomerOffers.svelte";
+  import StagingCustomerHistory from "./StagingCustomerHistory.svelte";
+  import type { OwnBookingHistory } from "../staging-customer-history-api";
   import { Button } from "../components/ui/button/index.js";
   import * as Card from "../components/ui/card/index.js";
   import { authenticateTelegramCustomer, loadTelegramInitData, revokeTelegramOwnerSession, watchOwnerSessionExpiry, type VerifiedCustomerSession } from "../owner-auth";
@@ -8,6 +10,12 @@
   let phase: "loading" | "unavailable" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" = "loading";
   let stopExpiry: (() => void) | null = null;
   let mounted = true;
+  let historyVersion = 0;
+  let historySnapshot: OwnBookingHistory | null = null;
+  function created(): void {
+    historySnapshot = null;
+    historyVersion++;
+  }
   function expire(): void {
     session = null;
     phase = "error";
@@ -44,7 +52,7 @@
   {#if phase === "verified" && session}
     <h1>Вход клиента подтверждён</h1>
     <p>Сервер подтвердил вашу клиентскую учётную запись в тестовой организации. Это не даёт доступа к кабинету владельца.</p>
-    <p>Создание и изменение записей пока недоступны. Реальные клиентские данные не используются.</p>
+    <p>Доступные операции определяет сервер. Реальные клиентские данные не используются.</p>
     <Button type="button" onclick={() => void logout()}>Выйти</Button>
   {:else if phase === "loading"}
     <h1>Проверяем вход клиента</h1>
@@ -64,5 +72,8 @@
 </Card.Root>
 
 {#if phase === "verified" && session}
-  <StagingCustomerOffers {session} onUnauthorized={expire} />
+  <StagingCustomerOffers {session} {historySnapshot} onUnauthorized={expire} onConfirmed={created} />
+  {#key historyVersion}
+    <StagingCustomerHistory {session} onUnauthorized={expire} onHistory={value => historySnapshot = value} />
+  {/key}
 {/if}

@@ -15,6 +15,7 @@ export type BookingAttemptState<Receipt, Slot> =
       phase: "error";
       reason:
         | TransportFailureKind
+        | "outcome-unknown"
         | "unverified-response"
         | "unverified-conflict"
         | "idempotency-key-reused"
@@ -34,7 +35,7 @@ export interface BookingAttemptPort<Selection, Receipt, Slot> {
    */
   create(selection: Selection, idempotencyKey: string): Promise<unknown>;
   /** Return null for anything other than a schema-validated Confirmed reply. */
-  verifyConfirmed(response: unknown): Receipt | null;
+  verifyConfirmed(response: unknown, selection: Selection): Receipt | null;
   /**
    * A generic HTTP 409 is not enough: the reviewed backend contract may use
    * 409 both for BOOKING_CONFLICT and IDEMPOTENCY_KEY_REUSED. Only a verified
@@ -54,6 +55,7 @@ type ActiveAttempt<Selection> = {
 export class BookingAttempt<Selection, Receipt, Slot> {
   private state: BookingAttemptState<Receipt, Slot> = { phase: "idle" };
   private active: ActiveAttempt<Selection> | null = null;
+  private unresolved = false;
   private running: Promise<BookingAttemptState<Receipt, Slot>> | null = null;
 
   constructor(
@@ -92,7 +94,7 @@ export class BookingAttempt<Selection, Receipt, Slot> {
    * re-issued with a fresh key. Reconciliation is an integration concern.
    */
   reset(): boolean {
-    if (this.running) return false;
+    if (this.running || this.unresolved) return false;
     if (
       this.state.phase === "error" &&
       (this.state.retryable ||
@@ -127,10 +129,11 @@ export class BookingAttempt<Selection, Receipt, Slot> {
       );
       let verified: Receipt | null = null;
       try {
-        verified = this.port.verifyConfirmed(response);
+        verified = this.port.verifyConfirmed(response, attempt.selection);
       } catch {
         // Invalid or Pending responses cannot become success in the UI.
       }
+      this.unresolved = verified === null || verified === undefined;
       this.state =
         verified === null || verified === undefined
           ? {
@@ -147,7 +150,14 @@ export class BookingAttempt<Selection, Receipt, Slot> {
         } catch {
           // A malformed or unsupported error body is not a verified slot conflict.
         }
-        if (classification === "slot-unavailable") {
+        if (classification === "slot-unavailable" && this.unresolved) {
+          // A later rejection is not proof that the first request failed.
+          this.state = {
+            phase: "error",
+            reason: "outcome-unknown",
+            retryable: false,
+          };
+        } else if (classification === "slot-unavailable") {
           let slots: readonly Slot[] = [];
           let refreshFailed = false;
           try {
@@ -170,7 +180,9 @@ export class BookingAttempt<Selection, Receipt, Slot> {
         reason instanceof TransportFailure &&
         (reason.kind === "unauthenticated" || reason.kind === "forbidden")
       ) {
-        this.state = { phase: "denied", reason: reason.kind };
+        this.state = this.unresolved
+          ? { phase: "error", reason: "outcome-unknown", retryable: false }
+          : { phase: "denied", reason: reason.kind };
       } else {
         const kind =
           reason instanceof TransportFailure ? reason.kind : "unexpected";
@@ -180,7 +192,14 @@ export class BookingAttempt<Selection, Receipt, Slot> {
           kind === "server" ||
           kind === "rate-limited" ||
           kind === "invalid-response";
-        this.state = { phase: "error", reason: kind, retryable };
+        // Generic HTTP errors and unexpected exceptions are not a proof
+        // that a mutation did not commit. Keep the original key reserved.
+        this.unresolved = true;
+        this.state = {
+          phase: "error",
+          reason: retryable ? kind : "outcome-unknown",
+          retryable,
+        };
       }
     }
     return this.state;

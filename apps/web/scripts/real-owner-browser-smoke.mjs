@@ -114,6 +114,18 @@ async function stopBrowser(child) {
 }
 
 async function button(cdp, label) {
+  // Use the same reachable desktop/mobile owner navigation as the user.
+  const ownerScreens = { "Обзор": "home", "Услуги": "services", "Мастера": "staff", "Филиалы": "locations", "Расписание": "schedule", "Календарь": "calendar", "Оформление": "appearance", "Онлайн-запись": "booking" };
+  const target = ownerScreens[label];
+  if (target && await evaluate(cdp, "Boolean(document.querySelector(\'.real-owner-nav\'))")) {
+    const selector = JSON.stringify(".real-owner-nav button[data-screen=" + target + "]");
+    const found = await evaluate(cdp, "(() => {const find=()=>[...document.querySelectorAll(" + selector + ")].find(el=>el.getClientRects().length&&!el.disabled);const b=find();if(b){b.click();return true;}const more=document.querySelector(\'.real-owner-nav .mobile-nav button[aria-controls=mobile-more-panel]\');if(more?.getClientRects().length){more.click();return false;}return false;})()");
+    if (!found) {
+      await requireDom(cdp, "mobile navigation section " + target, "[...document.querySelectorAll(" + selector + ")].some(el=>el.getClientRects().length&&!el.disabled)");
+      await evaluate(cdp, "[...document.querySelectorAll(" + selector + ")].find(el=>el.getClientRects().length&&!el.disabled).click()");
+    }
+    return;
+  }
   // Actual rendered button + native click, no direct function invocation.
   const clicked = await evaluate(cdp,
     "(() => {const b=[...document.querySelectorAll('button')].find(el=>el.getClientRects().length&&!el.disabled&&el.textContent.trim()===" +
@@ -264,6 +276,7 @@ async function main() {
   let browserData;
   let api, chrome, cdp;
   const errors = [], external = [], responses = [];
+  let customerCreateRequests = 0;
   try {
     const owner = await seed(pool, botToken, userHashSecret, userId);
     const port = await freePort();
@@ -320,6 +333,7 @@ async function main() {
     await cdp.send("Network.setBlockedURLs", { urls: ["https://*"] });
     cdp.onEvent("Runtime.exceptionThrown", () => errors.push("uncaught page exception"));
     cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
+      if (request.url.startsWith(origin) && request.method === "POST" && new URL(request.url).pathname.endsWith("/staging-customer-bookings")) customerCreateRequests++;
       if (/^https?:/.test(request.url) && !request.url.startsWith(origin)) {
         external.push("external request blocked");
       }
@@ -339,6 +353,23 @@ async function main() {
     script = await load(cdp, origin, signedProof(botToken, userId), script);
     await requireDom(cdp, "authenticated real services",
       "document.querySelector('.real-owner-nav') && document.body.innerText.includes('Услуги салона')");
+    await requireDom(cdp, "shared owner shell without demo controls", "document.querySelector(\'.verified-owner-shell[data-cookie-mode=api] .sidebar\') && !document.querySelector(\'.demo-ribbon, .preview-control, .onboarding-header\')");
+    await button(cdp, "Оформление");
+    await requireDom(cdp, "real appearance draft loaded", "document.querySelector('.brand-editor') && document.body.innerText.includes('Только черновик') && document.querySelector('.brand-presets button')");
+    await checkWidth(cdp, "real appearance 375px");
+    await evaluate(cdp, "[...document.querySelectorAll('.brand-presets button')].find(b=>b.textContent.includes('Ботаника')).click()");
+    await button(cdp, "Сохранить черновик");
+    await requireDom(cdp, "appearance saved on server", "document.body.innerText.includes('Черновик сохранён на сервере') && document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника')");
+    const brand = await pool.query("SELECT draft_revision::text, draft_config, published_revision FROM cookie_appearance.organization_branding WHERE tenant_id=$1::uuid", [owner.tenantId]);
+    assert.equal(brand.rows[0]?.draft_revision, "1");
+    assert.equal(brand.rows[0]?.draft_config.presetId, "forest");
+    assert.equal(brand.rows[0]?.published_revision, null);
+    await button(cdp, "Услуги");
+    await button(cdp, "Оформление");
+    await requireDom(cdp, "persisted appearance reloaded", "document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника') && [...document.querySelectorAll('.brand-actions button')].find(b=>b.textContent.trim()==='Опубликовать')?.disabled && [...document.querySelectorAll('.brand-assets input')].every(i=>i.matches(':disabled'))");
+    await button(cdp, "Онлайн-запись");
+    await requireDom(cdp, "owner booking unavailable without customer identity", "document.querySelector('h1')?.textContent==='Онлайн-запись' && document.body.innerText.includes('Клиентская запись — отдельный вход') && !document.querySelector('.booking-form')");
+    await button(cdp, "Услуги");
     await waitForm(cdp, "real service form");
     await checkWidth(cdp, "real services 375px");
     await checkLabeledControls(cdp, "real service form");
@@ -578,7 +609,104 @@ async function main() {
     assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0);
     assert.deepEqual(errors, [], "Unexpected browser runtime errors after expiry");
     assert.deepEqual(external, [], "Unexpected external requests after expiry");
-    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog and slot selection without Booking creation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
+    // The previous browser path proved default-off. Restart with the separate
+    // write switch only in this isolated synthetic CI process.
+    await stopServer(api);
+    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60" }, origin);
+    script = await load(cdp, origin+"?surface=customer-staging", signedProof(botToken,customerUserId), script);
+    await requireDom(cdp,"write-enabled customer catalog","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
+    for(let i=0;i<3;i++){
+      await requireDom(cdp,"booking selection "+i,"document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.options.length===2 && !document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.disabled");
+      await evaluate(cdp,"(()=>{const s=document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"];s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    }
+    await fill(cdp,panel+" input[type=date]",date,"change");
+    await button(cdp,"Найти свободное время");
+    await requireDom(cdp,"slots before actual booking","document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+")");
+    await evaluate(cdp,"document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+").click()");
+    await requireDom(cdp,"real write button","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Записаться'&&!b.disabled)");
+    await button(cdp,"Записаться");
+    await requireDom(cdp,"server-confirmed real booking","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Создание записи подтверждено') && document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Фактическая стоимость')");
+    const realBooking = await pool.query(
+      "SELECT b.id::text,b.status,b.price_kopecks_snapshot::text AS price FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1::uuid",
+      [owner.tenantId],
+    );
+    assert.equal(realBooking.rowCount,1);
+    assert.equal(realBooking.rows[0].status,"Confirmed");
+    assert.equal(realBooking.rows[0].price,"125050");
+    const historyPanel = '[aria-label="Мои записи"]';
+    const historyContains = "document.querySelector("+JSON.stringify(historyPanel)+")?.innerText.includes("+JSON.stringify(realBooking.rows[0].id)+")";
+    await requireDom(cdp,"own persisted booking in cabinet",historyContains);
+    await button(cdp,"Обновить записи");
+    await requireDom(cdp,"server history after refresh",historyContains);
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-history")));
+    assert.ok(responses.some(r=>r.status===201&&r.path.endsWith("/staging-customer-bookings")));
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0,"Confirmed attempt marker must be removed");
+    for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"confirmed customer booking "+width+"px");
+    }
+    await requireDom(cdp,"real cancel action","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)");
+    await button(cdp,"Отменить запись");
+    await button(cdp,"Подтвердить отмену");
+    await requireDom(cdp,"confirmed persisted cancellation","document.querySelector("+JSON.stringify(historyPanel)+")?.innerText.includes('Отменена клиентом')");
+    const realCancelled=await pool.query("SELECT status FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",[owner.tenantId,realBooking.rows[0].id]);
+    assert.deepEqual(realCancelled.rows,[{status:"CancelledByClient"}]);
+    const receiptCard = "document.querySelector("+JSON.stringify(panel+" .customer-choice-summary")+")";
+    await requireDom(cdp,"creation receipt no longer presents cancelled booking as active",
+      receiptCard+"?.innerText.includes('Запись изменена после создания') && !"+receiptCard+"?.innerText.includes('Время при создании') && !"+receiptCard+"?.innerText.includes('Статус на момент обновления списка: подтверждена')");
+    await button(cdp,"Создать ещё запись");
+    await requireDom(cdp,"new selection returns to live catalog after cancellation",
+      "document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2 && !"+receiptCard);
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0,"Cancellation must not create a pending Create marker");
+    for(let i=0;i<3;i++){
+      await requireDom(cdp,"recovery selection "+i,"document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.options.length===2 && !document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.disabled");
+      await evaluate(cdp,"(()=>{const s=document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"];s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    }
+    await fill(cdp,panel+" input[type=date]",date,"change");
+    await button(cdp,"Найти свободное время");
+    await requireDom(cdp,"slots before lost response","document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+")");
+    await evaluate(cdp,"document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+").click()");
+    await requireDom(cdp,"second write available","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Записаться'&&!b.disabled)");
+    // Drop the real response only after the server has returned 201.
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);window.fetch=async(input,init)=>{const response=await send(input,init);if(init?.method==='POST'&&String(input).endsWith('/staging-customer-bookings')&&response.status===201)throw new Error('synthetic lost response');return response;};})()");
+    await button(cdp,"Записаться");
+    await requireDom(cdp,"uncertain actual committed result","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Статус записи не подтверждён')");
+    assert.equal(await evaluate(cdp,"sessionStorage.length"),1);
+    const beforeRecovery=await pool.query("SELECT b.id::text FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1 AND b.status='Confirmed'",[owner.tenantId]);
+    assert.equal(beforeRecovery.rowCount,1,"Real second booking must already be committed");
+    const successfulCreates=responses.filter(r=>r.status===201&&r.path.endsWith("/staging-customer-bookings")).length;
+    const recoveryPostCount = customerCreateRequests;
+    const recoveryProjection = () => pool.query(
+      `SELECT
+         (SELECT count(*)::int FROM cookie_booking.bookings WHERE tenant_id=$1::uuid) AS bookings,
+         (SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND operation='booking.create') AS receipts,
+         (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.confirmed') AS events`,
+      [owner.tenantId],
+    );
+    const beforeProjection = await recoveryProjection();
+    script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script);
+    await requireDom(cdp,"reload retains unresolved marker","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Статус предыдущей попытки неизвестен')");
+    await button(cdp,"Найти подтверждение записи");
+    await requireDom(cdp,"receipt recovered by same key","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Восстановлено по исходной операции')&&document.querySelector("+JSON.stringify(panel)+")?.innerText.includes("+JSON.stringify(beforeRecovery.rows[0].id)+")");
+    assert.equal(await evaluate(cdp,"sessionStorage.length"),0);
+    assert.equal(responses.filter(r=>r.status===201&&r.path.endsWith("/staging-customer-bookings")).length,successfulCreates);
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-bookings/receipt")));
+    const afterRecovery=await pool.query("SELECT b.id::text FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1 AND b.status='Confirmed'",[owner.tenantId]);
+    assert.deepEqual(afterRecovery.rows,beforeRecovery.rows);
+    assert.equal(customerCreateRequests,recoveryPostCount,"Receipt recovery must not send any Create POST, including failed requests");
+    assert.deepEqual((await recoveryProjection()).rows,beforeProjection.rows,"Recovery must leave durable bookings, create receipts and outbox counts unchanged");
+    await checkWidth(cdp,"cancelled customer booking");
+    assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
+    assert.deepEqual(external, [], "Unexpected external requests during booking");
+    const demoApiRequests = [];
+    cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
+      if (request.url.startsWith(origin + "v1/")) demoApiRequests.push(new URL(request.url).pathname);
+    });
+    script = await load(cdp, origin + "demo", signedProof(botToken, userId), script);
+    await requireDom(cdp, "explicit demo route uses demo shell even in runtime build", "document.querySelector(\'[data-cookie-mode=mock] .welcome-form\')");
+    assert.deepEqual(demoApiRequests, [], "Demo called real API");
+    assert.deepEqual(external, [], "Demo made external requests");
+    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation and own cancellation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
   } finally {
     if (cdp) cdp.close();
     try {

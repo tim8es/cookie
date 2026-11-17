@@ -44,7 +44,7 @@ function freePort() {
 
 function staticResponse(request, response) {
   const url = new URL(request.url || "/", "http://127.0.0.1");
-  const pathname = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+  const pathname = ["/", "/demo", "/demo/"].includes(url.pathname) ? "index.html" : url.pathname.slice(1);
   // Only compiled Vite assets. Reject traversal and unexpected paths.
   if (!/^[a-zA-Z0-9._/-]+$/.test(pathname) || pathname.split("/").includes("..")) {
     response.writeHead(403).end();
@@ -378,7 +378,7 @@ async function scenario(cdp, origin, width, height) {
     width, height, deviceScaleFactor: 1, mobile: false,
     screenWidth: width, screenHeight: height,
   });
-  await cdp.send("Page.navigate", { url: origin + "?browser-smoke=" + name });
+  await cdp.send("Page.navigate", { url: origin + "demo?browser-smoke=" + name });
   await requireDom(cdp, name + " onboarding", "document.querySelector('.welcome-form')");
   await requireDom(cdp, name + " standalone welcome header", "document.querySelector('.onboarding-header') && !document.querySelector('.sidebar')");
   const dimensions = await evaluate(cdp, "({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio })");
