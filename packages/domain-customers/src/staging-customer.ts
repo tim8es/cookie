@@ -117,7 +117,12 @@ export async function provisionStagingCustomer(
     );
     await client.query(
       "INSERT INTO cookie_identity.roles(tenant_id,id,base_type,display_name,permissions) VALUES($1::uuid,$2::uuid,'client','Staging Client',ARRAY[$3::text,$4::text])",
-      [input.tenantId, roleId, CUSTOMER_CONTEXT_PERMISSION, CUSTOMER_OFFERS_PERMISSION],
+      [
+        input.tenantId,
+        roleId,
+        CUSTOMER_CONTEXT_PERMISSION,
+        CUSTOMER_OFFERS_PERMISSION,
+      ],
     );
     await client.query(
       "INSERT INTO cookie_identity.role_assignments(tenant_id,id,identity_id,role_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid)",

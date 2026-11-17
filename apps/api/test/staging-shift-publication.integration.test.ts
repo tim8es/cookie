@@ -113,19 +113,60 @@ test(
       const headers = {
         authorization: "Bearer " + exchange.json().accessToken,
       };
-      const customerProof=proof(19190049);
-      const clientContext=await provisionStagingCustomer(pool,verifier,SECRET,{tenantId:owner.tenantId,rawInitData:customerProof,consentConfirmed:true});
-      const clientLogin=await app.inject({method:"POST",url:"/v1/auth/telegram/exchange",payload:{initData:customerProof}});
-      assert.equal(clientLogin.statusCode,201);
-      const clientHeaders={authorization:"Bearer "+clientLogin.json().accessToken};
-      const offersUrl=prefix+"/staging-customer-offers";
-      const clientOffers=()=>app.inject({method:"GET",url:offersUrl,headers:clientHeaders});
-      assert.equal((await clientOffers()).statusCode,200);
-      assert.deepEqual((await clientOffers()).json(),{offers:[]});
-      assert.equal((await app.inject({method:"GET",url:offersUrl,headers})).statusCode,403);
-      assert.equal((await app.inject({method:"GET",url:offersUrl})).statusCode,401);
-      assert.equal((await disabled.inject({method:"GET",url:offersUrl,headers:clientHeaders})).statusCode,404);
-      assert.equal((await app.inject({method:"GET",url:offersUrl.replace(owner.tenantId,randomUUID()),headers:clientHeaders})).statusCode,403);
+      const customerProof = proof(19190049);
+      const clientContext = await provisionStagingCustomer(
+        pool,
+        verifier,
+        SECRET,
+        {
+          tenantId: owner.tenantId,
+          rawInitData: customerProof,
+          consentConfirmed: true,
+        },
+      );
+      const clientLogin = await app.inject({
+        method: "POST",
+        url: "/v1/auth/telegram/exchange",
+        payload: { initData: customerProof },
+      });
+      assert.equal(clientLogin.statusCode, 201);
+      const clientHeaders = {
+        authorization: "Bearer " + clientLogin.json().accessToken,
+      };
+      const offersUrl = prefix + "/staging-customer-offers";
+      const clientOffers = () =>
+        app.inject({ method: "GET", url: offersUrl, headers: clientHeaders });
+      assert.equal((await clientOffers()).statusCode, 200);
+      assert.deepEqual((await clientOffers()).json(), { offers: [] });
+      assert.equal(
+        (await app.inject({ method: "GET", url: offersUrl, headers }))
+          .statusCode,
+        403,
+      );
+      assert.equal(
+        (await app.inject({ method: "GET", url: offersUrl })).statusCode,
+        401,
+      );
+      assert.equal(
+        (
+          await disabled.inject({
+            method: "GET",
+            url: offersUrl,
+            headers: clientHeaders,
+          })
+        ).statusCode,
+        404,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url: offersUrl.replace(owner.tenantId, randomUUID()),
+            headers: clientHeaders,
+          })
+        ).statusCode,
+        403,
+      );
       const empty = await app.inject({ method: "GET", url, headers });
       assert.equal(empty.statusCode, 200);
       assert.equal(empty.headers["cache-control"], "no-store");
@@ -213,13 +254,43 @@ test(
         403,
       );
       assert.equal((await preview()).statusCode, 409);
-      const clientSlotsUrl=previewUrl.replace("/staging-availability?","/staging-customer-slots?");
-      const clientSlots=()=>app.inject({method:"GET",url:clientSlotsUrl,headers:clientHeaders});
-      assert.equal((await clientSlots()).statusCode,409);
-      assert.deepEqual((await clientOffers()).json(),{offers:[]});
-      assert.equal((await app.inject({method:"GET",url:clientSlotsUrl,headers})).statusCode,403);
-      assert.equal((await app.inject({method:"GET",url:clientSlotsUrl+"&customerId="+clientContext.customerId,headers:clientHeaders})).statusCode,400);
-      assert.equal((await app.inject({method:"GET",url:clientSlotsUrl.replace(date,"2026-02-30"),headers:clientHeaders})).statusCode,400);
+      const clientSlotsUrl = previewUrl.replace(
+        "/staging-availability?",
+        "/staging-customer-slots?",
+      );
+      const clientSlots = () =>
+        app.inject({
+          method: "GET",
+          url: clientSlotsUrl,
+          headers: clientHeaders,
+        });
+      assert.equal((await clientSlots()).statusCode, 409);
+      assert.deepEqual((await clientOffers()).json(), { offers: [] });
+      assert.equal(
+        (await app.inject({ method: "GET", url: clientSlotsUrl, headers }))
+          .statusCode,
+        403,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url: clientSlotsUrl + "&customerId=" + clientContext.customerId,
+            headers: clientHeaders,
+          })
+        ).statusCode,
+        400,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url: clientSlotsUrl.replace(date, "2026-02-30"),
+            headers: clientHeaders,
+          })
+        ).statusCode,
+        400,
+      );
 
       const publishUrl = prefix + "/staging-shift-publication";
       const key = randomUUID();
@@ -276,14 +347,29 @@ test(
         },
       });
       assert.equal(activated.statusCode, 201);
-      const offers=await clientOffers();
-      assert.equal(offers.statusCode,200);
-      assert.equal(offers.headers["cache-control"],"no-store");
-      assert.deepEqual(offers.json(),{offers:[{
-        locationId:owner.locationId,locationName:"Synthetic branch",staffId,staffName:"Synthetic planner staff",
-        serviceId,serviceName:"Synthetic service",timeZone:"Europe/Moscow",durationMinutes:60,basePriceKopecks:"100000",
-      }]});
-      assert.deepEqual((await clientSlots()).json(),{localDate:date,timeZone:"Europe/Moscow",slots:[]});
+      const offers = await clientOffers();
+      assert.equal(offers.statusCode, 200);
+      assert.equal(offers.headers["cache-control"], "no-store");
+      assert.deepEqual(offers.json(), {
+        offers: [
+          {
+            locationId: owner.locationId,
+            locationName: "Synthetic branch",
+            staffId,
+            staffName: "Synthetic planner staff",
+            serviceId,
+            serviceName: "Synthetic service",
+            timeZone: "Europe/Moscow",
+            durationMinutes: 60,
+            basePriceKopecks: "100000",
+          },
+        ],
+      });
+      assert.deepEqual((await clientSlots()).json(), {
+        localDate: date,
+        timeZone: "Europe/Moscow",
+        slots: [],
+      });
       assert.deepEqual((await preview()).json(), {
         localDate: date,
         timeZone: "Europe/Moscow",
@@ -370,21 +456,66 @@ test(
         occupiedUntil: string;
       }>;
       assert.equal(slots.length, 15);
-      const clientResult=await clientSlots();
-      assert.equal(clientResult.statusCode,200);
-      assert.equal(clientResult.headers["cache-control"],"no-store");
-      assert.deepEqual(clientResult.json(),{localDate:date,timeZone:"Europe/Moscow",slots:slots.map(({startAt,endAt})=>({startAt,endAt}))});
-      assert.equal((await clientOffers()).json().offers.length,1,"plain active placement has no grant receipt");
-      assert.equal((await app.inject({method:"GET",url:clientSlotsUrl.replace(owner.locationId,other),headers:clientHeaders})).statusCode,409);
-      assert.equal((await app.inject({method:"POST",url:prefix+"/bookings",headers:clientHeaders,payload:{}})).statusCode,404);
-      const bookingCount=await pool.query("SELECT count(*)::int AS count FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND customer_id=$2::uuid",[owner.tenantId,clientContext.customerId]);
-      assert.equal(bookingCount.rows[0].count,0);
+      const clientResult = await clientSlots();
+      assert.equal(clientResult.statusCode, 200);
+      assert.equal(clientResult.headers["cache-control"], "no-store");
+      assert.deepEqual(clientResult.json(), {
+        localDate: date,
+        timeZone: "Europe/Moscow",
+        slots: slots.map(({ startAt, endAt }) => ({ startAt, endAt })),
+      });
+      assert.equal(
+        (await clientOffers()).json().offers.length,
+        1,
+        "plain active placement has no grant receipt",
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url: clientSlotsUrl.replace(owner.locationId, other),
+            headers: clientHeaders,
+          })
+        ).statusCode,
+        409,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "POST",
+            url: prefix + "/bookings",
+            headers: clientHeaders,
+            payload: {},
+          })
+        ).statusCode,
+        404,
+      );
+      const bookingCount = await pool.query(
+        "SELECT count(*)::int AS count FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND customer_id=$2::uuid",
+        [owner.tenantId, clientContext.customerId],
+      );
+      assert.equal(bookingCount.rows[0].count, 0);
       // Remove only offers permission. Context remains readable; owner endpoints never widen access.
-      await pool.query("UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.offers.read') WHERE tenant_id=$1::uuid AND base_type='client'",[owner.tenantId]);
-      assert.equal((await clientOffers()).statusCode,403);
-      assert.equal((await clientSlots()).statusCode,403);
-      assert.equal((await app.inject({method:"GET",url:prefix+"/staging-customer-context",headers:clientHeaders})).statusCode,200);
-      await pool.query("UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.offers.read') WHERE tenant_id=$1::uuid AND base_type='client'",[owner.tenantId]);
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.offers.read') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
+      assert.equal((await clientOffers()).statusCode, 403);
+      assert.equal((await clientSlots()).statusCode, 403);
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url: prefix + "/staging-customer-context",
+            headers: clientHeaders,
+          })
+        ).statusCode,
+        200,
+      );
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.offers.read') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
       assert.ok(
         slots.every(
           (s) =>
@@ -451,13 +582,17 @@ test(
       );
       assert.equal((await submit()).json().error, "grant-unavailable");
       assert.equal((await preview()).statusCode, 409);
-      assert.deepEqual((await clientOffers()).json(),{offers:[]});
-      assert.equal((await clientSlots()).statusCode,409);
+      assert.deepEqual((await clientOffers()).json(), { offers: [] });
+      assert.equal((await clientSlots()).statusCode, 409);
       await revokeStagingGrant(pool, owner.tenantId);
-      assert.deepEqual((await clientOffers()).json(),{offers:[]});
-      await app.inject({method:"POST",url:"/v1/auth/logout",headers:clientHeaders});
-      assert.equal((await clientOffers()).statusCode,401);
-      assert.equal((await clientSlots()).statusCode,401);
+      assert.deepEqual((await clientOffers()).json(), { offers: [] });
+      await app.inject({
+        method: "POST",
+        url: "/v1/auth/logout",
+        headers: clientHeaders,
+      });
+      assert.equal((await clientOffers()).statusCode, 401);
+      assert.equal((await clientSlots()).statusCode, 401);
       assert.equal((await preview()).statusCode, 409);
       assert.equal((await submit()).json().error, "grant-unavailable");
       await pool.query(
