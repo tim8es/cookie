@@ -647,7 +647,7 @@ async function main() {
             WHERE r.tenant_id=$1::uuid AND r.booking_id=$2::uuid) AS receipts,
           (SELECT COALESCE(jsonb_agg(to_jsonb(e) ORDER BY e.id),'[]'::jsonb)
             FROM cookie_jobs.outbox_events e
-            WHERE e.tenant_id=$1::uuid AND e.payload->>'bookingId'=$2::text) AS events,
+            WHERE e.tenant_id=$1::uuid AND e.payload->>'bookingId'=($2::uuid)::text) AS events,
           (SELECT count(*)::int FROM cookie_booking.bookings b
             WHERE b.tenant_id=$1::uuid) AS tenant_count`,
         [owner.tenantId,createdId],
