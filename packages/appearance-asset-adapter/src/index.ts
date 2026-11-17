@@ -222,3 +222,6 @@ export async function deleteUnusedAppearanceAsset(
   if (deleted.rowCount !== 1) throw new Error("Appearance asset delete failed");
   return true;
 }
+
+export { AppearanceCodecFailure, normalizeAppearanceImage } from "./codec.js";
+export type { AppearanceCodecFailureCode } from "./codec.js";
