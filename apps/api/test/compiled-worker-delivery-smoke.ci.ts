@@ -137,15 +137,15 @@ async function verifyCrashRecovery(
     ).rows[0]!.pid;
     await pool.query(
       `CREATE FUNCTION public.${functionName}() RETURNS trigger
-        LANGUAGE plpgsql AS $
+        LANGUAGE plpgsql AS $cookie_gate$
         BEGIN
           IF NEW.tenant_id='${tenantId}'::uuid AND NEW.id='${id}'::uuid
              AND NEW.status='delivered' THEN
             PERFORM pg_advisory_xact_lock(hashtextextended('${id}',0));
           END IF;
           RETURN NEW;
-        END
-        $`,
+        END;
+        $cookie_gate$`,
     );
     functionCreated = true;
     await pool.query(
