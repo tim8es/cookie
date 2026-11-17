@@ -132,7 +132,7 @@
   });
 </script>
 
-<div class="section-head calendar-page-head">
+<div class="section-head calendar-page-head owner-calendar-header">
   <div>
     <span class="eyebrow">COOKIE / ЗАПИСИ</span>
     <h1>Календарь записей</h1>
@@ -141,7 +141,7 @@
   <Button type="button" variant="outline" onclick={() => void load()} disabled={loading || expired}>Обновить</Button>
 </div>
 
-<section class="card" aria-label="Календарь записей владельца">
+<section class="card owner-calendar" aria-label="Календарь записей владельца">
   {#if branches.length}
     <div class="owner-form-fields">
       <label class="field">Филиал
@@ -191,3 +191,45 @@
     <p class="owner-form-note">Стоимость сохранена при бронировании. Названия услуг и мастеров — из текущего справочника.</p>
   {/if}
 </section>
+
+<style>
+  .owner-calendar-header {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .owner-calendar-header > div,
+  .owner-calendar {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .owner-calendar .field {
+    min-width: 0;
+    width: 100%;
+  }
+  .owner-calendar .field select,
+  .owner-calendar .field :global(input) {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .owner-calendar .calendar-move,
+  .owner-calendar .segmented {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .owner-calendar .calendar-move :global(button),
+  .owner-calendar .segmented :global(button) {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .owner-calendar .schedule-summary > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+</style>
