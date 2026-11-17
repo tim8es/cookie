@@ -32,9 +32,9 @@ production launch or unrestricted visual redesign. Keep it consistent.
 - In mock mode use synthetic sessionStorage data only. Never use real names,
   phone numbers, customer data, or external service calls.
 
-## Demo/real parity — owner requirement #311
+## One-off development demo / real parity — owner requirement #311
 
-For each released capability, prefer the same runtime, screen and domain policy in demo and real mode. `pnpm demo:local` is the disposable synthetic runtime; The compiled API refuses legacy `/demo` routes; the browser-local fixture remains available only via `dev:fixture` / `build:fixture`. The real build rejects mock controller/adapter modules and writes to a separate output directory. Do not re-expose it as a product route. Do not extend it as independent business logic or use mock success as real acceptance. Preserve strict data/session isolation, fail-closed production auth and no real external effects. New changes should use the same scenarios in both modes; disclose any missing parity in the PR.
+Owner scope: temporary, internal, disposable development preview only. Not a customer-facing product or a public service. Do not implement a dedicated demo manager, gateway, public login, session routing, quotas or automatic crash recovery. For each released capability, use the same runtime, screen and domain policy in demo and real mode. `pnpm demo:local` is the disposable synthetic runtime; The compiled API refuses legacy `/demo` routes; the browser-local fixture remains available only via `dev:fixture` / `build:fixture`. The real build rejects mock controller/adapter modules and writes to a separate output directory. Do not re-expose it as a product route. Do not extend it as independent business logic or use mock success as real acceptance. Preserve strict data/session isolation, fail-closed production auth and no real external effects. New changes should use the same scenarios in both modes; disclose any missing parity in the PR.
 
 ## Acceptance for any UI change
 
