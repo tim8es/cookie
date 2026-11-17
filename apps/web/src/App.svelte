@@ -22,7 +22,7 @@
   import BookingSetupHint from "./lib/ui/BookingSetupHint.svelte";
   import DemoState from "./lib/ui/DemoState.svelte";
   import OwnerAuthGate from "./lib/ui/OwnerAuthGate.svelte";
-  import RealOwnerServicesPage from "./lib/ui/RealOwnerServicesPage.svelte";
+  import RealOwnerWorkspace from "./lib/ui/RealOwnerWorkspace.svelte";
   import {
     authenticateTelegramOwner,
     loadTelegramInitData,
@@ -298,13 +298,15 @@
   <meta name="description" content={api.mode === "api" ? "Cookie: защищённый каталог услуг владельца." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
-<div class="app-shell" class:public-shell={screen === "booking"} class:onboarding-shell={screen === "home" && !org && api.mode === "mock"} class:telegramPreview={telegramPreview && screen === "booking"}>
-  {#if screen !== "booking" && !(screen === "home" && !org)}
+<div class="app-shell" class:real-owner-shell={api.mode === "api"} class:public-shell={api.mode !== "api" && screen === "booking"} class:onboarding-shell={screen === "home" && !org && api.mode === "mock"} class:telegramPreview={telegramPreview && screen === "booking"}>
+  {#if api.mode !== "api" && screen !== "booking" && !(screen === "home" && !org)}
     <Sidebar {screen} {stepCount} onNavigate={goto} />
   {/if}
 
   <div class="main-area">
-    {#if screen === "booking"}
+    {#if api.mode === "api"}
+      <OnboardingHeader apiMode={true} />
+    {:else if screen === "booking"}
       <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} onBack={() => goto("home")} />
     {:else if screen === "home" && !org}
       <OnboardingHeader apiMode={api.mode === "api"} />
@@ -318,9 +320,9 @@
         onDismissError={() => error = ""}
         onDismissNotice={() => notice = ""}
       />
-      {#if apiDisconnected}
+      {#if api.mode === "api"}
         {#if ownerAuthPhase === "verified" && ownerSession}
-          <RealOwnerServicesPage session={ownerSession} onLogout={() => void logoutOwner()} />
+          <RealOwnerWorkspace session={ownerSession} onLogout={() => void logoutOwner()} />
         {:else}
           <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
         {/if}
