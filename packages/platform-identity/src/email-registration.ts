@@ -72,7 +72,11 @@ export async function issueEmailRegistrationChallenge(
   input: unknown,
   ttlSeconds: number,
 ): Promise<{ address: string; token: string } | null> {
-  if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds < 60 || ttlSeconds > 3600) {
+  if (
+    !Number.isSafeInteger(ttlSeconds) ||
+    ttlSeconds < 60 ||
+    ttlSeconds > 3600
+  ) {
     throw new Error("Invalid email registration lifetime");
   }
   const address = canonicalRegistrationEmail(input);
