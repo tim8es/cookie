@@ -1,5 +1,8 @@
 import sharp from "sharp";
 
+import { AppearanceCodecFailure } from "./codec-errors.js";
+export { AppearanceCodecFailure } from "./codec-errors.js";
+
 import type { NormalizedAppearanceImage } from "./index.js";
 
 // Engineering resource bounds, not salon-specific commercial policy.
@@ -9,18 +12,6 @@ const MAX_PIXELS = 4 * 1024 * 1024;
 const PNG_SIGNATURE = Buffer.from("89504e470d0a1a0a", "hex");
 
 type Format = "png" | "jpeg" | "webp";
-export type AppearanceCodecFailureCode =
-  | "invalid-image"
-  | "output-too-large"
-  | "codec-busy";
-
-export class AppearanceCodecFailure extends Error {
-  constructor(readonly code: AppearanceCodecFailureCode) {
-    super(code);
-    this.name = "AppearanceCodecFailure";
-  }
-}
-
 function invalid(): never {
   throw new AppearanceCodecFailure("invalid-image");
 }

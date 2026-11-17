@@ -223,5 +223,6 @@ export async function deleteUnusedAppearanceAsset(
   return true;
 }
 
-export { AppearanceCodecFailure, normalizeAppearanceImage } from "./codec.js";
-export type { AppearanceCodecFailureCode } from "./codec.js";
+export { AppearanceCodecFailure } from "./codec-errors.js";
+export type { AppearanceCodecFailureCode } from "./codec-errors.js";
+export { normalizeAppearanceImage } from "./codec-process.js";
