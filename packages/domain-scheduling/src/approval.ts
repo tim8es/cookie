@@ -2,9 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
-import { enqueueOutbox } from "../../platform-db/src/outbox.js";
-import type { TrustedActor } from "../../platform-identity/src/authorization.js";
-import { requireTenantPermission } from "../../platform-identity/src/postgres.js";
+import { enqueueOutbox } from "../../platform-db/src/index.js";
+import type { TrustedActor } from "../../platform-identity/src/index.js";
+import { requireTenantPermission } from "../../platform-identity/src/index.js";
 import {
   editPublishedShiftInternal,
   type AssertMayEditPublishedShift,
