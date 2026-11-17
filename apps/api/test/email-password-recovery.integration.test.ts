@@ -40,6 +40,13 @@ test(
     const sessions = new IdentitySessions(pool, issuer, "test-web", 900);
     const otherId = randomUUID();
     let identityId: string | null = null;
+    const audit = async () => {
+      const result = await pool.query<{ event_type: string }>(
+        "SELECT event_type FROM cookie_identity.auth_security_events WHERE identity_id=$1::uuid ORDER BY id",
+        [identityId],
+      );
+      return result.rows.map((row) => row.event_type);
+    };
 
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
@@ -102,6 +109,7 @@ test(
       );
       assert.equal(calls, 2);
       assert.equal(await sessions.resolve(previous.token), identityId);
+      assert.deepEqual(await audit(), ["email_registered"]);
 
       const verify = (candidate: string) =>
         withVerifiedEmailPassword(
@@ -123,6 +131,10 @@ test(
       assert.equal(await verify(changed), identityId);
       assert.equal(await sessions.resolve(previous.token), null);
       assert.equal(await sessions.resolve(unrelated.token), otherId);
+      assert.deepEqual(await audit(), [
+        "email_registered",
+        "password_recovered",
+      ]);
       assert.equal(
         await completeEmailPasswordRecovery(
           transaction,
@@ -172,6 +184,10 @@ test(
       assert.equal(remaining.rowCount, 0);
     } finally {
       try {
+        await pool.query(
+          "DELETE FROM cookie_identity.auth_security_events WHERE identity_id=$1::uuid",
+          [identityId],
+        );
         await pool.query(
           "DELETE FROM cookie_identity.identity_sessions WHERE identity_id IN ($1::uuid,$2::uuid)",
           [identityId, otherId],
