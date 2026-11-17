@@ -1,9 +1,9 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { TelegramMiniAppProofVerifier } from "./telegram-init-data.js";
-import { telegramUserFingerprint } from "./telegram-links.js";
+import { lockTelegramUser } from "./telegram-links.js";
 
-/** Internal candidate only; no public route. Legacy and global replay must be unified before rollout. */
+/** Pre-organization Telegram exchange; the HTTP adapter has a separate opt-in gate. */
 export async function exchangeSelfServiceTelegram(
   transaction: <T>(work: (client: PoolClient) => Promise<T>) => Promise<T>,
   verifier: TelegramMiniAppProofVerifier,
@@ -20,20 +20,17 @@ export async function exchangeSelfServiceTelegram(
   if (!proof || proof.channel !== "telegram-mini-app") return null;
   const hash = new URLSearchParams(rawInitData).get("hash");
   if (!hash || !/^[0-9a-f]{64}$/i.test(hash)) return null;
-  const fingerprint = telegramUserFingerprint(
-    fingerprintSecret,
-    proof.telegramUserId,
-  );
   const exchangeHash = createHash("sha256")
     .update("telegram-initdata-exchange-v1\0")
     .update(hash.toLowerCase())
     .digest();
 
   return transaction(async (client) => {
-    // Shares the lock with existing operator-created Telegram links.
-    await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [
-      fingerprint.readBigInt64BE(0).toString(),
-    ]);
+    const fingerprint = await lockTelegramUser(
+      client,
+      fingerprintSecret,
+      proof.telegramUserId,
+    );
     const currentProof = verifier.verify(rawInitData);
     if (
       !currentProof ||

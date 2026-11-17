@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { runSqlTransaction } from "../../platform-db/src/index.js";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import type { TelegramMiniAppProofVerifier } from "../../platform-identity/src/index.js";
-import { telegramUserFingerprint } from "../../platform-identity/src/index.js";
+import { lockTelegramUser } from "../../platform-identity/src/index.js";
 import {
   AuthorizationDeniedError,
   type TrustedActor,
@@ -60,7 +60,6 @@ export async function provisionStagingCustomer(
   const proof = verifier.verify(input.rawInitData);
   if (!proof || proof.channel !== "telegram-mini-app")
     throw new Error("Invalid staging customer proof");
-  const hash = telegramUserFingerprint(secret, proof.telegramUserId);
   return runSqlTransaction(pool, async (client) => {
     // Same organization then fingerprint lock order as owner link.
     const org = await client.query(
@@ -69,9 +68,13 @@ export async function provisionStagingCustomer(
     );
     if (org.rowCount !== 1)
       throw new Error("Staging customer tenant unavailable");
-    await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [
-      hash.readBigInt64BE(0).toString(),
-    ]);
+    const hash = await lockTelegramUser(client, secret, proof.telegramUserId);
+    const globalIdentity = await client.query(
+      "SELECT 1 FROM cookie_identity.global_telegram_identities WHERE telegram_user_hmac_sha256=$1::bytea FOR SHARE",
+      [hash],
+    );
+    if (globalIdentity.rowCount)
+      throw new Error("Staging customer link conflict");
     const existing = await client.query<Existing>(
       "SELECT tenant_id::text,identity_id::text,id::text FROM cookie_identity.telegram_identity_links WHERE telegram_user_hmac_sha256=$1::bytea AND revoked_at IS NULL ORDER BY tenant_id,id LIMIT 2 FOR SHARE",
       [hash],

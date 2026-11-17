@@ -32,6 +32,10 @@ import { registerStagingCustomerOffers } from "./staging-customer-offers-http.js
 import { registerStagingCustomerContext } from "./staging-customer-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
 import {
+  registerTelegramIdentityAuth,
+  type TelegramIdentityAuthDependencies,
+} from "./telegram-identity-auth-http.js";
+import {
   registerStagingPublicationRoutes,
   type StagingPublicationDependencies,
 } from "./staging-publication-http.js";
@@ -91,6 +95,7 @@ export function createApp(
     readonly telegramAuthRoutes?: {
       readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
+    readonly telegramIdentityRoutes?: TelegramIdentityAuthDependencies;
     readonly syntheticBookingRoutes?: SyntheticBookingHttpDependencies;
     readonly syntheticBookingMutations?: SyntheticBookingMutationDependencies;
     readonly syntheticWorkspaceReads?: SyntheticWorkspaceReadDependencies;
@@ -134,6 +139,8 @@ export function createApp(
   // a database-resolved trusted link and HTTPS origin. No Booking enabled.
   if (options.telegramAuthRoutes)
     registerTelegramAuthExchange(app, options.telegramAuthRoutes.sessions);
+  if (options.telegramIdentityRoutes)
+    registerTelegramIdentityAuth(app, options.telegramIdentityRoutes);
 
   if (options.appearanceDraftRoutes)
     registerRealAppearanceRoutes(app, {

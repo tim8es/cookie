@@ -50,6 +50,16 @@ Operator link command requires the additional
 on **stdin**. These values must never be accepted from untrusted HTTP clients.
 The command prints only link ID and replay status.
 
+Global Telegram registration is a separate, disabled-by-default candidate:
+`COOKIE_TELEGRAM_SELF_REGISTRATION_MODE=enabled` mounts
+`POST /v1/auth/telegram/identity` with `intent: "login" | "register"`. It
+creates only a pre-organization Identity session; it grants no tenant, owner,
+customer or booking permission. It uses the same per-user database lock as the
+legacy link, customer-provisioning and session-exchange paths. If a Telegram
+account already has a legacy tenant link, global registration is rejected and
+legacy login remains available; accounts are never silently merged. Do not
+enable this candidate until its exact-head CI and security review pass.
+
 Only the exact HMAC-verified owner can exchange a signed proof for a Cookie
 bearer; a session expires in 900 seconds and the initial proof must be no older
 than 300 seconds. Store the returned bearer in memory, not localStorage or URL.

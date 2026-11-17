@@ -8,7 +8,10 @@ import { createApp } from "./app.js";
 import { parseStagingCancellationCutoff } from "./staging-customer-cancellation-http.js";
 import { parseConfig } from "./config.js";
 import { registerCompiledWeb } from "./static-web.js";
-import { createLiveTelegramSessionProvider } from "./telegram-auth-runtime.js";
+import {
+  createLiveTelegramIdentityAuth,
+  createLiveTelegramSessionProvider,
+} from "./telegram-auth-runtime.js";
 import { postgresTenantPolicyGuard } from "./session-context.js";
 
 const config = parseConfig(process.env);
@@ -40,6 +43,11 @@ pool.on("error", () => {
   console.error("Cookie API idle PostgreSQL connection lost");
 });
 const telegramSessions = createLiveTelegramSessionProvider(process.env, pool);
+const telegramIdentityAuth = createLiveTelegramIdentityAuth(
+  process.env,
+  pool,
+  telegramSessions ?? undefined,
+);
 const app = createApp(pool, {
   logger: true,
   databaseReadiness: await createMigrationReadiness(
@@ -81,6 +89,9 @@ const app = createApp(pool, {
           policy: postgresTenantPolicyGuard(pool),
         },
       }
+    : {}),
+  ...(telegramIdentityAuth
+    ? { telegramIdentityRoutes: telegramIdentityAuth }
     : {}),
 });
 
