@@ -37,7 +37,7 @@ test(
         "SELECT count(*)::text AS count FROM public.cookie_schema_migrations",
       );
       const expectedCount = (await readdir(directory)).filter((name) =>
-        /^\\d{4}_[a-z0-9_-]+\\.sql$/.test(name),
+        /^\d{4}_[a-z0-9_-]+\.sql$/.test(name),
       ).length;
       assert.equal(Number(tracked.rows[0]?.count), expectedCount);
 
