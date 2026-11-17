@@ -16,6 +16,7 @@ import {
   registerSyntheticWorkspaceReads,
   type SyntheticWorkspaceReadDependencies,
 } from "./workspace-http.js";
+import { registerStagingAvailabilityRoutes } from "./staging-availability-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
 import {
   registerStagingPublicationRoutes,
@@ -112,8 +113,10 @@ export function createApp(
   if (options.shiftPlanRoutes)
     registerOwnerShiftPlanRoutes(app, options.shiftPlanRoutes);
 
-  if (options.stagingPublicationRoutes)
+  if (options.stagingPublicationRoutes) {
     registerStagingPublicationRoutes(app, options.stagingPublicationRoutes);
+    registerStagingAvailabilityRoutes(app, options.stagingPublicationRoutes);
+  }
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.

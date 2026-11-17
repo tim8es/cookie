@@ -8,6 +8,7 @@
   import { readRealLocations, type RealLocation } from "../locations-api";
   import { createShiftPlan, readShiftPlans, ShiftPlanError, type ShiftPlan } from "../shift-plans-api";
   import OwnerFormHeader from "./OwnerFormHeader.svelte";
+  import StagingAvailabilityPanel from "./StagingAvailabilityPanel.svelte";
   import { readStagingPublicationCapacity } from "../staging-publication-api";
   import { publishStagingShift, readPublishedShifts, type PublishedShift } from "../staging-shift-publication-api";
 
@@ -308,3 +309,6 @@
     </Card.Root>
   {/if}
 </div>
+{#if loaded && publicationReady}
+  <StagingAvailabilityPanel {session} {staff} {locations} disabled={loading || saving || publishing} />
+{/if}

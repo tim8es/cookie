@@ -329,6 +329,13 @@ async function main() {
     assert.equal(shifts.rowCount,1);
     assert.equal(shifts.rows[0].active,true);
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-shift-publication")));
+    await requireDom(cdp,"server preview controls","document.querySelector('[aria-label=\"Предпросмотр записи staging\"] select')?.options.length===2");
+    await evaluate(cdp,"(() => {const p=document.querySelector('[aria-label=\"Предпросмотр записи staging\"]');const s=p.querySelector('select');s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));const d=p.querySelector('input[type=date]');d.value="+JSON.stringify(date)+";d.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await button(cdp,"Проверить слоты");
+    await requireDom(cdp,"server calculated preview","document.body.innerText.includes('Найдено слотов: 29.')");
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-availability")));
+    await viewport(cdp,375,812);
+    await checkWidth(cdp,"real availability 375px");
     await checkWidth(cdp, "published staging schedule");
     await checkLabeledControls(cdp, "published staging schedule");
     await button(cdp, "Выйти");
@@ -345,7 +352,7 @@ async function main() {
     assert.deepEqual(errors, [], "Unexpected browser runtime errors");
     await button(cdp, "Выйти");
     await requireDom(cdp, "final logout", "document.body.innerText.includes('Вы вышли')");
-    console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit, staging capacity activation, confirmed shift publication and PostgreSQL persistence across API restart, 3 viewport checks, server logout.");
+    console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit, staging capacity activation, confirmed shift publication, server availability preview and PostgreSQL persistence across API restart, 3 viewport checks, server logout.");
   } finally {
     if (cdp) cdp.close();
     if (chrome && !chrome.killed) chrome.kill("SIGTERM");
