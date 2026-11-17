@@ -25,13 +25,15 @@ test(
       max: 3,
       connectionTimeoutMillis: 3_000,
     });
-    const workerPools = Array.from({ length: 3 }, (_, index) =>
-      new Pool({
-        connectionString: process.env.TEST_DATABASE_URL,
-        application_name: "cookie-qa-parallel-" + index,
-        max: 2,
-        connectionTimeoutMillis: 3_000,
-      }),
+    const workerPools = Array.from(
+      { length: 3 },
+      (_, index) =>
+        new Pool({
+          connectionString: process.env.TEST_DATABASE_URL,
+          application_name: "cookie-qa-parallel-" + index,
+          max: 2,
+          connectionTimeoutMillis: 3_000,
+        }),
     );
     const tenants = Array.from({ length: 3 }, () => ({
       id: randomUUID(),
@@ -151,8 +153,14 @@ test(
       controller.abort();
       const totals = await Promise.all(jobs);
       assert.ok(totals.every((row) => row.delivered > 0));
-      assert.equal(totals.reduce((sum, row) => sum + row.claimed, 0), 120);
-      assert.equal(totals.reduce((sum, row) => sum + row.delivered, 0), 120);
+      assert.equal(
+        totals.reduce((sum, row) => sum + row.claimed, 0),
+        120,
+      );
+      assert.equal(
+        totals.reduce((sum, row) => sum + row.delivered, 0),
+        120,
+      );
       assert.ok(totals.every((row) => row.failed === 0 && row.stale === 0));
       assert.equal(calls.size, expected.size);
       for (const [key, tenant] of expected) {
