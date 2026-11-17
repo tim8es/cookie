@@ -15,6 +15,8 @@ import {
 } from "./browser-smoke.mjs";
 import { startChromiumWithRetry } from "../../../scripts/f1-chromium-startup.mjs";
 
+import { issueStagingGrant } from "../../../dist/packages/domain-entitlement/src/staging.js";
+import { provisionStagingCustomer } from "../../../dist/packages/domain-customers/src/staging-customer.js";
 import { runMigrations } from "../../../dist/packages/platform-db/src/migrations.js";
 import { provisionOwnerWorkspace } from "../../../dist/packages/platform-identity/src/provision-owner-workspace.js";
 import { createTelegramMiniAppProofVerifier } from "../../../dist/packages/platform-identity/src/telegram-init-data.js";
@@ -271,6 +273,7 @@ async function main() {
       DATABASE_URL: databaseUrl, HOST: "127.0.0.1", PORT: String(port),
       COOKIE_WEB_DIST: resolve("apps/web/dist"),
       COOKIE_TELEGRAM_AUTH_MODE: "enabled",
+      COOKIE_STAGING_PUBLICATION_MODE: "enabled",
       COOKIE_TELEGRAM_USER_HMAC_SECRET: userHashSecret.toString("hex"),
       COOKIE_TELEGRAM_BOT_TOKEN: botToken,
       COOKIE_PUBLIC_ORIGIN: "https://cookie-e2e.invalid",
@@ -446,10 +449,125 @@ async function main() {
       await requireDom(cdp, "staff list at " + width, "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
     }
     assert.deepEqual(await assertStored(pool, owner, locationId), beforeRestart, "Restart changed persisted IDs");
+    // No grant is implicit: a trusted operator explicitly grants a single
+    // synthetic staging seat before the owner can perform the activation.
+    await requireDom(cdp, "no staging grant", "document.body.innerText.includes('Оператор ещё не выдал тестовое разрешение')");
+    await issueStagingGrant(pool, owner.tenantId, 1, new Date(Date.now()+3600000).toISOString());
+    await button(cdp, "Обновить лимит");
+    await requireDom(cdp, "staging seat available", "document.body.innerText.includes('Активных мастеров: 0 / 1')");
+    await evaluate(cdp, "(() => {const panel=document.querySelector('[aria-label=\"Тестовая активация мастеров\"]');const s=panel.querySelector('select');s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await requireDom(cdp, "staging selection", "document.querySelector('[aria-label=\"Тестовая активация мастеров\"] input[type=checkbox]')?.disabled===false");
+    await evaluate(cdp, "document.querySelector('[aria-label=\"Тестовая активация мастеров\"] input[type=checkbox]').click()");
+    await button(cdp, "Активировать для staging");
+    await requireDom(cdp, "staging seat consumed", "document.body.innerText.includes('Активных мастеров: 1 / 1') && document.querySelector('.list-items')?.innerText.includes('Активирован')");
+    const publication = await pool.query(
+      "SELECT (SELECT count(*)::int FROM cookie_staff.staging_publication_receipts WHERE tenant_id=$1::uuid) AS receipts, (SELECT count(*)::int FROM cookie_staff.staff_profiles WHERE tenant_id=$1::uuid AND active AND bookable) AS seats, (SELECT count(*)::int FROM cookie_scheduling.shift_windows WHERE tenant_id=$1::uuid AND active) AS shifts",
+      [owner.tenantId],
+    );
+    assert.deepEqual(publication.rows[0], {receipts:1,seats:1,shifts:0});
+    assert.ok(responses.some(r=>r.status===201&&r.path.endsWith("/staging-publication")));
+    await checkWidth(cdp, "activated staging staff");
+    await button(cdp, "Расписание");
+    await requireDom(cdp, "draft ready for explicit publication", "document.querySelector('.schedule-summary')?.innerText.includes('Черновик') && Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Подготовить публикацию')");
+    await button(cdp, "Подготовить публикацию");
+    await requireDom(cdp, "confirmation before active shift", "document.querySelector('[aria-label=\"Подтверждение публикации смены\"]')");
+    assert.equal((await pool.query("SELECT count(*)::int AS count FROM cookie_scheduling.shift_windows WHERE tenant_id=$1::uuid AND active",[owner.tenantId])).rows[0].count,0);
+    await button(cdp, "Подтвердить публикацию");
+    await requireDom(cdp, "published shift read after commit", "document.querySelector('.schedule-summary')?.innerText.includes('Опубликована в тестовом контуре')");
+    const shifts = await pool.query("SELECT id::text,active FROM cookie_scheduling.shift_windows WHERE tenant_id=$1::uuid",[owner.tenantId]);
+    assert.equal(shifts.rowCount,1);
+    assert.equal(shifts.rows[0].active,true);
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-shift-publication")));
+    await requireDom(cdp,"server preview controls","document.querySelector('[aria-label=\"Предпросмотр записи staging\"] select')?.options.length===2");
+    await evaluate(cdp,"(() => {const p=document.querySelector('[aria-label=\"Предпросмотр записи staging\"]');const s=p.querySelector('select');s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));const d=p.querySelector('input[type=date]');d.value="+JSON.stringify(date)+";d.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await button(cdp,"Проверить слоты");
+    await requireDom(cdp,"server calculated preview","document.body.innerText.includes('Найдено слотов: 29.')");
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-availability")));
+    await viewport(cdp,375,812);
+    await checkWidth(cdp,"real availability 375px");
+    await checkWidth(cdp, "published staging schedule");
+    await checkLabeledControls(cdp, "published staging schedule");
+    await button(cdp, "Выйти");
+    await requireDom(cdp, "logout before shift persistence check", "document.body.innerText.includes('Вы вышли')");
+    await stopServer(api);
+    api = await startServer(env, origin);
+    script = await load(cdp, origin, signedProof(botToken, userId), script);
+    await requireDom(cdp, "authenticated after schedule restart", "document.querySelector('.real-owner-nav')");
+    await button(cdp,"Расписание");
+    await requireDom(cdp,"published shift persisted after restart","document.querySelector('.schedule-summary')?.innerText.includes('Опубликована в тестовом контуре')");
+    assert.deepEqual((await pool.query("SELECT id::text,active FROM cookie_scheduling.shift_windows WHERE tenant_id=$1::uuid",[owner.tenantId])).rows,shifts.rows);
+
+    assert.deepEqual(shifts.rows,[{id:shiftId,active:true}],"Existing draft must be published, not replaced");
+    await button(cdp, "Выйти");
+    await requireDom(cdp, "owner logout before customer", "document.body.innerText.includes('Вы вышли')");
+    const customerUserId = userId + 1000000000;
+    await provisionStagingCustomer(pool,createTelegramMiniAppProofVerifier({botToken,maxAgeSeconds:300}),userHashSecret,{
+      tenantId:owner.tenantId,rawInitData:signedProof(botToken,customerUserId),consentConfirmed:true,
+    });
+    script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script);
+    await requireDom(cdp,"verified client context","document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента подтверждён' && !document.querySelector('.real-owner-nav')");
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-context")));
+    await checkWidth(cdp,"real client context");
+    const panel='[aria-label="Клиентская витрина staging"]';
+    await requireDom(cdp,"published client catalog","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
+    for(let i=0;i<3;i++){
+      await requireDom(cdp,"available selection "+i,"document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.options.length===2 && !document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.disabled");
+      await evaluate(cdp,"(()=>{const s=document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"];s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    }
+    await requireDom(cdp,"client date enabled","!document.querySelector("+JSON.stringify(panel+" input[type=date]")+")?.disabled");
+    await evaluate(cdp,"(()=>{const d=document.querySelector("+JSON.stringify(panel+" input[type=date]")+");d.value="+JSON.stringify(date)+";d.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await button(cdp,"Найти свободное время");
+    await requireDom(cdp,"real customer slots","document.querySelectorAll("+JSON.stringify(panel+" .customer-slot-choice")+")?.length===29");
+    await evaluate(cdp,"document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+").click()");
+    await requireDom(cdp,"slot is not reserved","document.querySelector("+JSON.stringify(panel+" .customer-choice-summary")+")?.innerText.includes('Время не забронировано')");
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-offers")));
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-slots")));
+    assert.equal((await pool.query("SELECT count(*)::int AS count FROM cookie_booking.bookings WHERE tenant_id=$1::uuid",[owner.tenantId])).rows[0].count,0);
+    await checkWidth(cdp,"real customer offers");
+    await checkLabeledControls(cdp,"real customer offers");
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
+    await button(cdp,"Выйти");
+    await requireDom(cdp,"customer logout","document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вы вышли'");
+    script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,userId),script);
+    await requireDom(cdp,"owner rejected on client surface","document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента не подтверждён'");
+    assert.ok(!(await evaluate(cdp,"Boolean(document.querySelector('.real-owner-nav'))")));
     assert.deepEqual(external, [], "Unexpected real-mode external network requests");
     assert.deepEqual(errors, [], "Unexpected browser runtime errors");
+    // Main's suspended-tab expiry contract also applies to the client surface.
+    script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script);
+    await requireDom(cdp,"client catalog before local expiry","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
+    await evaluate(cdp,"window.__cookieTestClockMs=3600001;document.dispatchEvent(new Event('visibilitychange'));");
+    await requireDom(cdp,"client fails closed on local expiry","!document.querySelector("+JSON.stringify(panel)+") && document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента не подтверждён'");
+    script=await load(cdp,origin,signedProof(botToken,userId),script);
+    await requireDom(cdp,"owner for calendar","document.querySelector('.real-owner-nav')");
+    // The production write API remains absent. Seed exactly one synthetic
+    // persisted Booking in this isolated CI database to test read-only Calendar.
+    await button(cdp,"Календарь");
+    await requireDom(cdp,"empty real owner calendar","document.querySelector('.empty-mini')?.innerText.includes('За выбранный период записей нет')");
+    const customerId = randomUUID();
+    const bookingId = randomUUID();
+    await pool.query("INSERT INTO cookie_customers.customers(tenant_id,id) VALUES($1,$2)",[owner.tenantId,customerId]);
+    await pool.query(
+      `INSERT INTO cookie_booking.bookings (tenant_id,id,customer_id,staff_id,location_id,service_id,status,start_at,end_at,occupied_until,service_duration_minutes_snapshot,post_service_buffer_minutes_snapshot,price_kopecks_snapshot)
+       VALUES($1,$2,$3,$4,$5,$6,'Confirmed',$7::timestamptz,$7::timestamptz+interval '50 minutes',$7::timestamptz+interval '50 minutes',50,0,125050)`,
+      [owner.tenantId,bookingId,customerId,beforeRestart.staffId,locationId,beforeRestart.serviceId,date+"T06:00:00Z"],
+    );
+    await evaluate(cdp,"(()=>{const s=document.querySelector(\'.owner-calendar select\');s.value="+JSON.stringify(locationId)+";s.dispatchEvent(new Event(\'change\',{bubbles:true}));})()");
+    await requireDom(cdp,"calendar branch loaded","document.querySelector(\'.owner-calendar input[type=date]\')?.disabled===false && document.querySelector(\'.owner-calendar select\')?.value==="+JSON.stringify(locationId));
+    await fill(cdp,".owner-calendar input[type=date]",date,"change");
+    await requireDom(cdp,"calendar reads persisted Booking","document.querySelector('[aria-label=\"Записи за выбранный период\"]')?.innerText.includes('Synthetic E2E Edited Service') && document.querySelector('.status-pill')?.innerText.includes('Подтверждена')");
+    await button(cdp,"Неделя");
+    await requireDom(cdp,"week reads persisted Booking","document.querySelector('[aria-label=\"Записи за выбранный период\"]')?.innerText.includes('Synthetic E2E Staff')");
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/owner-calendar")));
+    for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"real owner calendar "+width+"px");
+      await checkLabeledControls(cdp,"real owner calendar "+width+"px");
+    }
+
+
     await button(cdp, "Выйти");
-    await requireDom(cdp, "final logout", "document.body.innerText.includes('Вы вышли')");
+    await requireDom(cdp, "calendar owner logout", "document.body.innerText.includes('Вы вышли')");
     // Launch a fresh verified session, then simulate tab resume after local expiry.
     script = await load(cdp, origin, signedProof(botToken, userId), script);
     await requireDom(cdp, "fresh session for expiry", "document.querySelector('.real-owner-nav') && document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
@@ -460,7 +578,7 @@ async function main() {
     assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0);
     assert.deepEqual(errors, [], "Unexpected browser runtime errors after expiry");
     assert.deepEqual(external, [], "Unexpected external requests after expiry");
-    console.log("PASS integrated real owner browser: invalid proof denied, verified HMAC/bearer, Overview + Service create/edit + Location + Staff + ShiftPlan through compiled runtime, exact PostgreSQL rows and inactive flags, IANA time conversion, persistence across API restart, 3 viewport checks, logout and App-wide local expiry.");
+    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog and slot selection without Booking creation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
   } finally {
     if (cdp) cdp.close();
     try {

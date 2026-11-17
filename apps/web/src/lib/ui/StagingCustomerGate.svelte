@@ -3,15 +3,15 @@
   import StagingCustomerOffers from "./StagingCustomerOffers.svelte";
   import { Button } from "../components/ui/button/index.js";
   import * as Card from "../components/ui/card/index.js";
-  import { authenticateTelegramCustomer, loadTelegramInitData, revokeTelegramOwnerSession, type VerifiedCustomerSession } from "../owner-auth";
+  import { authenticateTelegramCustomer, loadTelegramInitData, revokeTelegramOwnerSession, watchOwnerSessionExpiry, type VerifiedCustomerSession } from "../owner-auth";
   let session: VerifiedCustomerSession | null = null;
   let phase: "loading" | "unavailable" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" = "loading";
-  let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+  let stopExpiry: (() => void) | null = null;
   let mounted = true;
   function expire(): void {
     session = null;
     phase = "error";
-    clearTimeout(expiryTimer);
+    stopExpiry?.(); stopExpiry = null;
   }
   async function signIn(): Promise<void> {
     try {
@@ -21,7 +21,7 @@
       if (!mounted) { void revokeTelegramOwnerSession(verified).catch(() => undefined); return; }
       session = verified;
       phase = "verified";
-      expiryTimer = setTimeout(expire, Math.max(0, verified.expiresAtUnixSeconds * 1000 - Date.now()));
+      stopExpiry = watchOwnerSessionExpiry(verified.expiresAtUnixSeconds, expire, window, document);
     } catch {
       session = null;
       phase = "error";
@@ -31,12 +31,12 @@
     const current = session;
     if (!current) return;
     session = null;
-    clearTimeout(expiryTimer);
+    stopExpiry?.(); stopExpiry = null;
     phase = "signing-out";
     try { await revokeTelegramOwnerSession(current); phase = "signed-out"; }
     catch { phase = "logout-failed"; }
   }
-  onMount(() => { void signIn(); return () => { mounted = false; clearTimeout(expiryTimer); }; });
+  onMount(() => { void signIn(); return () => { mounted = false; stopExpiry?.(); stopExpiry = null; }; });
 </script>
 
 <Card.Root class="state-card feedback-state" aria-label="Клиентский вход staging">
