@@ -42,7 +42,7 @@ def api(token, path, method="GET", data=None, *, binary=False):
         "Authorization": "Bearer " + token,
         "Accept": "application/vnd.github+json",
         "Content-Type": "application/zip" if binary else "application/json",
-        "X-GitHub-Api-Version": "2022-11-28",
+        "X-GitHub-Api-Version": "2026-03-10",
         "User-Agent": "private-ci-adapter",
     })
     # Never forward a credential to a redirected origin or print response bodies.
@@ -135,7 +135,7 @@ def publish(token, repo, job, report, archive):
     report = report | {"archiveSha256": hashlib.sha256(content).hexdigest()}
     release = api(token, "/repos/" + repo + "/releases", "POST", {
         "tag_name": job, "name": job, "body": json.dumps(report),
-        "draft": False, "prerelease": True,
+        "draft": True, "prerelease": True,
     })
     if type(release.get("id")) is not int:
         raise ValueError("Release creation failed")
@@ -144,10 +144,18 @@ def publish(token, repo, job, report, archive):
     if (asset.get("state") != "uploaded" or asset.get("size") != len(content)
             or asset.get("digest") != "sha256:" + report["archiveSha256"]):
         raise ValueError("Evidence upload unverifiable")
+    published = api(token, "/repos/" + repo + "/releases/" + str(release["id"]),
+                    "PATCH", {"draft": False})
+    if published.get("draft") is not False:
+        raise ValueError("Evidence publication failed")
 
 
 def worker(suite, commit):
     job = os.environ["TASK_JOB_ID"]
+    run_id = int(os.environ["GITHUB_RUN_ID"])
+    attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
+    if run_id < 1 or attempt < 1:
+        raise ValueError("Invalid runner provenance")
     token = os.environ["CI_EVIDENCE_TOKEN"]
     repo = private_repo(token, os.environ["CI_EVIDENCE_REPO"])
     if not JOB.fullmatch(job) or not SHA.fullmatch(commit) or suite not in SUITES:
@@ -162,18 +170,20 @@ def worker(suite, commit):
         make_archive(archive, logfile, suite)
         publish(token, repo, job, {
             "schema": 1, "jobId": job, "commit": commit,
-            "suite": suite, "exitCode": code,
+            "suite": suite, "exitCode": code, "runId": run_id, "runAttempt": attempt,
         }, archive)
         return 0 if code == 0 else 1
 
 
-def valid_evidence(release, job, commit, suite):
+def valid_evidence(release, job, commit, suite, run_id, attempt):
     try:
         report = json.loads(release["body"])
         asset = [a for a in release["assets"] if a["name"] == "evidence.zip"]
         return (
             type(report["schema"]) is int and report["schema"] == 1
             and report["jobId"] == job and report["commit"] == commit
+            and type(report["runId"]) is int and report["runId"] == run_id
+            and type(report["runAttempt"]) is int and report["runAttempt"] == attempt
             and report["suite"] == suite and type(report["exitCode"]) is int
             and report["exitCode"] == 0 and release["tag_name"] == job
             and release.get("draft") is False and len(asset) == 1
@@ -249,7 +259,7 @@ def dispatch(source, commit):
                 passed = False
                 if run.get("conclusion") == "success":
                     release = api(evidence_token, "/repos/" + evidence + "/releases/tags/" + job)
-                    passed = valid_evidence(release, job, commit, suite)
+                    passed = valid_evidence(release, job, commit, suite, run_id, run.get("run_attempt"))
                 status(suite, "success" if passed else "failure",
                        "Verified private evidence" if passed else "Execution or evidence failed")
                 failed |= not passed
