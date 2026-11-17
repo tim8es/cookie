@@ -310,7 +310,8 @@ async function createBooking(
           : null;
       let customerId: string;
       if (mode.kind === "staging") {
-        const context = await readStagingCustomerContext(client, request.actor);
+        const actor = request.actor;
+        const context = await readStagingCustomerContext(client, actor);
         await requireTenantPermission(
           client,
           request.actor,

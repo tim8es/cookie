@@ -540,12 +540,8 @@ test(
         ).statusCode,
         400,
       );
-      assert.equal(
-        (
-          await book(randomUUID(), { ...bookingPayload, locationId: other })
-        ).statusCode,
-        409,
-      );
+      const otherPlacement = { ...bookingPayload, locationId: other };
+      assert.equal((await book(randomUUID(), otherPlacement)).statusCode, 409);
       const [created, replayed] = await Promise.all([book(), book()]);
       assert.equal(created.statusCode, 201, created.body);
       assert.equal(replayed.statusCode, 201, replayed.body);
@@ -680,7 +676,8 @@ test(
       assert.equal((await preview()).statusCode, 409);
       assert.deepEqual((await clientOffers()).json(), { offers: [] });
       assert.equal((await clientSlots()).statusCode, 409);
-      assert.equal((await book(randomUUID())).json().error, "grant-unavailable");
+      const expiredBooking = await book(randomUUID());
+      assert.equal(expiredBooking.json().error, "grant-unavailable");
       await revokeStagingGrant(pool, owner.tenantId);
       assert.deepEqual((await clientOffers()).json(), { offers: [] });
       await app.inject({
