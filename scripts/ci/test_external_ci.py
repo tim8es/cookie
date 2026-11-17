@@ -61,10 +61,24 @@ class ExternalCIContract(unittest.TestCase):
         self.assertFalse(ci.valid_evidence(self.release, self.job, self.commit, "quality", 42, 1))
         self.assertFalse(ci.valid_evidence({}, self.job, self.commit, "quality", 42, 1))
 
+    def test_worker_reads_valid_task_runner_provenance(self):
+        with patch.dict(os.environ, {"TASK_RUNNER_RUN_ID": "42",
+                                    "TASK_RUNNER_RUN_ATTEMPT": "2"}, clear=True):
+            self.assertEqual(ci.task_runner_provenance(), (42, 2))
+        for values in (
+            {"TASK_RUNNER_RUN_ID": "0", "TASK_RUNNER_RUN_ATTEMPT": "1"},
+            {"TASK_RUNNER_RUN_ID": "42", "TASK_RUNNER_RUN_ATTEMPT": "0"},
+            {"TASK_RUNNER_RUN_ID": "bad", "TASK_RUNNER_RUN_ATTEMPT": "1"},
+        ):
+            with patch.dict(os.environ, values, clear=True), self.assertRaises(ValueError):
+                ci.task_runner_provenance()
+
     def test_worker_env_excludes_tokens_and_output_channels(self):
         with patch.dict(os.environ, {"PATH": "/usr/bin", "CI_EVIDENCE_TOKEN": "fake",
                                     "TASK_RUNNER_ACCESS_TOKEN": "fake", "GITHUB_OUTPUT": "/fake",
-                                    "ACTIONS_RUNTIME_TOKEN": "fake"}, clear=True):
+                                    "ACTIONS_RUNTIME_TOKEN": "fake", "GITHUB_RUN_ID": "42",
+                                    "GITHUB_RUN_ATTEMPT": "2", "TASK_RUNNER_RUN_ID": "42",
+                                    "TASK_RUNNER_RUN_ATTEMPT": "2"}, clear=True):
             self.assertEqual(ci.worker_env(), {"PATH": "/usr/bin", "CI": "true"})
 
     def test_dispatch_is_off_by_default(self):
