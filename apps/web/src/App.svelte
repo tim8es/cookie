@@ -59,7 +59,7 @@
   let error = "";
   let notice = "";
   let preview: ViewState = "normal";
-  let organizationName = "Студия Cookie (тест)";
+  let organizationName = "Студия kuki (тест)";
   let serviceName = "Женская стрижка";
   let serviceDuration = 60;
   let servicePrice = 1500;
@@ -346,8 +346,8 @@
 </script>
 
 <svelte:head>
-  <title>{customerSurface ? "Cookie — вход клиента (staging)" : api.mode === "api" ? "Cookie — кабинет салона" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
-  <meta name="description" content={api.mode === "api" ? "Cookie: защищённый кабинет услуг и мастеров." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
+  <title>{customerSurface ? "kuki — вход клиента (staging)" : api.mode === "api" ? "kuki — кабинет салона" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "kuki — кабинет салона · демо"}</title>
+  <meta name="description" content={api.mode === "api" ? "kuki: защищённый кабинет услуг и мастеров." : "kuki: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
 <div class="app-shell" data-cookie-mode={api.mode} class:real-owner-shell={api.mode === "api"} class:verified-owner-shell={verifiedOwner} class:public-shell={api.mode !== "api" && screen === "booking"} class:onboarding-shell={screen === "home" && !org && api.mode === "mock"} class:telegramPreview={api.mode !== "api" && telegramPreview && screen === "booking"} class:salonThemeForest={data.appearance.theme === "forest"} class:salonThemeOcean={data.appearance.theme === "ocean"} class:salonThemeClay={data.appearance.theme === "clay"}>

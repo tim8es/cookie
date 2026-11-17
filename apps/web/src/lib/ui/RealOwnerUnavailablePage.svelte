@@ -6,7 +6,7 @@
 
 <div class="section-head">
   <div>
-    <span class="eyebrow">COOKIE / КАБИНЕТ</span>
+    <span class="eyebrow">kuki / КАБИНЕТ</span>
     <h1>{screen === "appearance" ? "Оформление" : "Онлайн-запись"}</h1>
   </div>
 </div>

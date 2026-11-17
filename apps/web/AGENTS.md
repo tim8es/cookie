@@ -1,4 +1,4 @@
-# Cookie web UI — instructions for code agents
+# kuki web UI — instructions for code agents
 
 This directory extends the repository-level `AGENTS.md`. Those product,
 privacy, approval, CI and feature-branch constraints continue to apply here.

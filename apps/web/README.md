@@ -1,4 +1,4 @@
-# Cookie web — F1 interactive frontend foundation
+# kuki web — F1 interactive frontend foundation
 
 Existing workspace: `apps/web`. Svelte 5, TypeScript and Vite. No second application, no SSR or production deployment.
 

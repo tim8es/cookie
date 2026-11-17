@@ -81,7 +81,7 @@
         <div class="appearance-preview-placeholder">Услуга и специалист</div>
         <div class="appearance-preview-placeholder">Дата и время визита</div>
       </div>
-      <div class="appearance-preview-credit">Работает на <strong>Cookie</strong></div>
+      <div class="appearance-preview-credit">Работает на <strong>kuki</strong></div>
     </div>
     <p class="appearance-preview-hint" role="status">
       {hasUnsavedAppearance

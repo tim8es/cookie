@@ -48,7 +48,7 @@
 </script>
 
 <Card.Root class="state-card feedback-state" aria-label="Клиентский вход staging">
-  <span class="feedback-overline">COOKIE / КЛИЕНТСКИЙ ВХОД STAGING</span>
+  <span class="feedback-overline">kuki / КЛИЕНТСКИЙ ВХОД STAGING</span>
   {#if phase === "verified" && session}
     <h1>Вход клиента подтверждён</h1>
     <p>Сервер подтвердил вашу клиентскую учётную запись в тестовой организации. Это не даёт доступа к кабинету владельца.</p>
