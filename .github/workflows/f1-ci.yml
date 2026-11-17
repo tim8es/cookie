@@ -162,3 +162,5 @@ jobs:
         run: bash scripts/ci/f1-gates.sh pg17_verify
       - name: Run real PG17 migrations and integration regression
         run: bash scripts/ci/f1-gates.sh integration
+      - name: Synthetic PostgreSQL 17 backup, restore and Booking replay
+        run: bash scripts/ci/f1-gates.sh pg17_restore
