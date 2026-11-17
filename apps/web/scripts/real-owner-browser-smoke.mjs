@@ -578,7 +578,39 @@ async function main() {
     assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0);
     assert.deepEqual(errors, [], "Unexpected browser runtime errors after expiry");
     assert.deepEqual(external, [], "Unexpected external requests after expiry");
-    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog and slot selection without Booking creation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
+    // The previous browser path proved default-off. Restart with the separate
+    // write switch only in this isolated synthetic CI process.
+    await stopServer(api);
+    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled" }, origin);
+    script = await load(cdp, origin+"?surface=customer-staging", signedProof(botToken,customerUserId), script);
+    await requireDom(cdp,"write-enabled customer catalog","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
+    for(let i=0;i<3;i++){
+      await requireDom(cdp,"booking selection "+i,"document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.options.length===2 && !document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.disabled");
+      await evaluate(cdp,"(()=>{const s=document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"];s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    }
+    await fill(cdp,panel+" input[type=date]",date,"change");
+    await button(cdp,"Найти свободное время");
+    await requireDom(cdp,"slots before actual booking","document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+")");
+    await evaluate(cdp,"document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+").click()");
+    await requireDom(cdp,"real write button","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Записаться'&&!b.disabled)");
+    await button(cdp,"Записаться");
+    await requireDom(cdp,"server-confirmed real booking","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Запись подтверждена') && document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Фактическая стоимость')");
+    const realBooking = await pool.query(
+      "SELECT b.id::text,b.status,b.price_kopecks_snapshot::text AS price FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1::uuid",
+      [owner.tenantId],
+    );
+    assert.equal(realBooking.rowCount,1);
+    assert.equal(realBooking.rows[0].status,"Confirmed");
+    assert.equal(realBooking.rows[0].price,"125050");
+    assert.ok(responses.some(r=>r.status===201&&r.path.endsWith("/staging-customer-bookings")));
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0,"Confirmed attempt marker must be removed");
+    for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"confirmed customer booking "+width+"px");
+    }
+    assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
+    assert.deepEqual(external, [], "Unexpected external requests during booking");
+    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
   } finally {
     if (cdp) cdp.close();
     try {

@@ -4,7 +4,12 @@ import {
   CreateBookingFailure,
 } from "../../../packages/domain-booking/src/index.js";
 import { StagingPublicationDenied } from "../../../packages/domain-entitlement/src/index.js";
-import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
+import { readStagingCustomerContext } from "../../../packages/domain-customers/src/index.js";
+import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
+import {
+  AuthorizationDeniedError,
+  requireTenantPermission,
+} from "../../../packages/platform-identity/src/index.js";
 import type { StagingPublicationDependencies } from "./staging-publication-http.js";
 import { verifyTenantActor } from "./session-context.js";
 
@@ -22,6 +27,42 @@ export function registerStagingCustomerBooking(
   { pool, verifier, enabled }: StagingPublicationDependencies,
 ): void {
   if (!enabled) return;
+  app.get<{ Params: { tenantId: string } }>(
+    "/v1/organizations/:tenantId/staging-customer-bookings/capability",
+    async (request, reply) => {
+      reply.header("Cache-Control", "no-store");
+      reply.header("Pragma", "no-cache");
+      reply.header("Vary", "Authorization");
+      const verified = await verifyTenantActor(
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
+      );
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
+      const actor = verified.actor;
+      try {
+        await runSqlTransaction(pool, async (client) => {
+          await readStagingCustomerContext(client, actor);
+          await requireTenantPermission(
+            client,
+            actor,
+            {
+              kind: "customer-self",
+              tenantId: actor.tenantId,
+              clientIdentityId: actor.identityId,
+            },
+            "staging.customer.booking.create",
+          );
+        });
+        return reply.send({ enabled: true });
+      } catch (error) {
+        if (error instanceof AuthorizationDeniedError)
+          return reply.code(403).send({ error: "forbidden" });
+        return reply.code(503).send({ error: "unavailable" });
+      }
+    },
+  );
   app.post<{ Params: { tenantId: string } }>(
     "/v1/organizations/:tenantId/staging-customer-bookings",
     async (request, reply) => {

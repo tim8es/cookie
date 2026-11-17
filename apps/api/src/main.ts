@@ -11,6 +11,13 @@ const config = parseConfig(process.env);
 const stagingPublicationEnabled = parseStagingPublicationMode(
   process.env.COOKIE_STAGING_PUBLICATION_MODE,
 );
+// Customer mutations require a second explicit controlled-staging opt-in.
+const stagingCustomerBookingEnabled = parseStagingPublicationMode(
+  process.env.COOKIE_STAGING_CUSTOMER_BOOKING_MODE,
+);
+if (stagingCustomerBookingEnabled && !stagingPublicationEnabled) {
+  throw new Error("Staging customer booking requires staging publication");
+}
 const pool = new Pool({
   connectionString: config.databaseUrl,
   application_name: "cookie-api",
@@ -33,6 +40,11 @@ const app = createApp(pool, {
           pool,
           verifier: telegramSessions,
           enabled: stagingPublicationEnabled,
+        },
+        stagingCustomerBookingRoutes: {
+          pool,
+          verifier: telegramSessions,
+          enabled: stagingCustomerBookingEnabled,
         },
         sessionRoutes: {
           verifier: telegramSessions,
