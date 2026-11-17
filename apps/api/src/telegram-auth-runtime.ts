@@ -77,9 +77,7 @@ export function createLiveTelegramIdentityAuth(
     throw new Error("Invalid COOKIE_TELEGRAM_SELF_REGISTRATION_MODE");
   const secretHex = env.COOKIE_TELEGRAM_USER_HMAC_SECRET ?? "";
   if (!/^[0-9a-f]{64}$/i.test(secretHex))
-    throw new Error(
-      "COOKIE_TELEGRAM_USER_HMAC_SECRET must be 32-byte hex",
-    );
+    throw new Error("COOKIE_TELEGRAM_USER_HMAC_SECRET must be 32-byte hex");
   let origin: URL;
   try {
     origin = new URL(env.COOKIE_PUBLIC_ORIGIN ?? "");
@@ -106,7 +104,12 @@ export function createLiveTelegramIdentityAuth(
     pool,
     verifier,
     fingerprintSecret: Buffer.from(secretHex, "hex"),
-    identitySessions: new IdentitySessions(pool, "cookie-telegram", "cookie-web", 900),
+    identitySessions: new IdentitySessions(
+      pool,
+      "cookie-telegram",
+      "cookie-web",
+      900,
+    ),
     legacySessions,
     ttlSeconds: 900,
   };
