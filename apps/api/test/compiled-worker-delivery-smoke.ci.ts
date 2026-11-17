@@ -102,6 +102,7 @@ async function verifyCrashRecovery(
   let functionCreated = false;
   let triggerCreated = false;
   let blockedPid: number | undefined;
+  let controlPid: number | undefined;
 
   async function enqueue(): Promise<string> {
     const client = await pool.connect();
@@ -131,7 +132,7 @@ async function verifyCrashRecovery(
       id,
     ]);
     gateHeld = true;
-    const controlPid = (
+    controlPid = (
       await control.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")
     ).rows[0]!.pid;
     await pool.query(
@@ -285,12 +286,15 @@ async function verifyCrashRecovery(
     // before letting the advisory lock go.
     try {
       if (gateHeld) {
-        await pool.query(
-          `SELECT pg_terminate_backend(pid,3000) FROM pg_stat_activity
-            WHERE application_name='cookie-synthetic-worker'
-              AND datname=current_database() AND usename=current_user
-              AND pg_backend_pid()<>pid`,
-        );
+        if (controlPid !== undefined) {
+          await pool.query(
+            `SELECT pg_terminate_backend(pid,3000) FROM pg_stat_activity
+              WHERE application_name='cookie-synthetic-worker'
+                AND datname=current_database() AND usename=current_user
+                AND $1::integer=ANY(pg_blocking_pids(pid))`,
+            [controlPid],
+          );
+        }
         await control.query("SELECT pg_advisory_unlock_all()");
       }
       if (triggerCreated) {
