@@ -45,7 +45,7 @@ test("real PNG JPEG WebP decode and re-encode to static PNG", async () => {
   }
 });
 
-test("invalid MIME, SVG, truncated and oversized raster are rejected", async () => {
+test("invalid raster, MIME and size fail closed", async () => {
   const png = await raster().png().toBuffer();
   const excessive = await sharp({
     create: { width: 4096, height: 4096, channels: 3, background: "#000000" },
@@ -76,7 +76,11 @@ test("APNG animation and concurrent admission fail closed", async () => {
   const animation = Buffer.alloc(20);
   animation.writeUInt32BE(8, 0);
   animation.write("acTL", 4);
-  const apng = Buffer.concat([png.subarray(0, 33), animation, png.subarray(33)]);
+  const apng = Buffer.concat([
+    png.subarray(0, 33),
+    animation,
+    png.subarray(33),
+  ]);
   await assert.rejects(
     normalizeAppearanceImage(apng, "image/png"),
     /invalid-image/,
