@@ -2,6 +2,7 @@ import { Pool } from "pg";
 
 import { createApp } from "./app.js";
 import { parseConfig } from "./config.js";
+import { registerCompiledWeb } from "./static-web.js";
 
 const config = parseConfig(process.env);
 const pool = new Pool({
@@ -32,6 +33,10 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 try {
+  if (process.env.COOKIE_WEB_DIST) {
+    // Optional same-origin compiled Svelte UI; absent or invalid files fail startup.
+    await registerCompiledWeb(app, process.env.COOKIE_WEB_DIST);
+  }
   await app.listen({ host: config.host, port: config.port });
 } catch {
   // Avoid logging connection credentials from arbitrary upstream exceptions.
