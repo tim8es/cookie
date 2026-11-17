@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import type { Pool, QueryResultRow } from "pg";
 
-import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/authorization.js";
-import { requireTenantPermission } from "../../../packages/platform-identity/src/postgres.js";
+import {
+  AuthorizationDeniedError,
+  requireTenantPermission,
+} from "../../../packages/platform-identity/src/index.js";
 import {
   type BearerSessionVerifier,
   verifyTenantActor,

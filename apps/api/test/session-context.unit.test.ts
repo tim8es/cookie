@@ -154,6 +154,9 @@ test("successful request uses generated correlation and permission-checked ident
     },
   });
   assert.equal(response.statusCode, 200);
+  assert.equal(response.headers["cache-control"], "no-store");
+  assert.equal(response.headers.pragma, "no-cache");
+  assert.equal(response.headers.vary, "Authorization");
   assert.deepEqual(response.json(), { tenantId: TENANT_A });
   assert.equal(seen[0]?.actor.identityId, IDENTITY);
   assert.equal(seen[0]?.actor.tenantId, TENANT_A);
@@ -195,9 +198,11 @@ test("policy denial is 403, storage failure is 503 with no sensitive details", a
   };
   const forbidden = await denied.inject(options);
   assert.equal(forbidden.statusCode, 403);
+  assert.equal(forbidden.headers["cache-control"], "no-store");
   assert.deepEqual(forbidden.json(), { error: "forbidden" });
   const unavailable = await failed.inject(options);
   assert.equal(unavailable.statusCode, 503);
+  assert.equal(unavailable.headers["cache-control"], "no-store");
   assert.deepEqual(unavailable.json(), { error: "unavailable" });
   assert.doesNotMatch(unavailable.body, /password=secret/);
 });

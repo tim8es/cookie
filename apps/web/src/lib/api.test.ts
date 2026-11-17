@@ -43,6 +43,7 @@ test("disconnected API mode cannot call the network from any UI operation", asyn
     const operations = [
       () => api.getSnapshot(),
       () => api.createOrganization("Synthetic salon"),
+      () => api.saveAppearance({ theme: "forest", introduction: "Демо" }),
       () => api.addLocation("Synthetic location", "Synthetic address"),
       () => api.addService("Synthetic service", 30, 1250),
       () => api.addStaff("Synthetic stylist", "Stylist", ["synthetic-service"]),

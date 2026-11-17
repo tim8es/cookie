@@ -38,7 +38,7 @@ export function createApp(
     readonly sessionRoutes?: ProtectedSessionDependencies;
     readonly liveWorkspaceReads?: LiveWorkspaceReadDependencies;
     readonly telegramAuthRoutes?: {
-      readonly sessions: import("../../../packages/platform-identity/src/opaque-sessions.js").PostgresOpaqueTelegramSessions;
+      readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
     readonly syntheticBookingRoutes?: SyntheticBookingHttpDependencies;
     readonly syntheticBookingMutations?: SyntheticBookingMutationDependencies;
@@ -92,11 +92,10 @@ export function createApp(
   if (options.liveWorkspaceReads && options.syntheticWorkspaceReads) {
     throw new Error("Cannot mix production and synthetic Workspace routes");
   }
-  // Only authenticated, tenant-authorized metadata when real AuthN is active.
   if (options.liveWorkspaceReads)
     registerLiveWorkspaceRead(app, options.liveWorkspaceReads);
 
-  // No synthetic staff schedule read route in normal production startup.
+  // Synthetic workspace reads remain test-only.
   if (options.syntheticWorkspaceReads)
     registerSyntheticWorkspaceReads(app, options.syntheticWorkspaceReads);
 
