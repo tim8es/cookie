@@ -56,6 +56,7 @@ class ExternalCIContract(unittest.TestCase):
         report["exitCode"] = 1
         self.release["body"] = json.dumps(report)
         self.assertFalse(ci.valid_evidence(self.release, self.job, self.commit, "quality", 42, 1))
+        self.assertTrue(ci.valid_evidence(self.release, self.job, self.commit, "quality", 42, 1, require_success=False))
         self.release["assets"] = []
         self.assertFalse(ci.valid_evidence(self.release, self.job, self.commit, "quality", 42, 1))
         self.assertFalse(ci.valid_evidence({}, self.job, self.commit, "quality", 42, 1))
