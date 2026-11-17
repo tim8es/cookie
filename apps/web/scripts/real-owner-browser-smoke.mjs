@@ -114,6 +114,18 @@ async function stopBrowser(child) {
 }
 
 async function button(cdp, label) {
+  // Use the same reachable desktop/mobile owner navigation as the user.
+  const ownerScreens = { "Обзор": "home", "Услуги": "services", "Мастера": "staff", "Филиалы": "locations", "Расписание": "schedule", "Календарь": "calendar", "Оформление": "appearance", "Онлайн-запись": "booking" };
+  const target = ownerScreens[label];
+  if (target && await evaluate(cdp, "Boolean(document.querySelector(\'.real-owner-nav\'))")) {
+    const selector = JSON.stringify(".real-owner-nav button[data-screen=" + target + "]");
+    const found = await evaluate(cdp, "(() => {const find=()=>[...document.querySelectorAll(" + selector + ")].find(el=>el.getClientRects().length&&!el.disabled);const b=find();if(b){b.click();return true;}const more=document.querySelector(\'.real-owner-nav .mobile-nav button[aria-controls=mobile-more-panel]\');if(more?.getClientRects().length){more.click();return false;}return false;})()");
+    if (!found) {
+      await requireDom(cdp, "mobile navigation section " + target, "[...document.querySelectorAll(" + selector + ")].some(el=>el.getClientRects().length&&!el.disabled)");
+      await evaluate(cdp, "[...document.querySelectorAll(" + selector + ")].find(el=>el.getClientRects().length&&!el.disabled).click()");
+    }
+    return;
+  }
   // Actual rendered button + native click, no direct function invocation.
   const clicked = await evaluate(cdp,
     "(() => {const b=[...document.querySelectorAll('button')].find(el=>el.getClientRects().length&&!el.disabled&&el.textContent.trim()===" +
@@ -339,6 +351,12 @@ async function main() {
     script = await load(cdp, origin, signedProof(botToken, userId), script);
     await requireDom(cdp, "authenticated real services",
       "document.querySelector('.real-owner-nav') && document.body.innerText.includes('Услуги салона')");
+    await requireDom(cdp, "shared owner shell without demo controls", "document.querySelector(\'.verified-owner-shell[data-cookie-mode=api] .sidebar\') && !document.querySelector(\'.demo-ribbon, .preview-control, .onboarding-header\')");
+    await button(cdp, "Оформление");
+    await requireDom(cdp, "unconnected appearance explicitly unavailable", "document.querySelector('h1')?.textContent==='Оформление' && document.body.innerText.includes('Редактор оформления пока недоступен') && !document.querySelector('.owner-form, .demo-ribbon')");
+    await button(cdp, "Онлайн-запись");
+    await requireDom(cdp, "owner booking unavailable without customer identity", "document.querySelector('h1')?.textContent==='Онлайн-запись' && document.body.innerText.includes('Клиентская запись — отдельный вход') && !document.querySelector('.booking-form')");
+    await button(cdp, "Услуги");
     await waitForm(cdp, "real service form");
     await checkWidth(cdp, "real services 375px");
     await checkLabeledControls(cdp, "real service form");
@@ -616,6 +634,14 @@ async function main() {
     }
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
+    const demoApiRequests = [];
+    cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
+      if (request.url.startsWith(origin + "v1/")) demoApiRequests.push(new URL(request.url).pathname);
+    });
+    script = await load(cdp, origin + "demo", signedProof(botToken, userId), script);
+    await requireDom(cdp, "explicit demo route uses demo shell even in runtime build", "document.querySelector(\'[data-cookie-mode=mock] .welcome-form\')");
+    assert.deepEqual(demoApiRequests, [], "Demo called real API");
+    assert.deepEqual(external, [], "Demo made external requests");
     console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
   } finally {
     if (cdp) cdp.close();

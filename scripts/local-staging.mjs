@@ -35,11 +35,11 @@ function browser() {
   return candidates.find(existsSync) ?? browserBinary();
 }
 
-function proof(state) {
+function proof(state, role = "owner") {
   const fields = {
     auth_date: String(Math.floor(Date.now() / 1000)),
     query_id: randomUUID(),
-    user: JSON.stringify({ id: state.userId, first_name: "Synthetic" }),
+    user: JSON.stringify({ id: role === "client" ? state.userId + 1000000000 : state.userId, first_name: "Synthetic" }),
   };
   const check = Object.entries(fields)
     .sort(([a], [b]) => a.localeCompare(b))
@@ -96,6 +96,7 @@ async function seed(state, databaseUrl) {
   const { createTelegramMiniAppProofVerifier } = await import("../dist/packages/platform-identity/src/telegram-init-data.js");
   const { linkVerifiedTelegramOwner } = await import("../dist/packages/platform-identity/src/link-telegram-owner.js");
   const { issueStagingGrant } = await import("../dist/packages/domain-entitlement/src/staging.js");
+  const { provisionStagingCustomer } = await import("../dist/packages/domain-customers/src/staging-customer.js");
   const pool = new Pool({ connectionString: databaseUrl, max: 2 });
   try {
     await runMigrations(pool, resolve(root, "db/migrations"));
@@ -117,6 +118,11 @@ async function seed(state, databaseUrl) {
         rawInitData: proof(state), consentConfirmed: true,
       });
     }
+    await provisionStagingCustomer(pool,
+      createTelegramMiniAppProofVerifier({ botToken: state.botToken, maxAgeSeconds: 300 }),
+      Buffer.from(state.secret, "hex"), {
+        tenantId: owner.tenantId, rawInitData: proof(state, "client"), consentConfirmed: true,
+      });
     const grants = await pool.query(
       "SELECT id FROM cookie_entitlement.staging_publication_grants WHERE tenant_id=$1::uuid",
       [owner.tenantId],
@@ -146,15 +152,17 @@ async function stop(handle) {
   }
 }
 
-async function signIn(cdp, origin, state) {
-  const source = "if(location.origin===" + JSON.stringify(origin) +
-    "&&location.pathname==='/'){window.Telegram={WebApp:{initData:" +
-    JSON.stringify(proof(state)) + "}}}";
+async function signIn(cdp, origin, state, role = "owner") {
+  const path = role === "client" ? "/?surface=customer-staging" : "/";
+  const source = "if(location.href===" + JSON.stringify(origin + path) +
+    "){window.Telegram={WebApp:{initData:" + JSON.stringify(proof(state, role)) + "}}}";
   const { identifier } = await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source });
   try {
-    const navigation = await cdp.send("Page.navigate", { url: origin + "/" });
+    const navigation = await cdp.send("Page.navigate", { url: origin + path });
     if (navigation.errorText) throw new Error("Browser navigation failed");
-    await requireDom(cdp, "real owner workspace", "document.querySelector('.real-owner-nav')");
+    await requireDom(cdp, "verified " + role + " workspace", role === "client"
+      ? "document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента подтверждён'"
+      : "document.querySelector('.verified-owner-shell[data-cookie-mode=api] .sidebar')");
   } finally {
     await cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier });
   }
@@ -190,6 +198,7 @@ async function main() {
       DATABASE_URL: databaseUrl, COOKIE_WEB_DIST: join(root, "apps/web/dist"),
       COOKIE_TELEGRAM_AUTH_MODE: "enabled",
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
+      COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled",
       COOKIE_PUBLIC_ORIGIN: "https://cookie-manual.invalid",
       COOKIE_TELEGRAM_BOT_TOKEN: state.botToken,
       COOKIE_TELEGRAM_USER_HMAC_SECRET: state.secret,
@@ -218,17 +227,29 @@ async function main() {
     await cdp.send("Page.enable");
     await signIn(cdp, origin, state);
     console.log("Real Cookie: " + origin + " — use the opened isolated browser.");
-    console.log("Synthetic records only. Enter = fresh signed login; Ctrl+C = exit. DB retained.");
+    console.log("Synthetic records only. owner / client = switch role; Enter = fresh login; demo = isolated preview; Ctrl+C = exit. DB retained.");
     input = createInterface({ input: process.stdin, output: process.stdout });
     input.on("SIGINT", closeInput);
     process.on("SIGINT", closeInput);
     process.on("SIGTERM", closeInput);
     api.once("exit", closeInput);
     chrome.once("exit", closeInput);
-    for await (const _line of input) {
+    let role = "owner";
+    for await (const line of input) {
+      const command = line.trim().toLowerCase();
+      if (command && !["owner", "client", "demo"].includes(command)) {
+        console.log("Use owner, client, demo or Enter.");
+        continue;
+      }
       try {
-        await signIn(cdp, origin, state);
-        console.log("Signed in again.");
+        if (command === "demo") {
+          await cdp.send("Page.navigate", { url: origin + "/demo" });
+          await requireDom(cdp, "explicit demo", "document.querySelector('[data-cookie-mode=mock]')");
+          continue;
+        }
+        if (command) role = command;
+        await signIn(cdp, origin, state, role);
+        console.log("Signed in as " + role + ".");
       } catch {
         console.error("Sign-in was not confirmed; check local runtime and browser.");
       }
