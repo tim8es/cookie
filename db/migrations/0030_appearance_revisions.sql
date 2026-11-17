@@ -35,3 +35,23 @@ CREATE TABLE cookie_appearance.organization_branding (
 -- verify AuthN + tenant policy inside the SAME transaction as every private
 -- draft/save/publish call. Only published_config is projected by the future
 -- public read adapter after server-side slug-to-tenant resolution.
+
+-- Only genuine owner roles receive initial Appearance privileges. Existing
+-- signed-in sessions still undergo active-membership, permission and
+-- revocation checks in every transaction; this is NOT an auth bypass.
+UPDATE cookie_identity.roles AS role
+SET permissions = (
+  SELECT array_agg(DISTINCT p ORDER BY p)
+  FROM unnest(role.permissions || ARRAY[
+    'appearance.read', 'appearance.manage', 'appearance.publish'
+  ]::text[]) AS p
+)
+WHERE role.base_type = 'owner'
+  AND EXISTS (
+    SELECT 1
+      FROM cookie_tenancy.organizations AS org
+     WHERE org.id = role.tenant_id
+  );
+
+-- Brand permissions must also be added to new-owner provisioning templates
+-- after the pending #217 real workspace bootstrap PR is integrated.
