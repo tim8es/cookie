@@ -13,3 +13,5 @@ export { requireTenantPermission } from "./postgres.js";
 export { PostgresOpaqueTelegramSessions } from "./opaque-sessions.js";
 export { createTelegramMiniAppProofVerifier } from "./telegram-init-data.js";
 export { createPostgresVerifiedTelegramLinkResolver } from "./telegram-links.js";
+export type { TelegramMiniAppProofVerifier } from "./telegram-init-data.js";
+export { telegramUserFingerprint } from "./telegram-links.js";

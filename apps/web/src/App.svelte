@@ -25,6 +25,7 @@
   import BookingSetupHint from "./lib/ui/BookingSetupHint.svelte";
   import DemoState from "./lib/ui/DemoState.svelte";
   import OwnerAuthGate from "./lib/ui/OwnerAuthGate.svelte";
+  import StagingCustomerGate from "./lib/ui/StagingCustomerGate.svelte";
   import RealOwnerWorkspace from "./lib/ui/RealOwnerWorkspace.svelte";
   import {
     authenticateTelegramOwner,
@@ -39,11 +40,13 @@
   import "./visual-system.css";
 
   const api = createCookieUiApi();
+  // Presentation selection is not a trusted tenant or role claim.
+  const customerSurface = api.mode === "api" && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "customer-staging";
   // Presentation-only Telegram-sized preview; no Telegram API, initData or auth.
   const telegramPreview = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "telegram-preview";
   const blank: DemoSnapshot = { organization: null, appearance: { ...defaultSalonAppearance }, locations: [], services: [], staff: [], schedules: [], bookings: [] };
 
-  let screen: Screen = "home";
+  let screen: Screen = api.mode === "api" ? "services" : "home";
   let data: DemoSnapshot = blank;
   let initializing = true;
   let apiDisconnected = false;
@@ -84,6 +87,7 @@
   let calendarDate = localDay(new Date());
   let calendarMode: "day" | "week" = typeof window !== "undefined" && window.innerWidth <= 900 ? "day" : "week";
 
+  $: verifiedOwner = api.mode === "api" && !customerSurface && ownerAuthPhase === "verified" && ownerSession !== null;
   $: org = data.organization;
   $: hasUnsavedAppearance = appearanceTheme !== data.appearance.theme ||
     appearanceIntroduction.trim() !== data.appearance.introduction;
@@ -99,8 +103,9 @@
 
   onMount(() => {
     ownerMounted = true;
-    void reload();
-    if (api.mode === "api") void authenticateOwner();
+    if (api.mode === "api") {
+      if (!customerSurface) void authenticateOwner();
+    } else void reload();
     return () => {
       ownerMounted = false;
       stopOwnerExpiry?.();
@@ -341,17 +346,21 @@
 </script>
 
 <svelte:head>
-  <title>{api.mode === "api" ? "Cookie — кабинет салона" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
+  <title>{customerSurface ? "Cookie — вход клиента (staging)" : api.mode === "api" ? "Cookie — кабинет салона" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
   <meta name="description" content={api.mode === "api" ? "Cookie: защищённый кабинет услуг и мастеров." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
-<div class="app-shell" class:real-owner-shell={api.mode === "api"} class:public-shell={api.mode !== "api" && screen === "booking"} class:onboarding-shell={screen === "home" && !org && api.mode === "mock"} class:telegramPreview={api.mode !== "api" && telegramPreview && screen === "booking"} class:salonThemeForest={data.appearance.theme === "forest"} class:salonThemeOcean={data.appearance.theme === "ocean"} class:salonThemeClay={data.appearance.theme === "clay"}>
-  {#if api.mode !== "api" && screen !== "booking" && !(screen === "home" && !org)}
+<div class="app-shell" data-cookie-mode={api.mode} class:real-owner-shell={api.mode === "api"} class:verified-owner-shell={verifiedOwner} class:public-shell={api.mode !== "api" && screen === "booking"} class:onboarding-shell={screen === "home" && !org && api.mode === "mock"} class:telegramPreview={api.mode !== "api" && telegramPreview && screen === "booking"} class:salonThemeForest={data.appearance.theme === "forest"} class:salonThemeOcean={data.appearance.theme === "ocean"} class:salonThemeClay={data.appearance.theme === "clay"}>
+  {#if verifiedOwner}
+    <Sidebar {screen} {stepCount} realOwner={true} onNavigate={(next) => screen = next} />
+  {:else if api.mode === "mock" && screen !== "booking" && !(screen === "home" && !org)}
     <Sidebar {screen} {stepCount} onNavigate={goto} />
   {/if}
 
   <div class="main-area">
-    {#if api.mode === "api"}
+    {#if verifiedOwner}
+      <Topbar {screen} bind:preview canCreateBooking={false} demoMode={false} onNavigate={(next) => screen = next} onLogout={() => void logoutOwner()} />
+    {:else if api.mode === "api"}
       <OnboardingHeader apiMode={true} />
     {:else if screen === "booking"}
       <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} demoMode={api.mode === "mock"} onBack={() => goto("home")} />
@@ -368,8 +377,10 @@
         onDismissNotice={() => notice = ""}
       />
       {#if api.mode === "api"}
-        {#if ownerAuthPhase === "verified" && ownerSession}
-          <RealOwnerWorkspace session={ownerSession} onLogout={() => void logoutOwner()} />
+        {#if customerSurface}
+          <StagingCustomerGate />
+        {:else if ownerAuthPhase === "verified" && ownerSession}
+          <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} />
         {:else}
           <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
         {/if}
@@ -507,7 +518,7 @@
         {/if}
       {/if}
 
-      {#if screen === "booking"}
+      {#if api.mode === "mock" && screen === "booking"}
         <PublicAttribution />
       {:else if !initializing && api.mode === "mock"}
         <DemoFooter showReset={true} {busy} onReset={() => void resetDemo()} />
