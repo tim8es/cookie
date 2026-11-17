@@ -17,6 +17,7 @@ import {
   type SyntheticWorkspaceReadDependencies,
 } from "./workspace-http.js";
 import { registerStagingAvailabilityRoutes } from "./staging-availability-http.js";
+import { registerStagingCustomerBooking } from "./staging-customer-booking-http.js";
 import { registerStagingCustomerOffers } from "./staging-customer-offers-http.js";
 import { registerStagingCustomerContext } from "./staging-customer-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
@@ -69,6 +70,7 @@ export function createApp(
     readonly locationRoutes?: RealLocationRouteDependencies;
     readonly shiftPlanRoutes?: OwnerShiftPlanRouteDependencies;
     readonly stagingPublicationRoutes?: StagingPublicationDependencies;
+    readonly stagingCustomerBookingRoutes?: StagingPublicationDependencies;
     readonly ownerCalendar?: OwnerCalendarDependencies;
     readonly telegramAuthRoutes?: {
       readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
@@ -132,6 +134,10 @@ export function createApp(
     registerStagingCustomerOffers(app, options.stagingPublicationRoutes);
     registerStagingAvailabilityRoutes(app, options.stagingPublicationRoutes);
   }
+
+  // Independent opt-in. Normal runtime cannot mount this candidate yet.
+  if (options.stagingCustomerBookingRoutes)
+    registerStagingCustomerBooking(app, options.stagingCustomerBookingRoutes);
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.

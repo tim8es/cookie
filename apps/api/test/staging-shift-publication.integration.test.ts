@@ -74,6 +74,7 @@ test(
       staffRoutes: { pool, verifier: sessions },
       shiftPlanRoutes: { pool, verifier: sessions },
       stagingPublicationRoutes: { pool, verifier: sessions, enabled: true },
+      stagingCustomerBookingRoutes: { pool, verifier: sessions, enabled: true },
     });
     const disabled = createApp(pool);
     try {
@@ -496,6 +497,100 @@ test(
         [owner.tenantId, clientContext.customerId],
       );
       assert.equal(bookingCount.rows[0].count, 0);
+      const bookingUrl = prefix + "/staging-customer-bookings";
+      const bookingPayload = {
+        locationId: owner.locationId,
+        staffId,
+        serviceId,
+        startAt: slots[0]!.startAt,
+      };
+      const bookingKey = randomUUID();
+      const book = (key = bookingKey, payload = bookingPayload) =>
+        app.inject({
+          method: "POST",
+          url: bookingUrl,
+          headers: { ...clientHeaders, "idempotency-key": key },
+          payload,
+        });
+      assert.equal(
+        (await disabled.inject({ method: "POST", url: bookingUrl })).statusCode,
+        404,
+      );
+      assert.equal(
+        (await app.inject({ method: "POST", url: bookingUrl })).statusCode,
+        401,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "POST",
+            url: bookingUrl,
+            headers: { ...headers, "idempotency-key": bookingKey },
+            payload: bookingPayload,
+          })
+        ).statusCode,
+        403,
+      );
+      assert.equal(
+        (
+          await book(bookingKey, {
+            ...bookingPayload,
+            customerId: customer,
+          } as typeof bookingPayload)
+        ).statusCode,
+        400,
+      );
+      assert.equal(
+        (
+          await book(randomUUID(), { ...bookingPayload, locationId: other })
+        ).statusCode,
+        409,
+      );
+      const [created, replayed] = await Promise.all([book(), book()]);
+      assert.equal(created.statusCode, 201, created.body);
+      assert.equal(replayed.statusCode, 201, replayed.body);
+      assert.deepEqual(created.json(), replayed.json());
+      assert.equal(created.json().status, "Confirmed");
+      assert.equal(created.json().priceKopecks, "100000");
+      const persisted = await pool.query(
+        `SELECT customer_id::text,status
+           FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid`,
+        [owner.tenantId, created.json().bookingId],
+      );
+      assert.deepEqual(persisted.rows, [
+        { customer_id: clientContext.customerId, status: "Confirmed" },
+      ]);
+      assert.equal((await book(randomUUID())).statusCode, 409);
+      assert.equal(
+        (
+          await book(bookingKey, {
+            ...bookingPayload,
+            startAt: slots[1]!.startAt,
+          })
+        ).json().error,
+        "IDEMPOTENCY_KEY_REUSED",
+      );
+      assert.ok(
+        !(await clientSlots()).json().slots.some(
+          (slot: { startAt: string }) => slot.startAt === bookingPayload.startAt,
+        ),
+      );
+      const durable = await pool.query(
+        `SELECT
+          (SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1) AS receipts,
+          (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1 AND topic='booking.confirmed') AS events`,
+        [owner.tenantId],
+      );
+      assert.deepEqual(durable.rows[0], { receipts: 1, events: 1 });
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.booking.create') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
+      assert.equal((await book()).statusCode, 403, "deny even receipt replay");
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.booking.create') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
       // Remove only offers permission. Context remains readable; owner endpoints never widen access.
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.offers.read') WHERE tenant_id=$1::uuid AND base_type='client'",
@@ -585,6 +680,7 @@ test(
       assert.equal((await preview()).statusCode, 409);
       assert.deepEqual((await clientOffers()).json(), { offers: [] });
       assert.equal((await clientSlots()).statusCode, 409);
+      assert.equal((await book(randomUUID())).json().error, "grant-unavailable");
       await revokeStagingGrant(pool, owner.tenantId);
       assert.deepEqual((await clientOffers()).json(), { offers: [] });
       await app.inject({
