@@ -1,31 +1,45 @@
 import type { PoolClient } from "pg";
 
 import {
+  createAuthMailAdmission,
+  type AuthMailLimits,
+} from "./auth-mail-admission.js";
+import {
   createAuthMailDelivery,
   type AuthMailLinkConfig,
   type AuthMailPurpose,
   type AuthMailTransport,
 } from "./auth-mail-delivery.js";
 import { issueEmailPasswordRecovery } from "./email-password-recovery.js";
-import { issueEmailRegistrationChallenge } from "./email-registration.js";
+import {
+  canonicalRegistrationEmail,
+  emailFingerprint,
+  issueEmailRegistrationChallenge,
+} from "./email-registration.js";
 
 type Transaction = <T>(work: (client: PoolClient) => Promise<T>) => Promise<T>;
 
 /**
  * Trusted internal delivery worker capability, not a public request handler.
- * Upstream admission must be committed before invoking it. The caller may not
+ * Mail admission commits before issuing a proof. The caller may not
  * expose delivery latency, failure, or account-existence signals to clients.
  * No secrets are returned to the worker caller or logged by this module.
  */
 export function createEmailChallengeMailer(config: {
   transaction: Transaction;
   fingerprintSecret: Buffer;
+  admissionSecret: Buffer;
+  limits: AuthMailLimits;
   links: AuthMailLinkConfig;
   transport: AuthMailTransport;
   registrationTtlSeconds: number;
   recoveryTtlSeconds: number;
 }): {
-  deliver(purpose: AuthMailPurpose, email: unknown): Promise<void>;
+  deliver(
+    purpose: AuthMailPurpose,
+    email: unknown,
+    sourceFingerprint: Buffer,
+  ): Promise<void>;
 } {
   if (
     !Buffer.isBuffer(config.fingerprintSecret) ||
@@ -44,23 +58,32 @@ export function createEmailChallengeMailer(config: {
   const secret = Buffer.from(config.fingerprintSecret);
   const { transaction, registrationTtlSeconds, recoveryTtlSeconds } = config;
   const delivery = createAuthMailDelivery(config.links, config.transport);
+  const admission = createAuthMailAdmission({
+    transaction,
+    namespaceSecret: config.admissionSecret,
+    limits: config.limits,
+  });
   return {
-    async deliver(purpose, email) {
+    async deliver(purpose, email, sourceFingerprint) {
       if (purpose !== "registration" && purpose !== "password-recovery") {
         throw new Error("Invalid authentication mail purpose");
       }
+      const address = canonicalRegistrationEmail(email);
+      const recipient = address ? emailFingerprint(secret, address) : null;
+      if (!(await admission.reserve(sourceFingerprint, recipient))) return;
+      if (!address) return;
       const challenge =
         purpose === "registration"
           ? await issueEmailRegistrationChallenge(
               transaction,
               secret,
-              email,
+              address,
               registrationTtlSeconds,
             )
           : await issueEmailPasswordRecovery(
               transaction,
               secret,
-              email,
+              address,
               recoveryTtlSeconds,
             );
       if (challenge) await delivery.send(purpose, challenge);
