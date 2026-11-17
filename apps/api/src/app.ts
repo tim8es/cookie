@@ -1,6 +1,11 @@
 import Fastify, { type FastifyInstance } from "fastify";
 
 import {
+  registerRealAppearanceRoutes,
+  type RealAppearanceRouteDependencies,
+} from "./appearance-http.js";
+
+import {
   SERVICE_NAME,
   type HealthResponse,
 } from "../../../packages/contracts/src/index.js";
@@ -68,6 +73,10 @@ export function createApp(
   database: DatabaseProbe,
   options: {
     readonly logger?: boolean;
+    readonly appearanceDraftRoutes?: Pick<
+      RealAppearanceRouteDependencies,
+      "pool" | "verifier"
+    >;
     readonly sessionRoutes?: ProtectedSessionDependencies;
     readonly liveWorkspaceReads?: LiveWorkspaceReadDependencies;
     readonly catalogRoutes?: RealCatalogRouteDependencies;
@@ -119,6 +128,12 @@ export function createApp(
   // a database-resolved trusted link and HTTPS origin. No Booking enabled.
   if (options.telegramAuthRoutes)
     registerTelegramAuthExchange(app, options.telegramAuthRoutes.sessions);
+
+  if (options.appearanceDraftRoutes)
+    registerRealAppearanceRoutes(app, {
+      ...options.appearanceDraftRoutes,
+      draftOnly: true,
+    });
 
   if (options.catalogRoutes)
     registerRealCatalogRoutes(app, options.catalogRoutes);

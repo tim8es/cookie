@@ -8,6 +8,7 @@
   import RealOwnerCalendarPage from "./RealOwnerCalendarPage.svelte";
   import RealOwnerOverviewPage from "./RealOwnerOverviewPage.svelte";
   import RealOwnerUnavailablePage from "./RealOwnerUnavailablePage.svelte";
+  import RealOwnerAppearancePage from "./RealOwnerAppearancePage.svelte";
 
   export let session: VerifiedOwnerSession;
   export let screen: Screen;
@@ -31,6 +32,10 @@
   <RealOwnerCalendarPage {session} />
 {:else if screen === "schedule"}
   <RealOwnerSchedulePage {session} onOpenStaff={() => onNavigate("staff")} />
-{:else if screen === "appearance" || screen === "booking"}
+{:else if screen === "appearance"}
+  {#key session.accessToken}
+    <RealOwnerAppearancePage {session} />
+  {/key}
+{:else if screen === "booking"}
   <RealOwnerUnavailablePage {screen} onReturn={() => onNavigate("home")} />
 {/if}
