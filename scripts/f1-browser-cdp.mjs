@@ -8,6 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
+import { startChromiumWithRetry } from "./f1-chromium-startup.mjs";
+
 function browserBinary() {
   const choices = [
     process.env.COOKIE_BROWSER_BINARY,
@@ -22,6 +24,23 @@ function browserBinary() {
     if (existsSync(candidate)) return candidate;
   }
   throw new Error("Chromium binary is required for F1 browser-to-PostgreSQL QA");
+}
+
+// A profile cannot be deleted while an unreaped browser still owns it.
+// Fail the test if even SIGKILL cannot reap the child: do not launch a
+// second process against a potentially still-running first attempt.
+async function stopChrome(chrome) {
+  if (!chrome || chrome.exitCode !== null || chrome.signalCode !== null) return;
+  const closed = new Promise((resolve) => chrome.once("close", resolve));
+  chrome.kill("SIGTERM");
+  await Promise.race([closed, sleep(800)]);
+  if (chrome.exitCode === null && chrome.signalCode === null) {
+    chrome.kill("SIGKILL");
+    await Promise.race([closed, sleep(800)]);
+  }
+  if (chrome.exitCode === null && chrome.signalCode === null) {
+    throw new Error("Chromium child could not be reaped");
+  }
 }
 
 function getLocal(url) {
@@ -115,43 +134,80 @@ async function click(cdp, selector) {
 export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
   const slotTime = options.slotTime ?? "10:00";
   const outcome = options.outcome ?? "confirmed";
+  const viewportWidth = options.viewportWidth ?? 375;
+  const isConflict = outcome.startsWith("conflict");
   const beforeSubmit = options.beforeSubmit;
-  assert.ok(["confirmed", "conflict", "denied"].includes(outcome));
+  assert.ok(["confirmed", "conflict", "conflict-empty", "conflict-error", "denied"].includes(outcome));
+  assert.ok([375, 1280].includes(viewportWidth), "QA viewports must be explicit and bounded");
   assert.ok(/^\d{2}:\d{2}$/.test(slotTime));
   const page = new URL(url);
   assert.equal(page.protocol, "http:");
   assert.equal(page.hostname, "127.0.0.1");
   assert.ok(!page.searchParams.has("syntheticBearer"), "Test bearer must not be in URL");
   assert.equal(syntheticBearer, "synthetic-owner");
-  const browserDataDir = mkdtempSync(join(tmpdir(), "cookie-f1-pg-browser-"));
-  const chromeLogs = [];
+  let browserDataDir;
+  let chromeLogs = [];
   const runtimeErrors = [];
   const networkFailures = [];
   let chrome;
   let cdp;
   try {
-    chrome = spawn(browserBinary(), [
-      "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
-      "--disable-background-networking", "--no-first-run",
-      "--remote-debugging-address=127.0.0.1",
-      "--remote-debugging-port=0",
-      "--user-data-dir=" + browserDataDir, "about:blank",
-    ], { stdio: ["ignore", "pipe", "pipe"] });
-    chrome.stderr.on("data", (chunk) => chromeLogs.push(String(chunk).slice(0, 500)));
-    // Chromium itself binds an available loopback debugging port and writes
-    // DevToolsActivePort atomically. Avoid reserving/releasing guessed ports.
-    const chromePort = await poll("Chrome DevToolsActivePort", async () => {
-      const portFile = join(browserDataDir, "DevToolsActivePort");
-      if (!existsSync(portFile)) return null;
-      const firstLine = readFileSync(portFile, "utf8").split(/\r?\n/)[0];
-      const port = Number(firstLine);
-      return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
-    }, 20000);
-    const target = await poll("Chrome DevTools", async () => {
-      const result = await getLocal("http://127.0.0.1:" + chromePort + "/json/list");
-      return JSON.parse(result.body).find((x) => x.type === "page" && x.webSocketDebuggerUrl);
+    const executable = browserBinary();
+    // Bounded retry covers Chrome launch + CDP discovery ONLY. Once a
+    // WebSocket is returned, every Svelte/UI/API/DB assertion runs once.
+    const started = await startChromiumWithRetry({
+      attempts: 2,
+      startupTimeoutMs: 12000,
+      intervalMs: 100,
+      startAttempt: async () => {
+        const dir = mkdtempSync(join(tmpdir(), "cookie-f1-pg-browser-"));
+        let process;
+        try {
+          process = spawn(executable, [
+            "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
+            "--disable-background-networking", "--no-first-run",
+            "--remote-debugging-address=127.0.0.1",
+            "--remote-debugging-port=0",
+            "--user-data-dir=" + dir, "about:blank",
+          ], { stdio: ["ignore", "ignore", "pipe"] });
+        } catch (error) {
+          rmSync(dir, { recursive: true, force: true });
+          throw error;
+        }
+        const handle = { chrome: process, dir, logs: [], startupError: null };
+        process.stderr.on("data", (chunk) => {
+          handle.logs.push(String(chunk).slice(0, 500));
+          if (handle.logs.length > 20) handle.logs.shift();
+        });
+        process.on("error", (error) => { handle.startupError = error.message; });
+        return handle;
+      },
+      probe: async ({ dir }) => {
+        // Chrome owns the ephemeral port and writes DevToolsActivePort;
+        // never reserve/release a guessed port in this test process.
+        const portFile = join(dir, "DevToolsActivePort");
+        if (!existsSync(portFile)) return null;
+        const firstLine = readFileSync(portFile, "utf8").split(/\r?\n/)[0];
+        const port = Number(firstLine);
+        if (!Number.isInteger(port) || port <= 0 || port >= 65536) return null;
+        const result = await getLocal("http://127.0.0.1:" + port + "/json/list");
+        if (result.code !== 200) return null;
+        return JSON.parse(result.body).find(
+          (x) => x.type === "page" && x.webSocketDebuggerUrl,
+        );
+      },
+      disposeAttempt: async ({ chrome: child, dir }) => {
+        try {
+          await stopChrome(child);
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      },
     });
-    cdp = connect(target.webSocketDebuggerUrl);
+    chrome = started.handle.chrome;
+    chromeLogs = started.handle.logs;
+    browserDataDir = started.handle.dir;
+    cdp = connect(started.ready.webSocketDebuggerUrl);
     await cdp.ready;
     await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
       source:
@@ -172,33 +228,64 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
     let availabilityGets = 0;
     const bookingPostIds = new Set();
     const bookingHttpStatuses = [];
+    const availabilityRequests = new Map();
+    const refreshedAvailabilityBodies = [];
+    const refreshedAvailabilityErrors = [];
     cdp.on("Runtime.exceptionThrown", (event) => {
       runtimeErrors.push(event?.exceptionDetails?.exception?.description ?? event?.exceptionDetails?.text);
     });
     cdp.on("Network.loadingFailed", (event) => {
       networkFailures.push(event?.errorText ?? "unknown request failure");
+      const availability = availabilityRequests.get(event.requestId);
+      if (availability?.afterConflict)
+        refreshedAvailabilityErrors.push(event?.errorText ?? "availability loading failed");
     });
     cdp.on("Network.responseReceived", ({ requestId, response }) => {
       if (bookingPostIds.has(requestId)) bookingHttpStatuses.push(response.status);
+      const availability = availabilityRequests.get(requestId);
+      if (availability) availability.status = response.status;
       if (response?.status >= 400)
         networkFailures.push(response.status + " " + response.url);
     });
+    cdp.on("Network.loadingFinished", ({ requestId }) => {
+      const availability = availabilityRequests.get(requestId);
+      if (!availability?.afterConflict || availability.status !== 200) return;
+      // Read the actual browser HTTP response body, not a new Node-side GET
+      // or a locally reconstructed/stale slot list. loadingFinished ensures
+      // Network.getResponseBody can retrieve this exact request's payload.
+      void cdp.send("Network.getResponseBody", { requestId })
+        .then((result) => {
+          const raw = result.base64Encoded
+            ? Buffer.from(result.body, "base64").toString("utf8")
+            : result.body;
+          refreshedAvailabilityBodies.push({
+            ...availability,
+            body: JSON.parse(raw),
+          });
+        })
+        .catch((error) => refreshedAvailabilityErrors.push(error.message));
+    });
     cdp.on("Network.requestWillBeSent", ({ request, requestId }) => {
       if (!request?.url?.startsWith("http")) return;
-      const host = new URL(request.url).hostname;
-      if (host !== "127.0.0.1") external.push(request.url);
+      const parsed = new URL(request.url);
+      if (parsed.hostname !== "127.0.0.1") external.push(request.url);
       if (request.url.includes(syntheticBearer)) external.push("Synthetic bearer leaked in request URL");
-      if (request.method === "GET" && request.url.includes("/availability")) {
+      if (request.method === "GET" && parsed.pathname.endsWith("/availability")) {
         availabilityGets++;
+        availabilityRequests.set(requestId, {
+          url: request.url,
+          afterConflict: bookingHttpStatuses.includes(409),
+          status: null,
+        });
       }
-      if (request.url.includes("/v1/organizations/") && request.method === "POST") {
+      if (parsed.pathname.includes("/v1/organizations/") && request.method === "POST") {
         bookingPosts++;
         bookingPostIds.add(requestId);
       }
     });
     await cdp.send("Emulation.setDeviceMetricsOverride", {
-      width: 375, height: 812, deviceScaleFactor: 1,
-      mobile: false, screenWidth: 375, screenHeight: 812,
+      width: viewportWidth, height: 812, deviceScaleFactor: 1,
+      mobile: false, screenWidth: viewportWidth, screenHeight: 812,
     });
     await cdp.send("Page.navigate", { url });
     await poll("Svelte form and server-side available slots", async () =>
@@ -230,7 +317,7 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
     const availabilityGetsBeforeSubmit = availabilityGets;
     await click(cdp, ".booking-form button[type=submit]");
     if (outcome !== "confirmed") {
-      const title = outcome === "conflict"
+      const title = isConflict
         ? "Выбранное время больше недоступно"
         : "Операция недоступна";
       await poll("Svelte shows verified " + outcome + " without Confirmed", async () =>
@@ -240,30 +327,92 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
             !card.textContent.includes("Запись подтверждена") &&
             !card.querySelector(".booking-attempt-receipt");
         })()`), 25000);
-      if (outcome === "conflict") {
+      if (isConflict) {
         const choices = await evaluate(cdp,
           "document.querySelectorAll('.booking-attempt-slot-options button').length");
-        assert.ok(choices > 0, "409 must offer freshly fetched backend availability");
+        if (outcome === "conflict") {
+          assert.ok(choices > 0, "409 must offer freshly fetched backend availability");
+        } else {
+          assert.equal(choices, 0, "Empty/failed refresh must not expose stale slot alternatives");
+        }
         assert.ok(
           availabilityGets > availabilityGetsBeforeSubmit,
           "409 must refetch availability over HTTP after the conflicting Booking POST",
         );
-        const stillOffered = await evaluate(cdp, `(() => {
-          const refreshed = [...document.querySelectorAll(".booking-attempt-slot-options button")];
-          return refreshed.some((button) => button.textContent?.trim() === ${JSON.stringify(slotTime)});
-        })()`);
-        assert.equal(stillOffered, false, "409 must remove the newly booked slot from refreshed choices");
+        const refreshed = outcome === "conflict-error"
+          ? null
+          : await poll("CDP body of post-409 backend availability", () =>
+            refreshedAvailabilityBodies.find((entry) => entry.afterConflict), 10000);
+        if (outcome !== "conflict-error") {
+          assert.deepEqual(
+            refreshedAvailabilityErrors,
+            [],
+            "A post-409 availability HTTP body must be readable from CDP",
+          );
+        }
+        const initial = [...availabilityRequests.values()].find((entry) => !entry.afterConflict);
+        assert.ok(initial, "Expected an initial backend availability request");
+        const originalUrl = new URL(initial.url);
+        const candidate = refreshed ?? [...availabilityRequests.values()].find(
+          (entry) => entry.afterConflict && entry.status === 503,
+        );
+        assert.ok(candidate, "Observed post-409 availability response must exist");
+        const refreshedUrl = new URL(candidate.url);
+        assert.equal(
+          candidate.status,
+          outcome === "conflict-error" ? 503 : 200,
+          "Actual post-409 availability HTTP status must match the synthetic fault mode",
+        );
+        assert.equal(refreshedUrl.pathname, originalUrl.pathname, "Refresh must use the same tenant and Location");
+        for (const key of ["serviceId", "staffId", "date"]) {
+          assert.equal(
+            refreshedUrl.searchParams.get(key),
+            originalUrl.searchParams.get(key),
+            "Refresh must preserve the original " + key,
+          );
+        }
+        if (outcome === "conflict-error") {
+          const errorText = await evaluate(cdp, `document.querySelector(".booking-attempt-status")?.textContent ?? ""`);
+          assert.match(errorText, /Не удалось обновить свободные интервалы/);
+          assert.equal(refreshedAvailabilityBodies.length, 0, "Failed GET cannot produce trusted slot data");
+        } else {
+          assert.ok(
+            Array.isArray(refreshed.body?.slots),
+            "CDP response body must contain actual backend slots",
+          );
+        }
+        const serverTimes = (refreshed?.body?.slots ?? []).map((slot) => {
+          assert.match(slot.startAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/);
+          return slot.startAt.slice(11, 16);
+        });
+        const displayedTimes = await evaluate(cdp, `[...document.querySelectorAll(".booking-attempt-slot-options button")].map((button) => button.textContent?.trim())`);
+        assert.deepEqual(
+          displayedTimes,
+          serverTimes,
+          "Every visible 409 alternative must equal the fresh browser-received backend slots",
+        );
+        assert.equal(
+          serverTimes.includes(slotTime),
+          false,
+          "Fresh backend availability must exclude the newly committed staff slot",
+        );
+        if (outcome === "conflict-empty") {
+          assert.deepEqual(serverTimes, [], "Fresh backend must legitimately return zero slots");
+          const bodyText = await evaluate(cdp, `document.querySelector(".booking-attempt-status")?.textContent ?? ""`);
+          assert.ok(!bodyText.includes("Не удалось обновить"), "Empty valid GET is not a transport failure");
+          assert.ok(bodyText.includes("Изменить дату или мастера"), "Empty state must offer safe selection recovery");
+        }
       }
       assert.equal(bookingPosts, 1, "One POST only; no implicit retry or duplicate");
       assert.deepEqual(
         bookingHttpStatuses,
-        [outcome === "conflict" ? 409 : 403],
+        [isConflict ? 409 : 403],
         "Network.responseReceived must prove the real Booking POST status, not only UI text",
       );
       assert.deepEqual(external, [], "Synthetic client must not make external requests");
       assert.deepEqual(runtimeErrors, [], "Forbidden/conflict must be handled by Svelte");
       const layout = await evaluate(cdp, "({width:innerWidth, scrollWidth:document.documentElement.scrollWidth})");
-      assert.ok(layout.scrollWidth <= layout.width + 1, "Svelte negative state overflows mobile viewport");
+      assert.ok(layout.scrollWidth <= layout.width + 1, "Svelte negative state overflows requested viewport");
       return { outcome, requests: bookingPosts };
     }
     const receipt = await poll("Server-confirmed receipt rendered by Svelte UI", async () =>
@@ -297,8 +446,10 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
     throw error;
   } finally {
     cdp?.close();
-    if (chrome && !chrome.killed) chrome.kill("SIGTERM");
-    await sleep(250);
-    rmSync(browserDataDir, { recursive: true, force: true });
+    try {
+      await stopChrome(chrome);
+    } finally {
+      if (browserDataDir) rmSync(browserDataDir, { recursive: true, force: true });
+    }
   }
 }

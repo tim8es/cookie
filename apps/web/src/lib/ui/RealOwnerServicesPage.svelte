@@ -31,6 +31,8 @@
     if (reason instanceof ServiceApiFailure) {
       if (reason.reason === "unauthorized")
         return "Сеанс или права изменились. Выполните вход заново.";
+      if (reason.reason === "capacity")
+        return "Достигнут предельный размер каталога (100 услуг в F1).";
       if (reason.reason === "conflict")
         return "Этот ключ уже использован с другими параметрами. Измените форму.";
       if (reason.reason === "invalid-response")

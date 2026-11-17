@@ -1,11 +1,11 @@
 <script lang="ts">
-  /** The parent determines which setup step is still incomplete. */
-  export let onContinueSetup: () => void;
+  import { CalendarX2 } from "@lucide/svelte";
 </script>
 
-<div class="setup-shortcut">
-  <span>Для полного сценария сначала создайте услугу, мастера и график.</span>
-  <button class="btn btn-secondary" type="button" onclick={onContinueSetup}>
-    Продолжить настройку →
-  </button>
-</div>
+<section class="booking-unavailable" role="status" aria-labelledby="booking-unavailable-title">
+  <span class="booking-unavailable-icon" aria-hidden="true">
+    <CalendarX2 size={25} strokeWidth={1.7} />
+  </span>
+  <h2 id="booking-unavailable-title">Онлайн-запись пока недоступна</h2>
+  <p>У салона пока нет полного расписания доступных услуг и специалистов. Попробуйте позже.</p>
+</section>

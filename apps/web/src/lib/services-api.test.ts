@@ -137,3 +137,18 @@ test("expired credential fails before network and never uses mock data", async (
   );
   assert.equal(calls.length, 0);
 });
+
+test("catalog cap is distinct from replay conflict", async () => {
+  const draft = {
+    displayName: "Synthetic haircut",
+    durationMinutes: 60,
+    basePriceKopecks: 150000,
+  };
+  const body = { error: "catalog-capacity-reached" };
+  const response = Response.json(body, { status: 409 });
+  await assert.rejects(
+    createRealService(session, draft, KEY, mock(response, [])),
+    (reason: unknown) =>
+      reason instanceof ServiceApiFailure && reason.reason === "capacity",
+  );
+});

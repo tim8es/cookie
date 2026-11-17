@@ -12,6 +12,7 @@ export interface RealService {
 export type ServiceFailureReason =
   | "unauthorized"
   | "conflict"
+  | "capacity"
   | "unavailable"
   | "invalid-response";
 export class ServiceApiFailure extends Error {
@@ -32,7 +33,7 @@ function isRealService(value: unknown): value is RealService {
     UUID.test(s.id) &&
     typeof s.displayName === "string" &&
     !!s.displayName.trim() &&
-    s.displayName.length <= 200 &&
+    [...s.displayName].length <= 200 &&
     Number.isInteger(s.durationMinutes) &&
     s.durationMinutes! >= 1 &&
     s.durationMinutes! <= 1440 &&
@@ -75,7 +76,14 @@ async function request(
   if (response.status === 401 || response.status === 403) {
     throw new ServiceApiFailure("unauthorized");
   }
-  if (response.status === 409) throw new ServiceApiFailure("conflict");
+  if (response.status === 409) {
+    const body = (await response.json().catch(() => null)) as {
+      error?: unknown;
+    } | null;
+    throw new ServiceApiFailure(
+      body?.error === "catalog-capacity-reached" ? "capacity" : "conflict",
+    );
+  }
   if (!response.ok) throw new ServiceApiFailure("unavailable");
   try {
     return {

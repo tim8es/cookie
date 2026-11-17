@@ -16,6 +16,7 @@ const paths = [
   "styles/first-run.css",
   "styles/ledger.css",
   "styles/owner-forms.css",
+  "styles/appearance.css",
   "styles/calendar.css",
   "styles/feedback.css",
 ];
