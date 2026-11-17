@@ -1,0 +1,35 @@
+name: Temporary Appearance format diagnostic
+on:
+  push:
+    branches: [chore/appearance-format-probe-20261117]
+permissions:
+  contents: read
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+        with:
+          version: 10.24.0
+      - uses: actions/setup-node@49933ea528caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "26"
+      - run: pnpm install --frozen-lockfile
+      - name: Exact formatter output
+        run: |
+          set -e
+          pnpm exec prettier --write apps/api/src/appearance-assets-http.ts apps/api/test/appearance-owner-http.integration.test.ts apps/web/src/lib/appearance-assets-api.ts apps/web/src/lib/appearance-assets-api.test.ts
+          echo '=== CHILD FORMAT BEGIN ==='
+          git --no-pager diff --no-ext-diff
+          echo '=== CHILD FORMAT END ==='
+          git restore --worktree .
+          git checkout --detach 2d4f6fdbe6f473fda73a4e6816924192eb8b4c61
+          pnpm exec prettier --write apps/api/src/appearance-assets-http.ts apps/api/test/appearance-owner-http.integration.test.ts
+          echo '=== BASE FORMAT BEGIN ==='
+          git --no-pager diff --no-ext-diff
+          echo '=== BASE FORMAT END ==='
