@@ -53,6 +53,13 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
+      - name: Temporary calendar source formatter diagnostic
+        run: |
+          for file in apps/api/test/owner-calendar.integration.test.ts apps/web/src/lib/owner-calendar-api.ts; do
+            printf 'COOKIE_CAL_FMT %s ' "$file"
+            pnpm exec prettier "$file" | base64 -w0
+            printf '\n'
+          done
       - name: Check source formatting
         run: pnpm format:check
       - name: Check kernel and contract module boundaries
