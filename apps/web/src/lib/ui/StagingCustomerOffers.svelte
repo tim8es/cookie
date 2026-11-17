@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { Button } from "../components/ui/button/index.js";
   import { Input } from "../components/ui/input/index.js";
-  import { canCreateCustomerBooking, customerBookingAttempt, type CustomerBookingSelection } from "../staging-customer-booking-api";
+  import { canCreateCustomerBooking, customerBookingAttempt, recoverCustomerBooking, type CustomerBookingSelection } from "../staging-customer-booking-api";
   import type { BookingAttempt, BookingAttemptState } from "../booking-attempt";
   import type { ConfirmedBookingReceipt } from "../confirmed-booking-receipt";
   import type { OwnBookingHistory } from "../staging-customer-history-api";
@@ -29,11 +29,14 @@
   let bookingEnabled = false;
   let blocked = false;
   let storageKey = "";
+  let recoveryBusy = false;
+  let recoveryMessage = "";
+  let recovered = false;
   let attempt: BookingAttempt<CustomerBookingSelection, ConfirmedBookingReceipt, CustomerSlot> | null = null;
   let bookingState: BookingAttemptState<ConfirmedBookingReceipt, CustomerSlot> = { phase: "idle" };
   let locked = false;
   $: disposition = bookingState.phase === "confirmed" ? receiptDisposition(bookingState.receipt, historySnapshot) : "unverified";
-  $: locked = blocked || bookingState.phase === "submitting" || bookingState.phase === "error" || bookingState.phase === "confirmed";
+  $: locked = recoveryBusy || blocked || bookingState.phase === "submitting" || bookingState.phase === "error" || bookingState.phase === "confirmed";
   async function initialize(): Promise<void> {
     bookingEnabled = await canCreateCustomerBooking(session);
     if (!mounted) return;
@@ -45,7 +48,7 @@
     await refresh();
   }
   function clearPending(): void {
-    try { sessionStorage.removeItem(storageKey); }
+    try { sessionStorage.removeItem(storageKey); blocked = false; }
     catch { blocked = true; }
   }
   async function submitBooking(): Promise<void> {
@@ -62,12 +65,38 @@
     applyResult(await attempt.submit(selection));
   }
   async function retryBooking(): Promise<void> {
-    if (!attempt || bookingState.phase !== "error" || !bookingState.retryable) return;
+    if (recoveryBusy || !attempt || bookingState.phase !== "error" || !bookingState.retryable) return;
     bookingState = { phase: "submitting" };
     applyResult(await attempt.retry());
   }
+  async function recoverPending(): Promise<void> {
+    if (recoveryBusy || !bookingEnabled || (!blocked && bookingState.phase !== "error")) return;
+    recoveryBusy = true;
+    recoveryMessage = "";
+    try {
+      const key = sessionStorage.getItem(storageKey);
+      if (!key) { recoveryMessage = "Исходный ключ недоступен. Обратитесь в салон."; return; }
+      const receipt = await recoverCustomerBooking(session, key);
+      if (!mounted) return;
+      if (Date.now() / 1000 >= session.expiresAtUnixSeconds) { onUnauthorized(); return; }
+      if (!receipt || sessionStorage.getItem(storageKey) !== key) {
+        recoveryMessage = "Сервер не подтвердил исходную операцию. Не создавайте новую запись; повторите проверку или обратитесь в салон.";
+        return;
+      }
+      clearPending();
+      attempt = null;
+      recovered = true;
+      bookingState = { phase: "confirmed", receipt };
+      slots = null; slotId = "";
+      onConfirmed();
+    } catch {
+      if (mounted) recoveryMessage = "Не удалось проверить исходную операцию. Не создавайте новую запись.";
+    } finally { if (mounted) recoveryBusy = false; }
+  }
   function applyResult(result: BookingAttemptState<ConfirmedBookingReceipt, CustomerSlot>): void {
     if (!mounted) return;
+    recovered = false;
+    recoveryMessage = "";
     bookingState = result;
     if (result.phase === "confirmed") {
       clearPending();
@@ -91,6 +120,7 @@
   function newSelection(): void {
     if (blocked || bookingState.phase !== "confirmed") return;
     attempt = null; bookingState = { phase: "idle" };
+    recovered = false; recoveryMessage = "";
     void refresh();
   }
   function unique(items: CustomerOffer[], key: "locationId" | "serviceId" | "staffId") {
@@ -200,13 +230,15 @@
     {/if}
   {/if}
   {#if blocked}
-    <p role="alert" class="alert-error">Статус предыдущей попытки неизвестен. Не создавайте новую запись до проверки салоном. Если браузер запретил хранение, запись также недоступна.</p>
+    <p role="alert" class="alert-error">Статус предыдущей попытки неизвестен. Не создавайте новую запись до проверки результата. Если браузер запретил хранение, запись также недоступна.</p>
+    {#if bookingEnabled}<Button type="button" disabled={recoveryBusy} onclick={() => void recoverPending()}>Найти подтверждение записи</Button>{/if}
   {:else if bookingState.phase === "submitting"}
     <p role="status">Ожидаем подтверждения сервера. Запись ещё не подтверждена.</p>
   {:else if bookingState.phase === "error"}
     <div role="alert" class="alert-error">
       <p>Статус записи не подтверждён. Не создавайте новую запись до проверки результата.</p>
-      {#if bookingState.retryable}<Button type="button" onclick={() => void retryBooking()}>Повторить проверку записи</Button>{/if}
+      {#if bookingState.retryable}<Button type="button" disabled={recoveryBusy} onclick={() => void retryBooking()}>Повторить проверку записи</Button>{/if}
+      <Button type="button" variant="outline" disabled={recoveryBusy} onclick={() => void recoverPending()}>Найти подтверждение записи</Button>
     </div>
   {:else if bookingState.phase === "confirmed"}
     <div class="customer-choice-summary" role="status">
@@ -216,18 +248,25 @@
         <p>Актуальные время, стоимость и статус смотрите в разделе «Мои записи».</p>
       {:else}
         <strong>Создание записи подтверждено</strong>
+        {#if recovered}<p>Восстановлено по исходной операции.</p>{/if}
         <p>Номер записи: {bookingState.receipt.bookingId}</p>
         {#if disposition === "original"}
           <p>Статус на момент обновления списка: подтверждена.</p>
         {:else}
           <p>Текущий статус ещё не проверен. Это подтверждение первоначальной операции, а не текущего состояния.</p>
         {/if}
-        <p>Время при создании: {date} · {format(bookingState.receipt.startAt, selected?.timeZone ?? "UTC")} – {format(bookingState.receipt.endAt, selected?.timeZone ?? "UTC")}</p>
+        {#if recovered}
+          <p>Время при создании (UTC): {bookingState.receipt.startAt.slice(0,16).replace("T"," ")} – {bookingState.receipt.endAt.slice(0,16).replace("T"," ")}</p>
+        {:else}
+          <p>Время при создании: {date} · {format(bookingState.receipt.startAt, selected?.timeZone ?? "UTC")} – {format(bookingState.receipt.endAt, selected?.timeZone ?? "UTC")}</p>
+        {/if}
         <p>Фактическая стоимость при создании: {receiptPrice(bookingState.receipt.priceKopecks)}</p>
       {/if}
       <Button type="button" onclick={newSelection}>Создать ещё запись</Button>
     </div>
   {/if}
+  {#if recoveryBusy}<p role="status">Проверяем исходную операцию на сервере…</p>{/if}
+  {#if recoveryMessage}<p role="alert">{recoveryMessage}</p>{/if}
   <p class="owner-form-note">Тестовая витрина. Свободное время — моментальный снимок, без резервирования слота и платежей.</p>
 </section>
 

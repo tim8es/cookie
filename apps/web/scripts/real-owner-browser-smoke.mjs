@@ -627,6 +627,32 @@ async function main() {
     await requireDom(cdp,"new selection returns to live catalog after cancellation",
       "document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2 && !"+receiptCard);
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0,"Cancellation must not create a pending Create marker");
+    for(let i=0;i<3;i++){
+      await requireDom(cdp,"recovery selection "+i,"document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.options.length===2 && !document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.disabled");
+      await evaluate(cdp,"(()=>{const s=document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"];s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    }
+    await fill(cdp,panel+" input[type=date]",date,"change");
+    await button(cdp,"Найти свободное время");
+    await requireDom(cdp,"slots before lost response","document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+")");
+    await evaluate(cdp,"document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+").click()");
+    await requireDom(cdp,"second write available","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Записаться'&&!b.disabled)");
+    // Drop the real response only after the server has returned 201.
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);window.fetch=async(input,init)=>{const response=await send(input,init);if(init?.method==='POST'&&String(input).endsWith('/staging-customer-bookings')&&response.status===201)throw new Error('synthetic lost response');return response;};})()");
+    await button(cdp,"Записаться");
+    await requireDom(cdp,"uncertain actual committed result","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Статус записи не подтверждён')");
+    assert.equal(await evaluate(cdp,"sessionStorage.length"),1);
+    const beforeRecovery=await pool.query("SELECT b.id::text FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1 AND b.status='Confirmed'",[owner.tenantId]);
+    assert.equal(beforeRecovery.rowCount,1,"Real second booking must already be committed");
+    const successfulCreates=responses.filter(r=>r.status===201&&r.path.endsWith("/staging-customer-bookings")).length;
+    script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script);
+    await requireDom(cdp,"reload retains unresolved marker","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Статус предыдущей попытки неизвестен')");
+    await button(cdp,"Найти подтверждение записи");
+    await requireDom(cdp,"receipt recovered by same key","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Восстановлено по исходной операции')&&document.querySelector("+JSON.stringify(panel)+")?.innerText.includes("+JSON.stringify(beforeRecovery.rows[0].id)+")");
+    assert.equal(await evaluate(cdp,"sessionStorage.length"),0);
+    assert.equal(responses.filter(r=>r.status===201&&r.path.endsWith("/staging-customer-bookings")).length,successfulCreates);
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-bookings/receipt")));
+    const afterRecovery=await pool.query("SELECT b.id::text FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1 AND b.status='Confirmed'",[owner.tenantId]);
+    assert.deepEqual(afterRecovery.rows,beforeRecovery.rows);
     await checkWidth(cdp,"cancelled customer booking");
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
