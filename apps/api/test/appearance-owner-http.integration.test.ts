@@ -130,9 +130,8 @@ test(
       assert.equal(enabled.statusCode, 200);
       assert.deepEqual(enabled.json(), { enabled: true });
       assert.equal(
-        (
-          await draftOnly.inject({ method: "GET", url: capability, headers })
-        ).statusCode,
+        (await draftOnly.inject({ method: "GET", url: capability, headers }))
+          .statusCode,
         404,
       );
       const uploadUrl = prefix + "/assets/logo";
@@ -291,12 +290,14 @@ test(
         403,
       );
       assert.equal(
-        (await app.inject({ method: "GET", url: assetUrl, headers })).statusCode,
+        (await app.inject({ method: "GET", url: assetUrl, headers }))
+          .statusCode,
         200,
       );
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal(
-        (await app.inject({ method: "GET", url: assetUrl, headers })).statusCode,
+        (await app.inject({ method: "GET", url: assetUrl, headers }))
+          .statusCode,
         401,
       );
       assert.equal((await read()).statusCode, 401);

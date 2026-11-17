@@ -1,8 +1,4 @@
-import type {
-  FastifyInstance,
-  FastifyReply,
-  FastifyRequest,
-} from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 
 import {
@@ -115,8 +111,7 @@ export function registerPrivateAppearanceAssetRoutes(
             return reply.code(415).send({ error: "invalid-upload" });
           // No queue, no aggregate unbounded body buffering. Admission
           // precedes asynchronous auth and parsing, and lasts through work.
-          if (admitted)
-            return reply.code(503).send({ error: "unavailable" });
+          if (admitted) return reply.code(503).send({ error: "unavailable" });
           admitted = request;
           try {
             const verified = await verifyTenantActor(
@@ -125,7 +120,9 @@ export function registerPrivateAppearanceAssetRoutes(
               verifier,
             );
             if (!verified.actor)
-              return reply.code(verified.status).send({ error: verified.error });
+              return reply
+                .code(verified.status)
+                .send({ error: verified.error });
             if (!verified.actor.opaqueSessionAuthority)
               return reply.code(403).send({ error: "forbidden" });
             await withTenantPermission(

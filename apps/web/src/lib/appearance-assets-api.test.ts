@@ -20,15 +20,22 @@ const png = Buffer.from(
 
 test("private asset capability is fail closed", async () => {
   assert.equal(
-    await readAppearanceAssetCapability(session, async () => new Response("", { status: 404 })),
+    await readAppearanceAssetCapability(
+      session,
+      async () => new Response("", { status: 404 }),
+    ),
     false,
   );
   assert.equal(
-    await readAppearanceAssetCapability(session, async () => Response.json({ enabled: true })),
+    await readAppearanceAssetCapability(session, async () =>
+      Response.json({ enabled: true }),
+    ),
     true,
   );
   await assert.rejects(
-    readAppearanceAssetCapability(session, async () => Response.json({ enabled: "true" })),
+    readAppearanceAssetCapability(session, async () =>
+      Response.json({ enabled: "true" }),
+    ),
     /invalid-response/,
   );
 });
@@ -36,35 +43,69 @@ test("private asset capability is fail closed", async () => {
 test("asset upload verifies receipt and preview uses bearer without a URL token", async () => {
   const raw = new Blob([png], { type: "image/png" });
   const fetcher: typeof fetch = async (url, init) => {
-    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer synthetic");
+    assert.equal(
+      new Headers(init?.headers).get("authorization"),
+      "Bearer synthetic",
+    );
     assert.equal(init?.credentials, "omit");
     assert.equal(init?.cache, "no-store");
     assert.equal(init?.redirect, "error");
     if (init?.method === "POST") {
       assert.equal(url, "/v1/organizations/" + id + "/appearance/assets/logo");
       assert.equal(init.body, raw);
-      return Response.json({ asset: { id, kind: "logo", mime: "image/png", width: 1, height: 1 } });
+      return Response.json({
+        asset: { id, kind: "logo", mime: "image/png", width: 1, height: 1 },
+      });
     }
-    assert.equal(url, "/v1/organizations/" + id + "/appearance/assets/logo/" + id);
+    assert.equal(
+      url,
+      "/v1/organizations/" + id + "/appearance/assets/logo/" + id,
+    );
     return new Response(png, { headers: { "content-type": "image/png" } });
   };
   const asset = await uploadAppearanceAsset(session, "logo", raw, fetcher);
-  const preview = await readAppearanceAssetPreview(session, "logo", asset.id, fetcher, undefined, asset);
+  const preview = await readAppearanceAssetPreview(
+    session,
+    "logo",
+    asset.id,
+    fetcher,
+    undefined,
+    asset,
+  );
   assert.equal(preview.size, png.length);
   assert.equal(preview.type, "image/png");
 });
 
 test("wrong receipt kind and untrusted preview are rejected", async () => {
   await assert.rejects(
-    uploadAppearanceAsset(session, "logo", new Blob([png], { type: "image/png" }), async () =>
-      Response.json({ asset: { id, kind: "background", mime: "image/png", width: 1, height: 1 } }),
+    uploadAppearanceAsset(
+      session,
+      "logo",
+      new Blob([png], { type: "image/png" }),
+      async () =>
+        Response.json({
+          asset: {
+            id,
+            kind: "background",
+            mime: "image/png",
+            width: 1,
+            height: 1,
+          },
+        }),
     ),
     /invalid-response/,
   );
-  for (const payload of [Buffer.from("not an image"), Buffer.alloc(2 * 1024 * 1024 + 1)]) {
+  for (const payload of [
+    Buffer.from("not an image"),
+    Buffer.alloc(2 * 1024 * 1024 + 1),
+  ]) {
     await assert.rejects(
-      readAppearanceAssetPreview(session, "logo", id, async () =>
-        new Response(payload, { headers: { "content-type": "image/png" } }),
+      readAppearanceAssetPreview(
+        session,
+        "logo",
+        id,
+        async () =>
+          new Response(payload, { headers: { "content-type": "image/png" } }),
       ),
       /invalid-response/,
     );
