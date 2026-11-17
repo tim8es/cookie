@@ -243,7 +243,7 @@ test("invalid IDs, impossible times and invalid attempt keys cannot reach fetch"
     ).submit(input);
     assert.deepEqual(state, {
       phase: "error",
-      reason: "unexpected",
+      reason: "outcome-unknown",
       retryable: false,
     });
   }
@@ -253,7 +253,7 @@ test("invalid IDs, impossible times and invalid attempt keys cannot reach fetch"
   ).submit(selection);
   assert.deepEqual(badKey, {
     phase: "error",
-    reason: "unexpected",
+    reason: "outcome-unknown",
     retryable: false,
   });
   assert.equal(requests, 0);
