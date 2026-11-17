@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 import { Pool } from "pg";
@@ -9,6 +9,7 @@ import { runSqlTransaction } from "../../../packages/platform-db/src/transaction
 import type { AuthMailMessage } from "../../../packages/platform-identity/src/auth-mail-delivery.js";
 import { createAuthMailQueue } from "../../../packages/platform-identity/src/auth-mail-queue.js";
 import { createAuthMailWorker } from "../../../packages/platform-identity/src/auth-mail-worker.js";
+import { emailFingerprint } from "../../../packages/platform-identity/src/email-registration.js";
 
 test(
   "auth mail queue fences claims and never retries ambiguous dispatch",
@@ -39,6 +40,15 @@ test(
     };
     const queue = createAuthMailQueue(config);
     const jobs: string[] = [];
+    const fingerprint = emailFingerprint(fingerprintSecret, email);
+    const enqueue = async (purpose: AuthMailMessage["purpose"]) => {
+      await queue.enqueue(purpose, email, source);
+      const pending = await pool.query<{ id: string }>(
+        "SELECT id::text FROM cookie_identity.auth_mail_jobs WHERE status='pending'",
+      );
+      assert.equal(pending.rowCount, 1);
+      jobs.push(pending.rows[0]!.id);
+    };
     const messages: AuthMailMessage[] = [];
     let failTransport = false;
     const worker = createAuthMailWorker({
@@ -62,10 +72,9 @@ test(
 
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
-      await queue.enqueue("registration", email, source);
+      await enqueue("registration");
       const first = await queue.claim();
       assert.ok(first);
-      jobs.push(first.id);
       const stored = await pool.query(
         "SELECT sealed_recipient FROM cookie_identity.auth_mail_jobs WHERE id=$1",
         [first.id],
@@ -105,25 +114,49 @@ test(
       });
       assert.equal(await queue.claim(), null);
 
-      await queue.enqueue("registration", email, source);
+      await enqueue("registration");
       assert.equal(await worker.runOnce(), "submitted");
       assert.equal(messages.length, 1);
-      await queue.enqueue("password-recovery", email, source);
+      await enqueue("password-recovery");
       assert.equal(await worker.runOnce(), "skipped");
       assert.equal(messages.length, 1);
 
       failTransport = true;
-      await queue.enqueue("registration", email, source);
+      await enqueue("registration");
       assert.equal(await worker.runOnce(), "unknown");
       assert.equal(await worker.runOnce(), "idle");
       assert.equal(messages.length, 2);
     } finally {
       // Tests run serially on an isolated synthetic CI database.
-      await pool.query(
-        "DELETE FROM cookie_identity.auth_mail_jobs WHERE id=ANY($1::uuid[])",
-        [jobs],
-      );
-      await pool.end();
+      try {
+        await pool.query(
+          "DELETE FROM cookie_identity.auth_mail_jobs WHERE id=ANY($1::uuid[])",
+          [jobs],
+        );
+        await pool.query(
+          "DELETE FROM cookie_identity.email_registration_challenges WHERE email_hmac_sha256=$1",
+          [fingerprint],
+        );
+        const derive = (scope: string, subject: Buffer) =>
+          createHmac("sha256", config.admissionSecret)
+            .update("cookie-auth-mail-admission-v1\0", "utf8")
+            .update(scope, "utf8")
+            .update("\0", "utf8")
+            .update(subject)
+            .digest();
+        for (const key of [
+          derive("global", Buffer.alloc(0)),
+          derive("source", source),
+          derive("recipient", fingerprint),
+        ]) {
+          await pool.query(
+            "DELETE FROM cookie_identity.email_login_attempts WHERE subject_hmac_sha256=$1",
+            [key],
+          );
+        }
+      } finally {
+        await pool.end();
+      }
     }
   },
 );
