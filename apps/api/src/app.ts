@@ -18,6 +18,7 @@ import {
 } from "./workspace-http.js";
 import { registerStagingAvailabilityRoutes } from "./staging-availability-http.js";
 import { registerStagingCustomerBooking } from "./staging-customer-booking-http.js";
+import { registerStagingCustomerAppointments } from "./staging-customer-appointments-http.js";
 import { registerStagingCustomerOffers } from "./staging-customer-offers-http.js";
 import { registerStagingCustomerContext } from "./staging-customer-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
@@ -132,6 +133,7 @@ export function createApp(
     registerStagingPublicationRoutes(app, options.stagingPublicationRoutes);
     registerStagingCustomerContext(app, options.stagingPublicationRoutes);
     registerStagingCustomerOffers(app, options.stagingPublicationRoutes);
+    registerStagingCustomerAppointments(app, options.stagingPublicationRoutes);
     registerStagingAvailabilityRoutes(app, options.stagingPublicationRoutes);
   }
 

@@ -4,3 +4,4 @@ export {
   listStagingCustomerOffers,
   listStagingCustomerSlots,
 } from "./staging-offers.js";
+export { listStagingCustomerAppointments } from "./staging-appointments.js";
