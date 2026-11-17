@@ -7,7 +7,7 @@
 
 ## What this PR implements
 
-The shared frontend now has `apps/web/src/lib/branding-config.ts`:
+The boxed modular-monolith now has a single public business capability in `packages/domain-appearance/src/index.ts` (implemented by `branding.ts`). `apps/web/src/lib/branding-config.ts` is only a re-export facade: both browser and future server must import the same policy instead of maintaining separate validation implementations:
 
 - Four strictly defined presets (not infinite templates):
   - Atelier — light, editorial, soft controls;
@@ -18,7 +18,8 @@ The shared frontend now has `apps/web/src/lib/branding-config.ts`:
 - `BrandConfigV1` with explicit version, preset ID, bounded choices and **opaque IDs** for logo/background assets. No URL string, SVG, CSS property body or embedded data URI is accepted as an asset reference.
 - `validateBrandConfig(raw)`: fail-closed publish-oriented validation; unknown fields and versions are rejected; accent/primary contrast must be at least 4.5:1.
 - `compileBrandTokens(raw)`: returns only finite, safe CSS variables whose values are checked hex strings or owned enum tokens. Browser text contrast on custom primary/backgrounds uses WCAG relative luminance and picks a contrasting light/dark ink.
-- Unit tests for four presets, light/dark distribution, valid custom colors/shapes/fonts, unsafe CSS, remote asset URL, invalid contrast and versioning.
+- Domain-module unit tests run through the root `pnpm test` command; the browser facade still runs the same contract from `@cookie/web` checks. The module is included in the Node 26 boxed API build and checked by the cross-module public-entrypoint boundary rule.
+- Unit tests cover four presets, light/dark distribution, valid custom colors/shapes/fonts, unsafe CSS, remote asset URL, invalid contrast and versioning.
 
 `apps/web/src/lib/ui/BrandingSettingsEditor.svelte` is a transport-neutral, production-oriented reusable component:
 
