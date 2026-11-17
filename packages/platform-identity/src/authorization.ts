@@ -187,7 +187,7 @@ export function evaluateAuthorization(
   }
   if (actor.tenantId !== resource.tenantId) return deny("foreign-tenant");
   if (
-    (permission === "staging.customer.context.read") !==
+    (permission === "staging.customer.context.read" || permission === "staging.customer.offers.read") !==
     (resource.kind === "customer-self")
   )
     return deny("permission-denied");

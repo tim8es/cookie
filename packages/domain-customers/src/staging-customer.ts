@@ -11,6 +11,7 @@ import { requireTenantPermission } from "../../platform-identity/src/postgres.js
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const CUSTOMER_CONTEXT_PERMISSION = "staging.customer.context.read";
+export const CUSTOMER_OFFERS_PERMISSION = "staging.customer.offers.read";
 
 interface LinkInput {
   readonly tenantId: string;
@@ -115,8 +116,8 @@ export async function provisionStagingCustomer(
       [input.tenantId, identityId],
     );
     await client.query(
-      "INSERT INTO cookie_identity.roles(tenant_id,id,base_type,display_name,permissions) VALUES($1::uuid,$2::uuid,'client','Staging Client',ARRAY[$3::text])",
-      [input.tenantId, roleId, CUSTOMER_CONTEXT_PERMISSION],
+      "INSERT INTO cookie_identity.roles(tenant_id,id,base_type,display_name,permissions) VALUES($1::uuid,$2::uuid,'client','Staging Client',ARRAY[$3::text,$4::text])",
+      [input.tenantId, roleId, CUSTOMER_CONTEXT_PERMISSION, CUSTOMER_OFFERS_PERMISSION],
     );
     await client.query(
       "INSERT INTO cookie_identity.role_assignments(tenant_id,id,identity_id,role_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid)",
