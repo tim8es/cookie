@@ -18,6 +18,10 @@ import {
 } from "./workspace-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
 import {
+  registerOwnerCalendar,
+  type OwnerCalendarDependencies,
+} from "./owner-calendar-http.js";
+import {
   registerStagingPublicationRoutes,
   type StagingPublicationDependencies,
 } from "./staging-publication-http.js";
@@ -53,6 +57,7 @@ export function createApp(
     readonly logger?: boolean;
     readonly sessionRoutes?: ProtectedSessionDependencies;
     readonly catalogRoutes?: RealCatalogRouteDependencies;
+    readonly ownerCalendar?: OwnerCalendarDependencies;
     readonly staffRoutes?: RealStaffRoutesDependencies;
     readonly locationRoutes?: RealLocationRouteDependencies;
     readonly shiftPlanRoutes?: OwnerShiftPlanRouteDependencies;
@@ -104,6 +109,7 @@ export function createApp(
     registerRealCatalogRoutes(app, options.catalogRoutes);
 
   if (options.staffRoutes) registerRealStaffRoutes(app, options.staffRoutes);
+  if (options.ownerCalendar) registerOwnerCalendar(app, options.ownerCalendar);
 
   // Owner-controlled Locations are real tenant-scoped rows, never anonymous.
   if (options.locationRoutes)

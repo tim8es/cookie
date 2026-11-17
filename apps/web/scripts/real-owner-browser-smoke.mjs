@@ -340,12 +340,35 @@ async function main() {
     await button(cdp,"Расписание");
     await requireDom(cdp,"published shift persisted after restart","document.querySelector('.schedule-summary')?.innerText.includes('Опубликована в тестовом контуре')");
     assert.deepEqual((await pool.query("SELECT id::text,active FROM cookie_scheduling.shift_windows WHERE tenant_id=$1::uuid",[owner.tenantId])).rows,shifts.rows);
+    // The production write API remains absent. Seed exactly one synthetic
+    // persisted Booking in this isolated CI database to test read-only Calendar.
+    await button(cdp,"Календарь");
+    await requireDom(cdp,"empty real owner calendar","document.querySelector('.empty-mini')?.innerText.includes('За выбранный период записей нет')");
+    const customerId = randomUUID();
+    const bookingId = randomUUID();
+    await pool.query("INSERT INTO cookie_customers.customers(tenant_id,id) VALUES($1,$2)",[owner.tenantId,customerId]);
+    await pool.query(
+      `INSERT INTO cookie_booking.bookings (tenant_id,id,customer_id,staff_id,location_id,service_id,status,start_at,end_at,occupied_until,service_duration_minutes_snapshot,post_service_buffer_minutes_snapshot,price_kopecks_snapshot)
+       VALUES($1,$2,$3,$4,$5,$6,'Confirmed',$7::timestamptz,$7::timestamptz+interval '50 minutes',$7::timestamptz+interval '50 minutes',50,0,125050)`,
+      [owner.tenantId,bookingId,customerId,beforeRestart.staffId,owner.locationId,beforeRestart.serviceId,date+"T08:00:00Z"],
+    );
+    await fill(cdp,"input[type=date]",date,"change");
+    await requireDom(cdp,"calendar reads persisted Booking","document.querySelector('[aria-label=\"Записи за выбранный период\"]')?.innerText.includes('Synthetic E2E Edited Service') && document.querySelector('.status-pill')?.innerText.includes('Подтверждена')");
+    await button(cdp,"Неделя");
+    await requireDom(cdp,"week reads persisted Booking","document.querySelector('[aria-label=\"Записи за выбранный период\"]')?.innerText.includes('Synthetic E2E Staff')");
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/owner-calendar")));
+    for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"real owner calendar "+width+"px");
+      await checkLabeledControls(cdp,"real owner calendar "+width+"px");
+    }
+
 
     assert.deepEqual(external, [], "Unexpected real-mode external network requests");
     assert.deepEqual(errors, [], "Unexpected browser runtime errors");
     await button(cdp, "Выйти");
     await requireDom(cdp, "final logout", "document.body.innerText.includes('Вы вышли')");
-    console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit, staging capacity activation, confirmed shift publication and PostgreSQL persistence across API restart, 3 viewport checks, server logout.");
+    console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit, staging capacity activation, confirmed shift publication, real read-only calendar and PostgreSQL persistence across API restart, 3 viewport checks, server logout.");
   } finally {
     if (cdp) cdp.close();
     if (chrome && !chrome.killed) chrome.kill("SIGTERM");

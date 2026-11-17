@@ -250,3 +250,6 @@ export function evaluateAvailableStart(
   const prepared = prepare(request);
   return availableAt(prepared, parseInstant(startAt));
 }
+
+/** Branch-local civil time conversion; rejects gaps and folds. */
+export { resolveLocalMinute } from "./local-minute.js";
