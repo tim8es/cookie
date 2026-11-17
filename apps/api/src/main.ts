@@ -1,4 +1,7 @@
+import { resolve } from "node:path";
+
 import { Pool } from "pg";
+import { createMigrationReadiness } from "../../../packages/platform-db/src/index.js";
 import { parseStagingPublicationMode } from "../../../packages/domain-entitlement/src/index.js";
 
 import { createApp } from "./app.js";
@@ -30,9 +33,19 @@ const pool = new Pool({
   max: 5,
   connectionTimeoutMillis: 3_000,
 });
+// pg emits idle-client failures on the pool itself. Without a listener a
+// transient PostgreSQL outage can terminate Node before readiness can fail.
+// pg removes the failed client; subsequent requests must still verify DB state.
+pool.on("error", () => {
+  console.error("Cookie API idle PostgreSQL connection lost");
+});
 const telegramSessions = createLiveTelegramSessionProvider(process.env, pool);
 const app = createApp(pool, {
   logger: true,
+  databaseReadiness: await createMigrationReadiness(
+    pool,
+    resolve(process.cwd(), "db/migrations"),
+  ),
   ...(telegramSessions
     ? {
         telegramAuthRoutes: { sessions: telegramSessions },

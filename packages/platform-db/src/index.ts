@@ -6,3 +6,5 @@
 export { enqueueOutbox } from "./outbox.js";
 
 export { runSqlTransaction } from "./transaction.js";
+
+export { createMigrationReadiness } from "./schema-readiness.js";
