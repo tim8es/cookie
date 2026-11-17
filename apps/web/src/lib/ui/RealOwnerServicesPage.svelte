@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { Button } from "../components/ui/button/index.js";
-  import { money } from "../dates";
+
   import type { VerifiedOwnerSession } from "../owner-auth";
   import {
     createRealService,
@@ -30,6 +30,10 @@
   let editing: RealService | null = null;
   let stale = false;
   let uncertain = false;
+
+  function catalogPrice(kopecks: number): string {
+    return new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(kopecks / 100);
+  }
 
   function description(reason: unknown): string {
     if (reason instanceof ServiceApiFailure) {
@@ -67,7 +71,7 @@
   }
 
   function startEdit(service: RealService): void {
-    if (saving || uncertain || service.active) return;
+    if (saving || loading || uncertain || service.active) return;
     editing = service;
     serviceName = service.displayName;
     serviceDuration = service.durationMinutes;
@@ -194,7 +198,7 @@
               <strong>{service.displayName}</strong>
               <small>{service.durationMinutes} мин · {service.active ? "Активна" : "Черновик"}</small>
             </div>
-            <strong class="price-label">{money(service.basePriceKopecks / 100)}</strong>
+            <strong class="price-label">{catalogPrice(service.basePriceKopecks)}</strong>
             {#if !service.active}
               <Button type="button" variant="outline" size="sm" disabled={saving || uncertain || loading} onclick={() => startEdit(service)}>Изменить</Button>
             {/if}

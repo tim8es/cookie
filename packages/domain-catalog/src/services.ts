@@ -205,7 +205,7 @@ export function validateEditDraftService(input: unknown): EditDraftServiceInput 
 }
 
 /** The protected API owns the transaction and current permission checks.
- * Only a never-active configured draft is eligible. No price snapshot or
+ * Only a currently inactive, API-originated draft without active assignments or booking history is eligible. No price snapshot or
  * assignment is modified. The edit receipt survives later revisions.
  */
 export async function editTenantDraftService(
