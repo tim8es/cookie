@@ -23,7 +23,7 @@ class NotConnectedApi implements CookieUiPort {
   private unavailable(): never {
     throw new UiFailure(
       "NOT_CONNECTED",
-      "API ещё не подключён. Для локального UI включите VITE_COOKIE_DATA_MODE=mock.",
+      "Этот демонстрационный адаптер недоступен в рабочем режиме. Для просмотра демо откройте /demo.",
     );
   }
   async getSnapshot(): Promise<DemoSnapshot> {
@@ -63,10 +63,13 @@ class NotConnectedApi implements CookieUiPort {
     return this.unavailable();
   }
 }
+/** Root and unknown paths always fail closed into API mode. Only an explicit demo path opts in. */
+export function resolveCookieDataMode(pathname: string): DataMode {
+  return pathname === "/demo" || pathname === "/demo/" ? "mock" : "api";
+}
+
 export function createCookieUiApi(
-  mode: DataMode = import.meta.env.VITE_COOKIE_DATA_MODE === "api"
-    ? "api"
-    : "mock",
+  mode: DataMode = resolveCookieDataMode(globalThis.location?.pathname ?? "/"),
 ): CookieUiPort {
   return mode === "mock" ? new MockCookieApi() : new NotConnectedApi();
 }

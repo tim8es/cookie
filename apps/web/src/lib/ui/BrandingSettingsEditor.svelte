@@ -12,6 +12,10 @@
   export let publishing = false;
   export let uploading = false;
   export let canPublish = false;
+  export let publishedStatusKnown = true;
+  export let assetsAvailable = true;
+  /** Trusted real owner page creates and revokes local object URLs. */
+  export let allowPrivateBlobPreview = false;
   export let logoPreviewUrl: string | null = null;
   export let backgroundPreviewUrl: string | null = null;
   export let onChange: (value: BrandConfigV1) => void;
@@ -66,18 +70,18 @@
       if (kind === "logo") await onUploadLogo(file);
       else await onUploadBackground(file);
     } catch {
-      uploadError = "Файл не сохранён на сервере. Повторите попытку.";
+      uploadError = "Сервер не подтвердил загрузку изображения.";
     }
   }
-  function sameOriginUrl(value: string | null): string | null {
+  function sameOriginUrl(value: string | null, allowBlob: boolean): string | null {
     if (!value || typeof window === "undefined") return null;
     try {
       const url = new URL(value, window.location.origin);
-      return url.origin === window.location.origin && /^https?:$/.test(url.protocol) ? url.href : null;
+      return url.origin === window.location.origin && (/^https?:$/.test(url.protocol) || (allowBlob && url.protocol === "blob:")) ? url.href : null;
     } catch { return null; }
   }
-  $: safeLogo = sameOriginUrl(logoPreviewUrl);
-  $: safeBackground = sameOriginUrl(backgroundPreviewUrl);
+  $: safeLogo = sameOriginUrl(logoPreviewUrl, allowPrivateBlobPreview);
+  $: safeBackground = sameOriginUrl(backgroundPreviewUrl, allowPrivateBlobPreview);
 </script>
 
 <div class="brand-editor">
@@ -88,12 +92,12 @@
       <p>Выберите готовый дизайн и добавьте фирменные детали. Всё остальное настроится автоматически.</p>
     </div>
     <span class="brand-state" role="status">
-      {publishedRevision === null ? "Не опубликовано" : "Опубликовано · версия " + publishedRevision}
+      {!publishedStatusKnown ? "Только черновик · публикация недоступна" : publishedRevision === null ? "Не опубликовано" : "Опубликовано · версия " + publishedRevision}
     </span>
   </div>
   <div class="brand-editor-grid">
     <section class="brand-settings" aria-label="Настройки дизайна">
-      <fieldset>
+      <fieldset disabled={saving || publishing || uploading}>
         <legend>1. Готовый стиль</legend>
         <p>Ровно четыре варианта — светлые и тёмные.</p>
         <div class="brand-presets">
@@ -109,7 +113,7 @@
           {/each}
         </div>
       </fieldset>
-      <fieldset>
+      <fieldset disabled={saving || publishing || uploading}>
         <legend>2. Цвета</legend>
         <p>Выберите основной, акцентный цвет и фон страницы. Контраст проверяется при сохранении.</p>
         <div class="brand-colors">
@@ -121,7 +125,7 @@
             oninput={(e) => change("backgroundColor", e.currentTarget.value)} /></label>
         </div>
       </fieldset>
-      <fieldset>
+      <fieldset disabled={saving || publishing || uploading}>
         <legend>3. Детали</legend>
         <div class="brand-selects">
           <label><span>Режим</span>
@@ -149,8 +153,9 @@
           </label>
         </div>
       </fieldset>
-      <fieldset>
+      <fieldset disabled={!assetsAvailable || saving || publishing || uploading}>
         <legend>4. Свои изображения</legend>
+        {#if !assetsAvailable}<p>Загрузка изображений пока недоступна.</p>{/if}
         <p>Файлы передаются серверу через защищённый tenant-scoped upload. Внешние ссылки недоступны.</p>
         <div class="brand-assets">
           <label><span>Логотип · PNG, JPEG, WebP до 2 МБ</span>
@@ -184,7 +189,7 @@
           disabled={!!validationError || !canPublish || hasUnsavedChanges || saving || publishing || uploading}
           onclick={onPublish}>{publishing ? "Публикация…" : "Опубликовать"}</Button>
       </div>
-      <p class="brand-info">Предпросмотр не означает публикацию. Страница клиента меняется только после ответа сервера.</p>
+      <p class="brand-info">Предпросмотр не означает публикацию. Изменения вступают в силу после подтверждения сервера и подключения публичной страницы.</p>
     </section>
 
     <aside class="brand-preview" aria-label="Предпросмотр публичной страницы">
