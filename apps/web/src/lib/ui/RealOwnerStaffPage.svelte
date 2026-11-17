@@ -11,6 +11,7 @@
     type RealStaffLocation,
   } from "../staff-api";
   import StaffForm from "./StaffForm.svelte";
+  import StagingPublicationPanel from "./StagingPublicationPanel.svelte";
 
   export let session: VerifiedOwnerSession;
   export let onOpenServices: () => void;
@@ -30,6 +31,7 @@
   let staffLocation = "";
   // A failed/unknown response must reuse its key with unchanged request values.
   let pendingKey = "";
+  let publicationPending = false;
 
   function message(error: unknown): string {
     if (error instanceof StaffApiFailure) {
@@ -92,7 +94,7 @@
   }
 
   async function save(): Promise<void> {
-    if (!loaded || loading || saving) return;
+    if (!loaded || loading || saving || publicationPending) return;
     if (
       !staffName.trim() ||
       [...staffName.trim()].length > 200 ||
@@ -172,7 +174,7 @@
   <section class="card">
     <div class="card-title">
       <div><span class="eyebrow">КОМАНДА</span><h2>Профили мастеров</h2></div>
-      <Button variant="outline" type="button" onclick={() => void refresh()} disabled={loading || saving}>Обновить</Button>
+      <Button variant="outline" type="button" onclick={() => void refresh()} disabled={loading || saving || publicationPending}>Обновить</Button>
     </div>
     {#if loading}
       <p role="status">Загружаем профили…</p>
@@ -187,7 +189,7 @@
               <strong>{member.displayName}</strong>
               <small>{member.positionTitle || "Специалист"} · {namesFor(member)}</small>
             </div>
-            <span class="status-pill">{member.bookable ? "Опубликован" : "Черновик"}</span>
+            <span class="status-pill">{member.bookable ? "Активирован" : "Черновик"}</span>
           </div>
         {/each}
       </div>
@@ -208,7 +210,12 @@
       onOpenServices={onOpenServices}
       onSubmit={() => void save()}
       apiMode={true}
-      busy={saving || loading}
+      busy={saving || loading || publicationPending}
     />
   {/if}
 </div>
+{#if loaded}
+  <StagingPublicationPanel {session} {staff} {locations} {services}
+    disabled={loading || saving} bind:pending={publicationPending}
+    onPublished={refresh} />
+{/if}
