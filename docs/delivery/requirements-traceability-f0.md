@@ -86,3 +86,14 @@
 Для каждого F1/Pilot Issue при переходе Ready указывать: REQ ID, accepted DEC, ссылку на ADR/contract, точный success+failure AC, negative auth/money/concurrency test и зависимость. Случаи без согласованного правового/коммерческого основания блокируют **реальный пилот**, но не написание кодового тестового среза после отдельного owner approval.
 
 **Результат:** 67/67 строк присутствуют, числовая последовательность REQ-001–067 без пропусков.
+
+## Дельта после F0 approval — 2026-11-17 (не изменяет исторические 67/67)
+| REQ | Статус | Фаза | Проверяемое поведение | Issues |
+|---|---|---|---|---|
+| REQ-068 | ACCEPTED | F2 early | XLSX/CSV onboarding real persistent data | #252 |
+| REQ-069 | ACCEPTED | F2 early | Dry-run/confirm, round-trip update, conflict safety | #252 |
+| REQ-070 | ACCEPTED | F2 early | Scoped export incl. visits/status and post-trial access | #252 |
+| REQ-071 | ACCEPTED | F2 | Authorized Telegram admin calendars/catalog/visits; full client flow | #253, #29, #24 |
+| REQ-072 | ACCEPTED | F2 | File exchange + shared presentation/API and no required Business Web | #253, #252 |
+| REQ-073 | PROPOSED | F3 | Scoped sync, reviewed conflict policy and evidence | #254 |
+DEC-116 approved direction; DEC-117 proposed design. [Acceptance cases](../product/tabular-and-telegram-admin.md#qa-acceptance-не-выполнено); engineering evidence not yet available.

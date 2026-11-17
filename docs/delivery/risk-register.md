@@ -45,3 +45,12 @@
 
 ## Gate 0
 Самые существенные открытые риски R-02/R-03/R-04/R-05 превращены в ADR и проверяемые критерии, R-01/R-07/R-09 — в исследовательские задачи.
+
+## Риски табличного обмена / Telegram admin (2026-11-17)
+| Риск | Влияние | Контроль / проверка |
+|---|---|---|
+| Повтор/устаревший XLSX создаёт дубликаты или затирает новый график | critical | Stable keys, revision-bound preview, idempotent transaction, no implicit deletion, #252 |
+| Массовая операция обходит entitlement/booking locks или permission revoke | critical | Domain ports, transactional revalidation, actual PG race tests #252 |
+| ZIP bomb/formula injection/небезопасные временные файлы | high | Bounded parsing, no formulas, safe export, private storage and retention #252 |
+| Telegram link/callback/attachment раскрывает admin/tenant data | critical | Distinct context, verified scoped membership, private chat, auth-bound download, revoke tests #253/#37 |
+| Слишком раннее расширение F1/pilot и сопровождение произвольных таблиц | high | F2 sequence, versioned templates, no live sync v1, measure support/load and conversion #252/#253/#254 |
