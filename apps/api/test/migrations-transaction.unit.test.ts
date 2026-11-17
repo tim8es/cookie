@@ -33,7 +33,8 @@ function fixture(faults: Faults = {}) {
     async query(sql: string) {
       const step = stepFor(sql);
       calls.push(step);
-      if (step === faults.fail || (step === "ROLLBACK" && faults.rollbackFails)) {
+      const rollbackFailed = step === "ROLLBACK" && faults.rollbackFails;
+      if (step === faults.fail || rollbackFailed) {
         throw new Error("driver failure");
       }
       return {

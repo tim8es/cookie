@@ -21,7 +21,7 @@ test(
       statement_timeout: 5_000,
     });
     const directory = resolve(process.cwd(), "db/migrations");
-    const temporary = await mkdtemp(join(tmpdir(), "cookie-migration-failure-"));
+    const temporary = await mkdtemp(join(tmpdir(), "cookie-migration-fail-"));
     const filename = "9999_failure_probe.sql";
     const table = "cookie_migration_probe_" + randomUUID().replaceAll("-", "");
     try {
