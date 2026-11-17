@@ -186,3 +186,50 @@ test("in-flight route rejects a late response after IPC disconnect", async () =>
   await tick();
   await manager.close();
 });
+
+test("known stopped session recovery releases capacity only after verified removal", async () => {
+  const recovered = [];
+  let clean = false;
+  let permitRecovery = false;
+  const { manager, children } = harness({
+    verifyCleanup: () => clean,
+    recoverProject: (project, origin) => {
+      recovered.push({ project, origin });
+      if (permitRecovery) clean = true;
+      return permitRecovery;
+    },
+  });
+  const starting = manager.start();
+  ready(children[0]);
+  const a = await starting;
+  await assert.rejects(manager.recover(a.id), /unavailable/);
+  await assert.rejects(manager.recover("unknown"), /unavailable/);
+  children[0].emit("exit", null, "SIGKILL");
+  await tick();
+  assert.equal(manager.status.quarantined, 1);
+  await assert.rejects(manager.recover(a.id), /unconfirmed/);
+  await assert.rejects(manager.start(), /capacity/);
+  permitRecovery = true;
+  assert.equal(await manager.recover(a.id), true);
+  assert.equal(manager.status.quarantined, 0);
+  assert.deepEqual(recovered, Array(2).fill({
+    project: "cookie-demo-000000000001", origin: "http://127.0.0.1:1234",
+  }));
+  await manager.close();
+});
+
+test("unknown or never-ready allocation cannot be recovered destructively", async () => {
+  let calls = 0;
+  const { manager, children } = harness({
+    verifyCleanup: () => false,
+    recoverProject: () => { calls++; return true; },
+  });
+  const starting = manager.start();
+  allocated(children[0]);
+  children[0].emit("exit", null, "SIGKILL");
+  await assert.rejects(starting, /exited/);
+  await tick();
+  assert.equal(manager.status.quarantined, 1);
+  assert.equal(calls, 0);
+  await assert.rejects(manager.close(), /unconfirmed/);
+});
