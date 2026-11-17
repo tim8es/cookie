@@ -35,10 +35,25 @@ export class IdentitySessions {
   async issueForVerifiedIdentity(
     identityId: string,
   ): Promise<{ token: string; expiresAtUnixSeconds: number }> {
+    return this.issueWith(this.pool, identityId);
+  }
+
+  /** The caller must commit before exposing the returned token. */
+  async issueForVerifiedIdentityInTransaction(
+    client: PoolClient,
+    identityId: string,
+  ): Promise<{ token: string; expiresAtUnixSeconds: number }> {
+    return this.issueWith(client, identityId);
+  }
+
+  private async issueWith(
+    database: Pick<PoolClient, "query">,
+    identityId: string,
+  ): Promise<{ token: string; expiresAtUnixSeconds: number }> {
     if (typeof identityId !== "string" || !UUID.test(identityId))
       throw new Error("Invalid identity");
     const token = "is_" + randomBytes(32).toString("base64url");
-    const result = await this.pool.query<{ expires_at: Date }>(
+    const result = await database.query<{ expires_at: Date }>(
       `INSERT INTO cookie_identity.identity_sessions
        (token_sha256,identity_id,issuer,audience,issued_at,expires_at)
        VALUES($1,$2::uuid,$3,$4,clock_timestamp(),clock_timestamp()+$5::integer*interval '1 second')
@@ -85,8 +100,13 @@ export class IdentitySessions {
   async revoke(token: unknown): Promise<void> {
     if (typeof token !== "string" || !TOKEN.test(token)) return;
     await this.pool.query(
-      `UPDATE cookie_identity.identity_sessions SET revoked_at=clock_timestamp()
-       WHERE token_sha256=$1 AND issuer=$2 AND audience=$3 AND revoked_at IS NULL`,
+      `WITH revoked AS (
+         UPDATE cookie_identity.identity_sessions SET revoked_at=clock_timestamp()
+         WHERE token_sha256=$1 AND issuer=$2 AND audience=$3 AND revoked_at IS NULL
+         RETURNING identity_id
+       )
+       INSERT INTO cookie_identity.auth_security_events(event_type,identity_id)
+       SELECT 'identity_session_revoked',identity_id FROM revoked`,
       [digest(token), this.issuer, this.audience],
     );
   }
