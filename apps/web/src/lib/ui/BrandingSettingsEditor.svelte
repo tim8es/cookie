@@ -14,6 +14,8 @@
   export let canPublish = false;
   export let publishedStatusKnown = true;
   export let assetsAvailable = true;
+  /** Trusted real owner page creates and revokes local object URLs. */
+  export let allowPrivateBlobPreview = false;
   export let logoPreviewUrl: string | null = null;
   export let backgroundPreviewUrl: string | null = null;
   export let onChange: (value: BrandConfigV1) => void;
@@ -68,18 +70,18 @@
       if (kind === "logo") await onUploadLogo(file);
       else await onUploadBackground(file);
     } catch {
-      uploadError = "Файл не сохранён на сервере. Повторите попытку.";
+      uploadError = "Сервер не подтвердил загрузку изображения.";
     }
   }
-  function sameOriginUrl(value: string | null): string | null {
+  function sameOriginUrl(value: string | null, allowBlob: boolean): string | null {
     if (!value || typeof window === "undefined") return null;
     try {
       const url = new URL(value, window.location.origin);
-      return url.origin === window.location.origin && /^https?:$/.test(url.protocol) ? url.href : null;
+      return url.origin === window.location.origin && (/^https?:$/.test(url.protocol) || (allowBlob && url.protocol === "blob:")) ? url.href : null;
     } catch { return null; }
   }
-  $: safeLogo = sameOriginUrl(logoPreviewUrl);
-  $: safeBackground = sameOriginUrl(backgroundPreviewUrl);
+  $: safeLogo = sameOriginUrl(logoPreviewUrl, allowPrivateBlobPreview);
+  $: safeBackground = sameOriginUrl(backgroundPreviewUrl, allowPrivateBlobPreview);
 </script>
 
 <div class="brand-editor">
@@ -187,7 +189,7 @@
           disabled={!!validationError || !canPublish || hasUnsavedChanges || saving || publishing || uploading}
           onclick={onPublish}>{publishing ? "Публикация…" : "Опубликовать"}</Button>
       </div>
-      <p class="brand-info">Предпросмотр не означает публикацию. Страница клиента меняется только после ответа сервера.</p>
+      <p class="brand-info">Предпросмотр не означает публикацию. Изменения вступают в силу после подтверждения сервера и подключения публичной страницы.</p>
     </section>
 
     <aside class="brand-preview" aria-label="Предпросмотр публичной страницы">

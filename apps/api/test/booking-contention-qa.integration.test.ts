@@ -318,7 +318,11 @@ test(
           ]);
           follower = moveFirst
             ? cancelBookingInternal(pool, cancel, allowedSyntheticEntitlement)
-            : rescheduleBookingInternal(pool, move, allowedSyntheticEntitlement);
+            : rescheduleBookingInternal(
+                pool,
+                move,
+                allowedSyntheticEntitlement,
+              );
           next = createBookingInternal(
             pool,
             replacement,
@@ -378,16 +382,16 @@ test(
         assert.equal(cancelled?.status, "CancelledByBusiness");
         assert.equal(
           cancelled?.start_at.toISOString(),
-          moveFirst
-            ? "2027-07-20T13:00:00.000Z"
-            : winner.receipt.startAt,
+          moveFirst ? "2027-07-20T13:00:00.000Z" : winner.receipt.startAt,
         );
         const rebooked = final.rows.find(
           (row) => row.id === createdAgain.value.bookingId,
         );
         assert.equal(rebooked?.status, "Confirmed");
         assert.equal(rebooked?.start_at.toISOString(), winner.receipt.startAt);
-        assert.ok(final.rows.every((r) => r.price_kopecks_snapshot === "150000"));
+        assert.ok(
+          final.rows.every((r) => r.price_kopecks_snapshot === "150000"),
+        );
         const ledger = await pool.query(
           `SELECT
             (SELECT count(*)::int FROM cookie_booking.command_receipts

@@ -17,6 +17,7 @@
     "packages/domain-scheduling/src/**/*.ts",
     "packages/domain-booking/src/**/*.ts",
     "packages/domain-appearance/src/**/*.ts",
+    "packages/appearance-asset-adapter/src/**/*.ts",
     "scripts/**/*.ts"
   ],
   "exclude": [
