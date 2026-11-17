@@ -61,9 +61,8 @@ test(
       const mailer = createEmailChallengeMailer(config);
       await mailer.deliver("password-recovery", address);
       assert.equal(messages.length, 0);
-      const rejecting = <T>(
-        work: Parameters<typeof runSqlTransaction<T>>[1],
-      ) =>
+      type Work<T> = Parameters<typeof runSqlTransaction<T>>[1];
+      const rejecting = <T>(work: Work<T>) =>
         runSqlTransaction(pool, async (client) => {
           await work(client);
           throw new Error("synthetic rollback");
