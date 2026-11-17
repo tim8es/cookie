@@ -16,6 +16,7 @@ import {
 
 import { runMigrations } from "../../../dist/packages/platform-db/src/migrations.js";
 import { provisionOwnerWorkspace } from "../../../dist/packages/platform-identity/src/provision-owner-workspace.js";
+import { provisionStagingCustomer } from "../../../dist/packages/domain-customers/src/staging-customer.js";
 import { issueStagingGrant } from "../../../dist/packages/domain-entitlement/src/staging.js";
 import { createTelegramMiniAppProofVerifier } from "../../../dist/packages/platform-identity/src/telegram-init-data.js";
 import { linkVerifiedTelegramOwner } from "../../../dist/packages/platform-identity/src/link-telegram-owner.js";
@@ -352,7 +353,21 @@ async function main() {
     assert.deepEqual(errors, [], "Unexpected browser runtime errors");
     await button(cdp, "Выйти");
     await requireDom(cdp, "final logout", "document.body.innerText.includes('Вы вышли')");
-    console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit, staging capacity activation, confirmed shift publication, server availability preview and PostgreSQL persistence across API restart, 3 viewport checks, server logout.");
+    const customerUserId = userId + 1000000000;
+    await provisionStagingCustomer(pool,createTelegramMiniAppProofVerifier({botToken,maxAgeSeconds:300}),userHashSecret,{
+      tenantId:owner.tenantId,rawInitData:signedProof(botToken,customerUserId),consentConfirmed:true,
+    });
+    script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script);
+    await requireDom(cdp,"verified client context","document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента подтверждён' && !document.querySelector('.real-owner-nav')");
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-context")));
+    await checkWidth(cdp,"real client context");
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
+    await button(cdp,"Выйти");
+    await requireDom(cdp,"customer logout","document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вы вышли'");
+    script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,userId),script);
+    await requireDom(cdp,"owner rejected on client surface","document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента не подтверждён'");
+    assert.ok(!(await evaluate(cdp,"Boolean(document.querySelector('.real-owner-nav'))")));
+    console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit, staging capacity activation, confirmed shift publication, server availability preview and PostgreSQL persistence across API restart, 3 viewport checks, server logout, real staged customer login and owner denial.");
   } finally {
     if (cdp) cdp.close();
     if (chrome && !chrome.killed) chrome.kill("SIGTERM");
