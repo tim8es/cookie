@@ -24,10 +24,7 @@ function encodePassword(password: unknown): Buffer | null {
   }
   const bytes = Buffer.from(password, "utf8");
   // Reject malformed Unicode rather than silently replacing lone surrogates.
-  if (
-    bytes.length > MAX_PASSWORD_BYTES ||
-    bytes.toString("utf8") !== password
-  ) {
+  if (bytes.length > MAX_PASSWORD_BYTES || bytes.toString("utf8") !== password) {
     bytes.fill(0);
     return null;
   }
@@ -82,10 +79,10 @@ export async function verifyPassword(
     version !== VERSION ||
     !saltHex ||
     saltHex.length !== SALT_BYTES * 2 ||
-    !/^[0-9a-f]+$/.test(saltHex) ||
+    /[^0-9a-f]/.test(saltHex) ||
     !keyHex ||
     keyHex.length !== KEY_BYTES * 2 ||
-    !/^[0-9a-f]+$/.test(keyHex)
+    /[^0-9a-f]/.test(keyHex)
   ) {
     return false;
   }
