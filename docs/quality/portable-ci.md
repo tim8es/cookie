@@ -132,3 +132,15 @@ confer authorization; leave EXTERNAL_CI_APPROVED unset unless use of the chosen
 provider is permitted. The recommended no-hosted-minute route is a dedicated,
 ephemeral self-hosted runner in the private source repository, retaining native
 F1 checks. Never attach a privileged persistent runner to a public repository.
+
+
+The native F1 workflow has a provider switch limited to a private source
+repository. Register a dedicated, disposable Linux x64 self-hosted runner
+with the custom label `cookie-ci-private`, Docker/Compose, Chromium/Chrome and
+the dependencies required by the pinned actions, then set the repository
+Actions variable `F1_EXECUTION_BACKEND=self-hosted`. Existing F1 job names,
+services, checks and artifact settings are retained. Removing the variable
+restores the GitHub-hosted default. Public repositories always use the
+native GitHub-hosted default even if the variable exists. Do not set this
+variable until a matching private runner is ready. GitHub-hosted fees and
+self-hosted infrastructure costs are separate; no free compute is assumed.
