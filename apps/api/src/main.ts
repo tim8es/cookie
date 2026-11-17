@@ -2,6 +2,7 @@ import { Pool } from "pg";
 import { parseStagingPublicationMode } from "../../../packages/domain-entitlement/src/index.js";
 
 import { createApp } from "./app.js";
+import { parseStagingCancellationCutoff } from "./staging-customer-cancellation-http.js";
 import { parseConfig } from "./config.js";
 import { registerCompiledWeb } from "./static-web.js";
 import { createLiveTelegramSessionProvider } from "./telegram-auth-runtime.js";
@@ -11,6 +12,18 @@ const config = parseConfig(process.env);
 const stagingPublicationEnabled = parseStagingPublicationMode(
   process.env.COOKIE_STAGING_PUBLICATION_MODE,
 );
+// Customer mutations require a second explicit controlled-staging opt-in.
+const stagingCustomerBookingEnabled = parseStagingPublicationMode(
+  process.env.COOKIE_STAGING_CUSTOMER_BOOKING_MODE,
+);
+if (stagingCustomerBookingEnabled && !stagingPublicationEnabled) {
+  throw new Error("Staging customer booking requires staging publication");
+}
+const stagingCancellationCutoff = parseStagingCancellationCutoff(
+  process.env.COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES,
+);
+if (stagingCancellationCutoff !== undefined && !stagingPublicationEnabled)
+  throw new Error("Staging cancellation requires staging publication");
 const pool = new Pool({
   connectionString: config.databaseUrl,
   application_name: "cookie-api",
@@ -25,6 +38,8 @@ const app = createApp(pool, {
         telegramAuthRoutes: { sessions: telegramSessions },
         liveWorkspaceReads: { pool, verifier: telegramSessions },
         catalogRoutes: { pool, verifier: telegramSessions },
+        appearanceDraftRoutes: { pool, verifier: telegramSessions },
+        ownerCalendar: { pool, verifier: telegramSessions },
         staffRoutes: { pool, verifier: telegramSessions },
         locationRoutes: { pool, verifier: telegramSessions },
         shiftPlanRoutes: { pool, verifier: telegramSessions },
@@ -33,6 +48,21 @@ const app = createApp(pool, {
           verifier: telegramSessions,
           enabled: stagingPublicationEnabled,
         },
+        stagingCustomerBookingRoutes: {
+          pool,
+          verifier: telegramSessions,
+          enabled: stagingCustomerBookingEnabled,
+        },
+        ...(stagingCancellationCutoff === undefined
+          ? {}
+          : {
+              stagingCustomerCancellationRoutes: {
+                pool,
+                verifier: telegramSessions,
+                enabled: true,
+                cutoffMinutes: stagingCancellationCutoff,
+              },
+            }),
         sessionRoutes: {
           verifier: telegramSessions,
           policy: postgresTenantPolicyGuard(pool),

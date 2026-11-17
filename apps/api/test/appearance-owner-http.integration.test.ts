@@ -70,6 +70,9 @@ test(
     const app = createApp(pool, { telegramAuthRoutes: { sessions } });
     registerRealAppearanceRoutes(app, { pool, verifier: sessions });
     const disabled = createApp(pool);
+    const draftOnly = createApp(pool, {
+      appearanceDraftRoutes: { pool, verifier: sessions },
+    });
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
       const ownerId = randomUUID();
@@ -111,7 +114,10 @@ test(
       assert.equal(initial.statusCode, 200);
       assert.equal(initial.json().draft.revision, 0);
       const config = createBrandConfig("forest");
-      const saved = await app.inject({
+      const draftRead = await draftOnly.inject({ method: "GET", url, headers });
+      assert.equal(draftRead.statusCode, 200);
+      assert.equal(draftRead.json().draft.revision, 0);
+      const saved = await draftOnly.inject({
         method: "PUT",
         url,
         headers,
@@ -126,6 +132,13 @@ test(
           headers,
           payload: { expectedRevision: 1 },
         });
+      const disabledPublish = await draftOnly.inject({
+        method: "POST",
+        url: prefix + "/publish",
+        headers,
+        payload: { expectedRevision: 1 },
+      });
+      assert.equal(disabledPublish.statusCode, 404);
       const published = await publish();
       assert.equal(published.statusCode, 200);
       assert.equal(published.json().published.revision, 1);
@@ -147,6 +160,7 @@ test(
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal((await read()).statusCode, 401);
     } finally {
+      await draftOnly.close();
       await disabled.close();
       await app.close();
       await pool.end();
