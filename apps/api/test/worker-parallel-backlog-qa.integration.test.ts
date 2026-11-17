@@ -151,14 +151,8 @@ test(
       controller.abort();
       const totals = await Promise.all(jobs);
       assert.ok(totals.every((row) => row.delivered > 0));
-      assert.equal(
-        totals.reduce((sum, row) => sum + row.claimed, 0),
-        120,
-      );
-      assert.equal(
-        totals.reduce((sum, row) => sum + row.delivered, 0),
-        120,
-      );
+      assert.equal(totals.reduce((sum, row) => sum + row.claimed, 0), 120);
+      assert.equal(totals.reduce((sum, row) => sum + row.delivered, 0), 120);
       assert.ok(totals.every((row) => row.failed === 0 && row.stale === 0));
       assert.equal(calls.size, expected.size);
       for (const [key, tenant] of expected) {
