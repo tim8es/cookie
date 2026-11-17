@@ -184,6 +184,19 @@ export async function readRealStaff(
   return { staff: candidate.staff, locations: candidate.locations };
 }
 
+/** A later denial cannot disprove an earlier possibly committed request. */
+export function retainStaffCreateKey(
+  retrying: boolean,
+  error: unknown,
+): boolean {
+  return (
+    retrying ||
+    !(error instanceof StaffApiFailure) ||
+    error.reason === "unavailable" ||
+    error.reason === "invalid-response"
+  );
+}
+
 export async function createRealStaff(
   session: VerifiedOwnerSession,
   draft: RealStaffDraft,
@@ -211,5 +224,24 @@ export async function createRealStaff(
   ) {
     throw new StaffApiFailure("invalid-response");
   }
-  return (result.body as { staff: RealStaff }).staff;
+  const staff = (result.body as { staff: RealStaff }).staff;
+  const assigned = staff.assignments.some(
+    (assignment) =>
+      assignment.locationId === draft.locationId &&
+      assignment.serviceIds.includes(draft.serviceId),
+  );
+  if (
+    staff.displayName !== draft.displayName.trim().normalize("NFC") ||
+    staff.positionTitle !== draft.positionTitle.trim().normalize("NFC") ||
+    !assigned ||
+    (result.status === 201 &&
+      (!staff.active ||
+        staff.bookable ||
+        staff.assignments.length !== 1 ||
+        staff.assignments[0]?.serviceIds.length !== 1))
+  ) {
+    throw new StaffApiFailure("invalid-response");
+  }
+  // A 200 replay returns the current profile, which may since be published.
+  return staff;
 }

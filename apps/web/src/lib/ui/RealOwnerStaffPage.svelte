@@ -6,6 +6,7 @@
   import {
     createRealStaff,
     readRealStaff,
+    retainStaffCreateKey,
     StaffApiFailure,
     type RealStaff,
     type RealStaffLocation,
@@ -45,21 +46,25 @@
   }
 
   function editName(value: string): void {
+    if (pendingKey) return;
     staffName = value;
     pendingKey = "";
     writeError = "";
   }
   function editTitle(value: string): void {
+    if (pendingKey) return;
     staffTitle = value;
     pendingKey = "";
     writeError = "";
   }
   function editLocation(value: string): void {
+    if (pendingKey) return;
     staffLocation = value;
     pendingKey = "";
     writeError = "";
   }
   function editService(value: string): void {
+    if (pendingKey) return;
     staffService = value;
     pendingKey = "";
     writeError = "";
@@ -109,6 +114,7 @@
     saving = true;
     writeError = "";
     notice = "";
+    const retrying = Boolean(pendingKey);
     pendingKey ||= crypto.randomUUID();
     try {
       const created = await createRealStaff(
@@ -125,9 +131,12 @@
       pendingKey = "";
       staffName = "";
       staffTitle = "";
-      notice = "Профиль и назначения сохранены. Для записи клиентов мастер пока недоступен.";
+      notice = created.bookable
+        ? "Профиль и назначения подтверждены. Мастер доступен для записи."
+        : "Профиль и назначения сохранены. Для записи клиентов мастер пока недоступен.";
       await refresh();
     } catch (reason) {
+      if (!retainStaffCreateKey(retrying, reason)) pendingKey = "";
       writeError = message(reason);
     } finally {
       saving = false;
@@ -165,7 +174,9 @@
   </div>
 {/if}
 {#if writeError}
-  <div class="alert-error" role="alert"><p>{writeError}</p></div>
+  <div class="alert-error" role="alert"><p>{writeError}</p>
+    {#if pendingKey}<p>Результат создания неизвестен. Повторите сохранение с теми же данными и не покидайте страницу до подтверждения.</p>{/if}
+  </div>
 {/if}
 {#if notice}
   <div class="alert-ok" role="status"><p>{notice}</p></div>
@@ -175,7 +186,7 @@
   <section class="card">
     <div class="card-title">
       <div><span class="eyebrow">КОМАНДА</span><h2>Профили мастеров</h2></div>
-      <Button variant="outline" type="button" onclick={() => void refresh()} disabled={loading || saving || publicationPending}>Обновить</Button>
+      <Button variant="outline" type="button" onclick={() => void refresh()} disabled={loading || saving || publicationPending || !!pendingKey}>Обновить</Button>
     </div>
     {#if loading}
       <p role="status">Загружаем профили…</p>
@@ -212,12 +223,13 @@
       onSubmit={() => void save()}
       apiMode={true}
       busy={saving || loading || publicationPending}
+      locked={!!pendingKey}
     />
   {/if}
 </div>
 
 {#if loaded}
   <StagingPublicationPanel {session} {staff} {locations} {services}
-    disabled={loading || saving} bind:pending={publicationPending}
+    disabled={loading || saving || !!pendingKey} bind:pending={publicationPending}
     onPublished={refresh} />
 {/if}
