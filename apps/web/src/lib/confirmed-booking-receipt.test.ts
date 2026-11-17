@@ -33,8 +33,5 @@ test("pending, malformed or mismatched receipts cannot confirm a booking", () =>
   ]) {
     assert.equal(verifyBookingReceipt(raw, receipt.startAt), null);
   }
-  assert.equal(
-    verifyBookingReceipt(receipt, "2028-04-12T12:00:00.000Z"),
-    null,
-  );
+  assert.equal(verifyBookingReceipt(receipt, "2028-04-12T12:00:00.000Z"), null);
 });
