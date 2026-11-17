@@ -19,10 +19,10 @@ All operations use the **caller-owned** `PoolClient`; they do not open their own
 
 ## Security boundary (mandatory for production route)
 
-**This PR does not expose an HTTP endpoint.** The authenticated route must:
+**This PR defines an opt-in authenticated HTTP route adapter, but does not mount it in normal `main.ts`.** It cannot be enabled until the real server verifier is available. The route adapter already:
 
-1. Verify the bearer/Telegram session using the existing trusted Identity provider and bind `actor.tenantId` server-side. Never trust `tenantId` from a caller's JSON.
-2. Begin a PostgreSQL transaction, call `requireTenantPermission` for Appearance-specific read/edit/publish operations on the same client, and keep the active-session revocation guard within the same transaction.
+1. Verify the bearer/Telegram session using the existing trusted Identity provider and bind `actor.tenantId` server-side. Never trust `tenantId` from a caller's JSON. Protected endpoints: `GET /v1/organizations/:tenantId/appearance/draft`, `PUT /v1/organizations/:tenantId/appearance/draft`, `POST /v1/organizations/:tenantId/appearance/publish`.
+2. Begin a PostgreSQL transaction, call `requireTenantPermission` for `appearance.read`, `appearance.manage`, or `appearance.publish` on the same client, and keep the active-session revocation guard within the same transaction. Migration grants these abilities to existing real owner roles only; the pending new-owner provisioning template in #217 must also grant them before this can be mounted.
 3. Call the store on that client and COMMIT/ROLLBACK, producing bounded 400/401/403/409/503 errors with no SQL/secret detail.
 4. For public reads, resolve a **published** URL slug through an approved server-side tenant selector. A UUID in an anonymous URL is not authority. Only expose the `readPublishedTenantBrand` projection, never draft or asset metadata.
 5. Until an asset-service callback checks actual tenant ownership and MIME-safe uploaded assets in the same transaction, **reject** drafts/publication referencing any non-null logo/background asset IDs. An opaque syntactically valid ID alone must not grant access.
@@ -35,7 +35,7 @@ The migrations integration test now computes the expected count from checked-in 
 
 - [ ] Exact-head CI PASS: lint, format, TS/build, PostgreSQL integration, UI regression.
 - [ ] Independent architecture/security review, especially same-transaction authorization and asset ownership.
-- [ ] Real authenticated owner HTTP adapter using server session verifier (not synthetic injection).
+- [x] Opt-in same-transaction Owner HTTP adapter and unit rejection tests created; **not mounted in main until verified Identity provider / new-owner policy grants are integrated**.
 - [ ] Server-managed asset upload/re-encoding and permission checks.
 - [ ] Public path and two-browser real booking/published appearance integration test.
 - [ ] Controlled Altare staging verification with restart/backup/restore; no real customer data.
