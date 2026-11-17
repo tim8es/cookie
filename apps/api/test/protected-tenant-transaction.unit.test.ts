@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import test from "node:test";
 import type { Pool, PoolClient } from "pg";
 
@@ -143,5 +144,57 @@ test("failed BEGIN discards connection without invoking policy or work", async (
     /simulated connection failure/,
   );
   assert.deepEqual(f.calls, ["BEGIN"]);
+  assert.deepEqual(f.releases, [true]);
+});
+
+test("protected transaction discards a failed checked-out connection", async () => {
+  for (const phase of ["BEGIN", "policy", "work", "COMMIT"]) {
+    const events = new EventEmitter();
+    const calls: string[] = [];
+    const releases: boolean[] = [];
+    const fail = (step: string) => {
+      calls.push(step);
+      if (phase === step) events.emit("error", new Error("lost socket"));
+    };
+    const client = Object.assign(events, {
+      async query(sql: string) {
+        fail(sql);
+        return { command: sql };
+      },
+      release(discard: boolean) {
+        releases.push(discard);
+      },
+    }) as unknown as PoolClient;
+    const pool = { connect: async () => client } as unknown as Pool;
+    await assert.rejects(
+      runProtectedTransaction(
+        pool,
+        async () => fail("policy"),
+        async () => {
+          fail("work");
+          return "must not return";
+        },
+      ),
+      /SQL transaction connection failed/,
+    );
+    if (phase === "BEGIN") assert.deepEqual(calls, ["BEGIN"]);
+    assert.deepEqual(releases, [true]);
+    assert.doesNotThrow(() => events.emit("error", new Error("late error")));
+  }
+});
+
+test("denial is unavailable if its audit COMMIT is not acknowledged", async () => {
+  const f = fixture(undefined, "ROLLBACK");
+  await assert.rejects(
+    runProtectedTransaction(
+      f.pool,
+      async () => {
+        throw new AuthorizationDeniedError();
+      },
+      async () => assert.fail("business work must not run"),
+    ),
+    /SQL transaction did not commit/,
+  );
+  assert.deepEqual(f.calls, ["BEGIN", "COMMIT"]);
   assert.deepEqual(f.releases, [true]);
 });
