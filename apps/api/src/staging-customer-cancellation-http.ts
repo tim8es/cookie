@@ -37,8 +37,13 @@ export function registerStagingCustomerCancellation(
   { pool, verifier, enabled, cutoffMinutes }: StagingCancellationDependencies,
 ): void {
   if (!enabled) return;
-  if (!Number.isInteger(cutoffMinutes) || cutoffMinutes < 0 || cutoffMinutes > 10080)
+  if (
+    !Number.isInteger(cutoffMinutes) ||
+    cutoffMinutes < 0 ||
+    cutoffMinutes > 10080
+  ) {
     throw new Error("Invalid staging cancellation cutoff");
+  }
   app.get<{ Params: { tenantId: string } }>(
     "/v1/organizations/:tenantId/staging-customer-cancellation/capability",
     async (request, reply) => {

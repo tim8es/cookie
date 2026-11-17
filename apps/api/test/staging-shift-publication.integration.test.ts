@@ -607,7 +607,7 @@ test(
       const durable = await pool.query(
         `SELECT
           (SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1) AS receipts,
-          (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1 AND topic='booking.confirmed','booking.cancelled') AS events`,
+          (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1 AND topic='booking.confirmed') AS events`,
         [owner.tenantId],
       );
       assert.deepEqual(durable.rows[0], { receipts: 1, events: 1 });
@@ -763,6 +763,41 @@ test(
         headers: { ...headers, "idempotency-key": cancelKey },
       });
       assert.equal(ownerCancel.statusCode, 404);
+      const unrelated = await pool.query(
+        "SELECT id::text FROM cookie_booking.bookings WHERE tenant_id=$1 AND customer_id=$2",
+        [owner.tenantId, customer],
+      );
+      const foreignCancel = await app.inject({
+        method: "POST",
+        url: cancelRoot + "/" + unrelated.rows[0].id,
+        headers: { ...clientHeaders, "idempotency-key": randomUUID() },
+      });
+      assert.equal(foreignCancel.statusCode, 404);
+      const tooLateId = randomUUID();
+      await pool.query(
+        `INSERT INTO cookie_booking.bookings
+          (tenant_id,id,customer_id,staff_id,location_id,service_id,status,
+           start_at,end_at,occupied_until,service_duration_minutes_snapshot,
+           post_service_buffer_minutes_snapshot,price_kopecks_snapshot)
+          SELECT $1,$2,$3,$4,$5,$6,'Confirmed',x.at,x.at+interval '60 minutes',
+                 x.at+interval '75 minutes',60,15,100000
+            FROM (SELECT date_trunc('minute',clock_timestamp())+interval '15 minutes' AS at) x`,
+        [
+          owner.tenantId,
+          tooLateId,
+          clientContext.customerId,
+          staffId,
+          owner.locationId,
+          serviceId,
+        ],
+      );
+      const tooLate = await app.inject({
+        method: "POST",
+        url: cancelRoot + "/" + tooLateId,
+        headers: { ...clientHeaders, "idempotency-key": randomUUID() },
+      });
+      assert.equal(tooLate.statusCode, 409);
+      assert.equal(tooLate.json().error, "CANCELLATION_POLICY_DENIED");
       const [cancelled, replay] = await Promise.all([cancel(), cancel()]);
       assert.equal(cancelled.statusCode, 200, cancelled.body);
       assert.equal(replay.statusCode, 200, replay.body);
@@ -783,7 +818,22 @@ test(
         receipts: 1,
         events: 1,
       });
-      assert.equal((await history()).json().bookings[0].status, "CancelledByClient");
+      const afterCancel = (await history()).json().bookings as Array<{
+        bookingId: string;
+        status: string;
+      }>;
+      const cancelledId = created.json().bookingId;
+      const target = afterCancel.find((row) => row.bookingId === cancelledId);
+      assert.equal(target?.status, "CancelledByClient");
+      assert.equal(
+        afterCancel.find((row) => row.bookingId === tooLateId)?.status,
+        "Confirmed",
+      );
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.booking.cancel') WHERE tenant_id=$1 AND base_type='client'",
+        [owner.tenantId],
+      );
+      assert.equal((await cancel()).statusCode, 403);
       await app.inject({
         method: "POST",
         url: "/v1/auth/logout",
@@ -810,7 +860,7 @@ test(
         await app.close();
         if (tenantId) {
           await pool.query(
-            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic IN ('schedule.shift.draft.created','schedule.shift.published','booking.confirmed')",
+            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic IN ('schedule.shift.draft.created','schedule.shift.published','booking.confirmed','booking.cancelled')",
             [tenantId],
           );
         }
