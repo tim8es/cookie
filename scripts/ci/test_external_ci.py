@@ -15,7 +15,8 @@ class ExternalCIContract(unittest.TestCase):
             "tag_name": self.job, "draft": False,
             "body": json.dumps({"schema": 1, "jobId": self.job,
                                 "commit": self.commit, "suite": "quality",
-                                "exitCode": 0, "archiveSha256": self.digest}),
+                                "exitCode": 0, "archiveSha256": self.digest,
+                                "runId": 42, "runAttempt": 1}),
             "assets": [{"name": "evidence.zip", "size": 10, "state": "uploaded",
                         "digest": "sha256:" + self.digest}],
         }
@@ -41,21 +42,23 @@ class ExternalCIContract(unittest.TestCase):
                 ci.private_repo("fake", "example/private")
 
     def test_evidence_binds_exact_suite_job_commit_and_digest(self):
-        self.assertTrue(ci.valid_evidence(self.release, self.job, self.commit, "quality"))
-        self.assertFalse(ci.valid_evidence(self.release, "d" * 32, self.commit, "quality"))
-        self.assertFalse(ci.valid_evidence(self.release, self.job, "d" * 40, "quality"))
-        self.assertFalse(ci.valid_evidence(self.release, self.job, self.commit, "staging"))
+        self.assertTrue(ci.valid_evidence(self.release, self.job, self.commit, "quality", 42, 1))
+        self.assertFalse(ci.valid_evidence(self.release, "d" * 32, self.commit, "quality", 42, 1))
+        self.assertFalse(ci.valid_evidence(self.release, self.job, "d" * 40, "quality", 42, 1))
+        self.assertFalse(ci.valid_evidence(self.release, self.job, self.commit, "staging", 42, 1))
+        self.assertFalse(ci.valid_evidence(self.release, self.job, self.commit, "quality", 43, 1))
+        self.assertFalse(ci.valid_evidence(self.release, self.job, self.commit, "quality", 42, 2))
         self.release["assets"][0]["digest"] = "sha256:" + "d" * 64
-        self.assertFalse(ci.valid_evidence(self.release, self.job, self.commit, "quality"))
+        self.assertFalse(ci.valid_evidence(self.release, self.job, self.commit, "quality", 42, 1))
 
     def test_failed_or_missing_evidence_is_not_success(self):
         report = json.loads(self.release["body"])
         report["exitCode"] = 1
         self.release["body"] = json.dumps(report)
-        self.assertFalse(ci.valid_evidence(self.release, self.job, self.commit, "quality"))
+        self.assertFalse(ci.valid_evidence(self.release, self.job, self.commit, "quality", 42, 1))
         self.release["assets"] = []
-        self.assertFalse(ci.valid_evidence(self.release, self.job, self.commit, "quality"))
-        self.assertFalse(ci.valid_evidence({}, self.job, self.commit, "quality"))
+        self.assertFalse(ci.valid_evidence(self.release, self.job, self.commit, "quality", 42, 1))
+        self.assertFalse(ci.valid_evidence({}, self.job, self.commit, "quality", 42, 1))
 
     def test_worker_env_excludes_tokens_and_output_channels(self):
         with patch.dict(os.environ, {"PATH": "/usr/bin", "CI_EVIDENCE_TOKEN": "fake",
