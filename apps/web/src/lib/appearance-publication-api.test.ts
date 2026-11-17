@@ -18,7 +18,7 @@ const published = {
   publishedAt: "2026-01-01T00:00:00.000Z",
 };
 
-test("publication capability distinguishes unknown from unpublished", async () => {
+test("publication capability distinguishes unknown", async () => {
   assert.equal(
     await readAppearancePublicationState(
       session,
@@ -26,7 +26,11 @@ test("publication capability distinguishes unknown from unpublished", async () =
     ),
     null,
   );
-  const state = { draftRevision: 2, publishedRevision: null, canPublish: false };
+  const state = {
+    draftRevision: 2,
+    publishedRevision: null,
+    canPublish: false,
+  };
   assert.deepEqual(
     await readAppearancePublicationState(session, async () =>
       Response.json(state),
