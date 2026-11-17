@@ -124,7 +124,7 @@
     aria-describedby="demo-booking-subtitle">
     <div class="calendar-detail-header">
       <div class="calendar-detail-heading">
-        <span class="calendar-detail-kicker">COOKIE / ДЕТАЛИ ВИЗИТА</span>
+        <span class="calendar-detail-kicker">kuki / ДЕТАЛИ ВИЗИТА</span>
         <Badge variant="secondary" class="calendar-detail-status">
           {booking.status === "demo-cancelled" ? "Отменена локально" : "Демо-подтверждена"}
         </Badge>

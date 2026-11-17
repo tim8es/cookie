@@ -458,7 +458,7 @@ async function main() {
       console.log("PASS actual local launcher: dedicated PostgreSQL, migrations, compiled runtime, signed owner/client and demo isolation");
       return;
     }
-    console.log((demo ? "kuki demo (synthetic, disposable): " : "Real Cookie: ") + origin + " — use the opened isolated browser.");
+    console.log((demo ? "kuki demo (synthetic, disposable): " : "Real kuki: ") + origin + " — use the opened isolated browser.");
     console.log(cutoff === undefined ? "Cancellation disabled: COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES is unset." : "Explicit synthetic cancellation cutoff: " + cutoff + " minutes.");
     if (example) console.log("Sample service and published shift on " + example.date + ". Switch to client to book.");
     console.log(demo

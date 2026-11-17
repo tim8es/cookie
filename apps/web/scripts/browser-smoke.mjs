@@ -381,6 +381,7 @@ async function scenario(cdp, origin, width, height) {
   await cdp.send("Page.navigate", { url: origin + "demo?browser-smoke=" + name });
   await requireDom(cdp, name + " onboarding", "document.querySelector('.welcome-form')");
   await requireDom(cdp, name + " standalone welcome header", "document.querySelector('.onboarding-header') && !document.querySelector('.sidebar')");
+  await requireDom(cdp, name + " canonical onboarding brand", "document.querySelector('.onboarding-brand > span:last-child')?.textContent.trim() === 'kuki.' && document.title.startsWith('kuki —')");
   const dimensions = await evaluate(cdp, "({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio })");
   assert.equal(dimensions.width, width, name + ": Chromium mobile emulation used wrong CSS viewport");
   assert.equal(dimensions.height, height, name + ": Chromium emulation used wrong viewport height");
@@ -391,6 +392,7 @@ async function scenario(cdp, origin, width, height) {
   await fill(cdp, ".welcome-form input", "Студия Smoke " + name);
   await submitValidForm(cdp, ".welcome-form");
   await requireDom(cdp, name + " services", "document.querySelector('.section-head h1')?.textContent === 'Услуги и цены'");
+  await requireDom(cdp, name + " canonical owner brand", "document.querySelector('.sidebar .brand strong')?.textContent.trim() === 'kuki.' && document.querySelector('.nav-links')?.getAttribute('aria-label') === 'Разделы kuki'");
   // Incomplete business setup is a neutral guest state, not a link into owner forms.
   await click(cdp, ".nav-links button:last-child");
   await requireDom(cdp, name + " unavailable booking state", "document.querySelector('.booking-unavailable[role=status]')?.textContent.includes('Онлайн-запись пока недоступна')");
@@ -428,8 +430,8 @@ async function scenario(cdp, origin, width, height) {
   await requireDom(cdp, name + " salon identity mark", "document.querySelector('.public-header .salon-monogram')?.textContent.trim() === 'С'");
   await requireDom(cdp, name + " client header excludes owner navigation", "!document.querySelector('.public-header .public-back, .public-header .sidebar, .public-header .brand-seal')");
   await requireDom(cdp, name + " demo-only workspace escape", "document.querySelector('.public-demo-notice .public-demo-back')?.textContent.includes('тестовый кабинет')");
-  await requireDom(cdp, name + " discreet public attribution", "document.querySelectorAll('.public-attribution').length === 1 && document.querySelector('.public-attribution')?.textContent.includes('Работает на Cookie')");
-  await requireDom(cdp, name + " hero not branded Cookie", "!document.querySelector('.booking-hero')?.textContent.includes('Cookie / запись')");
+  await requireDom(cdp, name + " discreet public attribution", "document.querySelectorAll('.public-attribution').length === 1 && document.querySelector('.public-attribution')?.textContent.includes('Работает на kuki')");
+  await requireDom(cdp, name + " hero not branded kuki", "!document.querySelector('.booking-hero')?.textContent.includes('kuki / запись') && !document.querySelector('.booking-hero')?.textContent.includes('Cookie / запись')");
 
   await requireDom(cdp, name + " location with address in booking receipt", "document.querySelector('.booking-summary .ticket-location-address')?.textContent.includes('Демонстрационный адрес')");
   if (width <= 680) {
@@ -774,7 +776,7 @@ export {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((error) => {
-    console.error("Cookie browser smoke failed:", error);
+    console.error("kuki browser smoke failed:", error);
     process.exitCode = 1;
   });
 }

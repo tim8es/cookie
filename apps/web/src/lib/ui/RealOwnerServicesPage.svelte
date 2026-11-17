@@ -160,7 +160,7 @@
 
 <div class="section-head">
   <div>
-    <span class="eyebrow">COOKIE / ЗАЩИЩЁННЫЙ КАБИНЕТ</span>
+    <span class="eyebrow">kuki / ЗАЩИЩЁННЫЙ КАБИНЕТ</span>
     <h1>Услуги салона</h1>
     <p>Изменения сохраняются в PostgreSQL. Новые услуги — черновики до публикации.</p>
   </div>

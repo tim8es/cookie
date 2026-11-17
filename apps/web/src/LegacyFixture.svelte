@@ -43,7 +43,7 @@
   let error = "";
   let notice = "";
   let preview: ViewState = "normal";
-  let organizationName = "Студия Cookie (тест)";
+  let organizationName = "Студия kuki (тест)";
   let serviceName = "Женская стрижка";
   let serviceDuration = 60;
   let servicePrice = 1500;
