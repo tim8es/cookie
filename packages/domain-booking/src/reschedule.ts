@@ -7,7 +7,10 @@ import {
   type StaffOccupancy,
   type UtcInterval,
 } from "../../domain-scheduling/src/index.js";
-import { enqueueOutbox, runSqlTransaction } from "../../platform-db/src/index.js";
+import {
+  enqueueOutbox,
+  runSqlTransaction,
+} from "../../platform-db/src/index.js";
 import type { TrustedActor } from "../../platform-identity/src/index.js";
 import { requireTenantPermission } from "../../platform-identity/src/index.js";
 

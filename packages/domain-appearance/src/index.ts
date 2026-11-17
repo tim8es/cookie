@@ -15,3 +15,19 @@ export type {
   BrandConfigV1,
   BrandPreset,
 } from "./branding.js";
+
+/** Persistent Appearance capability. Caller owns transaction and AuthZ. */
+export {
+  AppearanceAssetNotVerified,
+  AppearanceRevisionConflict,
+  readTenantBrandDraft,
+  saveTenantBrandDraft,
+  publishTenantBrandDraft,
+  readPublishedTenantBrand,
+} from "./postgres.js";
+export type {
+  AppearanceDraft,
+  AppearancePublished,
+  AssetKind,
+  TenantAssetOwnership,
+} from "./postgres.js";

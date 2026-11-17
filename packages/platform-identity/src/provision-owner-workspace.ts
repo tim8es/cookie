@@ -62,6 +62,11 @@ const OWNER_PERMISSIONS = [
   "staff.profile.create",
   "location.read",
   "location.create",
+  "schedule.shift.plan.read",
+  "schedule.shift.plan.create",
+  "appearance.read",
+  "appearance.manage",
+  "appearance.publish",
 ] as const;
 
 function canonicalName(value: unknown): string {

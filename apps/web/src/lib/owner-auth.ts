@@ -189,3 +189,42 @@ export async function revokeTelegramOwnerSession(
     throw new OwnerAuthFailure("unavailable");
   }
 }
+
+/** Clear every owner page at expiry, including after suspended-tab resume. */
+export function watchOwnerSessionExpiry(
+  expiresAtUnixSeconds: number,
+  onExpire: () => void,
+  win: Window,
+  doc: Document,
+  now = Date.now,
+): () => void {
+  let timer: number | undefined;
+  let stopped = false;
+
+  function stop(): void {
+    if (stopped) return;
+    stopped = true;
+    if (timer !== undefined) win.clearTimeout(timer);
+    win.removeEventListener("focus", check);
+    win.removeEventListener("pageshow", check);
+    doc.removeEventListener("visibilitychange", check);
+  }
+
+  function check(): void {
+    if (stopped) return;
+    if (timer !== undefined) win.clearTimeout(timer);
+    const remaining = expiresAtUnixSeconds * 1000 - now();
+    if (!Number.isFinite(remaining) || remaining <= 0) {
+      stop();
+      onExpire();
+      return;
+    }
+    timer = win.setTimeout(check, Math.min(remaining, 2147483647));
+  }
+
+  win.addEventListener("focus", check);
+  win.addEventListener("pageshow", check);
+  doc.addEventListener("visibilitychange", check);
+  check();
+  return stop;
+}
