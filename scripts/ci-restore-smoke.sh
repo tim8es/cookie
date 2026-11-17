@@ -8,6 +8,15 @@ if [[ "${CI:-}" != "true" || "${TEST_DATABASE_URL:-}" != "$EXPECTED_URL" ]]; the
   exit 2
 fi
 
+# Default preserves the original PG16 gate. Only explicitly supported majors
+# may select a tools image; verify the server before any fixture writes.
+pg_major="${1-16}"
+if [[ $# -gt 1 || ( "$pg_major" != 16 && "$pg_major" != 17 ) ]]; then
+  echo "Expected PostgreSQL major 16 or 17" >&2
+  exit 2
+fi
+readonly pg_major
+
 expected_migration_count="$(find db/migrations -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d '[:space:]')"
 temp_dir="$(mktemp -d)"
 restore_created=false
@@ -15,7 +24,7 @@ pg_tool() {
   docker run --rm -i --network host \
     -e PGPASSWORD=cookie_ci \
     -v "$temp_dir:/backup" \
-    postgres:16-alpine "$@"
+    "postgres:$pg_major-alpine" "$@"
 }
 cleanup() {
   if [[ "$restore_created" == "true" ]]; then
@@ -24,6 +33,13 @@ cleanup() {
   rm -rf "$temp_dir"
 }
 trap cleanup EXIT
+
+server_version="$(pg_tool psql -X -Atq -v ON_ERROR_STOP=1 -h 127.0.0.1 -U cookie_ci -d cookie_ci -c 'SHOW server_version_num')"
+if [[ ! "$server_version" =~ ^${pg_major}[0-9]{4}$ ]]; then
+  echo "Restore gate expected PostgreSQL $pg_major, got server version $server_version" >&2
+  exit 1
+fi
+echo "Verified PostgreSQL $pg_major server ($server_version) and matching backup tools"
 
 # Seed an isolated, unmistakably synthetic committed event after integration
 # tests; the backup must capture both an authoritative organization and outbox.
@@ -334,5 +350,5 @@ if [[ "$restored_command_projection" != "$source_command_projection" ]]; then
   echo "Restored real Booking command state differs from source" >&2
   exit 1
 fi
-echo "PASS: PostgreSQL 16 synthetic backup; migration history, tenant/event, Booking snapshots, receipts, audit and live exclusion verified"
+echo "PASS: PostgreSQL $pg_major synthetic backup; migration history, tenant/event, Booking snapshots, receipts, audit and live exclusion verified"
 echo "PASS: restored real Create/Reschedule/Cancel receipts replay; revoked role denied; business state unchanged"
