@@ -45,7 +45,10 @@ test("overview is fetched with the verified tenant and private bearer", async ()
     controller.signal,
   );
   assert.deepEqual(result, overview);
-  assert.equal(calls[0]?.url, "/v1/organizations/" + TENANT + "/workspace-overview");
+  assert.equal(
+    calls[0]?.url,
+    "/v1/organizations/" + TENANT + "/workspace-overview",
+  );
   assert.equal(calls[0]?.init.method, "GET");
   assert.equal(calls[0]?.init.credentials, "omit");
   assert.equal(calls[0]?.init.cache, "no-store");
@@ -61,8 +64,14 @@ test("overview is fetched with the verified tenant and private bearer", async ()
 test("overview rejects another tenant or malformed location data", async () => {
   const location = overview.locations[0]!;
   const invalid = [
-    { ...overview, organization: { ...overview.organization, organizationId: OTHER } },
-    { ...overview, organization: { ...overview.organization, displayName: "" } },
+    {
+      ...overview,
+      organization: { ...overview.organization, organizationId: OTHER },
+    },
+    {
+      ...overview,
+      organization: { ...overview.organization, displayName: "" },
+    },
     { ...overview, locations: [location, location] },
     { ...overview, locations: [{ ...location, locationId: "not-a-uuid" }] },
     { ...overview, locations: [{ ...location, timeZone: "Mars/Olympus" }] },
@@ -122,7 +131,8 @@ test("overview authorization, unavailable service and offline fail closed", asyn
     await assert.rejects(
       readRealWorkspaceOverview(session, mock(new Response(null, { status }))),
       (reason: unknown) =>
-        reason instanceof WorkspaceOverviewFailure && reason.reason === expected,
+        reason instanceof WorkspaceOverviewFailure &&
+        reason.reason === expected,
     );
   }
   await assert.rejects(

@@ -53,11 +53,6 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
-      - name: Temporary overview test formatter diagnostic
-        run: |
-          printf 'COOKIE_OVERVIEW_TEST '
-          pnpm exec prettier apps/web/src/lib/workspace-overview-api.test.ts | base64 -w0
-          printf '\n'
       - name: Check source formatting
         run: pnpm format:check
       - name: Check kernel and contract module boundaries
