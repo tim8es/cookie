@@ -6,11 +6,15 @@ import { resolve } from "node:path";
 const link = resolve("dist/apps/api/node_modules");
 const expected = resolve("apps/api/node_modules");
 try {
-  await symlink("../../../apps/api/node_modules", link, "dir");
+  if (process.platform === "win32") {
+    await symlink(expected, link, "junction");
+  } else {
+    await symlink("../../../apps/api/node_modules", link, "dir");
+  }
 } catch (error) {
   if (error?.code !== "EEXIST") throw error;
 }
 const actual = await realpath(link);
-if (actual !== expected) {
+if (actual !== (await realpath(expected))) {
   throw new Error("Compiled app dependency link points outside the expected workspace");
 }
