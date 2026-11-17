@@ -12,6 +12,8 @@
   export let publishing = false;
   export let uploading = false;
   export let canPublish = false;
+  export let publishedStatusKnown = true;
+  export let assetsAvailable = true;
   export let logoPreviewUrl: string | null = null;
   export let backgroundPreviewUrl: string | null = null;
   export let onChange: (value: BrandConfigV1) => void;
@@ -88,12 +90,12 @@
       <p>Выберите готовый дизайн и добавьте фирменные детали. Всё остальное настроится автоматически.</p>
     </div>
     <span class="brand-state" role="status">
-      {publishedRevision === null ? "Не опубликовано" : "Опубликовано · версия " + publishedRevision}
+      {!publishedStatusKnown ? "Только черновик · публикация недоступна" : publishedRevision === null ? "Не опубликовано" : "Опубликовано · версия " + publishedRevision}
     </span>
   </div>
   <div class="brand-editor-grid">
     <section class="brand-settings" aria-label="Настройки дизайна">
-      <fieldset>
+      <fieldset disabled={saving || publishing || uploading}>
         <legend>1. Готовый стиль</legend>
         <p>Ровно четыре варианта — светлые и тёмные.</p>
         <div class="brand-presets">
@@ -109,7 +111,7 @@
           {/each}
         </div>
       </fieldset>
-      <fieldset>
+      <fieldset disabled={saving || publishing || uploading}>
         <legend>2. Цвета</legend>
         <p>Выберите основной, акцентный цвет и фон страницы. Контраст проверяется при сохранении.</p>
         <div class="brand-colors">
@@ -121,7 +123,7 @@
             oninput={(e) => change("backgroundColor", e.currentTarget.value)} /></label>
         </div>
       </fieldset>
-      <fieldset>
+      <fieldset disabled={saving || publishing || uploading}>
         <legend>3. Детали</legend>
         <div class="brand-selects">
           <label><span>Режим</span>
@@ -149,8 +151,9 @@
           </label>
         </div>
       </fieldset>
-      <fieldset>
+      <fieldset disabled={!assetsAvailable || saving || publishing || uploading}>
         <legend>4. Свои изображения</legend>
+        {#if !assetsAvailable}<p>Загрузка изображений пока недоступна.</p>{/if}
         <p>Файлы передаются серверу через защищённый tenant-scoped upload. Внешние ссылки недоступны.</p>
         <div class="brand-assets">
           <label><span>Логотип · PNG, JPEG, WebP до 2 МБ</span>

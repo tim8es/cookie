@@ -38,6 +38,7 @@ const app = createApp(pool, {
         telegramAuthRoutes: { sessions: telegramSessions },
         liveWorkspaceReads: { pool, verifier: telegramSessions },
         catalogRoutes: { pool, verifier: telegramSessions },
+        appearanceDraftRoutes: { pool, verifier: telegramSessions },
         ownerCalendar: { pool, verifier: telegramSessions },
         staffRoutes: { pool, verifier: telegramSessions },
         locationRoutes: { pool, verifier: telegramSessions },
