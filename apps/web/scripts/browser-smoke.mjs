@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as pause } from "node:timers/promises";
 
 const webDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const distDir = join(webDir, "dist");
+const distDir = join(webDir, ".tmp", "ui-fixture-dist");
 const evidenceDir = join(webDir, "artifacts", "visual-smoke");
 const browserCandidates = [
   process.env.COOKIE_BROWSER_BINARY,
@@ -675,7 +675,7 @@ async function scenario(cdp, origin, width, height) {
 }
 
 async function main() {
-  assert.ok(existsSync(join(distDir, "index.html")), "Run pnpm build:web before smoke");
+  assert.ok(existsSync(join(distDir, "index.html")), "Run pnpm --filter @cookie/web build:fixture before fixture smoke");
   rmSync(evidenceDir, { recursive: true, force: true });
   mkdirSync(evidenceDir, { recursive: true });
   const staticServer = createHttpServer(staticResponse);

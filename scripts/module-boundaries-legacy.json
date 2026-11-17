@@ -21,46 +21,6 @@
     "../../../packages/platform-identity/src/authorization.js",
     "../../../packages/platform-identity/src/postgres.js"
   ],
-  "packages/domain-scheduling/src/approval-disable.ts": [
-    "../../platform-db/src/outbox.js",
-    "../../platform-identity/src/authorization.js"
-  ],
-  "packages/domain-scheduling/src/approval-draft-create.ts": [
-    "../../platform-db/src/outbox.js",
-    "../../platform-identity/src/authorization.js"
-  ],
-  "packages/domain-scheduling/src/approval-draft-edit.ts": [
-    "../../platform-db/src/outbox.js",
-    "../../platform-identity/src/authorization.js"
-  ],
-  "packages/domain-scheduling/src/approval-publish.ts": [
-    "../../platform-db/src/outbox.js",
-    "../../platform-identity/src/authorization.js"
-  ],
-  "packages/domain-scheduling/src/approval.ts": [
-    "../../platform-db/src/outbox.js",
-    "../../platform-identity/src/authorization.js",
-    "../../platform-identity/src/postgres.js"
-  ],
-  "packages/domain-scheduling/src/block.ts": [
-    "../../platform-identity/src/authorization.js",
-    "../../platform-identity/src/postgres.js"
-  ],
-  "packages/domain-scheduling/src/disable-shift.ts": [
-    "../../platform-db/src/outbox.js",
-    "../../platform-identity/src/authorization.js",
-    "../../platform-identity/src/postgres.js"
-  ],
-  "packages/domain-scheduling/src/draft-shift.ts": [
-    "../../platform-db/src/outbox.js",
-    "../../platform-identity/src/authorization.js",
-    "../../platform-identity/src/postgres.js"
-  ],
-  "packages/domain-scheduling/src/edit-published-shift.ts": [
-    "../../platform-db/src/outbox.js",
-    "../../platform-identity/src/authorization.js",
-    "../../platform-identity/src/postgres.js"
-  ],
   "packages/domain-scheduling/src/publish-shift.ts": [
     "../../platform-db/src/outbox.js",
     "../../platform-identity/src/authorization.js",
