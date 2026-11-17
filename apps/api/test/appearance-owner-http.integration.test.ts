@@ -121,6 +121,20 @@ test(
       assert.equal(exchange.statusCode, 201);
       const token: string = exchange.json().accessToken;
       const headers = { authorization: "Bearer " + token };
+      const capability = prefix + "/assets/capability";
+      const enabled = await app.inject({
+        method: "GET",
+        url: capability,
+        headers,
+      });
+      assert.equal(enabled.statusCode, 200);
+      assert.deepEqual(enabled.json(), { enabled: true });
+      assert.equal(
+        (
+          await draftOnly.inject({ method: "GET", url: capability, headers })
+        ).statusCode,
+        404,
+      );
       const uploadUrl = prefix + "/assets/logo";
       const raw = await sharp({
         create: { width: 3, height: 2, channels: 3, background: "red" },
@@ -271,6 +285,11 @@ test(
         [owner.tenantId],
       );
       assert.equal((await upload(raw)).statusCode, 403);
+      assert.equal(
+        (await app.inject({ method: "GET", url: capability, headers }))
+          .statusCode,
+        403,
+      );
       assert.equal(
         (await app.inject({ method: "GET", url: assetUrl, headers })).statusCode,
         200,

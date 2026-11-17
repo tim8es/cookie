@@ -1,0 +1,7 @@
+# Appearance asset editor integration
+
+Refs #223/#203, depends on #292. The real owner screen queries the protected asset capability. Absent endpoint (404) and denied permission (403) keep upload disabled; errors are not treated as enabled. Capability is an affordance, not an authorization grant. The real upload and draft write both enforce separate server-side transactional permission checks. The opt-in integration must register the private asset routes together with actual draft ownership checks; ordinary main.ts still mounts only asset-disabled draft editing.
+
+Upload sends bytes, not a filename or external URL. The strict receipt must match requested kind and a bounded normalized PNG; an authenticated same-origin GET verifies the preview PNG header and receipt dimensions. No bearer in URL, local storage, browser cache or redirect. Preview object URLs are created locally and revoked on replacement, removal, reload and component destruction. The draft changes only after receipt and preview are confirmed; actual draft save remains explicit. Removing a reference is not deleting the stored asset. A lost upload response is not proof of rollback: unreferenced uploaded files may remain, and no automatic retry is performed.
+
+Publication stays disabled. This PR is a client integration candidate, not activated production or staging ingress; test transport and real signed PostgreSQL capability evidence do not substitute for mounted compiled browser upload or pending OS/ingress/audit gates.

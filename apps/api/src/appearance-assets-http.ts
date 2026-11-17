@@ -187,6 +187,42 @@ export function registerPrivateAppearanceAssetRoutes(
       },
     );
 
+    scope.get<{ Params: { tenantId: string } }>(
+      ROOT + "/capability",
+      async (request, reply) => {
+        privateHeaders(reply);
+        if (Object.keys(request.query as object).length !== 0)
+          return reply.code(400).send({ error: "invalid-request" });
+        const verified = await verifyTenantActor(
+          request.headers.authorization,
+          request.params.tenantId,
+          verifier,
+        );
+        if (!verified.actor)
+          return reply.code(verified.status).send({ error: verified.error });
+        const actor = verified.actor;
+        if (!actor.opaqueSessionAuthority)
+          return reply.code(403).send({ error: "forbidden" });
+        try {
+          await withTenantPermission(
+            pool,
+            actor,
+            "appearance.read",
+            async () => undefined,
+          );
+          await withTenantPermission(
+            pool,
+            actor,
+            "appearance.manage",
+            async () => undefined,
+          );
+          return reply.send({ enabled: true });
+        } catch (error) {
+          return failure(reply, error);
+        }
+      },
+    );
+
     scope.get<{ Params: ReadParams }>(
       ROOT + "/:kind/:assetId",
       async (request, reply) => {
