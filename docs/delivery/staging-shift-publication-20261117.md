@@ -1,0 +1,7 @@
+# F1 controlled staging: publication and availability preview
+
+The verified owner publishes a future draft for an already activated grant-bound Staff/Location/Service placement. Same scheduling command, audit, outbox, idempotency receipt and cross-location conflict guard; owner-only staging.shift.publish and expected draft revision. Live staging grant is checked under lock before replay and rechecked before new publication commit.
+
+Protected GET/POST staging-shifts and GET staging-availability. POST and availability absent if staging disabled. Preview needs current grant and exact activated assignment. Server reuses listAvailableSlots with real date, IANA zone, active same-location shifts/blocks, tenant-wide Confirmed occupancy including buffer, real service duration and buffer. Single SQL snapshot; bounded interval reads fail closed on overflow. 15-minute preview grid is a technical staging choice, not a commercial booking rule. Past starts filtered. Read-side provisional results never reserve slots; future Booking must repeat all mutable checks transactionally.
+
+Only synthetic local/private staging. No public booking route, real commercial grant, notifications, customer auth or trial/paid policy. Actual Telegram/device, Altare deployment and #113/#165/#175 gates remain separate. Expired/revoked grant does not erase published shifts but denies new publication/preview. Review integration with #242/#243/#244.

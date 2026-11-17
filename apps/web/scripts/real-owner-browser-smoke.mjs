@@ -314,11 +314,36 @@ async function main() {
     assert.deepEqual(publication.rows[0], {receipts:1,seats:1,shifts:0});
     assert.ok(responses.some(r=>r.status===201&&r.path.endsWith("/staging-publication")));
     await checkWidth(cdp, "activated staging staff");
+    await viewport(cdp, 375, 812);
+    await button(cdp, "Расписание");
+    await requireDom(cdp,"real schedule form","document.querySelectorAll('.owner-form input[type=datetime-local]').length===2");
+    const date=new Date(Date.now()+3*86400000).toISOString().slice(0,10);
+    await evaluate(cdp,"(() => {const inputs=document.querySelectorAll('.owner-form input[type=datetime-local]');const values="+JSON.stringify([date+"T09:00",date+"T12:00"])+";inputs.forEach((el,i)=>{el.value=values[i];el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));});})()");
+    await submitValidForm(cdp,".owner-form");
+    await requireDom(cdp,"draft in publish selector","document.querySelector('[aria-label=\"Публикация смен staging\"] select')?.options.length===2 && document.querySelector('[aria-label=\"Публикация смен staging\"] input[type=checkbox]')");
+    await evaluate(cdp,"(() => {const p=document.querySelector('[aria-label=\"Публикация смен staging\"]');const s=p.querySelector('select');s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await requireDom(cdp,"draft selected","document.querySelector('[aria-label=\"Публикация смен staging\"] input[type=checkbox]')?.disabled===false");
+    await evaluate(cdp,"document.querySelector('[aria-label=\"Публикация смен staging\"] input[type=checkbox]').click()");
+    await button(cdp,"Опубликовать смену");
+    await requireDom(cdp,"published shift","document.querySelector('[aria-label=\"Публикация смен staging\"] .list-items')?.innerText.includes('Опубликовано для staging')");
+    await requireDom(cdp,"preview selector","document.querySelector('[aria-label=\"Публикация смен staging\"] input[type=date]')");
+    await evaluate(cdp,"(() => {const p=document.querySelector('[aria-label=\"Публикация смен staging\"]');const s=p.querySelector('select');s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));const d=p.querySelector('input[type=date]');d.value="+JSON.stringify(date)+";d.dispatchEvent(new Event('input',{bubbles:true}));d.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await button(cdp,"Проверить слоты");
+    await requireDom(cdp,"server calculated available slots","document.body.innerText.includes('Найдено слотов: 9.')");
+    const persistedShift=await pool.query("SELECT id::text, active FROM cookie_scheduling.shift_windows WHERE tenant_id=$1::uuid",[owner.tenantId]);
+    assert.equal(persistedShift.rowCount,1);
+    assert.equal(persistedShift.rows[0].active,true);
+    await checkWidth(cdp,"real staging schedule");
+    await checkLabeledControls(cdp,"real staging schedule");
+    await button(cdp,"Мастера");
+    await button(cdp,"Расписание");
+    await requireDom(cdp,"published shift persists on navigation","document.querySelector('[aria-label=\"Публикация смен staging\"] .list-items')?.innerText.includes('Опубликовано для staging')");
+
     assert.deepEqual(external, [], "Unexpected real-mode external network requests");
     assert.deepEqual(errors, [], "Unexpected browser runtime errors");
     await button(cdp, "Выйти");
     await requireDom(cdp, "final logout", "document.body.innerText.includes('Вы вышли')");
-    console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit, staging capacity activation and PostgreSQL persistence across API restart, 3 viewport checks, server logout.");
+    console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit, staging capacity activation, shift publication, server availability and PostgreSQL persistence across API restart, 3 viewport checks, server logout.");
   } finally {
     if (cdp) cdp.close();
     if (chrome && !chrome.killed) chrome.kill("SIGTERM");

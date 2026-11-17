@@ -64,10 +64,12 @@ test(
       audience: "cookie-web",
       ttlSeconds: 900,
     });
+    let fixtureTenant: string | undefined;
     const app = createApp(pool, {
       telegramAuthRoutes: { sessions },
       catalogRoutes: { pool, verifier: sessions },
       staffRoutes: { pool, verifier: sessions },
+      shiftPlanRoutes: { pool, verifier: sessions },
       stagingPublicationRoutes: { pool, verifier: sessions, enabled: true },
     });
     const disabled = createApp(pool, {
@@ -104,6 +106,7 @@ test(
         authorization: "Bearer " + exchange.json().accessToken,
       };
       const tenant = owner.tenantId;
+      fixtureTenant = tenant;
       const root = "/v1/organizations/" + tenant;
       const url = root + "/staging-publication";
       const read = () => app.inject({ method: "GET", url, headers });
@@ -268,6 +271,63 @@ test(
         [tenant, winner.staffId, secondBranch, serviceId],
       );
       assert.equal((await capacity()).usedSeats, 1);
+      const date = new Date(Date.now()+3*86400000).toISOString().slice(0,10);
+      const shiftUrl=root+"/staging-shifts";
+      const previewUrl=root+"/staging-availability?"+new URLSearchParams({
+        staffId:winner.staffId,locationId:owner.locationId,serviceId,localDate:date,
+      }).toString();
+      const createShift=async(locationId:string,startLocal:string,endLocal:string)=>{
+        const r=await app.inject({method:"POST",url:root+"/shift-plans",
+          headers:{...headers,"idempotency-key":randomUUID()},
+          payload:{staffId:winner.staffId,locationId,startLocal,endLocal}});
+        assert.equal(r.statusCode,201);
+        return r.json().plan;
+      };
+      const plan=await createShift(owner.locationId,date+"T09:00",date+"T12:00");
+      const publish=(payload:object,key=randomUUID())=>app.inject({method:"POST",url:shiftUrl,
+        headers:{...headers,"idempotency-key":key},payload});
+      const preview=()=>app.inject({method:"GET",url:previewUrl,headers});
+      assert.equal((await disabled.inject({method:"POST",url:shiftUrl,headers,payload:{}})).statusCode,404);
+      assert.equal((await disabled.inject({method:"GET",url:previewUrl,headers})).statusCode,404);
+      assert.equal((await app.inject({method:"GET",url:previewUrl})).statusCode,401);
+      assert.equal((await app.inject({method:"GET",url:previewUrl.replace(tenant,randomUUID()),headers})).statusCode,403);
+      assert.deepEqual((await preview()).json().slots,[],"draft shifts must never produce slots");
+      assert.equal((await publish({shiftId:randomUUID(),expectedRevision:0})).statusCode,404);
+      assert.equal((await publish({shiftId:plan.shiftId,expectedRevision:1})).json().error,"SHIFT_STALE_REVISION");
+      const shiftKey=randomUUID();
+      const publishPayload={shiftId:plan.shiftId,expectedRevision:0};
+      const concurrent=await Promise.all([publish(publishPayload,shiftKey),publish(publishPayload,shiftKey)]);
+      assert.deepEqual(concurrent.map(r=>r.statusCode),[200,200]);
+      assert.deepEqual(concurrent[0]!.json(),concurrent[1]!.json());
+      assert.equal(concurrent[0]!.json().shift.active,true);
+      assert.equal((await publish({...publishPayload,expectedRevision:1},shiftKey)).json().error,"SHIFT_KEY_REUSED");
+      assert.equal((await publish(publishPayload)).json().error,"SHIFT_ALREADY_ACTIVE");
+      const published=await app.inject({method:"GET",url:shiftUrl,headers});
+      assert.equal(published.statusCode,200);
+      assert.deepEqual(published.json().shifts,[concurrent[0]!.json().shift]);
+      assert.equal((await preview()).json().slots.length,11);
+      // Synthetic fixtures prove buffer, break and cross-location booking exclusion.
+      await pool.query("UPDATE cookie_catalog.services SET post_service_buffer_minutes=15 WHERE tenant_id=$1::uuid AND id=$2::uuid",[tenant,serviceId]);
+      await pool.query(
+        "INSERT INTO cookie_scheduling.blocked_windows(tenant_id,id,staff_id,location_id,kind,start_at,end_at,active) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,'break',$5::timestamptz,$6::timestamptz,true)",
+        [tenant,randomUUID(),winner.staffId,owner.locationId,date+"T10:00:00Z",date+"T10:30:00Z"]);
+      const customer=randomUUID();
+      await pool.query("INSERT INTO cookie_customers.customers(tenant_id,id) VALUES($1::uuid,$2::uuid)",[tenant,customer]);
+      await pool.query(
+        "INSERT INTO cookie_booking.bookings(tenant_id,id,customer_id,staff_id,location_id,service_id,status,start_at,end_at,occupied_until,service_duration_minutes_snapshot,post_service_buffer_minutes_snapshot,price_kopecks_snapshot) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,'Confirmed',$7::timestamptz,$8::timestamptz,$9::timestamptz,30,15,100000)",
+        [tenant,randomUUID(),customer,winner.staffId,secondBranch,serviceId,date+"T11:00:00Z",date+"T11:30:00Z",date+"T11:45:00Z"]);
+      const actualSlots=await preview();
+      assert.equal(actualSlots.statusCode,200);
+      assert.deepEqual(actualSlots.json().slots.map((slot:{startAt:string})=>slot.startAt),[date+"T09:00:00.000Z",date+"T09:15:00.000Z"]);
+      const foreignPlacement=await createShift(secondBranch,date+"T10:00",date+"T11:00");
+      assert.equal((await publish({shiftId:foreignPlacement.shiftId,expectedRevision:0})).json().error,"SHIFT_TARGET_UNAVAILABLE");
+      await pool.query(
+        "INSERT INTO cookie_staff.staging_publication_receipts(tenant_id,actor_identity_id,idempotency_key,request_sha256,staff_id,location_id,service_id,grant_id) VALUES($1::uuid,$2::uuid,$3,$4,$5::uuid,$6::uuid,$7::uuid,$8::uuid)",
+        [tenant,identityId,randomUUID(),"a".repeat(64),winner.staffId,secondBranch,serviceId,grantId]);
+      assert.equal((await publish({shiftId:foreignPlacement.shiftId,expectedRevision:0})).json().error,"SHIFT_CROSS_LOCATION_CONFLICT");
+      const audit=await pool.query("SELECT count(*)::int AS count FROM cookie_scheduling.shift_publish_audit WHERE tenant_id=$1::uuid",[tenant]);
+      assert.equal(audit.rows[0]?.count,1);
+
       await pool.query(
         "UPDATE cookie_catalog.services SET active=false,first_published_at=NULL WHERE tenant_id=$1::uuid AND id=$2::uuid",
         [tenant, serviceId],
@@ -298,6 +358,8 @@ test(
         [tenant],
       );
       assert.equal((await capacity()).state, "expired");
+      assert.equal((await preview()).statusCode,409);
+      assert.equal((await publish(publishPayload,shiftKey)).json().error,"grant-unavailable");
       assert.equal(
         (await post(draft(third, 1))).json().error,
         "grant-unavailable",
@@ -317,9 +379,15 @@ test(
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal((await read()).statusCode, 401);
     } finally {
-      await disabled.close();
-      await app.close();
-      await pool.end();
+      try {
+        await disabled.close();
+        await app.close();
+        if (fixtureTenant) {
+          await pool.query("DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic IN ('schedule.shift.draft.created','schedule.shift.published')",[fixtureTenant]);
+        }
+      } finally {
+        await pool.end();
+      }
     }
   },
 );
