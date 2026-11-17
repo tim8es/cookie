@@ -144,3 +144,28 @@ export function customerBookingAttempt(
   };
   return new BookingAttempt(port, () => key);
 }
+
+/** Read-only positive recovery. A missing or denied result is NOT proof
+ * that the original command failed; callers must retain the pending key.
+ */
+export async function recoverCustomerBooking(
+  session: VerifiedCustomerSession,
+  key: string,
+  fetcher: typeof fetch = globalThis.fetch,
+): Promise<ConfirmedBookingReceipt | null> {
+  if (!/^[A-Za-z0-9._:-]{16,128}$/.test(key)) return null;
+  try {
+    const response = await fetcher(endpoint(session) + "/receipt", {
+      ...privacy,
+      method: "GET",
+      headers: { ...headers(session), "idempotency-key": key },
+    });
+    if (response.status !== 200) return null;
+    const raw: unknown = await response.json();
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    if (!("startAt" in raw) || typeof raw.startAt !== "string") return null;
+    return verifyBookingReceipt(raw, raw.startAt);
+  } catch {
+    return null;
+  }
+}
