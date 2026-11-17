@@ -91,12 +91,7 @@ test(
 
       await assert.rejects(
         transaction(pool, (client) =>
-          saveTenantBrandDraft(
-            client,
-            tenantA,
-            0,
-            createBrandConfig("clay"),
-          ),
+          saveTenantBrandDraft(client, tenantA, 0, createBrandConfig("clay")),
         ),
         AppearanceRevisionConflict,
       );
@@ -172,11 +167,8 @@ test(
         client.release();
       }
       assert.equal(
-        (
-          await transaction(pool, (db) =>
-            readTenantBrandDraft(db, tenantB),
-          )
-        ).revision,
+        (await transaction(pool, (db) => readTenantBrandDraft(db, tenantB)))
+          .revision,
         0,
       );
 
@@ -202,19 +194,13 @@ test(
         1,
       );
       assert.equal(
-        (
-          await transaction(pool, (db) =>
-            readTenantBrandDraft(db, tenantA),
-          )
-        ).revision,
+        (await transaction(pool, (db) => readTenantBrandDraft(db, tenantA)))
+          .revision,
         3,
       );
       assert.equal(
-        (
-          await transaction(pool, (db) =>
-            readPublishedTenantBrand(db, tenantA),
-          )
-        )?.revision,
+        (await transaction(pool, (db) => readPublishedTenantBrand(db, tenantA)))
+          ?.revision,
         2,
         "Concurrent draft edit does not auto-publish",
       );
@@ -242,15 +228,11 @@ test(
         saveTenantBrandDraft(db, tenantB, 0, withLogo, ownership),
       );
       await assert.rejects(
-        transaction(pool, (db) =>
-          publishTenantBrandDraft(db, tenantB, 1),
-        ),
+        transaction(pool, (db) => publishTenantBrandDraft(db, tenantB, 1)),
         AppearanceAssetNotVerified,
       );
       assert.equal(
-        await transaction(pool, (db) =>
-          readPublishedTenantBrand(db, tenantB),
-        ),
+        await transaction(pool, (db) => readPublishedTenantBrand(db, tenantB)),
         null,
       );
       assert.equal(

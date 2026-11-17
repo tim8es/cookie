@@ -76,9 +76,10 @@ export function registerRealAppearanceRoutes(
     return { actor: result.actor };
   }
 
-  function failure(
-    error: unknown,
-  ): { readonly status: 403 | 409 | 503; readonly error: string } {
+  function failure(error: unknown): {
+    readonly status: 403 | 409 | 503;
+    readonly error: string;
+  } {
     if (error instanceof AuthorizationDeniedError) {
       return { status: 403, error: "forbidden" };
     }
