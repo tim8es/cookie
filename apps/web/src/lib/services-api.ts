@@ -45,7 +45,9 @@ function isRealService(value: unknown): value is RealService {
     typeof s.active === "boolean" &&
     typeof s.createdAt === "string" &&
     Number.isFinite(Date.parse(s.createdAt)) &&
-    Number.isSafeInteger(s.revision) && s.revision! >= 0 && s.revision! <= 2147483647
+    Number.isSafeInteger(s.revision) &&
+    s.revision! >= 0 &&
+    s.revision! <= 2147483647
   );
 }
 
@@ -82,8 +84,12 @@ async function request(
   }
   if (response.status === 409) {
     const problem: unknown = await response.json().catch(() => null);
-    if (problem && typeof problem === "object" &&
-        "error" in problem && problem.error === "stale-revision") {
+    if (
+      problem &&
+      typeof problem === "object" &&
+      "error" in problem &&
+      problem.error === "stale-revision"
+    ) {
       throw new ServiceApiFailure("stale-revision");
     }
     throw new ServiceApiFailure("conflict");
@@ -170,23 +176,39 @@ export async function editRealService(
   idempotencyKey: string,
   fetcher: typeof fetch = globalThis.fetch,
 ): Promise<RealService> {
-  if (!UUID.test(serviceId) || !UUID.test(idempotencyKey) ||
-      !Number.isSafeInteger(draft.expectedRevision) ||
-      draft.expectedRevision < 0 || draft.expectedRevision >= 2147483647)
+  if (
+    !UUID.test(serviceId) ||
+    !UUID.test(idempotencyKey) ||
+    !Number.isSafeInteger(draft.expectedRevision) ||
+    draft.expectedRevision < 0 ||
+    draft.expectedRevision >= 2147483647
+  )
     throw new ServiceApiFailure("invalid-response");
-  const result = await request(session, fetcher, {
-    method: "PATCH",
-    headers: { "content-type": "application/json", "idempotency-key": idempotencyKey },
-    body: JSON.stringify(draft),
-  }, "/" + serviceId);
+  const result = await request(
+    session,
+    fetcher,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": idempotencyKey,
+      },
+      body: JSON.stringify(draft),
+    },
+    "/" + serviceId,
+  );
   if (result.status !== 200 || !result.body || typeof result.body !== "object")
     throw new ServiceApiFailure("invalid-response");
   const service = (result.body as { service?: unknown }).service;
-  if (!isRealService(service) || service.id !== serviceId ||
-      service.active || service.revision !== draft.expectedRevision + 1 ||
-      service.displayName !== draft.displayName.normalize("NFC").trim() ||
-      service.durationMinutes !== draft.durationMinutes ||
-      service.basePriceKopecks !== draft.basePriceKopecks)
+  if (
+    !isRealService(service) ||
+    service.id !== serviceId ||
+    service.active ||
+    service.revision !== draft.expectedRevision + 1 ||
+    service.displayName !== draft.displayName.normalize("NFC").trim() ||
+    service.durationMinutes !== draft.durationMinutes ||
+    service.basePriceKopecks !== draft.basePriceKopecks
+  )
     throw new ServiceApiFailure("invalid-response");
   return service;
 }

@@ -188,14 +188,18 @@ export interface EditDraftServiceInput extends CreateDraftServiceInput {
   readonly expectedRevision: number;
 }
 
-export function validateEditDraftService(input: unknown): EditDraftServiceInput {
+export function validateEditDraftService(
+  input: unknown,
+): EditDraftServiceInput {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new CatalogInputError("invalid edit");
   }
   const { expectedRevision, ...fields } = input as Record<string, unknown>;
-  if (!Number.isSafeInteger(expectedRevision) ||
-      (expectedRevision as number) < 0 ||
-      (expectedRevision as number) >= 2147483647) {
+  if (
+    !Number.isSafeInteger(expectedRevision) ||
+    (expectedRevision as number) < 0 ||
+    (expectedRevision as number) >= 2147483647
+  ) {
     throw new CatalogInputError("invalid revision");
   }
   return {
@@ -218,10 +222,16 @@ export async function editTenantDraftService(
 ): Promise<ServiceRecord> {
   if (!KEY.test(key)) throw new CatalogInputError("invalid key");
   const hash = createHash("sha256")
-    .update(JSON.stringify([
-      1, serviceId, input.expectedRevision, input.displayName,
-      input.durationMinutes, input.basePriceKopecks,
-    ]))
+    .update(
+      JSON.stringify([
+        1,
+        serviceId,
+        input.expectedRevision,
+        input.displayName,
+        input.durationMinutes,
+        input.basePriceKopecks,
+      ]),
+    )
     .digest("hex");
   await client.query(
     "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
@@ -234,7 +244,8 @@ export async function editTenantDraftService(
     [tenantId, actorIdentityId, key],
   );
   if (existing.rows[0]) {
-    if (existing.rows[0].request_sha256 !== hash) throw new CatalogReplayConflict();
+    if (existing.rows[0].request_sha256 !== hash)
+      throw new CatalogReplayConflict();
     return existing.rows[0].result_service;
   }
 
@@ -270,8 +281,14 @@ export async function editTenantDraftService(
       WHERE tenant_id=$1::uuid AND id=$2::uuid AND NOT active
         AND draft_revision=$6
       RETURNING ${SELECT_FIELDS}`,
-    [tenantId, serviceId, input.displayName, input.durationMinutes,
-      input.basePriceKopecks, input.expectedRevision],
+    [
+      tenantId,
+      serviceId,
+      input.displayName,
+      input.durationMinutes,
+      input.basePriceKopecks,
+      input.expectedRevision,
+    ],
   );
   if (!saved.rows[0]) throw new CatalogRevisionConflict();
   const service = mapService(saved.rows[0]);

@@ -27,7 +27,8 @@ export interface RealCatalogRouteDependencies {
 const KEY = /^[A-Za-z0-9._:-]{16,128}$/;
 type Params = { tenantId: string };
 type EditParams = Params & { serviceId: string };
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Real, tenant-scoped draft catalog. NOT an opt-in synthetic Booking adapter. */
 export function registerRealCatalogRoutes(
@@ -36,7 +37,11 @@ export function registerRealCatalogRoutes(
 ): void {
   app.addHook("onRequest", async (request, reply) => {
     // Route-local paths are under /services only; no protected content in caches.
-    if (!/^\/v1\/organizations\/[^/]+\/services(?:\/[^/?]+)?(?:\?|$)/.test(request.url))
+    if (
+      !/^\/v1\/organizations\/[^/]+\/services(?:\/[^/?]+)?(?:\?|$)/.test(
+        request.url,
+      )
+    )
       return;
     reply.header("Cache-Control", "no-store");
     reply.header("Pragma", "no-cache");
@@ -130,26 +135,39 @@ export function registerRealCatalogRoutes(
     "/v1/organizations/:tenantId/services/:serviceId",
     async (request, reply) => {
       const verified = await verifyTenantActor(
-        request.headers.authorization, request.params.tenantId, verifier,
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
       );
       if (!verified.actor)
         return reply.code(verified.status).send({ error: verified.error });
       const key = request.headers["idempotency-key"];
       let input;
       try {
-        if (typeof key !== "string" || !KEY.test(key) ||
-            !UUID.test(request.params.serviceId)) throw new CatalogInputError();
+        if (
+          typeof key !== "string" ||
+          !KEY.test(key) ||
+          !UUID.test(request.params.serviceId)
+        )
+          throw new CatalogInputError();
         input = validateEditDraftService(request.body);
       } catch {
         return reply.code(400).send({ error: "invalid-request" });
       }
       try {
         const service = await withTenantPermission(
-          pool, verified.actor, "catalog.service.edit-draft",
-          (client) => editTenantDraftService(
-            client, verified.actor!.tenantId, verified.actor!.identityId,
-            request.params.serviceId, key, input,
-          ),
+          pool,
+          verified.actor,
+          "catalog.service.edit-draft",
+          (client) =>
+            editTenantDraftService(
+              client,
+              verified.actor!.tenantId,
+              verified.actor!.identityId,
+              request.params.serviceId,
+              key,
+              input,
+            ),
         );
         return reply.send({ service });
       } catch (reason) {
@@ -161,7 +179,12 @@ export function registerRealCatalogRoutes(
           return reply.code(404).send({ error: "draft-unavailable" });
         return reply
           .code(reason instanceof AuthorizationDeniedError ? 403 : 503)
-          .send({ error: reason instanceof AuthorizationDeniedError ? "forbidden" : "unavailable" });
+          .send({
+            error:
+              reason instanceof AuthorizationDeniedError
+                ? "forbidden"
+                : "unavailable",
+          });
       }
     },
   );

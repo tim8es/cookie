@@ -166,15 +166,46 @@ test(
         expectedRevision: 0,
       };
       const editKey = randomUUID();
-      const change = (payload: object, idempotencyKey = editKey, url = editUrl) =>
-        app.inject({ method: "PATCH", url, headers: { ...headers, "idempotency-key": idempotencyKey }, payload });
+      const change = (
+        payload: object,
+        idempotencyKey = editKey,
+        url = editUrl,
+      ) =>
+        app.inject({
+          method: "PATCH",
+          url,
+          headers: { ...headers, "idempotency-key": idempotencyKey },
+          payload,
+        });
       assert.equal(a.revision, 0);
-      assert.equal((await disabled.inject({ method: "PATCH", url: editUrl })).statusCode, 404);
-      assert.equal((await app.inject({ method: "PATCH", url: editUrl })).statusCode, 401);
-      assert.equal((await change(edit, randomUUID(), "/v1/organizations/" + randomUUID() + "/services/" + a.id)).statusCode, 403);
-      assert.equal((await change(edit, randomUUID(), prefix + "/" + randomUUID())).statusCode, 404);
+      assert.equal(
+        (await disabled.inject({ method: "PATCH", url: editUrl })).statusCode,
+        404,
+      );
+      assert.equal(
+        (await app.inject({ method: "PATCH", url: editUrl })).statusCode,
+        401,
+      );
+      assert.equal(
+        (
+          await change(
+            edit,
+            randomUUID(),
+            "/v1/organizations/" + randomUUID() + "/services/" + a.id,
+          )
+        ).statusCode,
+        403,
+      );
+      assert.equal(
+        (await change(edit, randomUUID(), prefix + "/" + randomUUID()))
+          .statusCode,
+        404,
+      );
 
-      const [updatedA, updatedB] = await Promise.all([change(edit), change(edit)]);
+      const [updatedA, updatedB] = await Promise.all([
+        change(edit),
+        change(edit),
+      ]);
       assert.equal(updatedA.statusCode, 200);
       assert.equal(updatedB.statusCode, 200);
       assert.equal(updatedA.headers["cache-control"], "no-store");
@@ -187,7 +218,10 @@ test(
         basePriceKopecks: 120050,
         revision: 1,
       });
-      assert.equal((await change({ ...edit, durationMinutes: 46 })).statusCode, 409);
+      assert.equal(
+        (await change({ ...edit, durationMinutes: 46 })).statusCode,
+        409,
+      );
       const stale = await change(edit, randomUUID());
       assert.equal(stale.statusCode, 409);
       assert.equal(stale.json().error, "stale-revision");
@@ -198,8 +232,13 @@ test(
         change({ ...next, durationMinutes: 50 }, randomUUID()),
         change({ ...next, durationMinutes: 55 }, randomUUID()),
       ]);
-      assert.deepEqual(race.map((result) => result.statusCode).sort(), [200, 409]);
-      const revisionTwo = race.find((result) => result.statusCode === 200)!.json().service;
+      assert.deepEqual(
+        race.map((result) => result.statusCode).sort(),
+        [200, 409],
+      );
+      const revisionTwo = race
+        .find((result) => result.statusCode === 200)!
+        .json().service;
       assert.equal(revisionTwo.revision, 2);
 
       // Old receipts are immutable, but GET is authoritative current data.
@@ -207,7 +246,11 @@ test(
       const createReplay = await submit();
       assert.equal(createReplay.statusCode, 200);
       assert.deepEqual(createReplay.json().service, a);
-      assert.deepEqual((await app.inject({ method: "GET", url: prefix, headers })).json().services, [revisionTwo]);
+      assert.deepEqual(
+        (await app.inject({ method: "GET", url: prefix, headers })).json()
+          .services,
+        [revisionTwo],
+      );
 
       for (const invalidEdit of [
         { ...next, active: true },
@@ -245,7 +288,11 @@ test(
         "UPDATE cookie_staff.service_assignments SET active=true WHERE tenant_id=$1::uuid AND staff_id=$2::uuid AND location_id=$3::uuid AND service_id=$4::uuid",
         binding,
       );
-      assert.equal((await change({ ...edit, expectedRevision: 3 }, randomUUID())).statusCode, 404);
+      assert.equal(
+        (await change({ ...edit, expectedRevision: 3 }, randomUUID()))
+          .statusCode,
+        404,
+      );
       await pool.query(
         "UPDATE cookie_staff.service_assignments SET active=false WHERE tenant_id=$1::uuid AND staff_id=$2::uuid AND location_id=$3::uuid AND service_id=$4::uuid",
         binding,
@@ -254,7 +301,11 @@ test(
         "UPDATE cookie_catalog.services SET active=true WHERE tenant_id=$1::uuid AND id=$2::uuid",
         [owner.tenantId, a.id],
       );
-      assert.equal((await change({ ...edit, expectedRevision: 3 }, randomUUID())).statusCode, 404);
+      assert.equal(
+        (await change({ ...edit, expectedRevision: 3 }, randomUUID()))
+          .statusCode,
+        404,
+      );
       const count = await pool.query(
         `SELECT
           (SELECT count(*)::int FROM cookie_catalog.service_create_receipts WHERE tenant_id=$1::uuid) AS creates,
