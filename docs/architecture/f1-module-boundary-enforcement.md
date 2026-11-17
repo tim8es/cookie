@@ -52,3 +52,9 @@ Checker пропускает точный относительный путь `p
 - **Не проверяется:** runtime computed `import(variable)`, владение SQL-таблицами, Svelte-импорты, сторонние npm dependencies и цикл на уровне динамической инфраструктуры. Статический CI не является доказательством безопасности всей архитектуры.
 
 В этом PR нет новых миграций, внешних каналов, микросервисов, production запуска или изменений бизнес-команд Booking.
+
+## Phase 4: Scheduling → public Identity and Outbox capabilities
+
+Nine Scheduling implementation files now consume the already published `platform-identity/src/index.js` and `platform-db/src/index.js` entrypoints instead of importing the implementations directly. The exact legacy baseline decreases **39 → 17**. The public entrypoints re-export the same implementations; no SQL, lock order, transaction boundaries, authorization, idempotency, or event behavior changes. No new runtime capability or product settings are introduced.
+
+`publish-shift.ts` is deliberately excluded while #245 overlaps it. The remaining cross-schema SQL, narrow transaction-scoped repository ports, production composition root, tenant entitlements, and package exports remain separate #201 follow-ups. This is an incremental boundary cleanup, not proof of runtime isolation. Verify the boundary checker, TypeScript and PostgreSQL regression gates on the resulting PR before merging.
