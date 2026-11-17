@@ -16,6 +16,15 @@ import {
   registerSyntheticWorkspaceReads,
   type SyntheticWorkspaceReadDependencies,
 } from "./workspace-http.js";
+import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
+import {
+  registerRealCatalogRoutes,
+  type RealCatalogRouteDependencies,
+} from "./catalog-http.js";
+import {
+  registerLiveWorkspaceRead,
+  type LiveWorkspaceReadDependencies,
+} from "./live-workspace-http.js";
 import {
   registerProtectedSessionContext,
   type ProtectedSessionDependencies,
@@ -31,6 +40,11 @@ export function createApp(
   options: {
     readonly logger?: boolean;
     readonly sessionRoutes?: ProtectedSessionDependencies;
+    readonly liveWorkspaceReads?: LiveWorkspaceReadDependencies;
+    readonly catalogRoutes?: RealCatalogRouteDependencies;
+    readonly telegramAuthRoutes?: {
+      readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
+    };
     readonly syntheticBookingRoutes?: SyntheticBookingHttpDependencies;
     readonly syntheticBookingMutations?: SyntheticBookingMutationDependencies;
     readonly syntheticWorkspaceReads?: SyntheticWorkspaceReadDependencies;
@@ -65,6 +79,14 @@ export function createApp(
   if (options.sessionRoutes)
     registerProtectedSessionContext(app, options.sessionRoutes);
 
+  // One-time Telegram proof exchange only when configured with real HMAC,
+  // a database-resolved trusted link and HTTPS origin. No Booking enabled.
+  if (options.telegramAuthRoutes)
+    registerTelegramAuthExchange(app, options.telegramAuthRoutes.sessions);
+
+  if (options.catalogRoutes)
+    registerRealCatalogRoutes(app, options.catalogRoutes);
+
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.
   if (options.syntheticBookingRoutes)
@@ -75,7 +97,13 @@ export function createApp(
   if (options.syntheticBookingMutations)
     registerSyntheticBookingMutations(app, options.syntheticBookingMutations);
 
-  // No workspace or staff schedule read route in normal production startup.
+  if (options.liveWorkspaceReads && options.syntheticWorkspaceReads) {
+    throw new Error("Cannot mix production and synthetic Workspace routes");
+  }
+  if (options.liveWorkspaceReads)
+    registerLiveWorkspaceRead(app, options.liveWorkspaceReads);
+
+  // Synthetic workspace reads remain test-only.
   if (options.syntheticWorkspaceReads)
     registerSyntheticWorkspaceReads(app, options.syntheticWorkspaceReads);
 

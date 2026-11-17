@@ -3,8 +3,10 @@ import { test } from "node:test";
 import {
   brandContrast,
   brandPresets,
+  compileBrandPreviewTokens,
   compileBrandTokens,
   createBrandConfig,
+  safeBrandPresetId,
   validateBrandConfig,
 } from "./branding-config";
 
@@ -105,4 +107,30 @@ test("config is versioned and cannot silently accept old or future shapes", () =
     validateBrandConfig({ ...base, logoAssetId: null, colorCss: ".body{}" }),
   );
   assert.deepEqual(validateBrandConfig(base), base);
+});
+
+test("invalid preview and reset recover safely", () => {
+  const atelier = createBrandConfig("atelier");
+  const forest = createBrandConfig("forest");
+  const unknown = { ...forest, presetId: "future-preset" };
+  const invalidColor = { ...forest, primaryColor: "not-a-color" };
+  const preview = compileBrandPreviewTokens;
+  const tokens = compileBrandTokens;
+  assert.deepEqual(preview(atelier), tokens(atelier));
+  assert.deepEqual(preview(unknown), tokens(atelier));
+  assert.deepEqual(preview(invalidColor), tokens(forest));
+  assert.deepEqual(preview(null), tokens(atelier));
+  assert.equal(safeBrandPresetId(unknown.presetId), "atelier");
+  assert.equal(safeBrandPresetId("forest"), "forest");
+  assert.throws(() => validateBrandConfig(unknown));
+  assert.throws(() => validateBrandConfig(invalidColor));
+});
+
+test("custom midtone backgrounds retain readable text", () => {
+  const config = createBrandConfig();
+  for (const color of ["#777777", "#808080", "#858585"]) {
+    const settings = { ...config, backgroundColor: color };
+    const tokens = compileBrandTokens(settings);
+    assert.ok(brandContrast(color, tokens["--salon-page-ink"]!) >= 4.5);
+  }
 });

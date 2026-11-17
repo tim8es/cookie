@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { Pool, PoolClient } from "pg";
+import type { Pool } from "pg";
 
 import {
   AppearanceAssetNotVerified,
@@ -12,13 +12,13 @@ import {
 } from "../../../packages/domain-appearance/src/index.js";
 import {
   AuthorizationDeniedError,
-  requireTenantPermission,
   type TrustedActor,
 } from "../../../packages/platform-identity/src/index.js";
 import {
   type BearerSessionVerifier,
   verifyTenantActor,
 } from "./session-context.js";
+import { withTenantPermission } from "./protected-tenant-transaction.js";
 
 type TenantParams = { tenantId: string };
 type DraftBody = { expectedRevision: number; config: unknown };
@@ -55,8 +55,16 @@ export function registerRealAppearanceRoutes(
     authorization: string | undefined,
     tenantId: string,
   ): Promise<
-    | { readonly actor: TrustedActor; readonly status?: never; readonly error?: never }
-    | { readonly actor?: never; readonly status: 401 | 403; readonly error: string }
+    | {
+        readonly actor: TrustedActor;
+        readonly status?: never;
+        readonly error?: never;
+      }
+    | {
+        readonly actor?: never;
+        readonly status: 401 | 403;
+        readonly error: string;
+      }
   > {
     const result = await verifyTenantActor(authorization, tenantId, verifier);
     if (!result.actor) {
@@ -66,43 +74,6 @@ export function registerRealAppearanceRoutes(
       };
     }
     return { actor: result.actor };
-  }
-
-  async function authorizedTransaction<T>(
-    actor: TrustedActor,
-    permission: "appearance.read" | "appearance.manage" | "appearance.publish",
-    work: (client: PoolClient) => Promise<T>,
-  ): Promise<T> {
-    const client = await pool.connect();
-    let active = false;
-    let policyPassed = false;
-    try {
-      await client.query("BEGIN");
-      active = true;
-      await requireTenantPermission(
-        client,
-        actor,
-        { kind: "organization", tenantId: actor.tenantId },
-        permission,
-      );
-      policyPassed = true;
-      const result = await work(client);
-      await client.query("COMMIT");
-      active = false;
-      return result;
-    } catch (reason) {
-      if (active) {
-        // The denial audit must commit; no business mutation was attempted.
-        if (reason instanceof AuthorizationDeniedError && !policyPassed) {
-          await client.query("COMMIT").catch(() => undefined);
-        } else {
-          await client.query("ROLLBACK").catch(() => undefined);
-        }
-      }
-      throw reason;
-    } finally {
-      client.release();
-    }
   }
 
   function failure(
@@ -138,7 +109,8 @@ export function registerRealAppearanceRoutes(
       if (!verified.actor)
         return reply.code(verified.status).send({ error: verified.error });
       try {
-        const result = await authorizedTransaction(
+        const result = await withTenantPermission(
+          pool,
           verified.actor,
           "appearance.read",
           (client) => readTenantBrandDraft(client, verified.actor!.tenantId),
@@ -161,11 +133,13 @@ export function registerRealAppearanceRoutes(
       if (!verified.actor)
         return reply.code(verified.status).send({ error: verified.error });
       const body: unknown = request.body;
-      if (!isRecord(body) ||
-          Object.keys(body).length !== 2 ||
-          !Object.hasOwn(body, "expectedRevision") ||
-          !Object.hasOwn(body, "config") ||
-          !revision(body.expectedRevision, true)) {
+      if (
+        !isRecord(body) ||
+        Object.keys(body).length !== 2 ||
+        !Object.hasOwn(body, "expectedRevision") ||
+        !Object.hasOwn(body, "config") ||
+        !revision(body.expectedRevision, true)
+      ) {
         return reply.code(400).send({ error: "invalid-request" });
       }
       let config;
@@ -175,7 +149,8 @@ export function registerRealAppearanceRoutes(
         return reply.code(400).send({ error: "invalid-branding" });
       }
       try {
-        const result = await authorizedTransaction(
+        const result = await withTenantPermission(
+          pool,
           verified.actor,
           "appearance.manage",
           (client) =>
@@ -205,13 +180,17 @@ export function registerRealAppearanceRoutes(
       if (!verified.actor)
         return reply.code(verified.status).send({ error: verified.error });
       const body: unknown = request.body;
-      if (!isRecord(body) ||
-          Object.keys(body).length !== 1 ||
-          !revision(body.expectedRevision, false)) {
+      if (
+        !isRecord(body) ||
+        Object.keys(body).length !== 1 ||
+        !Object.hasOwn(body, "expectedRevision") ||
+        !revision(body.expectedRevision, false)
+      ) {
         return reply.code(400).send({ error: "invalid-request" });
       }
       try {
-        const result = await authorizedTransaction(
+        const result = await withTenantPermission(
+          pool,
           verified.actor,
           "appearance.publish",
           (client) =>

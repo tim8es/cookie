@@ -9,6 +9,6 @@
   </div>
   <div class="onboarding-header-meta">
     <span class="onboarding-header-pulse" aria-hidden="true"></span>
-    {apiMode ? "API не подключён" : "Демо без регистрации"}
+    {apiMode ? "Вход через Telegram" : "Демо без регистрации"}
   </div>
 </header>

@@ -36,10 +36,10 @@ test(
       const tracked = await pool.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM public.cookie_schema_migrations",
       );
-      const expectedCount = (await readdir(directory)).filter((name) =>
-        /^\d{4}_[a-z0-9_-]+\.sql$/.test(name),
-      ).length;
-      assert.equal(Number(tracked.rows[0]?.count), expectedCount);
+      const onDisk = (await readdir(directory)).filter((f) =>
+        f.endsWith(".sql"),
+      );
+      assert.equal(tracked.rows[0]?.count, String(onDisk.length));
 
       tempDir = await mkdtemp(join(tmpdir(), "cookie-migration-"));
       const sql = await readFile(join(directory, "0001_bootstrap.sql"), "utf8");

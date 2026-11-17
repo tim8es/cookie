@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button } from "../components/ui/button/index.js";
-  import { brandPresets, compileBrandTokens, createBrandConfig, validateBrandConfig } from "../branding-config";
+  import { brandPresets, compileBrandPreviewTokens, createBrandConfig, safeBrandPresetId, validateBrandConfig } from "../branding-config";
   import type { BrandConfigV1, BrandPresetId, BrandColorMode, BrandButtonRadius, BrandTypography, BrandAccentStyle } from "../branding-config";
 
   /** This component is transport-neutral. Server routes own save, assets, auth and publish. */
@@ -27,10 +27,7 @@
     try { validateBrandConfig(draft); return ""; }
     catch (error) { return error instanceof Error ? error.message : "Недопустимые настройки"; }
   })();
-  $: tokens = (() => {
-    try { return compileBrandTokens(draft); }
-    catch { return compileBrandTokens(createBrandConfig(draft.presetId)); }
-  })();
+  $: tokens = compileBrandPreviewTokens(draft);
   $: previewStyle = [
     "--preview-primary:" + tokens["--salon-primary"],
     "--preview-primary-ink:" + tokens["--salon-hero-ink"],
@@ -180,7 +177,7 @@
       {/if}
       <div class="brand-actions">
         <Button type="button" variant="outline" disabled={saving || publishing || uploading}
-          onclick={() => choosePreset(draft.presetId)}>Сбросить цвета и оформление</Button>
+          onclick={() => choosePreset(safeBrandPresetId(draft.presetId))}>Сбросить цвета и оформление</Button>
         <Button type="button" disabled={!!validationError || !hasUnsavedChanges || saving || publishing || uploading}
           onclick={onSave}>{saving ? "Сохранение…" : "Сохранить черновик"}</Button>
         <Button type="button" variant="outline"

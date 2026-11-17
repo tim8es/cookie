@@ -129,9 +129,9 @@ export async function saveTenantBrandDraft(
   requireTenantId(tenantId);
   requireRevision(expectedRevision);
   const config = validateBrandConfig(rawConfig);
-  await checkAssets(client, tenantId, config, ownership);
-
+  // Existing rows use the same branding-before-assets lock order as publish.
   const current = await rowForTenant(client, tenantId, true);
+  await checkAssets(client, tenantId, config, ownership);
   if (!current) {
     if (expectedRevision !== 0) throw new AppearanceRevisionConflict();
     const inserted = await client.query<{ draft_revision: string }>(
@@ -183,9 +183,11 @@ export async function publishTenantBrandDraft(
   await checkAssets(client, tenantId, config, ownership);
 
   // Publishing a revision twice is idempotent; do not create a new timestamp.
-  if (current.published_revision !== null &&
-      revisionFromDatabase(current.published_revision) === revision &&
-      current.published_at) {
+  if (
+    current.published_revision !== null &&
+    revisionFromDatabase(current.published_revision) === revision &&
+    current.published_at
+  ) {
     return {
       revision,
       config: validateBrandConfig(current.published_config),
