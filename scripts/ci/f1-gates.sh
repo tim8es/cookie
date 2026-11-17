@@ -26,7 +26,9 @@ browser_evidence() { node scripts/ci-visual-evidence-check.mjs; }
 real_owner() {
   pnpm build:runtime
   node apps/web/scripts/real-owner-browser-smoke.mjs
-  node scripts/local-staging.mjs verify
+  # Explicit test cases, not product defaults. Separate isolated Docker projects.
+  env -u COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES node scripts/local-staging.mjs verify
+  COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES=90 node scripts/local-staging.mjs verify
 }
 staging_readiness() { bash scripts/ci-staging-readiness.test.sh; }
 staging_runtime() { bash scripts/ci-staging-compose-smoke.sh; }
