@@ -10,8 +10,7 @@
 npm install --global corepack@0.36.0
 corepack enable
 pnpm install --frozen-lockfile
-pnpm build:runtime
-node scripts/local-staging.mjs
+pnpm staging:local
 ```
 
 Скрипт автоматически:
@@ -31,7 +30,7 @@ node scripts/local-staging.mjs
 
 После завершения тестов остановите только выделенный контейнер (без удаления volume):
 ```sh
-node scripts/local-staging.mjs stop
+pnpm staging:local:stop
 ```
 
 При аварийном завершении убедитесь, что процессы API/изолированного браузера действительно закрыты, затем удалите только `.tmp/manual-staging/run.lock` и запустите повторно. Для полного сброса используйте отдельный checkout или вручную удалите только соответствующий Docker Compose project/volume **после** сохранения нужных тестовых данных (имя project записано в local state). Не удаляйте чужие volumes.
