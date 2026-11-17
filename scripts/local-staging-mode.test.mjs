@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isLocalStagingProject, resolveLocalStagingMode } from "./local-staging-mode.mjs";
+import { isLocalStagingProject, resolveLocalStagingMode, localDemoFetch } from "./local-staging-mode.mjs";
 
 test("interactive demo uses the same disposable lifecycle as CI, but never the persistent profile", () => {
   const start = resolveLocalStagingMode([], undefined);
@@ -38,4 +38,17 @@ test("invalid mode and non-CI verification fail closed", () => {
   for (const args of [["reset"], ["demo", "extra"], ["verify"], ["verify-demo"]]) {
     assert.throws(() => resolveLocalStagingMode(args, undefined));
   }
+});
+
+test("demo seed transport permits only the exact loopback API and rejects redirects", async () => {
+  for (const invalid of ["https://127.0.0.1:1234", "http://localhost:1234", "http://127.0.0.1", "http://127.0.0.1:1234/path", "http://user@127.0.0.1:1234", "https://example.com"]) {
+    assert.throws(() => localDemoFetch(invalid));
+  }
+  const calls = [];
+  const fetcher = localDemoFetch("http://127.0.0.1:1234", async (...args) => { calls.push(args); return "ok"; });
+  for (const invalid of ["https://example.com/v1/auth", "//example.com/v1/auth", "/v1/../other", "/v1/%2e%2e/other"]) {
+    await assert.rejects(() => fetcher(invalid));
+  }
+  assert.equal(await fetcher("/v1/auth/telegram/exchange", { redirect: "follow", credentials: "include" }), "ok");
+  assert.deepEqual(calls, [["http://127.0.0.1:1234/v1/auth/telegram/exchange", { redirect: "error", credentials: "omit" }]]);
 });
