@@ -216,6 +216,109 @@ async function main(): Promise<void> {
       leased: false,
     });
 
+    // Break the actual established PostgreSQL connection, not the worker
+    // process. The CI DB is isolated and the earlier worker has exited.
+    // Terminate only a backend owned by this synthetic worker, never an
+    // arbitrary connection or the fixture's own control session.
+    let terminatedPid: number | undefined;
+    const faultDeadline = Date.now() + 5_000;
+    while (Date.now() < faultDeadline) {
+      const killed = await pool.query<{ pid: number; killed: boolean }>(
+        `SELECT pid, pg_terminate_backend(pid, 3000) AS killed
+           FROM pg_stat_activity
+          WHERE datname=current_database()
+            AND usename=current_user
+            AND application_name='cookie-synthetic-worker'
+            AND backend_type='client backend'
+            AND state='idle' AND pid<>pg_backend_pid()
+          ORDER BY pid LIMIT 1`,
+      );
+      if (killed.rows[0]?.killed) {
+        terminatedPid = killed.rows[0].pid;
+        break;
+      }
+      await sleep(25);
+    }
+    assert.ok(terminatedPid, "Expected a real terminated worker backend");
+    const observedDeadline = Date.now() + 5_000;
+    while (
+      !positive
+        .stderr()
+        .includes("Synthetic outbox worker idle connection lost") &&
+      Date.now() < observedDeadline
+    ) {
+      assert.equal(positive.child.exitCode, null);
+      assert.equal(positive.child.signalCode, null);
+      await sleep(25);
+    }
+    assert.match(
+      positive.stderr(),
+      /Synthetic outbox worker idle connection lost/,
+      "Expected the actual idle-client error, not an unrelated process exit",
+    );
+    const afterDisconnect = await snapshot(eventId);
+    assert.deepEqual(afterDisconnect, delivered);
+
+    const recoveryClient = await pool.connect();
+    let recoveryId = "";
+    try {
+      await recoveryClient.query("BEGIN");
+      recoveryId = (
+        await enqueueOutbox(recoveryClient, {
+          tenantId,
+          dedupeKey: "compiled-worker-recovery-" + randomUUID(),
+          topic: "test.synthetic",
+          payload: { synthetic: true },
+        })
+      ).id;
+      await recoveryClient.query("COMMIT");
+    } catch (error) {
+      await recoveryClient.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      recoveryClient.release();
+    }
+
+    const recoveryDeadline = Date.now() + 15_000;
+    let recovered: EventRow | undefined;
+    while (Date.now() < recoveryDeadline) {
+      assert.equal(positive.child.exitCode, null);
+      assert.equal(positive.child.signalCode, null);
+      const row = await snapshot(recoveryId);
+      if (row.status === "delivered") {
+        recovered = row;
+        break;
+      }
+      await sleep(75);
+    }
+    assert.deepEqual(recovered, {
+      status: "delivered",
+      attempts: 1,
+      acked: true,
+      leased: false,
+    });
+    const backends = await pool.query<{ pid: number }>(
+      `SELECT pid FROM pg_stat_activity
+        WHERE datname=current_database()
+          AND application_name='cookie-synthetic-worker'
+          AND backend_type='client backend'`,
+    );
+    assert.ok(backends.rows.length > 0, "Worker did not reconnect");
+    assert.ok(
+      backends.rows.every((row) => row.pid !== terminatedPid),
+      "Terminated backend must not survive",
+    );
+    assert.deepEqual(await snapshot(eventId), delivered);
+    assert.deepEqual(await snapshot(unrelatedId), {
+      status: "pending",
+      attempts: 0,
+      acked: false,
+      leased: false,
+    });
+    process.stdout.write(
+      "PASS: compiled worker recovered a terminated PostgreSQL connection and acknowledged the next event once.\n",
+    );
+
     positive.child.kill("SIGTERM");
     const shutdown = await within(
       positive.done,
@@ -228,6 +331,7 @@ async function main(): Promise<void> {
       "Compiled worker must exit cleanly on SIGTERM",
     );
     assert.deepEqual(await snapshot(eventId), delivered);
+    assert.deepEqual(await snapshot(recoveryId), recovered);
     assert.deepEqual(await snapshot(unrelatedId), {
       status: "pending",
       attempts: 0,
