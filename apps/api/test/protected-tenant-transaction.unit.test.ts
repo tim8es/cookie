@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Pool, PoolClient } from "pg";
 
-import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/authorization.js";
+import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
 import { runProtectedTransaction } from "../src/protected-tenant-transaction.js";
 
 function fixture(

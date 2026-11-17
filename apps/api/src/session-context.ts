@@ -181,7 +181,8 @@ export function postgresTenantPolicyGuard(pool: Pool): TenantPolicyGuard {
     async assertPermission(actor, resource, permission) {
       await runProtectedTransaction(
         pool,
-        (client) => requireTenantPermission(client, actor, resource, permission),
+        (client) =>
+          requireTenantPermission(client, actor, resource, permission),
         async () => undefined,
       );
     },
