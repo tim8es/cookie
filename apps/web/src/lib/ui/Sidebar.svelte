@@ -4,6 +4,7 @@
 
   export let screen: Screen;
   export let stepCount: number;
+  export let realOwner = false;
   export let onNavigate: (next: Screen) => void;
 
   let moreOpen = false;
@@ -13,7 +14,7 @@
   }
 </script>
 
-<aside class="sidebar" aria-label="Главная навигация">
+<aside class="sidebar" class:real-owner-nav={realOwner} aria-label="Главная навигация">
   <div class="brand">
     <span class="brand-seal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
     <div>
@@ -25,7 +26,7 @@
   <div class="sidebar-heading">Пространство</div>
   <nav class="nav-links" aria-label="Разделы Cookie">
     {#each screens as item (item.id)}
-      <button type="button" class:active={screen === item.id}
+      <button type="button" data-screen={item.id} class:active={screen === item.id}
         onclick={() => navigate(item.id)}
         aria-current={screen === item.id ? "page" : undefined}>
         <span class="nav-glyph" aria-hidden="true">
@@ -53,13 +54,13 @@
   </nav>
 
   <nav class="mobile-nav" aria-label="Основные разделы">
-    <button type="button" class:active={screen === "home"} aria-current={screen === "home" ? "page" : undefined} onclick={() => navigate("home")}>
+    <button type="button" data-screen="home" class:active={screen === "home"} aria-current={screen === "home" ? "page" : undefined} onclick={() => navigate("home")}>
       <LayoutDashboard size={20} aria-hidden="true"/><span>Обзор</span>
     </button>
-    <button type="button" class:active={screen === "calendar"} aria-current={screen === "calendar" ? "page" : undefined} onclick={() => navigate("calendar")}>
+    <button type="button" data-screen="calendar" class:active={screen === "calendar"} aria-current={screen === "calendar" ? "page" : undefined} onclick={() => navigate("calendar")}>
       <CalendarDays size={20} aria-hidden="true"/><span>Календарь</span>
     </button>
-    <button type="button" class:active={screen === "booking"} aria-current={screen === "booking" ? "page" : undefined} onclick={() => navigate("booking")}>
+    <button type="button" data-screen="booking" class:active={screen === "booking"} aria-current={screen === "booking" ? "page" : undefined} onclick={() => navigate("booking")}>
       <ArrowUpRight size={20} aria-hidden="true"/><span>Запись</span>
     </button>
     <button type="button" class:active={moreOpen || ["services", "staff", "schedule", "locations", "appearance"].includes(screen)}
@@ -70,12 +71,13 @@
   {#if moreOpen}
     <nav class="mobile-more-panel" id="mobile-more-panel" aria-label="Дополнительные разделы">
       {#each screens.filter((item) => ["services", "staff", "schedule", "locations", "appearance"].includes(item.id)) as item (item.id)}
-        <button type="button" aria-current={screen === item.id ? "page" : undefined} onclick={() => navigate(item.id)}>{item.label}</button>
+        <button type="button" data-screen={item.id} aria-current={screen === item.id ? "page" : undefined} onclick={() => navigate(item.id)}>{item.label}</button>
       {/each}
     </nav>
   {/if}
 
   <div class="sidebar-bottom">
+    {#if !realOwner}
     <div class="sidebar-tip">
       <div class="tip-progress-header">
         <span>Настройка пространства</span>
@@ -87,9 +89,10 @@
       </div>
       <p>{stepCount === 5 ? "Все шаги демонстрации выполнены" : "Добавьте услуги, команду и расписание"}</p>
     </div>
+    {/if}
     <div class="workspace-identity">
       <span class="identity-avatar" aria-hidden="true"><Check size={16}/></span>
-      <div><strong>Демо-пространство</strong><small>Локальные данные</small></div>
+      <div><strong>{realOwner ? "Кабинет владельца" : "Демо-пространство"}</strong><small>{realOwner ? "Серверные данные" : "Локальные данные"}</small></div>
     </div>
   </div>
 </aside>
