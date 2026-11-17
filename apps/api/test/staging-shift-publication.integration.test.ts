@@ -497,6 +497,42 @@ test(
         [owner.tenantId, clientContext.customerId],
       );
       assert.equal(bookingCount.rows[0].count, 0);
+      const historyUrl = prefix + "/staging-customer-history";
+      const history = () =>
+        app.inject({ method: "GET", url: historyUrl, headers: clientHeaders });
+      assert.deepEqual((await history()).json(), {
+        bookings: [],
+        hasMore: false,
+      });
+      const ownerHistory = await app.inject({
+        method: "GET",
+        url: historyUrl,
+        headers,
+      });
+      assert.equal(ownerHistory.statusCode, 403);
+      const foreignHistory = await app.inject({
+        method: "GET",
+        url: historyUrl.replace(owner.tenantId, randomUUID()),
+        headers: clientHeaders,
+      });
+      assert.equal(foreignHistory.statusCode, 403);
+      const forgedHistory = await app.inject({
+        method: "GET",
+        url: historyUrl + "?customerId=" + customer,
+        headers: clientHeaders,
+      });
+      assert.equal(forgedHistory.statusCode, 400);
+      const noHistorySession = await app.inject({
+        method: "GET",
+        url: historyUrl,
+      });
+      assert.equal(noHistorySession.statusCode, 401);
+      const disabledHistory = await disabled.inject({
+        method: "GET",
+        url: historyUrl,
+        headers: clientHeaders,
+      });
+      assert.equal(disabledHistory.statusCode, 404);
       const bookingUrl = prefix + "/staging-customer-bookings";
       const bookingPayload = {
         locationId: owner.locationId,
@@ -569,6 +605,34 @@ test(
         [owner.tenantId],
       );
       assert.deepEqual(durable.rows[0], { receipts: 1, events: 1 });
+      const ownHistory = await history();
+      assert.equal(ownHistory.statusCode, 200);
+      assert.equal(ownHistory.headers["cache-control"], "no-store");
+      assert.deepEqual(ownHistory.json(), {
+        bookings: [
+          {
+            bookingId: created.json().bookingId,
+            status: "Confirmed",
+            startAt: created.json().startAt,
+            endAt: created.json().endAt,
+            priceKopecks: "100000",
+            locationName: "Synthetic branch",
+            serviceName: "Synthetic service",
+            staffName: "Synthetic planner staff",
+            timeZone: "Europe/Moscow",
+          },
+        ],
+        hasMore: false,
+      });
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.bookings.read') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
+      assert.equal((await history()).statusCode, 403);
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.bookings.read') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.booking.create') WHERE tenant_id=$1::uuid AND base_type='client'",
         [owner.tenantId],
@@ -669,6 +733,7 @@ test(
       assert.equal((await clientSlots()).statusCode, 409);
       const expiredBooking = await book(randomUUID());
       assert.equal(expiredBooking.json().error, "grant-unavailable");
+      assert.deepEqual((await history()).json(), ownHistory.json());
       await revokeStagingGrant(pool, owner.tenantId);
       assert.deepEqual((await clientOffers()).json(), { offers: [] });
       await app.inject({
@@ -676,6 +741,7 @@ test(
         url: "/v1/auth/logout",
         headers: clientHeaders,
       });
+      assert.equal((await history()).statusCode, 401);
       assert.equal((await clientOffers()).statusCode, 401);
       assert.equal((await clientSlots()).statusCode, 401);
       assert.equal((await preview()).statusCode, 409);

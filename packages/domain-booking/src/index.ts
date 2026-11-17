@@ -4,3 +4,6 @@ export {
   CreateBookingFailure,
   type StagingCustomerCreateBooking,
 } from "./create.js";
+
+/** Read-only controlled staging customer booking history. */
+export { listOwnStagingBookings } from "./staging-customer-history.js";

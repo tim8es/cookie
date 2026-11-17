@@ -14,6 +14,7 @@ const UUID =
 export const CUSTOMER_CONTEXT_PERMISSION = "staging.customer.context.read";
 export const CUSTOMER_OFFERS_PERMISSION = "staging.customer.offers.read";
 const CUSTOMER_BOOKING_PERMISSION = "staging.customer.booking.create";
+const CUSTOMER_HISTORY_PERMISSION = "staging.customer.bookings.read";
 
 interface LinkInput {
   readonly tenantId: string;
@@ -109,13 +110,14 @@ export async function provisionStagingCustomer(
       [input.tenantId, identityId],
     );
     await client.query(
-      "INSERT INTO cookie_identity.roles(tenant_id,id,base_type,display_name,permissions) VALUES($1::uuid,$2::uuid,'client','Staging Client',ARRAY[$3::text,$4::text,$5::text])",
+      "INSERT INTO cookie_identity.roles(tenant_id,id,base_type,display_name,permissions) VALUES($1::uuid,$2::uuid,'client','Staging Client',ARRAY[$3::text,$4::text,$5::text,$6::text])",
       [
         input.tenantId,
         roleId,
         CUSTOMER_CONTEXT_PERMISSION,
         CUSTOMER_OFFERS_PERMISSION,
         CUSTOMER_BOOKING_PERMISSION,
+        CUSTOMER_HISTORY_PERMISSION,
       ],
     );
     await client.query(

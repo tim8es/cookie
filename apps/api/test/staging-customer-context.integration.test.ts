@@ -224,6 +224,7 @@ test(
             "staging.customer.context.read",
             "staging.customer.offers.read",
             "staging.customer.booking.create",
+            "staging.customer.bookings.read",
           ],
         },
       ]);
