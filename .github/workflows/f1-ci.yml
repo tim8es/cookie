@@ -1,162 +1,26 @@
-name: F1 quality gates
-
+name: Diagnostic only — exact Prettier patch
 on:
   pull_request:
-  push:
-    branches:
-      - main
-
-# Superseded PR runs should not consume minutes or appear as current evidence.
-# The release branch must always complete its post-merge verification.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 permissions:
   contents: read
-
 jobs:
-  build-and-test:
-    name: Types, lint, unit, PostgreSQL integration, web build
+  formatting-diagnostic:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: cookie_ci
-          POSTGRES_PASSWORD: cookie_ci
-          POSTGRES_DB: cookie_ci
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U cookie_ci -d cookie_ci"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      TEST_DATABASE_URL: postgresql://cookie_ci:cookie_ci@127.0.0.1:5432/cookie_ci
-      CI: true
+    timeout-minutes: 8
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
         with:
           version: 10.24.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "26"
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - name: Install pinned direct dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Lint
-        run: pnpm lint
-      - name: Check source formatting
-        run: pnpm format:check
-      - name: Check kernel and contract module boundaries
-        run: pnpm check:boundaries
-      - name: Check frontend UI module boundaries
-        run: pnpm check:ui
-      - name: Typecheck API and shared contracts
-        run: pnpm typecheck
-      - name: Unit tests
-        run: pnpm test
-      - name: PostgreSQL migration integration
-        run: pnpm test:integration
-      - name: Synthetic PostgreSQL 16 backup and restore smoke
-        run: bash scripts/ci-restore-smoke.sh
-      - name: Build API and migration CLI
-        run: pnpm build
-      - name: Compiled synthetic worker fail-closed and SIGTERM smoke
-        run: bash scripts/ci-compiled-synthetic-worker-smoke.sh
-      - name: Check and build Svelte static app
-        run: |
-          pnpm --filter @cookie/web check
-          pnpm --filter @cookie/web build
-      - name: Synthetic browser onboarding and booking smoke
-        id: browser_smoke
-        run: node apps/web/scripts/browser-smoke.mjs
-      - name: Validate synthetic browser evidence completeness
-        run: node scripts/ci-visual-evidence-check.mjs
-      - name: Attach synthetic visual evidence for review
-        if: ${{ always() && steps.browser_smoke.outcome != 'skipped' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: cookie-frontend-visual-smoke
-          path: apps/web/artifacts/visual-smoke/
-          if-no-files-found: error
-          retention-days: 7
-      - name: Report exact commit and smoke result
-        if: ${{ always() }}
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          TESTED_SHA: ${{ github.sha }}
-          BROWSER_SMOKE_RESULT: ${{ steps.browser_smoke.outcome }}
-        run: |
-          {
-            echo '### F1 CI evidence'
-            echo "Source head: \`$PR_HEAD_SHA\`"
-            echo "Workflow tested: \`$TESTED_SHA\`"
-            echo "Browser smoke: \`$BROWSER_SMOKE_RESULT\`"
-            echo 'Includes lint, formatting, boundaries, API/web tests, migrations, synthetic restore, build and browser checks.'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  staging-runtime:
-    name: Compiled staging Compose / persistent PostgreSQL / fail-closed web
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-      - name: Reject falsely green readiness checks (Issue #214)
-        run: bash scripts/ci-staging-readiness.test.sh
-      - name: Build and smoke real compiled application stack
-        run: bash scripts/ci-staging-compose-smoke.sh
-
-  postgres17-compatibility:
-    name: PostgreSQL 17 migration and transaction compatibility (Altare)
-    runs-on: ubuntu-latest
-    timeout-minutes: 18
-    permissions:
-      contents: read
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: cookie_ci
-          POSTGRES_PASSWORD: cookie_ci
-          POSTGRES_DB: cookie_ci
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U cookie_ci -d cookie_ci"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      TEST_DATABASE_URL: postgresql://cookie_ci:cookie_ci@127.0.0.1:5432/cookie_ci
-      CI: true
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-        with:
-          version: 10.24.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "26"
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - name: Verify actual PostgreSQL 17 service, not just image tag
+      - name: Print exact formatter patch (never a passing F1 gate)
         run: |
-          version=$(docker run --rm --network host -e PGPASSWORD=cookie_ci postgres:17-alpine psql -h 127.0.0.1 -U cookie_ci -d cookie_ci -Atqc 'SHOW server_version_num')
-          [[ "$version" == 17* ]] || { echo "Expected PostgreSQL 17, got $version"; exit 1; }
-      - name: Run real PG17 migrations and integration regression
-        run: pnpm test:integration
+          pnpm exec prettier --write apps/api/src/appearance-http.ts apps/api/test/appearance.integration.test.ts packages/domain-appearance/src/postgres.ts
+          git diff -- apps/api/src/appearance-http.ts apps/api/test/appearance.integration.test.ts packages/domain-appearance/src/postgres.ts
+          echo 'Diagnostic only; never merge or treat this run as F1 acceptance.'
+          exit 1
