@@ -34,7 +34,7 @@ production launch or unrestricted visual redesign. Keep it consistent.
 
 ## Demo/real parity — owner requirement #311
 
-For each released capability, prefer the same runtime, screen and domain policy in demo and real mode. `pnpm demo:local` is the disposable synthetic runtime; `/demo` remains a legacy UI test fixture during migration, not a separately released product. Do not extend it as independent business logic or use mock success as real acceptance. Preserve strict data/session isolation, fail-closed production auth and no real external effects. New changes should use the same scenarios in both modes; disclose any missing parity in the PR.
+For each released capability, prefer the same runtime, screen and domain policy in demo and real mode. `pnpm demo:local` is the disposable synthetic runtime; The compiled API refuses legacy `/demo` routes; the browser-local fixture remains available only on the separate development/static UI-test server. Do not re-expose it as a product route. Do not extend it as independent business logic or use mock success as real acceptance. Preserve strict data/session isolation, fail-closed production auth and no real external effects. New changes should use the same scenarios in both modes; disclose any missing parity in the PR.
 
 ## Acceptance for any UI change
 
