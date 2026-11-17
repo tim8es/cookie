@@ -147,7 +147,6 @@ export async function publishShiftInternal(
     ),
   );
   return withDraftTransaction(pool, transactionClient, async (client) => {
-
     // Never let a request supply or override the authoritative staff/branch.
     const initial = await client.query<ShiftRow>(
       `SELECT staff_id::text, location_id::text
