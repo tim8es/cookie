@@ -140,7 +140,10 @@ function relationAllows(
   actorIdentityId: string,
 ): boolean {
   if (resource.kind === "customer-self") {
-    return role.baseType === "client" && resource.clientIdentityId === actorIdentityId;
+    return (
+      role.baseType === "client" &&
+      resource.clientIdentityId === actorIdentityId
+    );
   }
   if (role.baseType === "client") {
     return (
@@ -183,7 +186,11 @@ export function evaluateAuthorization(
     return deny("invalid-context");
   }
   if (actor.tenantId !== resource.tenantId) return deny("foreign-tenant");
-  if ((permission === "staging.customer.context.read") !== (resource.kind === "customer-self")) return deny("permission-denied");
+  if (
+    (permission === "staging.customer.context.read") !==
+    (resource.kind === "customer-self")
+  )
+    return deny("permission-denied");
 
   const { membership, ownerIdentityId } = snapshot;
   if (

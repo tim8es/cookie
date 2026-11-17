@@ -146,7 +146,11 @@ export async function authenticateTelegramOwner(
   fetcher: typeof fetch = globalThis.fetch,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): Promise<VerifiedOwnerSession> {
-  const session = await exchangeTelegramSession(rawInitData, fetcher, nowSeconds);
+  const session = await exchangeTelegramSession(
+    rawInitData,
+    fetcher,
+    nowSeconds,
+  );
   try {
     const context = await request(
       fetcher,
@@ -209,18 +213,35 @@ export async function authenticateTelegramCustomer(
   fetcher: typeof fetch = globalThis.fetch,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): Promise<VerifiedCustomerSession> {
-  const session = await exchangeTelegramSession(rawInitData, fetcher, nowSeconds);
+  const session = await exchangeTelegramSession(
+    rawInitData,
+    fetcher,
+    nowSeconds,
+  );
   try {
-    const context = await request(fetcher, "/v1/organizations/" + session.tenantId + "/staging-customer-context", {
-      method: "GET",
-      headers: { authorization: "Bearer " + session.accessToken },
-    });
-    if ([401,403,404].includes(context.status)) throw new OwnerAuthFailure("unauthorized");
+    const context = await request(
+      fetcher,
+      "/v1/organizations/" + session.tenantId + "/staging-customer-context",
+      {
+        method: "GET",
+        headers: { authorization: "Bearer " + session.accessToken },
+      },
+    );
+    if ([401, 403, 404].includes(context.status))
+      throw new OwnerAuthFailure("unauthorized");
     if (context.status !== 200) throw new OwnerAuthFailure("unavailable");
     const data: unknown = await context.json();
-    if (!data || typeof data !== "object" || Array.isArray(data) ||
-        Object.keys(data).length !== 2 || !("tenantId" in data) || data.tenantId !== session.tenantId ||
-        !("customerId" in data) || typeof data.customerId !== "string" || !UUID.test(data.customerId))
+    if (
+      !data ||
+      typeof data !== "object" ||
+      Array.isArray(data) ||
+      Object.keys(data).length !== 2 ||
+      !("tenantId" in data) ||
+      data.tenantId !== session.tenantId ||
+      !("customerId" in data) ||
+      typeof data.customerId !== "string" ||
+      !UUID.test(data.customerId)
+    )
       throw new OwnerAuthFailure("invalid-response");
     return { ...session, customerId: data.customerId };
   } catch (reason) {

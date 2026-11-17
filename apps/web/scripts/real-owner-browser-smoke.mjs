@@ -367,6 +367,8 @@ async function main() {
     script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,userId),script);
     await requireDom(cdp,"owner rejected on client surface","document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента не подтверждён'");
     assert.ok(!(await evaluate(cdp,"Boolean(document.querySelector('.real-owner-nav'))")));
+    assert.deepEqual(external, [], "Unexpected real-mode external network requests");
+    assert.deepEqual(errors, [], "Unexpected browser runtime errors");
     console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit, staging capacity activation, confirmed shift publication, server availability preview and PostgreSQL persistence across API restart, 3 viewport checks, server logout, real staged customer login and owner denial.");
   } finally {
     if (cdp) cdp.close();
