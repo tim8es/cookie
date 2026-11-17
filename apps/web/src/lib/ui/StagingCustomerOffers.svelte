@@ -5,12 +5,15 @@
   import { canCreateCustomerBooking, customerBookingAttempt, type CustomerBookingSelection } from "../staging-customer-booking-api";
   import type { BookingAttempt, BookingAttemptState } from "../booking-attempt";
   import type { ConfirmedBookingReceipt } from "../confirmed-booking-receipt";
+  import type { OwnBookingHistory } from "../staging-customer-history-api";
+  import { receiptDisposition } from "../customer-receipt-disposition";
   import type { CustomerSlot } from "../staging-customer-offers-api";
   import type { VerifiedCustomerSession } from "../owner-auth";
   import { readCustomerOffers, readCustomerSlots, CustomerOffersError, type CustomerOffer, type CustomerSlots } from "../staging-customer-offers-api";
   export let session: VerifiedCustomerSession;
   export let onUnauthorized: () => void;
   export let onConfirmed: () => void = () => {};
+  export let historySnapshot: OwnBookingHistory | null = null;
   let offers: CustomerOffer[] = [];
   let locationId = "";
   let serviceId = "";
@@ -29,6 +32,7 @@
   let attempt: BookingAttempt<CustomerBookingSelection, ConfirmedBookingReceipt, CustomerSlot> | null = null;
   let bookingState: BookingAttemptState<ConfirmedBookingReceipt, CustomerSlot> = { phase: "idle" };
   let locked = false;
+  $: disposition = bookingState.phase === "confirmed" ? receiptDisposition(bookingState.receipt, historySnapshot) : "unverified";
   $: locked = blocked || bookingState.phase === "submitting" || bookingState.phase === "error" || bookingState.phase === "confirmed";
   async function initialize(): Promise<void> {
     bookingEnabled = await canCreateCustomerBooking(session);
@@ -206,10 +210,21 @@
     </div>
   {:else if bookingState.phase === "confirmed"}
     <div class="customer-choice-summary" role="status">
-      <strong>Запись подтверждена</strong>
-      <p>Номер записи: {bookingState.receipt.bookingId}</p>
-      <p>{date} · {format(bookingState.receipt.startAt, selected?.timeZone ?? "UTC")} – {format(bookingState.receipt.endAt, selected?.timeZone ?? "UTC")}</p>
-      <p>Фактическая стоимость: {receiptPrice(bookingState.receipt.priceKopecks)}</p>
+      {#if disposition === "changed"}
+        <strong>Запись изменена после создания</strong>
+        <p>Номер записи: {bookingState.receipt.bookingId}</p>
+        <p>Актуальные время, стоимость и статус смотрите в разделе «Мои записи».</p>
+      {:else}
+        <strong>Создание записи подтверждено</strong>
+        <p>Номер записи: {bookingState.receipt.bookingId}</p>
+        {#if disposition === "original"}
+          <p>Статус на момент обновления списка: подтверждена.</p>
+        {:else}
+          <p>Текущий статус ещё не проверен. Это подтверждение первоначальной операции, а не текущего состояния.</p>
+        {/if}
+        <p>Время при создании: {date} · {format(bookingState.receipt.startAt, selected?.timeZone ?? "UTC")} – {format(bookingState.receipt.endAt, selected?.timeZone ?? "UTC")}</p>
+        <p>Фактическая стоимость при создании: {receiptPrice(bookingState.receipt.priceKopecks)}</p>
+      {/if}
       <Button type="button" onclick={newSelection}>Создать ещё запись</Button>
     </div>
   {/if}

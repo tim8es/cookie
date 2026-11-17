@@ -57,12 +57,13 @@ export async function runMigrations(
   );
 
   const client = await pool.connect();
-  let locked = false;
+  // A session-level advisory lock may survive an uncertain driver response.
+  // Reuse this connection only after all work and unlock are acknowledged.
+  let safeToReuse = false;
   const executed: string[] = [];
 
   try {
     await client.query("SELECT pg_advisory_lock($1::bigint)", [LOCK_KEY]);
-    locked = true;
     await client.query(`
       CREATE TABLE IF NOT EXISTS public.cookie_schema_migrations (
         filename text PRIMARY KEY,
@@ -95,28 +96,49 @@ export async function runMigrations(
     for (const migration of migrations) {
       if (known.has(migration.filename)) continue;
 
-      await client.query("BEGIN");
+      const begun = await client.query("BEGIN");
+      if (begun.command !== "BEGIN") {
+        throw new Error("Migration transaction did not begin");
+      }
       try {
         await client.query(migration.sql);
         await client.query(
           "INSERT INTO public.cookie_schema_migrations (filename, sha256) VALUES ($1, $2)",
           [migration.filename, migration.sha256],
         );
-        await client.query("COMMIT");
-        executed.push(migration.filename);
       } catch (error) {
-        await client.query("ROLLBACK");
+        try {
+          const rolledBack = await client.query("ROLLBACK");
+          if (rolledBack.command !== "ROLLBACK") {
+            throw new Error("Migration transaction did not roll back");
+          }
+        } catch {
+          throw new Error("Migration transaction cleanup failed");
+        }
         throw error;
       }
+
+      // Do not attempt ROLLBACK or unlock after an uncertain COMMIT.
+      // An explicit rerun will check the durable migration history again.
+      const committed = await client.query("COMMIT");
+      if (committed.command !== "COMMIT") {
+        throw new Error("Migration transaction did not commit");
+      }
+      executed.push(migration.filename);
     }
+
+    const unlocked = await client.query<{ unlocked: boolean }>(
+      "SELECT pg_advisory_unlock($1::bigint) AS unlocked",
+      [LOCK_KEY],
+    );
+    if (unlocked.rows[0]?.unlocked !== true) {
+      throw new Error("Migration advisory lock was not released");
+    }
+    safeToReuse = true;
     return executed;
   } finally {
-    try {
-      if (locked) {
-        await client.query("SELECT pg_advisory_unlock($1::bigint)", [LOCK_KEY]);
-      }
-    } finally {
-      client.release();
-    }
+    // Destroying a failed session also releases its session-level lock and
+    // rolls back any open transaction. Never return it to the idle pool.
+    client.release(!safeToReuse);
   }
 }

@@ -75,8 +75,22 @@ test(
       shiftPlanRoutes: { pool, verifier: sessions },
       stagingPublicationRoutes: { pool, verifier: sessions, enabled: true },
       stagingCustomerBookingRoutes: { pool, verifier: sessions, enabled: true },
+      stagingCustomerCancellationRoutes: {
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 60,
+      },
     });
     const disabled = createApp(pool);
+    const cutoffDenied = createApp(pool, {
+      stagingCustomerCancellationRoutes: {
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 525600,
+      },
+    });
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
       await pool.query(
@@ -723,6 +737,104 @@ test(
         audits: 1,
         events: 1,
       });
+      const cancellationRoot = prefix + "/staging-customer-cancellation";
+      const cancelUrl = cancellationRoot + "/" + created.json().bookingId;
+      const cancelKey = randomUUID();
+      const cancel = (key: string = cancelKey, target = cancelUrl) =>
+        app.inject({
+          method: "POST",
+          url: target,
+          headers: { ...clientHeaders, "idempotency-key": key },
+          payload: {},
+        });
+      const cap = await app.inject({
+        method: "GET",
+        url: cancellationRoot + "/capability",
+        headers: clientHeaders,
+      });
+      assert.deepEqual(cap.json(), { cutoffMinutes: 60 });
+      const noCancel = await disabled.inject({
+        method: "POST",
+        url: cancelUrl,
+        headers: clientHeaders,
+        payload: {},
+      });
+      assert.equal(noCancel.statusCode, 404);
+      const ownerCancel = await app.inject({
+        method: "POST",
+        url: cancelUrl,
+        headers: { ...headers, "idempotency-key": cancelKey },
+        payload: {},
+      });
+      assert.equal(ownerCancel.statusCode, 404);
+      const unauthorizedCancel = await app.inject({
+        method: "POST",
+        url: cancelUrl,
+        payload: {},
+      });
+      assert.equal(unauthorizedCancel.statusCode, 401);
+      const foreignCancel = await cancel(
+        randomUUID(),
+        cancelUrl.replace(owner.tenantId, randomUUID()),
+      );
+      assert.equal(foreignCancel.statusCode, 403);
+      const another = await pool.query<{ id: string }>(
+        "SELECT id::text FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND customer_id=$2::uuid",
+        [owner.tenantId, customer],
+      );
+      const otherCancel = await cancel(
+        randomUUID(),
+        cancellationRoot + "/" + another.rows[0]!.id,
+      );
+      assert.equal(otherCancel.statusCode, 404);
+      const cutoffFailure = await cutoffDenied.inject({
+        method: "POST",
+        url: cancelUrl,
+        headers: { ...clientHeaders, "idempotency-key": cancelKey },
+        payload: {},
+      });
+      assert.equal(cutoffFailure.statusCode, 409);
+      assert.equal(cutoffFailure.json().error, "CANCELLATION_POLICY_DENIED");
+      assert.deepEqual((await history()).json(), ownHistory.json());
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.booking.cancel') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
+      const forbiddenCancel = await cancel();
+      assert.equal(forbiddenCancel.statusCode, 403);
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.booking.cancel') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
+      const [cancelled, replayedCancel] = await Promise.all([
+        cancel(),
+        cancel(),
+      ]);
+      assert.equal(cancelled.statusCode, 200, cancelled.body);
+      assert.deepEqual(replayedCancel.json(), cancelled.json());
+      assert.equal(cancelled.json().status, "CancelledByClient");
+      assert.equal(cancelled.json().bookingId, created.json().bookingId);
+      const newCancelKey = await cancel(randomUUID());
+      assert.equal(newCancelKey.statusCode, 409);
+      const freed = (await clientSlots()).json().slots as Array<{
+        startAt: string;
+      }>;
+      assert.ok(freed.some((slot) => slot.startAt === bookingPayload.startAt));
+      const cancellationAudit = await pool.query(
+        "SELECT previous_status,next_status FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid",
+        [owner.tenantId, created.json().bookingId],
+      );
+      assert.deepEqual(cancellationAudit.rows, [
+        { previous_status: "Confirmed", next_status: "CancelledByClient" },
+      ]);
+      const cancelledHistory = await history();
+      assert.deepEqual(cancelledHistory.json().bookings, [
+        { ...ownHistory.json().bookings[0], status: "CancelledByClient" },
+      ]);
+      const rebooked = await book(randomUUID());
+      assert.equal(rebooked.statusCode, 201);
+      assert.notEqual(rebooked.json().bookingId, created.json().bookingId);
+      const beforeExpiry = await history();
       await pool.query(
         "UPDATE cookie_entitlement.staging_publication_grants SET issued_at=clock_timestamp()-interval '1 hour',expires_at=clock_timestamp()-interval '1 second' WHERE tenant_id=$1::uuid",
         [owner.tenantId],
@@ -733,8 +845,23 @@ test(
       assert.equal((await clientSlots()).statusCode, 409);
       const expiredBooking = await book(randomUUID());
       assert.equal(expiredBooking.json().error, "grant-unavailable");
-      assert.deepEqual((await history()).json(), ownHistory.json());
+      assert.deepEqual((await history()).json(), beforeExpiry.json());
       await revokeStagingGrant(pool, owner.tenantId);
+      const afterGrant = await cancel(
+        randomUUID(),
+        cancellationRoot + "/" + rebooked.json().bookingId,
+      );
+      assert.equal(afterGrant.statusCode, 200);
+      assert.equal(afterGrant.json().status, "CancelledByClient");
+      const finalCounts = await pool.query(
+        "SELECT (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND operation='booking.cancel') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.cancelled') AS events",
+        [owner.tenantId],
+      );
+      assert.deepEqual(finalCounts.rows[0], {
+        audits: 2,
+        receipts: 2,
+        events: 2,
+      });
       assert.deepEqual((await clientOffers()).json(), { offers: [] });
       await app.inject({
         method: "POST",
@@ -742,6 +869,8 @@ test(
         headers: clientHeaders,
       });
       assert.equal((await history()).statusCode, 401);
+      const revokedReplay = await cancel();
+      assert.equal(revokedReplay.statusCode, 401);
       assert.equal((await clientOffers()).statusCode, 401);
       assert.equal((await clientSlots()).statusCode, 401);
       assert.equal((await preview()).statusCode, 409);
@@ -758,10 +887,11 @@ test(
     } finally {
       try {
         await disabled.close();
+        await cutoffDenied.close();
         await app.close();
         if (tenantId) {
           await pool.query(
-            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic IN ('schedule.shift.draft.created','schedule.shift.published','booking.confirmed')",
+            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic IN ('schedule.shift.draft.created','schedule.shift.published','booking.confirmed','booking.cancelled')",
             [tenantId],
           );
         }
