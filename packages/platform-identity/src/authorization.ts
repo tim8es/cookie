@@ -190,7 +190,8 @@ export function evaluateAuthorization(
     (permission === "staging.customer.context.read" ||
       permission === "staging.customer.offers.read" ||
       permission === "staging.customer.booking.create" ||
-      permission === "staging.customer.bookings.read") !==
+      permission === "staging.customer.bookings.read" ||
+      permission === "staging.customer.booking.cancel") !==
     (resource.kind === "customer-self")
   )
     return deny("permission-denied");
