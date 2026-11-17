@@ -8,7 +8,7 @@ const launcher = fileURLToPath(new URL("./local-staging.mjs", import.meta.url));
 const mode = resolveLocalStagingMode(["demo"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function launch(ttlSeconds) {
+export function spawnPrivateDemoWorker(ttlSeconds) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
     !/^(COOKIE_|DATABASE_URL$|PG|NODE_OPTIONS$)/i.test(key)));
   return fork(launcher, ["serve-demo"], {
@@ -59,7 +59,7 @@ export class PrivateDemoManager {
   #stopTimeout;
 
   constructor({ maxSessions, ttlSeconds, startupMs = 120000, stopMs = 90000,
-    spawnWorker = launch, verifyCleanup = cleanProject }) {
+    spawnWorker = spawnPrivateDemoWorker, verifyCleanup = cleanProject }) {
     if (!Number.isInteger(maxSessions) || maxSessions < 1 || maxSessions > 16 ||
         !Number.isInteger(startupMs) || startupMs < 1 || startupMs > 120000 ||
         !Number.isInteger(stopMs) || stopMs < 1 || stopMs > 120000) {
@@ -112,7 +112,7 @@ export class PrivateDemoManager {
 
   #message(record, message) {
     if (!message || typeof message !== "object" || record.finalizing) return;
-    if (message.type === "allocated" && record.state === "starting") {
+    if (message.type === "allocated" && ["starting", "stopping"].includes(record.state)) {
       if (record.project || !isLocalStagingProject(mode, message.project)) {
         record.started.reject(new Error("Invalid demo resource allocation"));
         this.#requestStop(record);
@@ -167,7 +167,9 @@ export class PrivateDemoManager {
     try {
       if (record.child?.connected) {
         if (wasReady) record.child.send({ type: "stop" }, error => {
-          if (error && record.child.connected) record.child.disconnect();
+          if (error && record.child.connected) {
+            try { record.child.disconnect(); } catch { /* Await cleanup evidence. */ }
+          }
         });
         else record.child.disconnect();
       }
@@ -200,7 +202,9 @@ export class PrivateDemoManager {
     const record = this.#records.get(id);
     if (!record) return;
     this.#requestStop(record);
-    await bounded(record.exited.promise, this.#stopTimeout, "Private demo cleanup timeout");
+    const exit = await bounded(record.exited.promise, this.#stopTimeout, "Private demo cleanup timeout");
+    if (exit.code !== 0 || exit.signal !== null) throw new Error("Private demo exited abnormally after cleanup");
+    return exit;
   }
 
   async close() {
