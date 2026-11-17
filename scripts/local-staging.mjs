@@ -142,7 +142,7 @@ async function seed(state, databaseUrl) {
     if (!grants.rowCount && Date.parse(state.grantExpiry) > Date.now()) {
       await issueStagingGrant(pool, owner.tenantId, 5, state.grantExpiry);
     }
-    return owner.tenantId;
+    return { tenantId: owner.tenantId, locationId: owner.locationId };
   } finally {
     await pool.end();
   }
@@ -182,7 +182,7 @@ async function signIn(cdp, origin, state, role = "owner") {
 
 // Identical browser/DB contract for disposable QA and true demo verification.
 // Use the existing real form and API, never a second implementation.
-async function verifySharedCatalog(cdp, databaseUrl, tenantId) {
+async function verifySharedCatalog(cdp, databaseUrl, tenantId, example) {
   const marker = "Synthetic shared runtime service";
   const pool = new Pool({ connectionString: databaseUrl, max: 1 });
   try {
@@ -190,8 +190,14 @@ async function verifySharedCatalog(cdp, databaseUrl, tenantId) {
       "SELECT display_name, duration_minutes, base_price_kopecks::text AS price, active FROM cookie_catalog.services WHERE tenant_id=$1::uuid",
       [tenantId],
     )).rows;
-    assert.deepEqual(await read(), [], "fresh disposable catalog must be empty");
-    await requireDom(cdp, "actual owner service form", "document.querySelector('.owner-form input') && document.querySelector('.empty-mini')");
+    const baseline = await read();
+    assert.deepEqual(baseline, example ? [{
+      display_name: example.name, duration_minutes: 60, price: example.price, active: true,
+    }] : []);
+    await requireDom(cdp, "actual owner service form",
+      "document.querySelector('.owner-form input') && " + (example
+        ? "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(example.name) + ")"
+        : "document.querySelector('.empty-mini')"));
     for (const width of [1280, 375, 320]) {
       await cdp.send("Emulation.setDeviceMetricsOverride", {
         width, height: 812, deviceScaleFactor: 1, mobile: width < 600,
@@ -204,18 +210,58 @@ async function verifySharedCatalog(cdp, databaseUrl, tenantId) {
     await submitValidForm(cdp, ".owner-form");
     await requireDom(cdp, "confirmed real catalog service",
       "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(marker) + ")");
-    assert.deepEqual(await read(), [{
+    const stored = await read();
+    assert.equal(stored.length, baseline.length + 1);
+    assert.deepEqual(stored.filter((item) => item.display_name === marker), [{
       display_name: marker, duration_minutes: 45, price: "120000", active: false,
     }]);
+    assert.deepEqual(stored.filter((item) => item.display_name !== marker), baseline);
     const receipt = await pool.query(
       "SELECT count(*)::int AS count FROM cookie_catalog.service_create_receipts WHERE tenant_id=$1::uuid",
       [tenantId],
     );
-    assert.equal(receipt.rows[0]?.count, 1);
+    assert.equal(receipt.rows[0]?.count, baseline.length + 1);
   } finally {
     await pool.end();
   }
   return marker;
+}
+
+// Check the seeded offer via the real customer surface and persist a real booking.
+async function verifyDemoBooking(cdp, databaseUrl, tenantId, example) {
+  const panel = '[aria-label="Клиентская витрина staging"]';
+  const selector = JSON.stringify(panel + " select");
+  const press = async (label) => {
+    const button = "Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===" + JSON.stringify(label) + "&&!b.disabled)";
+    await requireDom(cdp, label, button);
+    await evaluate(cdp, button + ".click()");
+  };
+  for (let i = 0; i < 3; i++) {
+    const select = "document.querySelectorAll(" + selector + ")[" + i + "]";
+    await requireDom(cdp, "seeded catalog option " + i, select + "?.options.length===2 && !" + select + ".disabled");
+    await evaluate(cdp, "(()=>{const s=" + select + ";s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+  }
+  await requireDom(cdp, "date selection", "document.querySelector(" + JSON.stringify(panel + " input[type=date]") + ")?.disabled===false");
+  await fill(cdp, panel + " input[type=date]", example.date, "change");
+  await press("Найти свободное время");
+  const slot = "document.querySelector(" + JSON.stringify(panel + " .customer-slot-choice") + ")";
+  await requireDom(cdp, "real available slot", slot);
+  await evaluate(cdp, slot + ".click()");
+  await press("Записаться");
+  await requireDom(cdp, "server-confirmed demo booking", "document.querySelector(" + JSON.stringify(panel) + ")?.innerText.includes('Создание записи подтверждено')");
+  const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+  try {
+    const result = await pool.query(
+      "SELECT id::text, status, staff_id::text, service_id::text, location_id::text, price_kopecks_snapshot::text AS price FROM cookie_booking.bookings WHERE tenant_id=$1::uuid",
+      [tenantId],
+    );
+    assert.equal(result.rowCount, 1);
+    const { id, ...booking } = result.rows[0];
+    assert.deepEqual(booking, { status: "Confirmed", staff_id: example.staffId,
+      service_id: example.serviceId, location_id: example.locationId, price: example.price });
+    await requireDom(cdp, "demo booking in client history", "document.querySelector('[aria-label=\\\"Мои записи\\\"]')?.innerText.includes(" + JSON.stringify(id) + ")");
+    console.log("PASS seeded demo: verified client offer and PostgreSQL-backed booking");
+  } finally { await pool.end(); }
 }
 
 async function main() {
@@ -258,7 +304,8 @@ async function main() {
       }, 30000);
     } finally { await readiness.end(); }
     checkInterrupted();
-    const tenantId = await seed(state, databaseUrl);
+    const workspace = await seed(state, databaseUrl);
+    const { tenantId } = workspace;
     checkInterrupted();
     const port = await freePort();
     const origin = "http://127.0.0.1:" + port;
@@ -279,6 +326,12 @@ async function main() {
       if (api.startFailed || api.exitCode !== null) return false;
       return (await getLocal(origin + "/health/ready")).status === 200;
     }, 18000);
+    checkInterrupted();
+    let example = null;
+    if (demo) {
+      const { seedDemoCatalog } = await import("./local-demo-seed.mjs");
+      example = await seedDemoCatalog(origin, proof(state), workspace);
+    }
     checkInterrupted();
     profile = mkdtempSync(join(tmpdir(), "cookie-manual-chrome-"));
     chrome = child(binary, [
@@ -311,12 +364,13 @@ async function main() {
     await signIn(cdp, origin, state);
     checkInterrupted();
     if (verification) {
-      const marker = await verifySharedCatalog(cdp, databaseUrl, tenantId);
+      const marker = await verifySharedCatalog(cdp, databaseUrl, tenantId, example);
       await signIn(cdp, origin, state, "client");
       await poll("actual cancellation capability", () => cancellationResponses.includes(cutoff === undefined ? 404 : 200));
       const policyText = cutoff === undefined ? "Отмена в тестовом режиме недоступна." : "более чем " + cutoff + " мин.";
       await requireDom(cdp, "explicit cancellation cutoff (no implicit default)", "document.querySelector(\'[aria-label=\\\"Мои записи\\\"]\')?.innerText.includes(" + JSON.stringify(policyText) + ")");
       await requireDom(cdp, "actual client workspace without owner navigation", "document.querySelector(\'[aria-label=\\\"Клиентский вход staging\\\"]\') && !document.querySelector(\'.real-owner-nav\')");
+      if (example) await verifyDemoBooking(cdp, databaseUrl, tenantId, example);
       await cdp.send("Page.navigate", { url: origin + "/" });
       await requireDom(cdp, "no owner authorization without fresh signed proof",
         "document.querySelector('[data-cookie-mode=api] .feedback-state h1') && !document.querySelector('.verified-owner-shell') && !document.querySelector('.sidebar')");
@@ -335,6 +389,7 @@ async function main() {
     }
     console.log((demo ? "kuki demo (synthetic, disposable): " : "Real Cookie: ") + origin + " — use the opened isolated browser.");
     console.log(cutoff === undefined ? "Cancellation disabled: COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES is unset." : "Explicit synthetic cancellation cutoff: " + cutoff + " minutes.");
+    if (example) console.log("Sample service and published shift on " + example.date + ". Switch to client to book.");
     console.log(demo
       ? "Synthetic records only. owner / client = switch role; Enter = fresh login; Ctrl+C = exit and remove this demo database. Relaunch for a fresh demo."
       : "Synthetic records only. owner / client = switch role; Enter = fresh login; demo = legacy UI fixture; Ctrl+C = exit. DB retained.");
