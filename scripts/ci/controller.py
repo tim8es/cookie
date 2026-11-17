@@ -171,7 +171,7 @@ class Controller:
                        "message": "Create execution request", "content": encoded, "branch": self.ref,
                    })
             result = self.run_api("/actions/workflows/universal.yml/dispatches", "POST", {
-                "ref": "main", "inputs": {"job_id": item["job"]}, "return_run_details": True,
+                "ref": "main", "inputs": {"job_id": item["job"]},
             })
             run_id = result.get("workflow_run_id") if isinstance(result, dict) else None
             if type(run_id) is not int or run_id < 1:
