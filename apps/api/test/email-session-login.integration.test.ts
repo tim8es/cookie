@@ -30,8 +30,9 @@ test(
     const fingerprint = emailFingerprint(secret, email);
     const password = "synthetic session password";
     const gate = new PasswordWorkGate(1);
-    const sessions = new IdentitySessions(pool, "cookie-email", "cookie-web", 900);
-    const otherAudience = new IdentitySessions(pool, "cookie-email", "other", 900);
+    const issuer = "cookie-email";
+    const sessions = new IdentitySessions(pool, issuer, "cookie-web", 900);
+    const otherAudience = new IdentitySessions(pool, issuer, "other", 900);
     let identityId: string | null = null;
     const countSessions = async () =>
       (
@@ -70,7 +71,8 @@ test(
         );
 
       assert.equal(await login(email, "incorrect"), null);
-      assert.equal(await login(randomUUID() + "@example.invalid", password), null);
+      const unknownEmail = randomUUID() + "@example.invalid";
+      assert.equal(await login(unknownEmail, password), null);
       assert.equal(await countSessions(), 0);
 
       const session = await login(email, password);
