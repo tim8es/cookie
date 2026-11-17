@@ -162,7 +162,7 @@ test(
         serviceId,
       };
       const key = randomUUID();
-      const recover = (receiptKey = key, receiptHeaders = headers) =>
+      const recover = (receiptKey: string = key, receiptHeaders = headers) =>
         app.inject({
           method: "GET",
           url: path + "/receipt",
