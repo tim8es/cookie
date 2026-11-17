@@ -56,7 +56,6 @@ export function createAuthMailAdmission(config: {
   const secret = Buffer.from(config.namespaceSecret);
   const global = derive(secret, "global", Buffer.alloc(0));
   const base = { windowSeconds, accountAttempts, sourceAttempts };
-  const globalLimits = { ...base, sourceAttempts: globalAttempts };
 
   return {
     async reserve(source, recipient) {
@@ -73,24 +72,13 @@ export function createAuthMailAdmission(config: {
         ? derive(secret, "recipient", recipient)
         : null;
 
-      return transaction(async (client) => {
-        // Reuse one database transaction, not a nested transaction or pool
-        // checkout. The existing budget primitive locks rows in a fixed order.
-        const sameTransaction: Transaction = (work) => work(client);
-        const globalAdmitted = await reserveEmailLoginAttempt(
-          sameTransaction,
-          globalLimits,
-          global,
-          null,
-        );
-        if (!globalAdmitted) return false;
-        return reserveEmailLoginAttempt(
-          sameTransaction,
-          base,
-          namespacedSource,
-          namespacedRecipient,
-        );
-      });
+      return reserveEmailLoginAttempt(
+        transaction,
+        base,
+        namespacedSource,
+        namespacedRecipient,
+        { fingerprint: global, attempts: globalAttempts },
+      );
     },
   };
 }
