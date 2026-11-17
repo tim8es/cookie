@@ -33,6 +33,7 @@ real_owner() {
   # Run the same real catalog scenario in QA and actual demo mode.
   env -u COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES node scripts/local-staging.mjs verify
   COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES=90 node --import tsx scripts/local-staging.mjs verify-demo
+  node --import tsx scripts/private-demo-isolation-smoke.mjs
 }
 staging_readiness() { bash scripts/ci-staging-readiness.test.sh; }
 staging_runtime() { bash scripts/ci-staging-compose-smoke.sh; }
