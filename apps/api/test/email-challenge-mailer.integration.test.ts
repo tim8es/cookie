@@ -25,12 +25,21 @@ test(
     const transaction = <T>(work: Parameters<typeof runSqlTransaction<T>>[1]) =>
       runSqlTransaction(pool, work);
     const secret = randomBytes(32);
+    const admissionSecret = randomBytes(32);
+    const source = randomBytes(32);
     const address = randomUUID() + "@example.invalid";
     const fingerprint = emailFingerprint(secret, address);
     const messages: AuthMailMessage[] = [];
     const config = {
       transaction,
       fingerprintSecret: secret,
+      admissionSecret,
+      limits: {
+        windowSeconds: 3600,
+        accountAttempts: 4,
+        sourceAttempts: 10,
+        globalAttempts: 20,
+      },
       links: {
         publicOrigin: "https://kuki.example.invalid",
         registrationPath: "/auth/confirm",
@@ -59,25 +68,27 @@ test(
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
       const mailer = createEmailChallengeMailer(config);
-      await mailer.deliver("password-recovery", address);
+      await mailer.deliver("password-recovery", address, source);
       assert.equal(messages.length, 0);
       type Work<T> = Parameters<typeof runSqlTransaction<T>>[1];
+      let calls = 0;
       const rejecting = <T>(work: Work<T>) =>
         runSqlTransaction(pool, async (client) => {
-          await work(client);
-          throw new Error("synthetic rollback");
+          const result = await work(client);
+          if (++calls === 2) throw new Error("synthetic rollback");
+          return result;
         });
       const rejectedMailer = createEmailChallengeMailer({
         ...config,
         transaction: rejecting,
       });
       await assert.rejects(
-        rejectedMailer.deliver("registration", address),
+        rejectedMailer.deliver("registration", address, source),
         /synthetic rollback/,
       );
       assert.equal(messages.length, 0);
 
-      await mailer.deliver("registration", address);
+      await mailer.deliver("registration", address, source);
       assert.equal(messages.length, 1);
       const url = new URL(messages[0]!.confirmationUrl);
       const token = new URLSearchParams(url.hash.slice(1)).get("token");
@@ -89,10 +100,15 @@ test(
       );
       assert.ok(identity);
 
-      await mailer.deliver("password-recovery", address);
+      await mailer.deliver("password-recovery", address, source);
       assert.equal(messages.length, 2);
       assert.equal(messages[1]?.purpose, "password-recovery");
       assert.equal(messages[1]?.recipient, address);
+
+      // Registration and recovery share the recipient budget, even when a
+      // different trusted source requests another message.
+      await mailer.deliver("registration", address, randomBytes(32));
+      assert.equal(messages.length, 2);
     } finally {
       try {
         await pool.query(
