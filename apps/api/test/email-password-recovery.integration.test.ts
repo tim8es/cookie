@@ -61,9 +61,7 @@ test(
         "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
         [otherId],
       );
-      const previousSession = await sessions.issueForVerifiedIdentity(
-        identityId,
-      );
+      const previousSession = await sessions.issueForVerifiedIdentity(identityId);
       const unrelatedSession = await sessions.issueForVerifiedIdentity(otherId);
 
       const unknownEmail = randomUUID() + "@example.invalid";
@@ -163,7 +161,8 @@ test(
         false,
       );
       assert.equal(await verify(changed), identityId);
-      assert.ok(await purgeExpiredEmailRecoveryChallenges(transaction, 10000));
+      const purged = await purgeExpiredEmailRecoveryChallenges(transaction, 10000);
+      assert.ok(purged > 0);
       const remaining = await pool.query(
         "SELECT 1 FROM cookie_identity.email_password_recovery_challenges WHERE email_hmac_sha256=$1",
         [fingerprint],
