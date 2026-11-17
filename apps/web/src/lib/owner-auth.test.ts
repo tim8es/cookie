@@ -7,11 +7,36 @@ import {
   loadTelegramInitData,
   readTelegramInitData,
   revokeTelegramOwnerSession,
+  telegramLoginAvailable,
 } from "./owner-auth";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const TOKEN = "cs_" + "A".repeat(43);
 const NOW = 1_800_000_000;
+
+test("available methods are read from the server and malformed responses fail closed", async () => {
+  const fetchJson = (value: unknown) =>
+    (async () => new Response(JSON.stringify(value))) as typeof fetch;
+  assert.equal(await telegramLoginAvailable(fetchJson({ methods: [] })), false);
+  assert.equal(
+    await telegramLoginAvailable(fetchJson({ methods: ["telegram"] })),
+    true,
+  );
+  assert.equal(
+    await telegramLoginAvailable(fetchJson({ methods: ["future"] })),
+    false,
+  );
+  await assert.rejects(
+    telegramLoginAvailable(fetchJson({ methods: ["telegram", 1] })),
+    OwnerAuthFailure,
+  );
+  await assert.rejects(
+    telegramLoginAvailable((async () => {
+      throw new Error("offline");
+    }) as typeof fetch),
+    OwnerAuthFailure,
+  );
+});
 
 function receipt(overrides: Record<string, unknown> = {}): unknown {
   return {
