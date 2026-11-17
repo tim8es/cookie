@@ -72,8 +72,26 @@ test(
 
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
+      type Work<T> = Parameters<typeof runSqlTransaction<T>>[1];
+      const rollback = <T>(work: Work<T>) =>
+        runSqlTransaction(pool, async (client) => {
+          await work(client);
+          throw new Error("synthetic enqueue rollback");
+        });
+      const rejected = createAuthMailQueue({
+        ...config,
+        transaction: rollback,
+      });
+      await assert.rejects(
+        rejected.enqueue("registration", email, source),
+        /synthetic enqueue rollback/,
+      );
+      assert.equal(await queue.claim(), null);
+
       await enqueue("registration");
-      const first = await queue.claim();
+      const claims = await Promise.all([queue.claim(), queue.claim()]);
+      assert.equal(claims.filter(Boolean).length, 1);
+      const first = claims.find(Boolean);
       assert.ok(first);
       const stored = await pool.query(
         "SELECT sealed_recipient FROM cookie_identity.auth_mail_jobs WHERE id=$1",
@@ -126,6 +144,24 @@ test(
       assert.equal(await worker.runOnce(), "unknown");
       assert.equal(await worker.runOnce(), "idle");
       assert.equal(messages.length, 2);
+
+      await enqueue("registration");
+      const expiredId = jobs.at(-1);
+      await pool.query(
+        "UPDATE cookie_identity.auth_mail_jobs SET created_at=clock_timestamp()-interval '2 hours',expires_at=clock_timestamp()-interval '1 hour' WHERE id=$1",
+        [expiredId],
+      );
+      await queue.sweep(100);
+      assert.equal(await queue.claim(), null);
+      const expired = await pool.query(
+        "SELECT status,sealed_recipient FROM cookie_identity.auth_mail_jobs WHERE id=$1",
+        [expiredId],
+      );
+      assert.deepEqual(expired.rows[0], {
+        status: "expired",
+        sealed_recipient: null,
+      });
+      assert.ok(await queue.purge(100, 60));
     } finally {
       // Tests run serially on an isolated synthetic CI database.
       try {
