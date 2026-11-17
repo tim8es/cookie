@@ -58,6 +58,8 @@ const OWNER_PERMISSIONS = [
   "schedule.read",
   "catalog.service.read",
   "catalog.service.create",
+  "staff.profile.read",
+  "staff.profile.create",
 ] as const;
 
 function canonicalName(value: unknown): string {
