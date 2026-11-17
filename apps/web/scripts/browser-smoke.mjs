@@ -588,7 +588,16 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("Cookie browser smoke failed:", error);
-  process.exitCode = 1;
-});
+// Reuse CDP assertions for the separate real-API browser smoke without
+// automatically starting the synthetic suite when imported.
+export {
+  browserBinary, freePort, poll, getLocal, createClient, evaluate,
+  requireDom, click, fill, submitValidForm, checkWidth, checkLabeledControls,
+};
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error("Cookie browser smoke failed:", error);
+    process.exitCode = 1;
+  });
+}

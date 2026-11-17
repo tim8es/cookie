@@ -18,6 +18,10 @@ import {
 } from "./workspace-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
 import {
+  registerLiveWorkspaceRead,
+  type LiveWorkspaceReadDependencies,
+} from "./live-workspace-http.js";
+import {
   registerOwnerShiftPlanRoutes,
   type OwnerShiftPlanRouteDependencies,
 } from "./owner-shift-plan-http.js";
@@ -48,6 +52,7 @@ export function createApp(
   options: {
     readonly logger?: boolean;
     readonly sessionRoutes?: ProtectedSessionDependencies;
+    readonly liveWorkspaceReads?: LiveWorkspaceReadDependencies;
     readonly catalogRoutes?: RealCatalogRouteDependencies;
     readonly staffRoutes?: RealStaffRoutesDependencies;
     readonly locationRoutes?: RealLocationRouteDependencies;
@@ -117,7 +122,13 @@ export function createApp(
   if (options.syntheticBookingMutations)
     registerSyntheticBookingMutations(app, options.syntheticBookingMutations);
 
-  // No workspace or staff schedule read route in normal production startup.
+  if (options.liveWorkspaceReads && options.syntheticWorkspaceReads) {
+    throw new Error("Cannot mix production and synthetic Workspace routes");
+  }
+  if (options.liveWorkspaceReads)
+    registerLiveWorkspaceRead(app, options.liveWorkspaceReads);
+
+  // Synthetic workspace reads remain test-only.
   if (options.syntheticWorkspaceReads)
     registerSyntheticWorkspaceReads(app, options.syntheticWorkspaceReads);
 
