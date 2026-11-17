@@ -25,11 +25,11 @@ if [[ "$suite" != staging ]]; then
     "postgres:$major-alpine")
   ready=false
   for ((i=0;i<60;i++)); do
-    if docker exec "$container" pg_isready -U cookie_ci -d cookie_ci >/dev/null 2>&1; then ready=true; break; fi
+    if docker exec "$container" pg_isready -h 127.0.0.1 -U cookie_ci -d cookie_ci >/dev/null 2>&1; then ready=true; break; fi
     sleep 1
   done
   [[ "$ready" == true ]]
-  version=$(docker exec "$container" psql -U cookie_ci -d cookie_ci -Atqc 'SHOW server_version_num')
+  version=$(docker exec "$container" psql -h 127.0.0.1 -U cookie_ci -d cookie_ci -Atqc 'SHOW server_version_num')
   [[ "$version" == "$major"* ]]
   export TEST_DATABASE_URL=postgresql://cookie_ci:cookie_ci@127.0.0.1:5432/cookie_ci
 fi
