@@ -291,6 +291,14 @@ test(
         [owner.tenantId],
       );
       assert.equal((await submit()).statusCode, 403);
+      const denied = await pool.query(
+        `SELECT count(*)::int AS total
+           FROM cookie_identity.authorization_audit
+          WHERE tenant_id=$1::uuid AND permission='staging.shift.publish'
+            AND NOT allowed`,
+        [owner.tenantId],
+      );
+      assert.ok(denied.rows[0]?.total >= 1);
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal((await submit()).statusCode, 401);
     } finally {

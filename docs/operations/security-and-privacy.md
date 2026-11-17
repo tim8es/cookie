@@ -42,3 +42,6 @@
 
 ## Решения на ревью
 Отдельные базы tenant vs shared schema, способы OTP, Telegram linking, retention, уровни аудита и категории данных.
+
+## File exchange and Telegram administration (DEC-116, #252/#253)
+Uploaded files are untrusted (allowlisted file formats, bounded decompression/rows/fields/parser effort; formulas never execute; CSV/XLSX formula injection protection). Validate tenant and location authority at plan/read/confirm/commit/download, recheck session/link/roles/entitlement transactionally for mutations, protect previews from replay, no client-supplied actor/scope. Scoped export fields, private storage, minimal PII, authorized short-lived download; no raw customer PII attachments in Telegram by default, no group admin commands/public file URLs. Redact logs/row errors, audit import/export actor/hash/range/result without payload, temporary retention/deletion and consent/provider review before real PII. Private chat is not sufficient authorization. #37/#38 and production gates unchanged. [Spec](../product/tabular-and-telegram-admin.md).

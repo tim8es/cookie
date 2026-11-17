@@ -4,18 +4,18 @@ import type { Pool } from "pg";
 import {
   readStagingCapacity,
   StagingPublicationDenied,
-} from "../../../packages/domain-entitlement/src/staging.js";
+} from "../../../packages/domain-entitlement/src/index.js";
 import {
   publishStaffForStaging,
   StagingStaffPublicationConflict,
   type StagingStaffPublicationInput,
-} from "../../../packages/domain-staff/src/staging-publication.js";
+} from "../../../packages/domain-staff/src/index.js";
 import {
   listStagingPublishedShifts,
+  PublishShiftFailure,
   publishStagingShift,
-} from "../../../packages/domain-scheduling/src/staging-shift-publication.js";
-import { PublishShiftFailure } from "../../../packages/domain-scheduling/src/publish-shift.js";
-import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/authorization.js";
+} from "../../../packages/domain-scheduling/src/index.js";
+import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
 import { withTenantPermission } from "./protected-tenant-transaction.js";
 import {
   type BearerSessionVerifier,

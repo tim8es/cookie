@@ -250,3 +250,18 @@ export function evaluateAvailableStart(
   const prepared = prepare(request);
   return availableAt(prepared, parseInstant(startAt));
 }
+
+/** Protected owner planning commands; never publish or enable booking. */
+export {
+  createOwnerShiftPlan,
+  DraftShiftFailure,
+  type OwnerShiftPlanInput,
+} from "./draft-shift.js";
+export { listOwnerShiftPlans } from "./owner-shift-plans.js";
+
+/** Explicit synthetic staging publication capability. */
+export { PublishShiftFailure } from "./publish-shift.js";
+export {
+  listStagingPublishedShifts,
+  publishStagingShift,
+} from "./staging-shift-publication.js";

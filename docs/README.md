@@ -59,3 +59,7 @@
 
 ## F0 Gate
 Открытые задачи **#8–#14** должны быть просмотрены владельцем до [решения по F0 Gate в #15](https://github.com/tim8es/cookie/issues/15). Финальный аудит текущего baseline: [F0 consistency audit, 2026-11-14](delivery/f0-consistency-audit-20261114.md). Технические решения не зафиксированы окончательно только потому, что уже оформлены в ADR с PROPOSED. PR документации — точка review, merge и явное разрешение начать F1 обязательны.
+
+## Дополнение продуктового baseline 2026-11-17
+- [Табличный обмен XLSX/CSV и Telegram-first администрирование](product/tabular-and-telegram-admin.md) — DEC-116 ACCEPTED; REQ-068–072; техническая детализация DEC-117 PROPOSED, REQ-073 F3 PROPOSED.
+- Порядок: #252 (F2 early data exchange) → #253 (F2 Telegram admin) → #254 (F3 optional sync). Не блокирует текущий F1 #203; отдельный review перед реализацией.

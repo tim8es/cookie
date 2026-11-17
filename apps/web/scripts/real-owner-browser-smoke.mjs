@@ -13,6 +13,7 @@ import {
   browserBinary, freePort, poll, getLocal, createClient, evaluate,
   requireDom, fill, submitValidForm, checkWidth, checkLabeledControls,
 } from "./browser-smoke.mjs";
+import { startChromiumWithRetry } from "../../../scripts/f1-chromium-startup.mjs";
 
 import { runMigrations } from "../../../dist/packages/platform-db/src/migrations.js";
 import { provisionOwnerWorkspace } from "../../../dist/packages/platform-identity/src/provision-owner-workspace.js";
@@ -99,6 +100,18 @@ async function stopServer(child) {
   }
 }
 
+async function stopBrowser(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null || child.pid === undefined) return;
+  const closed = new Promise((done) => child.once("close", done));
+  child.kill("SIGTERM");
+  await Promise.race([closed, pause(800)]);
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill("SIGKILL");
+    await Promise.race([closed, pause(800)]);
+  }
+  if (child.exitCode === null && child.signalCode === null) throw new Error("Chromium child could not be reaped");
+}
+
 async function button(cdp, label) {
   // Actual rendered button + native click, no direct function invocation.
   const clicked = await evaluate(cdp,
@@ -118,7 +131,7 @@ async function load(cdp, origin, proof, previous) {
   const { identifier } = await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
     // Test harness provides only the SDK input shape, not user claims or
     // bearer/session state; the real server independently verifies HMAC.
-    source: "window.Telegram={WebApp:{initData:" + JSON.stringify(proof) + "}};",
+    source: "window.Telegram={WebApp:{initData:" + JSON.stringify(proof) + "}};window.__cookieTestClockMs=0;const realNow=Date.now.bind(Date);Date.now=()=>realNow()+window.__cookieTestClockMs;",
   });
   await cdp.send("Page.navigate", { url: origin });
   return identifier;
@@ -128,7 +141,7 @@ async function waitForm(cdp, name) {
   await requireDom(cdp, name, "document.querySelector('.owner-form input') && document.querySelector('h1')");
 }
 
-async function assertStored(pool, owner) {
+async function assertStored(pool, owner, locationId) {
   const result = await pool.query(
     `SELECT
        s.id::text AS service_id, s.display_name AS service_name,
@@ -153,7 +166,7 @@ async function assertStored(pool, owner) {
   assert.equal(row.staff_name, "Synthetic E2E Staff");
   assert.equal(row.position_title, "Stylist");
   assert.equal(row.staff_active, true);
-  assert.equal(row.location_id, owner.locationId);
+  assert.equal(row.location_id, locationId);
   for (const key of ["service_active", "bookable", "location_active", "assignment_active"]) {
     assert.equal(row[key], false, "A draft was unexpectedly published: " + key);
   }
@@ -170,13 +183,84 @@ async function assertStored(pool, owner) {
   return { serviceId: row.service_id, staffId: row.staff_id };
 }
 
+const BRANCH_NAME = "Synthetic E2E East";
+const BRANCH_ZONE = "Asia/Yekaterinburg";
+
+async function assertBranch(pool, owner) {
+  const result = await pool.query(
+    `SELECT id::text, display_name, time_zone FROM cookie_tenancy.locations
+      WHERE tenant_id=$1::uuid ORDER BY id`,
+    [owner.tenantId],
+  );
+  assert.equal(result.rowCount, 2, "Expected base and one browser-created Location");
+  assert.ok(result.rows.some((row) => row.id === owner.locationId));
+  const branch = result.rows.find((row) => row.display_name === BRANCH_NAME);
+  assert.ok(branch, "Browser-created branch not present in PostgreSQL");
+  assert.equal(branch.time_zone, BRANCH_ZONE);
+  const receipt = await pool.query(
+    `SELECT location_id::text FROM cookie_tenancy.location_create_receipts
+      WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid`,
+    [owner.tenantId, owner.identityId],
+  );
+  assert.deepEqual(receipt.rows, [{ location_id: branch.id }]);
+  return branch.id;
+}
+
+async function assertPlan(pool, owner, staffId, locationId, date) {
+  const result = await pool.query(
+    `SELECT id::text, staff_id::text, location_id::text,
+            start_at, end_at, active, draft_revision
+       FROM cookie_scheduling.shift_windows WHERE tenant_id=$1::uuid`,
+    [owner.tenantId],
+  );
+  assert.equal(result.rowCount, 1, "Expected exactly one browser-created shift");
+  const shift = result.rows[0];
+  assert.equal(shift.staff_id, staffId);
+  assert.equal(shift.location_id, locationId);
+  // Yekaterinburg is UTC+05:00 for this current future local minute.
+  assert.equal(shift.start_at.toISOString(), date + "T05:00:00.000Z");
+  assert.equal(shift.end_at.toISOString(), date + "T13:00:00.000Z");
+  assert.equal(shift.active, false, "A draft must never publish a shift");
+  assert.equal(shift.draft_revision, 0);
+  const evidence = await pool.query(
+    `SELECT
+      (SELECT count(*)::int FROM cookie_scheduling.shift_draft_receipts
+       WHERE tenant_id=$1::uuid AND shift_id=$2::uuid AND operation='create') AS receipts,
+      (SELECT count(*)::int FROM cookie_scheduling.shift_draft_audit
+       WHERE tenant_id=$1::uuid AND shift_id=$2::uuid AND operation='create') AS audits,
+      (SELECT count(*)::int FROM cookie_jobs.outbox_events
+       WHERE tenant_id=$1::uuid AND topic='schedule.shift.draft.created') AS events`,
+    [owner.tenantId, shift.id],
+  );
+  assert.deepEqual(evidence.rows[0], { receipts: 1, audits: 1, events: 1 });
+  return shift.id;
+}
+
+async function requireOverview(cdp) {
+  await button(cdp, "Обзор");
+  await requireDom(cdp, "persisted organization and both branches",
+    "document.querySelector('h1')?.textContent.trim()==='Synthetic browser salon' && " +
+    "document.querySelector('.list-items')?.innerText.includes('Synthetic Central') && " +
+    "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(BRANCH_NAME) + ") && " +
+    "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(BRANCH_ZONE) + ")");
+}
+
+async function requireShift(cdp) {
+  await button(cdp, "Расписание");
+  await requireDom(cdp, "persisted inactive shift renders",
+    "document.querySelector('.schedule-summary')?.innerText.includes('Synthetic E2E Staff') && " +
+    "document.querySelector('.schedule-summary')?.innerText.includes(" + JSON.stringify(BRANCH_NAME) + ") && " +
+    "document.querySelector('.schedule-summary')?.innerText.includes('Черновик') && " +
+    "document.querySelector('.schedule-summary')?.innerText.includes(" + JSON.stringify(BRANCH_ZONE) + ")");
+}
+
 async function main() {
   const databaseUrl = isolatedDatabase();
   const pool = new Pool({ connectionString: databaseUrl, max: 3, application_name: "cookie-real-owner-browser-ci" });
   const botToken = "123456789:" + randomBytes(24).toString("base64url");
   const userHashSecret = randomBytes(32);
   const userId = randomInt(100000000, 999999999);
-  const browserData = mkdtempSync(join(tmpdir(), "cookie-real-owner-"));
+  let browserData;
   let api, chrome, cdp;
   const errors = [], external = [], responses = [];
   try {
@@ -194,19 +278,39 @@ async function main() {
       COOKIE_PUBLIC_ORIGIN: "https://cookie-e2e.invalid",
     };
     api = await startServer(env, origin);
-    const chromePort = await freePort();
-    chrome = spawn(browserBinary(), [
-      "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
-      "--disable-background-networking", "--no-first-run",
-      "--remote-debugging-address=127.0.0.1",
-      "--remote-debugging-port=" + chromePort,
-      "--user-data-dir=" + browserData,
-      "about:blank",
-    ], { stdio: "ignore" });
-    const target = await poll("browser target", async () => {
-      const response = await getLocal("http://127.0.0.1:" + chromePort + "/json/list");
-      return JSON.parse(response.text).find((page) => page.type === "page" && page.webSocketDebuggerUrl);
-    }, 20000);
+    const started = await startChromiumWithRetry({
+      startAttempt: async () => {
+        const dir = mkdtempSync(join(tmpdir(), "cookie-real-owner-"));
+        try {
+          const port = await freePort();
+          const chrome = spawn(browserBinary(), [
+            "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
+            "--disable-background-networking", "--no-first-run",
+            "--remote-debugging-address=127.0.0.1",
+            "--remote-debugging-port=" + port,
+            "--user-data-dir=" + dir,
+            "about:blank",
+          ], { stdio: "ignore" });
+          const handle = { chrome, dir, port };
+          chrome.once("error", () => { handle.startupError = "spawn failed"; });
+          return handle;
+        } catch (error) {
+          rmSync(dir, { recursive: true, force: true });
+          throw error;
+        }
+      },
+      probe: async ({ port }) => {
+        const response = await getLocal("http://127.0.0.1:" + port + "/json/list");
+        return JSON.parse(response.text).find((page) => page.type === "page" && page.webSocketDebuggerUrl);
+      },
+      disposeAttempt: async ({ chrome, dir }) => {
+        await stopBrowser(chrome);
+        rmSync(dir, { recursive: true, force: true });
+      },
+    });
+    chrome = started.handle.chrome;
+    browserData = started.handle.dir;
+    const target = started.ready;
     cdp = createClient(target.webSocketDebuggerUrl);
     await cdp.ready;
     await cdp.send("Page.enable");
@@ -244,11 +348,27 @@ async function main() {
     await submitValidForm(cdp, ".owner-form");
     await requireDom(cdp, "persisted service renders",
       "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Service') && !document.querySelector('.owner-form button[type=submit]')?.disabled");
+    await button(cdp, "Филиалы");
+    await requireDom(cdp, "real locations loaded",
+      "document.querySelector('h1')?.textContent.trim()==='Филиалы' && document.querySelector('.list-items')?.innerText.includes('Synthetic Central') && document.querySelector('.owner-form input')");
+    await checkWidth(cdp, "real locations 375px");
+    await checkLabeledControls(cdp, "real locations form");
+    await fill(cdp, ".owner-form input[placeholder='Студия на Невском']", BRANCH_NAME);
+    await fill(cdp, ".owner-form input[placeholder='Europe/Moscow']", BRANCH_ZONE);
+    await submitValidForm(cdp, ".owner-form");
+    await requireDom(cdp, "browser-created branch saved",
+      "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(BRANCH_NAME) + ") && !document.querySelector('.owner-form button[type=submit]')?.disabled");
+    const locationId = await assertBranch(pool, owner);
+    await requireOverview(cdp);
+    await checkWidth(cdp, "real overview 375px");
+
     await button(cdp, "Мастера");
     await requireDom(cdp, "real staff page", "document.querySelector('h1')?.textContent.trim()==='Мастера'");
     await requireDom(cdp, "real staff form", "document.querySelectorAll('.owner-form select').length===2");
     await checkWidth(cdp, "real staff 375px");
     await checkLabeledControls(cdp, "real staff form");
+    await fill(cdp, ".owner-form select", locationId, "change");
+    assert.equal(await evaluate(cdp, "document.querySelector('.owner-form select').value"), locationId);
     await fill(cdp, ".owner-form input:nth-of-type(1)", "Synthetic E2E Staff");
     await evaluate(cdp, "(() => {const n=document.querySelectorAll('.owner-form input');n[0].value='Synthetic E2E Staff';n[0].dispatchEvent(new Event('input',{bubbles:true}));n[1].value='Stylist';n[1].dispatchEvent(new Event('input',{bubbles:true}));})()");
     await submitValidForm(cdp, ".owner-form");
@@ -264,7 +384,27 @@ async function main() {
     await checkWidth(cdp, "edited list 375px");
     await button(cdp, "Мастера");
     await requireDom(cdp, "assignment retains edited service", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
-    const beforeRestart = await assertStored(pool, owner);
+    const beforeRestart = await assertStored(pool, owner, locationId);
+    assert.ok(responses.some((r) => r.status === 200 && r.path.endsWith('/services/' + beforeRestart.serviceId)));
+    await button(cdp, "Расписание");
+    await requireDom(cdp, "real schedule loaded with assigned branch",
+      "document.querySelector('h1')?.textContent.trim()==='Расписание' && document.querySelectorAll('.owner-form input[type=datetime-local]').length===2 && " +
+      "document.querySelector('.owner-form-note')?.innerText.includes(" + JSON.stringify(BRANCH_ZONE) + ")");
+    await checkWidth(cdp, "real schedule 375px");
+    await checkLabeledControls(cdp, "real schedule form");
+    const date = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+    await evaluate(cdp, "(() => {const fields=document.querySelectorAll('.owner-form input[type=datetime-local]');" +
+      "const values=" + JSON.stringify([date + "T10:00", date + "T18:00"]) + ";" +
+      "fields.forEach((field,index)=>{field.value=values[index];field.dispatchEvent(new Event('change',{bubbles:true}));});})()");
+    await submitValidForm(cdp, ".owner-form");
+    await requireDom(cdp, "browser shift draft and server confirmation",
+      "document.querySelector('.schedule-summary')?.innerText.includes('Synthetic E2E Staff') && " +
+      "document.querySelector('.schedule-summary')?.innerText.includes('Черновик') && " +
+      "document.querySelector('.alert-ok')?.innerText.includes('Черновик сохранён') && !document.querySelector('.owner-form button[type=submit]')?.disabled");
+    const shiftId = await assertPlan(pool, owner, beforeRestart.staffId, locationId, date);
+    assert.equal(responses.filter((r) => r.status === 201 && r.path.endsWith("/locations")).length, 1);
+    assert.equal(responses.filter((r) => r.status === 201 && r.path.endsWith("/shift-plans")).length, 1);
+    assert.ok(responses.some((r) => r.status === 200 && r.path.endsWith("/workspace-overview")));
     assert.ok(responses.some((r) => r.status === 201 && r.path.endsWith("/services")));
     assert.ok(responses.some((r) => r.status === 201 && r.path.endsWith("/staff")));
     assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0, "Real mode wrote browser storage");
@@ -285,6 +425,12 @@ async function main() {
     await button(cdp, "Мастера");
     await requireDom(cdp, "staff persisted after process restart",
       "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
+    await requireOverview(cdp);
+    await requireShift(cdp);
+    assert.equal(await assertBranch(pool, owner), locationId);
+    assert.equal(await assertPlan(pool, owner, beforeRestart.staffId, locationId, date), shiftId);
+    await button(cdp, "Мастера");
+    await requireDom(cdp, "staff after restart", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
     for (const [width, height] of [[320, 568], [1280, 800]]) {
       await viewport(cdp, width, height);
       await checkWidth(cdp, "real staff " + width + "px");
@@ -292,10 +438,16 @@ async function main() {
       await button(cdp, "Услуги");
       await requireDom(cdp, "service list at " + width, "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
       await checkWidth(cdp, "real services " + width + "px");
+      await requireOverview(cdp);
+      await checkWidth(cdp, "real overview " + width + "px");
+      await checkLabeledControls(cdp, "real overview " + width + "px");
+      await requireShift(cdp);
+      await checkWidth(cdp, "real schedule " + width + "px");
+      await checkLabeledControls(cdp, "real schedule " + width + "px");
       await button(cdp, "Мастера");
       await requireDom(cdp, "staff list at " + width, "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
     }
-    assert.deepEqual(await assertStored(pool, owner), beforeRestart, "Restart changed persisted IDs");
+    assert.deepEqual(await assertStored(pool, owner, locationId), beforeRestart, "Restart changed persisted IDs");
     // No grant is implicit: a trusted operator explicitly grants a single
     // synthetic staging seat before the owner can perform the activation.
     await requireDom(cdp, "no staging grant", "document.body.innerText.includes('Оператор ещё не выдал тестовое разрешение')");
@@ -315,10 +467,6 @@ async function main() {
     assert.ok(responses.some(r=>r.status===201&&r.path.endsWith("/staging-publication")));
     await checkWidth(cdp, "activated staging staff");
     await button(cdp, "Расписание");
-    await requireDom(cdp, "shift editor", "document.querySelectorAll('.owner-form input[type=datetime-local]').length===2");
-    const date = new Date(Date.now()+3*86400000).toISOString().slice(0,10);
-    await evaluate(cdp, "(() => {const fields=document.querySelectorAll('.owner-form input[type=datetime-local]');const values="+JSON.stringify([date+"T10:00",date+"T18:00"])+";fields.forEach((field,i)=>{field.value=values[i];field.dispatchEvent(new Event('change',{bubbles:true}));});})()");
-    await submitValidForm(cdp, ".owner-form");
     await requireDom(cdp, "draft ready for explicit publication", "document.querySelector('.schedule-summary')?.innerText.includes('Черновик') && Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Подготовить публикацию')");
     await button(cdp, "Подготовить публикацию");
     await requireDom(cdp, "confirmation before active shift", "document.querySelector('[aria-label=\"Подтверждение публикации смены\"]')");
@@ -328,6 +476,7 @@ async function main() {
     const shifts = await pool.query("SELECT id::text,active FROM cookie_scheduling.shift_windows WHERE tenant_id=$1::uuid",[owner.tenantId]);
     assert.equal(shifts.rowCount,1);
     assert.equal(shifts.rows[0].active,true);
+    assert.equal(shifts.rows[0].id, shiftId);
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-shift-publication")));
     await checkWidth(cdp, "published staging schedule");
     await checkLabeledControls(cdp, "published staging schedule");
@@ -340,19 +489,28 @@ async function main() {
     await button(cdp,"Расписание");
     await requireDom(cdp,"published shift persisted after restart","document.querySelector('.schedule-summary')?.innerText.includes('Опубликована в тестовом контуре')");
     assert.deepEqual((await pool.query("SELECT id::text,active FROM cookie_scheduling.shift_windows WHERE tenant_id=$1::uuid",[owner.tenantId])).rows,shifts.rows);
-
     assert.deepEqual(external, [], "Unexpected real-mode external network requests");
     assert.deepEqual(errors, [], "Unexpected browser runtime errors");
     await button(cdp, "Выйти");
     await requireDom(cdp, "final logout", "document.body.innerText.includes('Вы вышли')");
-    console.log("PASS real owner browser: invalid proof denied, HMAC/bearer, Service+Staff create/edit, staging capacity activation, confirmed shift publication and PostgreSQL persistence across API restart, 3 viewport checks, server logout.");
+    // Launch a fresh verified session, then simulate tab resume after local expiry.
+    script = await load(cdp, origin, signedProof(botToken, userId), script);
+    await requireDom(cdp, "fresh session for expiry", "document.querySelector('.real-owner-nav') && document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
+    await button(cdp, "Мастера");
+    await requireDom(cdp, "protected staff before expiry", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
+    await evaluate(cdp, "window.__cookieTestClockMs=3600001;document.dispatchEvent(new Event('visibilitychange'));");
+    await requireDom(cdp, "cabinet fails closed on local session expiry", "document.body.innerText.includes('Срок действия сеанса истёк') && !document.querySelector('.real-owner-nav') && !document.body.innerText.includes('Synthetic E2E Staff')");
+    assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0);
+    assert.deepEqual(errors, [], "Unexpected browser runtime errors after expiry");
+    assert.deepEqual(external, [], "Unexpected external requests after expiry");
+    console.log("PASS integrated real owner browser: invalid proof denied, verified HMAC/bearer, Overview + Service create/edit + Location + Staff + ShiftPlan through compiled runtime, exact PostgreSQL rows and inactive flags, IANA time conversion, explicit staging seat activation and shift publication, persistence across API restart, 3 viewport checks, logout and App-wide local expiry.");
   } finally {
     if (cdp) cdp.close();
-    if (chrome && !chrome.killed) chrome.kill("SIGTERM");
-    try { await stopServer(api); } finally {
-      await pool.end();
-      await pause(300);
-      rmSync(browserData, { recursive: true, force: true });
+    try {
+      await stopBrowser(chrome);
+      if (browserData) rmSync(browserData, { recursive: true, force: true });
+    } finally {
+      try { await stopServer(api); } finally { await pool.end(); }
     }
   }
 }

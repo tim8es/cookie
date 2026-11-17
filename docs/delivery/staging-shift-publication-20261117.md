@@ -18,3 +18,5 @@ policy, deployment, public availability and Booking remain separate gates.
 
 Migration 0033 must be reconciled with other pending branches. No actual
 grant was issued and no real user or deployment is affected by this PR.
+
+Current-main reconciliation: use the shared acknowledged SQL transaction port for staging publication and the existing Scheduling transaction helper for owned legacy publication. Preserve caller-managed execution, staff-first locks, exact replay and pre-write permission denial audit. Fresh full F1 evidence required. No public Booking or commercial release approval.

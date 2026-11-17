@@ -53,3 +53,6 @@ flowchart TB
 
 ## Границы рекомендуемой F0 реализации (PROPOSED)
 Приоритетный путь F1: API+worker одного TypeScript release, Svelte static UI, PostgreSQL; все каналы через единые Booking/Policy commands, нет fork business logic. Сервисные границы в [f0-implementation-blueprint.md](f0-implementation-blueprint.md) и [F0 owner-review package](../decisions/f0-owner-review-package-20261114.md). Это дополнение к согласованным продуктовым направлениям, не официальный approval стека/кода.
+
+## Data Exchange + Telegram admin (DEC-116 / proposed design DEC-117)
+Data Exchange — application/platform capability outside minimal kernel. Web and Telegram adapters share import/export application service, parser/serializer and jobs; all authoritative writes use tenant-scoped domain ports under existing transaction, locks, Policy, Entitlements and audit/outbox. No spreadsheet database, direct adapter SQL or parallel business rules. Export via scoped domain reads. Preserve server-owned status and price history, revisions, IDs and timezone. Telegram identity/customer vs staff authority separate, Mini App presentation reuse only. [Contract/sequence and gates](../product/tabular-and-telegram-admin.md); #252/#253 F2, no added F1 blocker.

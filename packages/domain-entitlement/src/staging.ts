@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
+import { runSqlTransaction } from "../../platform-db/src/index.js";
 
 export interface StagingCapacity {
   readonly state:
@@ -142,34 +143,26 @@ export async function issueStagingGrant(
     new Date(expiresAt).toISOString() !== expiresAt
   )
     throw new Error("Invalid staging grant");
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const existing = await grantRow(client, tenantId, true);
-    if (existing) {
-      if (
-        existing.revoked_at ||
-        !existing.live ||
-        existing.seat_limit !== seatLimit ||
-        existing.expires_at.toISOString() !== expiresAt
-      )
-        throw new Error("Existing staging grant cannot be replaced");
-      await client.query("COMMIT");
-      return existing.id;
-    }
-    const id = randomUUID();
+  return runSqlTransaction(pool, async (client) => {
+    // A concurrent first issue may win the unique tenant key. Re-read the
+    // locked immutable grant after INSERT rather than treating retry as error.
     await client.query(
-      "INSERT INTO cookie_entitlement.staging_publication_grants(tenant_id,id,seat_limit,expires_at) VALUES($1::uuid,$2::uuid,$3,$4::timestamptz)",
-      [tenantId, id, seatLimit, expiresAt],
+      "INSERT INTO cookie_entitlement.staging_publication_grants(tenant_id,id,seat_limit,expires_at) VALUES($1::uuid,$2::uuid,$3,$4::timestamptz) ON CONFLICT (tenant_id) DO NOTHING",
+      [tenantId, randomUUID(), seatLimit, expiresAt],
     );
-    await client.query("COMMIT");
-    return id;
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
+    const locked = await grantRow(client, tenantId, true);
+    const existing = locked && (await grantRow(client, tenantId, false));
+    if (
+      !existing ||
+      existing.revoked_at ||
+      !existing.live ||
+      existing.seat_limit !== seatLimit ||
+      existing.expires_at.toISOString() !== expiresAt
+    ) {
+      throw new Error("Existing staging grant cannot be replaced");
+    }
+    return existing.id;
+  });
 }
 
 export async function revokeStagingGrant(

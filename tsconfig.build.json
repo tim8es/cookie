@@ -16,6 +16,7 @@
     "packages/platform-db/src/**/*.ts",
     "packages/domain-scheduling/src/**/*.ts",
     "packages/domain-booking/src/**/*.ts",
+    "packages/domain-appearance/src/**/*.ts",
     "scripts/**/*.ts"
   ],
   "exclude": [

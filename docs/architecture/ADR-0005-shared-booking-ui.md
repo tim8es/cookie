@@ -36,3 +36,6 @@ UI читает каталог/слоты из API, команды выполн�
 
 ## Запись об утверждении F0 — 2026-11-14
 Владелец явно **утвердил пакет F0-P01–F0-P12 как архитектурный baseline** и отдельно разрешил начать F1 (bootstrap, CI, PostgreSQL, основа приложения). В рамках этого ADR приняты архитектурное направление, границы и критерии тестирования. **Не подтверждены исполнением**: SQL concurrency, нагрузка, мобильный UX, реальные security tests, ПДн/платежи, закрытые provider APIs и коммерческие продажи. Требования к отсутствию пилота/реальных ПДн до отдельного согласования сохраняются. Изменение baseline через новый ADR/PR, не молчаливым коммитом.
+
+## Product extension (2026-11-17) — accepted direction, proposed implementation
+DEC-116/REQ-071–072 add a lightweight Telegram admin surface (#253). Preserve existing customer UI baseline. Share presentational calendar/date selector, service/staff cards, lists, filters and design tokens across client and business Mini App/web where compatible; use distinct admin view models, authorized data providers, shell and context. Never share customer access tokens or assume UI-level permissions. Ordinary chat bot cannot reuse Svelte DOM directly; use common domain API and separate button/message adapter. No requirement to reproduce full Business Web. [Scope / acceptance](../product/tabular-and-telegram-admin.md).

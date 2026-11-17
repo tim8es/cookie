@@ -1,7 +1,11 @@
 import type { Pool, QueryResultRow } from "pg";
 
-import { lockLiveStagingGrant } from "../../domain-entitlement/src/staging.js";
-import type { TrustedActor } from "../../platform-identity/src/authorization.js";
+import { lockLiveStagingGrant } from "../../domain-entitlement/src/index.js";
+import { runSqlTransaction } from "../../platform-db/src/index.js";
+import {
+  AuthorizationDeniedError,
+  type TrustedActor,
+} from "../../platform-identity/src/index.js";
 import {
   PublishShiftFailure,
   publishShiftInternal,
@@ -16,65 +20,53 @@ export async function publishStagingShift(
   expectedRevision: number,
   idempotencyKey: string,
 ): Promise<PublishedShiftReceipt> {
-  const client = await pool.connect();
-  let committed = false;
-  let discard = false;
-  try {
-    await client.query("BEGIN");
-    const receipt = await publishShiftInternal(
-      pool,
-      { actor, shiftId, idempotencyKey },
-      async (transaction, context) => {
-        // Called only after Staff -> Shift -> current owner policy locks.
-        // The grant serializes revocation against a publication.
-        await lockLiveStagingGrant(transaction, context.tenantId);
-        const target = await transaction.query(
-          `SELECT 1
-             FROM cookie_staff.staff_profiles p
-             JOIN cookie_staff.location_assignments l
-               ON l.tenant_id=p.tenant_id AND l.staff_id=p.id
-             JOIN cookie_staff.service_assignments a
-               ON a.tenant_id=l.tenant_id AND a.staff_id=l.staff_id
-              AND a.location_id=l.location_id
-             JOIN cookie_catalog.services s
-               ON s.tenant_id=a.tenant_id AND s.id=a.service_id
-            WHERE p.tenant_id=$1::uuid AND p.id=$2::uuid
-              AND l.location_id=$3::uuid AND p.active AND p.bookable
-              AND l.active AND a.active AND s.active
-            ORDER BY s.id LIMIT 1 FOR SHARE OF p,l,a,s`,
-          [context.tenantId, context.staffId, context.locationId],
-        );
-        if (target.rowCount !== 1)
-          throw new PublishShiftFailure("SHIFT_TARGET_UNAVAILABLE");
-        await lockLiveStagingGrant(transaction, context.tenantId);
-      },
-      client,
-      { expectedRevision },
-    );
+  const result = await runSqlTransaction(pool, async (client) => {
+    let receipt: PublishedShiftReceipt;
+    try {
+      receipt = await publishShiftInternal(
+        pool,
+        { actor, shiftId, idempotencyKey },
+        async (transaction, context) => {
+          // Called only after Staff -> Shift -> current owner policy locks.
+          // The grant serializes revocation against a publication.
+          await lockLiveStagingGrant(transaction, context.tenantId);
+          const target = await transaction.query(
+            `SELECT 1
+               FROM cookie_staff.staff_profiles p
+               JOIN cookie_staff.location_assignments l
+                 ON l.tenant_id=p.tenant_id AND l.staff_id=p.id
+               JOIN cookie_staff.service_assignments a
+                 ON a.tenant_id=l.tenant_id AND a.staff_id=l.staff_id
+                AND a.location_id=l.location_id
+               JOIN cookie_catalog.services s
+                 ON s.tenant_id=a.tenant_id AND s.id=a.service_id
+              WHERE p.tenant_id=$1::uuid AND p.id=$2::uuid
+                AND l.location_id=$3::uuid AND p.active AND p.bookable
+                AND l.active AND a.active AND s.active
+              ORDER BY s.id LIMIT 1 FOR SHARE OF p,l,a,s`,
+            [context.tenantId, context.staffId, context.locationId],
+          );
+          if (target.rowCount !== 1)
+            throw new PublishShiftFailure("SHIFT_TARGET_UNAVAILABLE");
+          await lockLiveStagingGrant(transaction, context.tenantId);
+        },
+        client,
+        { expectedRevision },
+      );
+    } catch (error) {
+      // Permission denial precedes every domain mutation in this path.
+      if (error instanceof AuthorizationDeniedError) {
+        return { denied: error };
+      }
+      throw error;
+    }
     // Recheck the database's time after all locks/business writes, including
     // exact replay. Revocation cannot pass the grant lock before COMMIT.
     await lockLiveStagingGrant(client, actor.tenantId);
-    discard = true;
-    const result = await client.query("COMMIT");
-    if (result.command !== "COMMIT")
-      throw new Error("Publication not committed");
-    committed = true;
-    discard = false;
-    return receipt;
-  } catch (error) {
-    if (!committed && !discard) {
-      try {
-        const result = await client.query("ROLLBACK");
-        if (result.command !== "ROLLBACK") throw new Error("Rollback failed");
-      } catch {
-        discard = true;
-        throw new Error("Publication cleanup failed");
-      }
-    }
-    throw error;
-  } finally {
-    client.release(discard);
-  }
+    return { receipt };
+  });
+  if (result.denied) throw result.denied;
+  return result.receipt;
 }
 
 interface PublishedRow extends QueryResultRow {

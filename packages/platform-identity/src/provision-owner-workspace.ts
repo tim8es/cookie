@@ -68,6 +68,9 @@ const OWNER_PERMISSIONS = [
   "staging.entitlement.read",
   "staging.staff.publish",
   "staging.shift.publish",
+  "appearance.read",
+  "appearance.manage",
+  "appearance.publish",
 ] as const;
 
 function canonicalName(value: unknown): string {

@@ -7,3 +7,5 @@ The browser exercises invalid proof refusal, successful server exchange/context 
 Run only in dedicated test environment: `CI=true TEST_DATABASE_URL=... pnpm build:runtime`, followed by `CI=true TEST_DATABASE_URL=... node apps/web/scripts/real-owner-browser-smoke.mjs`. The URL must target the disposable local cookie_ci database; CI provisions it automatically. No deployment or real customer data is authorized by this test.
 
 Production, actual Telegram provider, Altare deployment, booking/calendar, and commercial pilot remain separate acceptance gates.
+
+Current-main combined harness includes the immutable service edit receipt from #240, actual location/overview/shift creation from #241/#242, and App-level local expiry on resumed tab. Browser startup retries at most twice only before CDP discovery, never retries mutation or assertion. All actual inputs are synthetic; expiry uses only a test client clock and does not establish server-clock expiry or immediate remote revocation. Preserve original synthetic visual artifact. Exact CI must pass.

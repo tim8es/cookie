@@ -3,9 +3,13 @@ import type { Pool, QueryResultRow } from "pg";
 import {
   assertNewStagingSeat,
   lockLiveStagingGrant,
-} from "../../domain-entitlement/src/staging.js";
-import type { TrustedActor } from "../../platform-identity/src/authorization.js";
-import { requireTenantPermission } from "../../platform-identity/src/postgres.js";
+} from "../../domain-entitlement/src/index.js";
+import { runSqlTransaction } from "../../platform-db/src/index.js";
+import {
+  AuthorizationDeniedError,
+  requireTenantPermission,
+  type TrustedActor,
+} from "../../platform-identity/src/index.js";
 
 export interface StagingStaffPublicationInput {
   readonly staffId: string;
@@ -69,19 +73,25 @@ export async function publishStaffForStaging(
     )
     .digest("hex");
   const tenantId = actor.tenantId;
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
+  const result = await runSqlTransaction(pool, async (client) => {
     const profile = await client.query<ProfileRow>(
       "SELECT active,bookable FROM cookie_staff.staff_profiles WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE",
       [tenantId, staffId],
     );
-    await requireTenantPermission(
-      client,
-      actor,
-      { kind: "organization", tenantId },
-      "staging.staff.publish",
-    );
+    try {
+      await requireTenantPermission(
+        client,
+        actor,
+        { kind: "organization", tenantId },
+        "staging.staff.publish",
+      );
+    } catch (error) {
+      // No domain mutation has run. Preserve only the authorization audit.
+      if (error instanceof AuthorizationDeniedError) {
+        return { denied: error };
+      }
+      throw error;
+    }
     if (!profile.rows[0]?.active)
       throw new StagingStaffPublicationConflict("target-unavailable");
     const grant = await lockLiveStagingGrant(client, tenantId);
@@ -93,7 +103,6 @@ export async function publishStaffForStaging(
       if (prior.rows[0].request_sha256 !== hash)
         throw new StagingStaffPublicationConflict("idempotency-conflict");
       await lockLiveStagingGrant(client, tenantId);
-      await client.query("COMMIT");
       return {
         publication: { staffId, locationId, serviceId },
         replayed: true,
@@ -163,12 +172,8 @@ export async function publishStaffForStaging(
     // Recheck database time just before commit, including time spent waiting
     // on service/assignment locks. Revocation cannot pass the grant lock.
     await lockLiveStagingGrant(client, tenantId);
-    await client.query("COMMIT");
     return { publication: { staffId, locationId, serviceId }, replayed: false };
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
+  if (result.denied) throw result.denied;
+  return result;
 }

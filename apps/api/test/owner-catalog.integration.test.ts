@@ -306,6 +306,16 @@ test(
           .statusCode,
         404,
       );
+      // Deactivation cannot make a previously published service a draft.
+      await pool.query(
+        "UPDATE cookie_catalog.services SET active=false WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [owner.tenantId, a.id],
+      );
+      assert.equal(
+        (await change({ ...edit, expectedRevision: 3 }, randomUUID()))
+          .statusCode,
+        404,
+      );
       const count = await pool.query(
         `SELECT
           (SELECT count(*)::int FROM cookie_catalog.service_create_receipts WHERE tenant_id=$1::uuid) AS creates,
@@ -314,6 +324,33 @@ test(
         [owner.tenantId, a.id],
       );
       assert.deepEqual(count.rows[0], { creates: 1, edits: 3, revision: 3 });
+
+      // Last-slot race from #228 must survive the immutable receipt change.
+      await pool.query(
+        `INSERT INTO cookie_catalog.services
+           (tenant_id,id,display_name,duration_minutes,base_price_kopecks,active)
+         SELECT $1::uuid, gen_random_uuid(), 'Capacity fixture ' || n,
+                30, 100, false FROM generate_series(1,98) AS n`,
+        [owner.tenantId],
+      );
+      const last = () =>
+        app.inject({
+          method: "POST",
+          url: prefix,
+          headers: { ...headers, "idempotency-key": randomUUID() },
+          payload: draft,
+        });
+      const outcomes = await Promise.all([last(), last()]);
+      const statuses = outcomes.map((response) => response.statusCode).sort();
+      assert.deepEqual(statuses, [201, 409]);
+      const rejected = outcomes.find((response) => response.statusCode === 409);
+      assert.deepEqual(rejected?.json(), { error: "catalog-capacity-reached" });
+      const full = await app.inject({ method: "GET", url: prefix, headers });
+      assert.equal(full.statusCode, 200);
+      assert.equal(full.json().services.length, 100);
+      const replayAtCapacity = await submit();
+      assert.equal(replayAtCapacity.statusCode, 200);
+      assert.deepEqual(replayAtCapacity.json().service, a);
 
       // A revoked permission also denies committed receipt replay.
       // Permission reduction denies even a still-valid authenticated bearer.

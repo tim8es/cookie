@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import type { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/opaque-sessions.js";
+import type { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/index.js";
 
 /**
  * HMAC-verified, pre-linked owner/staff exchange. Explicit opt-in only.
