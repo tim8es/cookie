@@ -5,6 +5,9 @@ import test from "node:test";
 
 import { Pool } from "pg";
 
+import sharp from "sharp";
+
+import { postgresAppearanceAssetOwnership } from "../../../packages/appearance-asset-adapter/src/index.js";
 import { createBrandConfig } from "../../../packages/domain-appearance/src/index.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { linkVerifiedTelegramOwner } from "../../../packages/platform-identity/src/link-telegram-owner.js";
@@ -16,6 +19,7 @@ import {
 import { provisionOwnerWorkspace } from "../../../packages/platform-identity/src/provision-owner-workspace.js";
 import { createApp } from "../src/app.js";
 import { registerRealAppearanceRoutes } from "../src/appearance-http.js";
+import { registerPrivateAppearanceAssetRoutes } from "../src/appearance-assets-http.js";
 
 const BOT = "123456789:synthetic_appearance_not_real_bot";
 const SECRET = Buffer.alloc(32, 0x4b);
@@ -68,7 +72,16 @@ test(
       ttlSeconds: 900,
     });
     const app = createApp(pool, { telegramAuthRoutes: { sessions } });
-    registerRealAppearanceRoutes(app, { pool, verifier: sessions });
+    registerRealAppearanceRoutes(app, {
+      pool,
+      verifier: sessions,
+      assets: postgresAppearanceAssetOwnership,
+    });
+    registerPrivateAppearanceAssetRoutes(app, {
+      pool,
+      verifier: sessions,
+      quota: { maxAssets: 1, maxBytes: 2 * 1024 * 1024 },
+    });
     const disabled = createApp(pool);
     const draftOnly = createApp(pool, {
       appearanceDraftRoutes: { pool, verifier: sessions },
@@ -109,6 +122,86 @@ test(
       assert.equal(exchange.statusCode, 201);
       const token: string = exchange.json().accessToken;
       const headers = { authorization: "Bearer " + token };
+      const uploadUrl = prefix + "/assets/logo";
+      const raw = await sharp({
+        create: { width: 3, height: 2, channels: 3, background: "red" },
+      })
+        .jpeg()
+        .toBuffer();
+      const uploadHeaders = { ...headers, "content-type": "image/jpeg" };
+      const upload = (payload: Buffer, target = uploadUrl) =>
+        app.inject({
+          method: "POST",
+          url: target,
+          headers: uploadHeaders,
+          payload,
+        });
+      assert.equal(
+        (
+          await disabled.inject({
+            method: "POST",
+            url: uploadUrl,
+            headers: uploadHeaders,
+            payload: raw,
+          })
+        ).statusCode,
+        404,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "POST",
+            url: uploadUrl,
+            headers: { "content-type": "image/jpeg" },
+            payload: raw,
+          })
+        ).statusCode,
+        401,
+      );
+      assert.equal((await upload(Buffer.from("bad"))).statusCode, 400);
+      const accepted = await upload(raw);
+      assert.equal(accepted.statusCode, 200, accepted.body);
+      const assetId: string = accepted.json().asset.id;
+      assert.deepEqual((await upload(raw)).json(), accepted.json());
+      const exhausted = await upload(raw, prefix + "/assets/background");
+      assert.equal(exhausted.statusCode, 409);
+      assert.equal(exhausted.json().error, "appearance-storage-quota");
+      const assetUrl = uploadUrl + "/" + assetId;
+      const fetched = await app.inject({ method: "GET", url: assetUrl, headers });
+      assert.equal(fetched.statusCode, 200);
+      assert.equal(fetched.headers["content-type"], "image/png");
+      assert.equal(fetched.headers["cache-control"], "no-store");
+      assert.equal(fetched.headers["x-content-type-options"], "nosniff");
+      assert.equal((await sharp(fetched.rawPayload).metadata()).format, "png");
+      assert.equal(
+        (await app.inject({ method: "GET", url: assetUrl })).statusCode,
+        401,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url: prefix + "/assets/background/" + assetId,
+            headers,
+          })
+        ).statusCode,
+        404,
+      );
+      const otherTenant = randomUUID();
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url:
+              "/v1/organizations/" +
+              otherTenant +
+              "/appearance/assets/logo/" +
+              assetId,
+            headers,
+          })
+        ).statusCode,
+        403,
+      );
       const read = () => app.inject({ method: "GET", url, headers });
       const initial = await read();
       assert.equal(initial.statusCode, 200);
@@ -125,23 +218,35 @@ test(
       });
       assert.equal(saved.statusCode, 200);
       assert.deepEqual(saved.json(), { draft: { revision: 1, config } });
+      const linkedConfig = { ...config, logoAssetId: assetId };
+      const linked = await app.inject({
+        method: "PUT",
+        url,
+        headers,
+        payload: { expectedRevision: 1, config: linkedConfig },
+      });
+      assert.equal(linked.statusCode, 200);
+      assert.deepEqual(linked.json().draft, {
+        revision: 2,
+        config: linkedConfig,
+      });
       const publish = () =>
         app.inject({
           method: "POST",
           url: prefix + "/publish",
           headers,
-          payload: { expectedRevision: 1 },
+          payload: { expectedRevision: 2 },
         });
       const disabledPublish = await draftOnly.inject({
         method: "POST",
         url: prefix + "/publish",
         headers,
-        payload: { expectedRevision: 1 },
+        payload: { expectedRevision: 2 },
       });
       assert.equal(disabledPublish.statusCode, 404);
       const published = await publish();
       assert.equal(published.statusCode, 200);
-      assert.equal(published.json().published.revision, 1);
+      assert.equal(published.json().published.revision, 2);
       assert.equal(published.headers["cache-control"], "no-store");
       const foreign = await app.inject({
         method: "GET",
@@ -157,7 +262,22 @@ test(
       );
       assert.equal((await publish()).statusCode, 403);
       assert.equal((await read()).statusCode, 200);
+      await pool.query(
+        `UPDATE cookie_identity.roles
+            SET permissions=array_remove(permissions, 'appearance.manage')
+          WHERE tenant_id=$1::uuid`,
+        [owner.tenantId],
+      );
+      assert.equal((await upload(raw)).statusCode, 403);
+      assert.equal(
+        (await app.inject({ method: "GET", url: assetUrl, headers })).statusCode,
+        200,
+      );
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
+      assert.equal(
+        (await app.inject({ method: "GET", url: assetUrl, headers })).statusCode,
+        401,
+      );
       assert.equal((await read()).statusCode, 401);
     } finally {
       await draftOnly.close();

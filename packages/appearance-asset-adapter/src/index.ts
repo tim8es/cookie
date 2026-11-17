@@ -226,3 +226,10 @@ export async function deleteUnusedAppearanceAsset(
 export { AppearanceCodecFailure } from "./codec-errors.js";
 export type { AppearanceCodecFailureCode } from "./codec-errors.js";
 export { normalizeAppearanceImage } from "./codec-process.js";
+
+export {
+  AppearanceStorageQuotaExceeded,
+  storeAppearanceAssetWithinQuota,
+  validateAppearanceStorageQuota,
+} from "./quota.js";
+export type { AppearanceStorageQuota } from "./quota.js";
