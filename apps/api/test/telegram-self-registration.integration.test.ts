@@ -382,6 +382,10 @@ test(
           [ownerIdentityId],
         );
         await pool.query(
+          "DELETE FROM cookie_tenancy.locations WHERE tenant_id=$1::uuid",
+          [tenantId],
+        );
+        await pool.query(
           "DELETE FROM cookie_tenancy.organizations WHERE id=$1::uuid",
           [tenantId],
         );
