@@ -49,10 +49,8 @@ test("booking capability is opt-in and requires exact response", async () => {
 test("lost response retries the original selection and key", async () => {
   const requests: Array<{ key: string | null; body: unknown }> = [];
   const fetcher: typeof fetch = async (url, init) => {
-    assert.equal(
-      url,
-      "/v1/organizations/" + tenant + "/staging-customer-bookings",
-    );
+    const expected = "/v1/organizations/" + tenant;
+    assert.equal(url, expected + "/staging-customer-bookings");
     assert.equal(init?.method, "POST");
     assert.equal(init?.redirect, "error");
     assert.equal(init?.credentials, "omit");
@@ -81,19 +79,16 @@ test("lost response retries the original selection and key", async () => {
 });
 
 test("a successful but wrong HTTP status or time never confirms", async () => {
-  const wrongStatusFetcher = async () => Response.json(receipt);
+  const wrongStatusFetch = async () => Response.json(receipt);
   const wrongStatus = customerBookingAttempt(
     session,
     "stable-key",
-    wrongStatusFetcher,
+    wrongStatusFetch,
   );
   assert.equal((await wrongStatus.submit(selection)).phase, "error");
-  const wrongTime = customerBookingAttempt(
-    session,
-    "stable-key",
-    async () =>
-      Response.json({ ...receipt, startAt: receipt.endAt }, { status: 201 }),
-  );
+  const wrongReceipt = { ...receipt, startAt: receipt.endAt };
+  const wrongFetch = async () => Response.json(wrongReceipt, { status: 201 });
+  const wrongTime = customerBookingAttempt(session, "stable-key", wrongFetch);
   assert.equal((await wrongTime.submit(selection)).phase, "error");
 });
 
