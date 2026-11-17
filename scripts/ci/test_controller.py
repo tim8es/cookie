@@ -1,3 +1,5 @@
+import base64
+import json
 import unittest
 from unittest.mock import Mock, patch
 
@@ -106,6 +108,50 @@ class ControllerContract(unittest.TestCase):
         c.reconcile(record, "quality", self.select())
         self.assertEqual(record["suites"]["quality"]["phase"], "obsolete")
         self.assertEqual(c.status.call_args.args[2], "error")
+
+
+    @patch.object(ctl.time, "time", return_value=1001)
+    def test_dispatch_to_reconcile_roundtrip_without_credentials(self, _):
+        c, record = self.controller("new")
+        c.submit = ctl.Controller.submit.__get__(c)
+        c.source = self.source
+        c.registry = "example/registry"
+        c.registry_token = "synthetic"
+        c.ref = "main"
+        c.snapshot.return_value = self.select()
+        c.run_api.return_value = {"workflow_run_id": 42}
+        job = "e" * 32
+        digest = "f" * 64
+        with patch.object(ctl.secrets, "token_hex", return_value=job), patch.object(ctl.ci, "api") as api:
+            c.reconcile(record, "quality", self.select())
+            c.run_api.assert_called_once_with(
+                "/actions/workflows/universal.yml/dispatches", "POST",
+                {"ref": "main", "inputs": {"job_id": job}})
+            manifest = json.loads(base64.b64decode(api.call_args.args[3]["content"]))
+            self.assertEqual(manifest, ctl.ci.manifest(self.source, self.merge, "quality"))
+            self.assertEqual(record["suites"]["quality"]["phase"], "running")
+            self.assertEqual(c.status.call_args.args[2], "pending")
+
+            c.run_api.return_value = {
+                "id": 42, "status": "completed", "conclusion": "success",
+                "event": "workflow_dispatch", "head_branch": "main",
+                "path": ".github/workflows/universal.yml", "run_attempt": 1,
+            }
+            api.return_value = {
+                "tag_name": job, "draft": False,
+                "body": json.dumps({"schema": 1, "jobId": job, "commit": self.merge,
+                                    "suite": "quality", "exitCode": 0, "runId": 42,
+                                    "runAttempt": 1, "archiveSha256": digest}),
+                "assets": [{"name": "evidence.zip", "size": 10, "state": "uploaded",
+                            "digest": "sha256:" + digest}],
+            }
+            c.reconcile(record, "quality", self.select())
+            self.assertEqual(record["suites"]["quality"]["phase"], "success")
+            self.assertEqual(c.status.call_args.args[2], "success")
+            self.assertEqual(c.status.call_args.kwargs["evidence_job"], job)
+            c.run_api.reset_mock()
+            c.reconcile(record, "quality", self.select())
+            c.run_api.assert_not_called()
 
 
 if __name__ == "__main__":
