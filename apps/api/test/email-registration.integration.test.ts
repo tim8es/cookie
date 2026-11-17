@@ -11,6 +11,7 @@ import {
   issueEmailRegistrationChallenge,
 } from "../../../packages/platform-identity/src/email-registration.js";
 import { verifyPassword } from "../../../packages/platform-identity/src/password-crypto.js";
+import { PasswordWorkGate } from "../../../packages/platform-identity/src/password-work-gate.js";
 
 test(
   "email registration consumes proof once and creates exactly one verified identity",
@@ -31,6 +32,7 @@ test(
       .update(expiredEmail, "utf8")
       .digest();
     const password = "synthetic registration password";
+    const passwordWork = new PasswordWorkGate(2);
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
       const first = await issueEmailRegistrationChallenge(
@@ -62,8 +64,8 @@ test(
         ),
       );
       const results = await Promise.all([
-        completeEmailRegistration(transaction, first.token, password),
-        completeEmailRegistration(transaction, second.token, password),
+        completeEmailRegistration(transaction, passwordWork, first.token, password),
+        completeEmailRegistration(transaction, passwordWork, second.token, password),
       ]);
       const identities = results.filter((result) => result !== null);
       assert.equal(identities.length, 1);
@@ -88,11 +90,11 @@ test(
         0,
       );
       assert.equal(
-        await completeEmailRegistration(transaction, first.token, password),
+        await completeEmailRegistration(transaction, passwordWork, first.token, password),
         null,
       );
       assert.equal(
-        await completeEmailRegistration(transaction, "invalid", password),
+        await completeEmailRegistration(transaction, passwordWork, "invalid", password),
         null,
       );
 
@@ -118,7 +120,7 @@ test(
         [expiredFingerprint],
       );
       assert.equal(
-        await completeEmailRegistration(transaction, expired.token, password),
+        await completeEmailRegistration(transaction, passwordWork, expired.token, password),
         null,
       );
       assert.equal(
