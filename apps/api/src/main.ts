@@ -19,8 +19,11 @@ const stagingCustomerBookingEnabled = parseStagingPublicationMode(
 if (stagingCustomerBookingEnabled && !stagingPublicationEnabled) {
   throw new Error("Staging customer booking requires staging publication");
 }
-const stagingCancellationCutoff = parseStagingCancellationCutoff(process.env.COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES);
-if (stagingCancellationCutoff !== undefined && !stagingPublicationEnabled) throw new Error("Staging cancellation requires staging publication");
+const stagingCancellationCutoff = parseStagingCancellationCutoff(
+  process.env.COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES,
+);
+if (stagingCancellationCutoff !== undefined && !stagingPublicationEnabled)
+  throw new Error("Staging cancellation requires staging publication");
 const pool = new Pool({
   connectionString: config.databaseUrl,
   application_name: "cookie-api",
@@ -49,7 +52,16 @@ const app = createApp(pool, {
           verifier: telegramSessions,
           enabled: stagingCustomerBookingEnabled,
         },
-        ...(stagingCancellationCutoff === undefined ? {} : { stagingCustomerCancellationRoutes: { pool, verifier: telegramSessions, enabled: true, cutoffMinutes: stagingCancellationCutoff } }),
+        ...(stagingCancellationCutoff === undefined
+          ? {}
+          : {
+              stagingCustomerCancellationRoutes: {
+                pool,
+                verifier: telegramSessions,
+                enabled: true,
+                cutoffMinutes: stagingCancellationCutoff,
+              },
+            }),
         sessionRoutes: {
           verifier: telegramSessions,
           policy: postgresTenantPolicyGuard(pool),
