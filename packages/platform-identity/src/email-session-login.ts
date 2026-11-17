@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 import { withVerifiedEmailPassword } from "./email-login.js";
 import type { IdentitySessions } from "./identity-sessions.js";
-import type { PasswordWorkGate } from "./password-work.js";
+import type { PasswordWorkGate } from "./password-work-gate.js";
 
 type Transaction = <T>(work: (client: PoolClient) => Promise<T>) => Promise<T>;
 
