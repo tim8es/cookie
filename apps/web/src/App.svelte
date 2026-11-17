@@ -25,6 +25,7 @@
   import BookingSetupHint from "./lib/ui/BookingSetupHint.svelte";
   import DemoState from "./lib/ui/DemoState.svelte";
   import OwnerAuthGate from "./lib/ui/OwnerAuthGate.svelte";
+  import StagingCustomerGate from "./lib/ui/StagingCustomerGate.svelte";
   import RealOwnerWorkspace from "./lib/ui/RealOwnerWorkspace.svelte";
   import {
     authenticateTelegramOwner,
@@ -39,6 +40,8 @@
   import "./visual-system.css";
 
   const api = createCookieUiApi();
+  // Presentation selection is not a trusted tenant or role claim.
+  const customerSurface = api.mode === "api" && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "customer-staging";
   // Presentation-only Telegram-sized preview; no Telegram API, initData or auth.
   const telegramPreview = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "telegram-preview";
   const blank: DemoSnapshot = { organization: null, appearance: { ...defaultSalonAppearance }, locations: [], services: [], staff: [], schedules: [], bookings: [] };
@@ -99,8 +102,9 @@
 
   onMount(() => {
     ownerMounted = true;
-    void reload();
-    if (api.mode === "api") void authenticateOwner();
+    if (api.mode === "api") {
+      if (!customerSurface) void authenticateOwner();
+    } else void reload();
     return () => {
       ownerMounted = false;
       stopOwnerExpiry?.();
@@ -341,7 +345,7 @@
 </script>
 
 <svelte:head>
-  <title>{api.mode === "api" ? "Cookie — кабинет салона" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
+  <title>{customerSurface ? "Cookie — вход клиента (staging)" : api.mode === "api" ? "Cookie — кабинет салона" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
   <meta name="description" content={api.mode === "api" ? "Cookie: защищённый кабинет услуг и мастеров." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
 </svelte:head>
 
@@ -368,7 +372,9 @@
         onDismissNotice={() => notice = ""}
       />
       {#if api.mode === "api"}
-        {#if ownerAuthPhase === "verified" && ownerSession}
+        {#if customerSurface}
+          <StagingCustomerGate />
+        {:else if ownerAuthPhase === "verified" && ownerSession}
           <RealOwnerWorkspace session={ownerSession} onLogout={() => void logoutOwner()} />
         {:else}
           <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />

@@ -257,3 +257,11 @@ export { validateLocalMinute } from "./local-minute.js";
 export { PublishShiftFailure } from "./publish-shift.js";
 export { listStagingPublishedShifts, publishStagingShift } from "./staging-shift-publication.js";
 export { previewStagingAvailability, PreviewUnavailable, type AvailabilitySelection } from "./staging-availability.js";
+
+/** Protected owner planning commands; never publish or enable booking. */
+export {
+  createOwnerShiftPlan,
+  DraftShiftFailure,
+  type OwnerShiftPlanInput,
+} from "./draft-shift.js";
+export { listOwnerShiftPlans } from "./owner-shift-plans.js";

@@ -5,12 +5,13 @@
   import RealOwnerStaffPage from "./RealOwnerStaffPage.svelte";
   import RealOwnerLocationsPage from "./RealOwnerLocationsPage.svelte";
   import RealOwnerSchedulePage from "./RealOwnerSchedulePage.svelte";
+  import RealOwnerCalendarPage from "./RealOwnerCalendarPage.svelte";
   import RealOwnerOverviewPage from "./RealOwnerOverviewPage.svelte";
 
   export let session: VerifiedOwnerSession;
   export let onLogout: () => void;
 
-  let section: "overview" | "services" | "staff" | "locations" | "schedule" = "services";
+  let section: "overview" | "services" | "staff" | "locations" | "schedule" | "calendar" = "services";
 </script>
 
 <nav class="real-owner-nav" aria-label="Разделы кабинета владельца">
@@ -44,6 +45,7 @@
     aria-current={section === "schedule" ? "page" : undefined}
     onclick={() => (section = "schedule")}
   >Расписание</Button>
+  <Button type="button" variant={section === "calendar" ? "default" : "outline"} aria-current={section === "calendar" ? "page" : undefined} onclick={() => (section = "calendar")}>Календарь</Button>
   <Button type="button" variant="outline" onclick={onLogout}>Выйти</Button>
 </nav>
 {#if section === "overview"}
@@ -59,6 +61,8 @@
   <RealOwnerStaffPage {session} onOpenServices={() => (section = "services")} />
 {:else if section === "locations"}
   <RealOwnerLocationsPage {session} />
+{:else if section === "calendar"}
+  <RealOwnerCalendarPage {session} />
 {:else}
   <RealOwnerSchedulePage {session} onOpenStaff={() => (section = "staff")} />
 {/if}
