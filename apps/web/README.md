@@ -14,7 +14,7 @@ pnpm dev:web
 
 For the product-shaped local demo, run `pnpm demo:local` from the repository root (Docker/Chrome required). It starts the same authenticated API and Svelte runtime on a disposable synthetic database with a populated sample catalog. See [manual staging and demo](../../docs/operations/manual-real-staging.md).
 
-Open **http://127.0.0.1:5173/demo** only for a legacy developer UI-test fixture. Its data lives only in the synthetic browser-local adapter. Root **http://127.0.0.1:5173/** is the API-backed application; without the compiled runtime and verified Telegram session, it remains on its authentication gate. It never falls back to demo. The compiled API server does not serve `/demo` or its subroutes (404); the mock route remains a static dev/test fixture only, pending removal.
+For the legacy developer UI-test fixture only, run `pnpm --filter @cookie/web dev:fixture` and open **http://127.0.0.1:5173/demo**. Its data lives only in the synthetic browser-local adapter. Root **http://127.0.0.1:5173/** is the API-backed application; without the compiled runtime and verified Telegram session, it remains on its authentication gate. It never falls back to demo. The compiled API server does not serve `/demo` or its subroutes (404); the mock route remains a separately built dev/test fixture only, pending removal. Normal runtime builds reject mock controller/adapter modules; fixture builds write to `.tmp/ui-fixture-dist`, never `dist`.
 
 For real manual staging, build the runtime with `pnpm build:runtime` and follow the [staging operations runbook](../../docs/operations/staging-local-altare.md); run `pnpm staging:local` in the integrated checkout (see [manual staging](../../docs/operations/manual-real-staging.md)). Protected pages share the same sidebar and header as the demo. Calendar, catalog, staff, locations and schedule use their existing server adapters; appearance and owner-originated booking show an explicit unavailable state until the corresponding protected flows exist. The customer staging surface requires a separate verified customer session at `/?surface=customer-staging`.
 
@@ -56,7 +56,7 @@ keyboard-scrollable within its own region rather than overflowing the page.
 **Change the screen only:** `src/lib/ui/OnboardingScreen.svelte`,
 `OwnerOverview.svelte`, `BookingForm.svelte`, `BookingSummary.svelte`,
 `CalendarView.svelte` and the owner forms contain screen presentation.
-`App.svelte` orchestrates state and synthetic adapter actions. The four owner
+`LegacyFixture.svelte` orchestrates state and synthetic adapter actions only for fixture builds. The four owner
 list+editor pages now live in standalone `Owner*Page.svelte` files and the
 confirmation/feedback flow in `BookingConfirmation.svelte` and `DemoState.svelte`.
 
@@ -73,7 +73,8 @@ the 39-screenshot Chromium browser smoke across desktop and mobile.
 
 ## Folder ownership / layering
 
-- `src/App.svelte`: shared UI state/orchestration across owner and public flows (no backend rules), with versioned slot-request guard against stale responses.
+- `src/App.svelte`: authenticated real owner/customer runtime, used for both demo and real data.
+- `src/LegacyFixture.svelte`: temporary UI regression fixture, with versioned slot-request guard against stale responses; excluded from runtime build.
 - `src/lib/navigation.ts`: typed, shared screen navigation metadata.
 - `src/lib/ui/Sidebar.svelte`: owner navigation with accessible onboarding progress.
 - `src/lib/ui/Topbar.svelte`: demo-mode ribbon, workspace controls and preview states.
@@ -128,12 +129,12 @@ Repo-wide `pnpm lint`, `pnpm format:check` and GitHub F1 quality gate remain app
 ## Automated Chromium browser smoke (CI)
 
 The repository F1 workflow runs `node apps/web/scripts/browser-smoke.mjs`
-**after** `pnpm --filter @cookie/web build`, using a headless Chrome/Chromium
+**after** `pnpm --filter @cookie/web build:fixture`, using a headless Chrome/Chromium
 binary already installed on the GitHub Ubuntu runner. Node.js 26 provides the
 native WebSocket client for Chrome DevTools; no Playwright, extra npm packages
 or remote browser provider are required.
 
-To execute locally, run `pnpm build:web`, then
+To execute locally, run `pnpm --filter @cookie/web build:fixture`, then
 `node apps/web/scripts/browser-smoke.mjs`; install Chrome/Chromium if absent,
 or set `COOKIE_BROWSER_BINARY` to its executable path.
 
