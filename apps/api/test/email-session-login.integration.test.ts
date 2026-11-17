@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 import { Pool } from "pg";
@@ -29,6 +29,14 @@ test(
     const email = randomUUID() + "@example.invalid";
     const fingerprint = emailFingerprint(secret, email);
     const password = "synthetic session password";
+    const limits = {
+      windowSeconds: 3600,
+      accountAttempts: 10,
+      sourceAttempts: 10,
+    };
+    const source = randomBytes(32);
+    const unknownEmail = randomUUID() + "@example.invalid";
+    const unknownFingerprint = emailFingerprint(secret, unknownEmail);
     const gate = new PasswordWorkGate(1);
     const issuer = "cookie-email";
     const sessions = new IdentitySessions(pool, issuer, "cookie-web", 900);
@@ -68,15 +76,17 @@ test(
           address,
           candidate,
           sessions,
+          limits,
+          source,
         );
 
-      assert.equal(await login(email, "incorrect"), null);
-      const unknownEmail = randomUUID() + "@example.invalid";
-      assert.equal(await login(unknownEmail, password), null);
+      assert.deepEqual(await login(email, "incorrect"), { status: "denied" });
+      assert.deepEqual(await login(unknownEmail, password), { status: "denied" });
       assert.equal(await countSessions(), 0);
 
       const session = await login(email, password);
-      assert.ok(session);
+      assert.equal(session.status, "authenticated");
+      if (session.status !== "authenticated") assert.fail("Expected session");
       assert.match(session.token, /^is_[A-Za-z0-9_-]{43}$/);
       assert.equal(await sessions.resolve(session.token), identityId);
       assert.equal(await otherAudience.resolve(session.token), null);
@@ -107,7 +117,7 @@ test(
         runSqlTransaction(pool, async (client) => {
           const value = await work(client);
           calls += 1;
-          if (calls === 2) throw new Error("synthetic rollback");
+          if (calls === 3) throw new Error("synthetic rollback");
           return value;
         });
       await assert.rejects(
@@ -118,16 +128,35 @@ test(
           email,
           password,
           sessions,
+          limits,
+          source,
         ),
         /synthetic rollback/,
       );
-      assert.equal(calls, 2);
+      assert.equal(calls, 3);
+      assert.equal(await countSessions(), 1);
+
+      const blocked = await loginEmailPassword(
+        transaction,
+        gate,
+        secret,
+        email,
+        password,
+        sessions,
+        { ...limits, sourceAttempts: 1 },
+        source,
+      );
+      assert.deepEqual(blocked, { status: "throttled" });
       assert.equal(await countSessions(), 1);
 
       await sessions.revoke(session.token);
       assert.equal(await sessions.resolve(session.token), null);
     } finally {
       try {
+        await pool.query(
+          "DELETE FROM cookie_identity.email_login_attempts WHERE subject_hmac_sha256 IN ($1,$2,$3)",
+          [source, fingerprint, unknownFingerprint],
+        );
         if (identityId) {
           await pool.query(
             "DELETE FROM cookie_identity.identity_sessions WHERE identity_id=$1::uuid",
