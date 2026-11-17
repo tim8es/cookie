@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   ServiceApiFailure,
   createRealService,
+  editRealService,
   readRealServices,
 } from "./services-api";
 import type { VerifiedOwnerSession } from "./owner-auth";
@@ -22,6 +23,7 @@ const record = {
   durationMinutes: 60,
   basePriceKopecks: 150000,
   active: false,
+  revision: 0,
   createdAt: "2026-11-16T20:00:00.000Z",
 };
 
@@ -136,4 +138,41 @@ test("expired credential fails before network and never uses mock data", async (
       reason instanceof ServiceApiFailure && reason.reason === "unauthorized",
   );
   assert.equal(calls.length, 0);
+});
+
+test("edit sends an expected revision and key, accepts only exact inactive receipt", async () => {
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const draft = { displayName: "Updated synthetic haircut", durationMinutes: 45,
+    basePriceKopecks: 120050, expectedRevision: 0 };
+  const updated = { ...record, displayName: draft.displayName, durationMinutes: 45,
+    basePriceKopecks: 120050, revision: 1 };
+  assert.deepEqual(await editRealService(session, SERVICE, draft, KEY,
+    mock(Response.json({ service: updated }), calls)), updated);
+  assert.equal(calls[0]?.url, "/v1/organizations/" + TENANT + "/services/" + SERVICE);
+  assert.equal(calls[0]?.init.method, "PATCH");
+  assert.deepEqual(JSON.parse(String(calls[0]?.init.body)), draft);
+  assert.equal((calls[0]?.init.headers as Record<string,string>)["idempotency-key"], KEY);
+  for (const invalid of [
+    { ...updated, id: TENANT }, { ...updated, active: true },
+    { ...updated, revision: 2 }, { ...updated, basePriceKopecks: 120051 },
+  ]) {
+    await assert.rejects(editRealService(session, SERVICE, draft, KEY,
+      mock(Response.json({ service: invalid }), [])),
+      (error: unknown) => error instanceof ServiceApiFailure && error.reason === "invalid-response");
+  }
+});
+
+test("stale edit and unavailable draft cannot overwrite current data", async () => {
+  const draft = { displayName: record.displayName, durationMinutes: 45,
+    basePriceKopecks: 100000, expectedRevision: 0 };
+  for (const [status, code, reason] of [
+    [409,"stale-revision","stale-revision"],
+    [409,"idempotency-conflict","conflict"],
+    [404,"draft-unavailable","draft-unavailable"],
+    [403,"forbidden","unauthorized"],
+  ] as const) {
+    await assert.rejects(editRealService(session, SERVICE, draft, KEY,
+      mock(Response.json({ error: code }, { status }), [])),
+      (error: unknown) => error instanceof ServiceApiFailure && error.reason === reason);
+  }
 });
