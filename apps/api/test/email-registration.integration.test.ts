@@ -25,6 +25,11 @@ test(
       .update("cookie-email-address-v1\0", "utf8")
       .update(email, "utf8")
       .digest();
+    const expiredEmail = randomUUID() + "@example.invalid";
+    const expiredFingerprint = createHmac("sha256", secret)
+      .update("cookie-email-address-v1\0", "utf8")
+      .update(expiredEmail, "utf8")
+      .digest();
     const password = "synthetic registration password";
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
@@ -91,29 +96,48 @@ test(
         null,
       );
 
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT 1 FROM cookie_identity.email_registration_challenges WHERE email_hmac_sha256=$1",
+            [fingerprint],
+          )
+        ).rowCount,
+        0,
+      );
+
       const expired = await issueEmailRegistrationChallenge(
         transaction,
         secret,
-        email,
+        expiredEmail,
         300,
       );
       assert.ok(expired);
       await pool.query(
         "UPDATE cookie_identity.email_registration_challenges SET created_at=clock_timestamp()-interval '2 hours',expires_at=clock_timestamp()-interval '1 hour' WHERE email_hmac_sha256=$1",
-        [fingerprint],
+        [expiredFingerprint],
       );
       assert.equal(
         await completeEmailRegistration(transaction, expired.token, password),
         null,
       );
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT 1 FROM cookie_identity.email_credentials WHERE email_hmac_sha256=$1",
+            [expiredFingerprint],
+          )
+        ).rowCount,
+        0,
+      );
     } finally {
       await pool.query(
-        "DELETE FROM cookie_identity.email_registration_challenges WHERE email_hmac_sha256=$1",
-        [fingerprint],
+        "DELETE FROM cookie_identity.email_registration_challenges WHERE email_hmac_sha256 IN ($1,$2)",
+        [fingerprint, expiredFingerprint],
       );
       const removed = await pool.query<{ identity_id: string }>(
-        "DELETE FROM cookie_identity.email_credentials WHERE email_hmac_sha256=$1 RETURNING identity_id::text",
-        [fingerprint],
+        "DELETE FROM cookie_identity.email_credentials WHERE email_hmac_sha256 IN ($1,$2) RETURNING identity_id::text",
+        [fingerprint, expiredFingerprint],
       );
       for (const row of removed.rows) {
         await pool.query(
