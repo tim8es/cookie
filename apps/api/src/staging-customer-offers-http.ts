@@ -31,7 +31,9 @@ export function registerStagingCustomerOffers(
     action: (client: PoolClient, actor: TrustedActor) => Promise<unknown>,
   ) {
     try {
-      return reply.send(await runSqlTransaction(pool, client => action(client, actor)));
+      return reply.send(
+        await runSqlTransaction(pool, (client) => action(client, actor)),
+      );
     } catch (error) {
       if (error instanceof AuthorizationDeniedError)
         return reply.code(403).send({ error: "forbidden" });

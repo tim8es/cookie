@@ -255,8 +255,15 @@ export function evaluateAvailableStart(
 export { resolveLocalMinute } from "./local-minute.js";
 export { validateLocalMinute } from "./local-minute.js";
 export { PublishShiftFailure } from "./publish-shift.js";
-export { listStagingPublishedShifts, publishStagingShift } from "./staging-shift-publication.js";
-export { previewStagingAvailability, PreviewUnavailable, type AvailabilitySelection } from "./staging-availability.js";
+export {
+  listStagingPublishedShifts,
+  publishStagingShift,
+} from "./staging-shift-publication.js";
+export {
+  previewStagingAvailability,
+  PreviewUnavailable,
+  type AvailabilitySelection,
+} from "./staging-availability.js";
 
 /** Protected owner planning commands; never publish or enable booking. */
 export {

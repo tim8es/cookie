@@ -31,8 +31,14 @@ export function registerStagingCustomerContext(
         );
         return reply.send(context);
       } catch (error) {
-        return reply.code(error instanceof AuthorizationDeniedError ? 403 : 503)
-          .send({ error: error instanceof AuthorizationDeniedError ? "forbidden" : "unavailable" });
+        return reply
+          .code(error instanceof AuthorizationDeniedError ? 403 : 503)
+          .send({
+            error:
+              error instanceof AuthorizationDeniedError
+                ? "forbidden"
+                : "unavailable",
+          });
       }
     },
   );

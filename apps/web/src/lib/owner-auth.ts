@@ -146,7 +146,11 @@ export async function authenticateTelegramOwner(
   fetcher: typeof fetch = globalThis.fetch,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): Promise<VerifiedOwnerSession> {
-  const session = await exchangeTelegramSession(rawInitData, fetcher, nowSeconds);
+  const session = await exchangeTelegramSession(
+    rawInitData,
+    fetcher,
+    nowSeconds,
+  );
   try {
     const context = await request(
       fetcher,
