@@ -702,10 +702,16 @@ async function main() {
     cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
       if (request.url.startsWith(origin + "v1/")) demoApiRequests.push(new URL(request.url).pathname);
     });
+    for (const path of ["demo", "demo/", "demo?browser-smoke=1", "demo/example"]) {
+      const result = await getLocal(origin + path);
+      assert.equal(result.status, 404, "Legacy fixture exposed by compiled API: " + path);
+      assert.doesNotMatch(result.text, /<html/i);
+    }
     script = await load(cdp, origin + "demo", signedProof(botToken, userId), script);
-    await requireDom(cdp, "explicit demo route uses demo shell even in runtime build", "document.querySelector(\'[data-cookie-mode=mock] .welcome-form\')");
-    assert.deepEqual(demoApiRequests, [], "Demo called real API");
-    assert.deepEqual(external, [], "Demo made external requests");
+    await requireDom(cdp, "legacy route no longer serves an application",
+      "location.pathname==='/demo' && document.readyState==='complete' && !document.querySelector('[data-cookie-mode]')");
+    assert.deepEqual(demoApiRequests, [], "Retired demo route called real API");
+    assert.deepEqual(external, [], "Retired demo route made external requests");
     console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation and own cancellation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
   } finally {
     if (cdp) cdp.close();
