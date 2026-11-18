@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 
 import { createBookingInternal } from "../../../packages/domain-booking/src/create.js";
 import { disableShiftInternal } from "../../../packages/domain-scheduling/src/disable-shift.js";
@@ -204,6 +204,54 @@ test(
         [tenant, draftA],
       );
       assert.equal(stillDraft.rows[0]?.active, false);
+
+      // PostgreSQL returns ROLLBACK to COMMIT on an aborted transaction.
+      // The command must not report publication or return that connection
+      // to the pool as healthy, and an ordinary same-key retry must work.
+      const acknowledgements: string[] = [];
+      const faultPool = {
+        async connect(): Promise<PoolClient> {
+          const physical = await pool.connect();
+          return {
+            async query(sql: string, params?: unknown[]): Promise<unknown> {
+              if (sql === "COMMIT") {
+                await assert.rejects(physical.query("SELECT 1 / 0"), {
+                  code: "22012",
+                });
+                const result = await physical.query(sql, params);
+                acknowledgements.push(result.command);
+                return result;
+              }
+              return physical.query(sql, params);
+            },
+            release(discard?: boolean): void {
+              acknowledgements.push(discard ? "discard" : "reuse");
+              physical.release(discard);
+            },
+          } as unknown as PoolClient;
+        },
+      } as unknown as Pool;
+      await assert.rejects(
+        publishShiftInternal(faultPool, command, allow),
+        /SQL transaction did not commit/,
+      );
+      assert.deepEqual(acknowledgements, ["ROLLBACK", "discard"]);
+      const afterAbort = await pool.query(
+        `SELECT
+           (SELECT active FROM cookie_scheduling.shift_windows
+             WHERE tenant_id=$1::uuid AND id=$2::uuid) AS active,
+           (SELECT count(*)::int FROM cookie_scheduling.shift_publish_receipts
+             WHERE tenant_id=$1::uuid) AS receipts,
+           (SELECT count(*)::int FROM cookie_scheduling.shift_publish_audit
+             WHERE tenant_id=$1::uuid) AS audits,
+           (SELECT count(*)::int FROM cookie_jobs.outbox_events
+             WHERE tenant_id=$1::uuid AND topic='schedule.shift.published')
+             AS events`,
+        [tenant, draftA],
+      );
+      assert.deepEqual(afterAbort.rows, [
+        { active: false, receipts: 0, audits: 0, events: 0 },
+      ]);
 
       let policyCalls = 0;
       const syntheticAllow = async (): Promise<void> => {

@@ -2,9 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
-import { enqueueOutbox } from "../../platform-db/src/outbox.js";
-import type { TrustedActor } from "../../platform-identity/src/authorization.js";
-import { requireTenantPermission } from "../../platform-identity/src/postgres.js";
+import {
+  enqueueOutbox,
+  runSqlTransaction,
+} from "../../platform-db/src/index.js";
+import {
+  requireTenantPermission,
+  type TrustedActor,
+} from "../../platform-identity/src/index.js";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -143,12 +148,7 @@ export async function publishShiftInternal(
         : [input.shiftId],
     ),
   );
-  const client = transactionClient ?? (await pool.connect());
-  const ownsTransaction = transactionClient === undefined;
-  let active = false;
-  try {
-    if (ownsTransaction) await client.query("BEGIN");
-    active = true;
+  const work = async (client: PoolClient): Promise<PublishedShiftReceipt> => {
 
     // Never let a request supply or override the authoritative staff/branch.
     const initial = await client.query<ShiftRow>(
@@ -232,8 +232,6 @@ export async function publishShiftInternal(
     if (previous) {
       if (previous.request_sha256 !== requestHash) reject("SHIFT_KEY_REUSED");
       if (staging && !shift.active) reject("SHIFT_TARGET_UNAVAILABLE");
-      if (ownsTransaction) await client.query("COMMIT");
-      active = false;
       return previous.result;
     }
 
@@ -373,15 +371,9 @@ export async function publishShiftInternal(
       ],
     );
 
-    if (ownsTransaction) await client.query("COMMIT");
-    active = false;
     return receipt;
-  } catch (error) {
-    if (active && ownsTransaction) {
-      await client.query("ROLLBACK").catch(() => undefined);
-    }
-    throw error;
-  } finally {
-    if (ownsTransaction) client.release();
-  }
+  };
+  return transactionClient
+    ? work(transactionClient)
+    : runSqlTransaction(pool, work);
 }
