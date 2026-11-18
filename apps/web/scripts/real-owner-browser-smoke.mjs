@@ -379,6 +379,7 @@ async function main() {
     await viewport(cdp,375,812);
 
     script = await load(cdp, origin, "", script);
+    await evaluate(cdp, "window.Telegram.WebApp.initData='synthetic-browser-only';const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>String(input)==='/v1/auth/telegram/identity'?Promise.resolve(new Response(null,{status:503})):nativeFetch(input,init);");
     await enterTelegram(cdp, "business");
     await requireDom(cdp, "regular-browser Mini App guidance",
       "document.body.innerText.includes('Откройте Mini App из бота в Telegram, чтобы войти этим способом.')");
