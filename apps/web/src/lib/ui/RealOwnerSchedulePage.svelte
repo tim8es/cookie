@@ -201,7 +201,7 @@
 
 <div class="section-head">
   <div>
-    <span class="eyebrow">COOKIE / РАБОЧЕЕ ВРЕМЯ</span>
+    <span class="eyebrow">kuki / РАБОЧЕЕ ВРЕМЯ</span>
     <h1>Расписание</h1>
     <p>Планирование будущих смен в часовом поясе филиала. Черновики не открывают запись клиентам.</p>
   </div>

@@ -354,6 +354,7 @@ async function main() {
     await requireDom(cdp, "authenticated real services",
       "document.querySelector('.real-owner-nav') && document.body.innerText.includes('Услуги салона')");
     await requireDom(cdp, "shared owner shell without demo controls", "document.querySelector(\'.verified-owner-shell[data-cookie-mode=api] .sidebar\') && !document.querySelector(\'.demo-ribbon, .preview-control, .onboarding-header\')");
+    await requireDom(cdp, "canonical runtime owner brand", "document.querySelector('.sidebar .brand strong')?.textContent.trim() === 'kuki.' && document.querySelector('.nav-links')?.getAttribute('aria-label') === 'Разделы kuki' && document.title === 'kuki — кабинет салона'");
     await button(cdp, "Оформление");
     await requireDom(cdp, "real appearance draft loaded", "document.querySelector('.brand-editor') && document.body.innerText.includes('Только черновик') && document.querySelector('.brand-presets button')");
     await checkWidth(cdp, "real appearance 375px");
@@ -702,10 +703,16 @@ async function main() {
     cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
       if (request.url.startsWith(origin + "v1/")) demoApiRequests.push(new URL(request.url).pathname);
     });
+    for (const path of ["demo", "demo/", "demo?browser-smoke=1", "demo/example"]) {
+      const result = await getLocal(origin + path);
+      assert.equal(result.status, 404, "Legacy fixture exposed by compiled API: " + path);
+      assert.doesNotMatch(result.text, /<html/i);
+    }
     script = await load(cdp, origin + "demo", signedProof(botToken, userId), script);
-    await requireDom(cdp, "explicit demo route uses demo shell even in runtime build", "document.querySelector(\'[data-cookie-mode=mock] .welcome-form\')");
-    assert.deepEqual(demoApiRequests, [], "Demo called real API");
-    assert.deepEqual(external, [], "Demo made external requests");
+    await requireDom(cdp, "legacy route no longer serves an application",
+      "location.pathname==='/demo' && document.readyState==='complete' && !document.querySelector('[data-cookie-mode]')");
+    assert.deepEqual(demoApiRequests, [], "Retired demo route called real API");
+    assert.deepEqual(external, [], "Retired demo route made external requests");
     console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation and own cancellation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
   } finally {
     if (cdp) cdp.close();

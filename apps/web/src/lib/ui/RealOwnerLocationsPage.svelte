@@ -113,7 +113,7 @@
 
 <div class="section-head">
   <div>
-    <span class="eyebrow">COOKIE / ЗАЩИЩЁННЫЙ КАБИНЕТ</span>
+    <span class="eyebrow">kuki / ЗАЩИЩЁННЫЙ КАБИНЕТ</span>
     <h1>Филиалы</h1>
     <p>Адреса и графики добавляются отдельно. У каждого филиала свой реальный часовой пояс.</p>
   </div>
