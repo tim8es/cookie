@@ -27,7 +27,7 @@
     {:else if kind === "empty"}<SearchX size={27}/>
     {:else}<Building2 size={27}/>{/if}
   </div>
-  <span class="feedback-overline">COOKIE / ДЕМОНСТРАЦИЯ</span>
+  <span class="feedback-overline">kuki / ДЕМОНСТРАЦИЯ</span>
   <h2>{title}</h2>
   <p>{description}</p>
   <Button type="button" size="lg" class="feedback-action" onclick={onPrimary}>
