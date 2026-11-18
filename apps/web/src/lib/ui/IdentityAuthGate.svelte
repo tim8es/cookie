@@ -75,6 +75,7 @@
   let linkEmail = "";
   let error = "";
   let notice = authNotice;
+  $: if (authNotice) notice = authNotice;
   let emailLinkRequested = false;
   let stopIdentityExpiry: (() => void) | null = null;
   let workspaceRetry: {
