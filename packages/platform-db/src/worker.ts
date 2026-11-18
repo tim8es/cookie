@@ -280,7 +280,8 @@ async function runBoundedOutboxBatch(
       let work: Promise<HandlerOutcome>;
       try {
         handlerStarted = true;
-        work = Promise.resolve(handler(lease, handlerController.signal)).then(
+        const invoked = handler(lease, handlerController.signal);
+        work = Promise.resolve(invoked).then(
           (): HandlerOutcome => "completed",
           (): HandlerOutcome => "failed",
         );

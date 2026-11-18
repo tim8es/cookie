@@ -34,7 +34,8 @@ test(
       );
 
       for (const mode of ["abort", "lose-ack"] as const) {
-        const topic = "qa.dispatchcommit." + mode;
+        const topic =
+          mode === "abort" ? "qa.dispatchcommit.abort" : "qa.dispatchcommit.lost";
         const writer = await pool.connect();
         let first: string;
         let second: string;
