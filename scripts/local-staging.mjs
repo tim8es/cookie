@@ -23,6 +23,7 @@ const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 // Disposable demo and CI never read/write the operator's persistent QA state.
 const mode = resolveLocalStagingMode(process.argv.slice(2), process.env.CI);
 const { verification, disposable, demo } = mode;
+let localStagingPhase = "initialization";
 const parent = join(root, ".tmp");
 if (disposable) mkdirSync(parent, { recursive: true, mode: 0o700 });
 const folder = disposable
@@ -337,7 +338,6 @@ async function main() {
   if (command === "stop" && !existsSync(settings)) return;
   const lock = openSync(lockPath, "wx", 0o600);
   let state, api, chrome, profile, cdp, input;
-  let phase = "initialization";
   let interrupted = false;
   let composeAttempted = false;
   const closeInput = () => { interrupted = true; input?.close(); };
@@ -348,7 +348,7 @@ async function main() {
   process.on("SIGTERM", closeInput);
   try {
     state = await loadState();
-    phase = "validate compiled runtime and browser";
+    localStagingPhase = "validate compiled runtime and browser";
     if (command === "stop") {
       compose(state, ["stop"]);
       return;
@@ -361,7 +361,7 @@ async function main() {
     const binary = browser();
     checkInterrupted();
     composeAttempted = true;
-    phase = "start disposable PostgreSQL";
+    localStagingPhase = "start disposable PostgreSQL";
     compose(state, ["up", "-d", "--wait"]);
     const databaseUrl = "postgresql://cookie:" + state.password +
       "@127.0.0.1:" + state.dbPort + "/cookie_manual";
@@ -374,7 +374,7 @@ async function main() {
       }, 30000);
     } finally { await readiness.end(); }
     checkInterrupted();
-    phase = "seed synthetic identities and workspace";
+    localStagingPhase = "seed synthetic identities and workspace";
     const workspace = await seed(state, databaseUrl);
     const { tenantId } = workspace;
     checkInterrupted();
@@ -382,7 +382,7 @@ async function main() {
     const origin = "http://127.0.0.1:" + port;
     const env = Object.fromEntries(Object.entries(process.env)
       .filter(([key]) => !/^(COOKIE_|DATABASE_URL$|PG|NODE_OPTIONS$)/i.test(key)));
-    phase = "start compiled API";
+    localStagingPhase = "start compiled API";
     api = child(process.execPath, ["dist/apps/api/src/main.js"], {
       ...env, HOST: "127.0.0.1", PORT: String(port),
       DATABASE_URL: databaseUrl, COOKIE_WEB_DIST: join(root, "apps/web/dist"),
@@ -406,7 +406,7 @@ async function main() {
       example = await seedDemoCatalog(origin, proof(state), workspace);
     }
     checkInterrupted();
-    phase = "launch isolated Chromium";
+    localStagingPhase = "launch isolated Chromium";
     profile = mkdtempSync(join(tmpdir(), "cookie-manual-chrome-"));
     chrome = child(binary, [
       "--user-data-dir=" + profile, "--remote-debugging-address=127.0.0.1",
@@ -435,13 +435,13 @@ async function main() {
       });
     }
     checkInterrupted();
-    phase = "authenticate synthetic owner";
+    localStagingPhase = "authenticate synthetic owner";
     await signIn(cdp, origin, state);
     checkInterrupted();
     if (verification) {
-      phase = "verify authenticated owner catalog";
+      localStagingPhase = "verify authenticated owner catalog";
       const marker = await verifySharedCatalog(cdp, databaseUrl, tenantId, example);
-      phase = "authenticate synthetic client";
+      localStagingPhase = "authenticate synthetic client";
       await signIn(cdp, origin, state, "client");
       await poll("actual cancellation capability", () => cancellationResponses.includes(cutoff === undefined ? 404 : 200));
       const policyText = cutoff === undefined ? "Отмена в тестовом режиме недоступна." : "более чем " + cutoff + " мин.";
@@ -449,10 +449,10 @@ async function main() {
       await requireDom(cdp, "actual client workspace without owner navigation", "document.querySelector(\'[aria-label=\\\"Клиентский вход staging\\\"]\') && !document.querySelector(\'.real-owner-nav\')");
       if (example) {
         if (cutoff === undefined) throw new Error("Demo lifecycle verification requires explicit synthetic cutoff");
-        phase = "verify synthetic booking lifecycle";
+        localStagingPhase = "verify synthetic booking lifecycle";
         await verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example);
       }
-      phase = "verify unauthenticated runtime and legacy-route closure";
+      localStagingPhase = "verify unauthenticated runtime and legacy-route closure";
       await cdp.send("Page.navigate", { url: origin + "/" });
       await requireDom(cdp, "no owner authorization without fresh signed proof",
         "document.querySelector('[data-cookie-mode=api] .identity-auth-page') && !document.querySelector('.verified-owner-shell') && !document.querySelector('.sidebar')");
@@ -461,7 +461,7 @@ async function main() {
         assert.equal(legacy.status, 404, "Legacy fixture must not be served by the real runtime");
         assert.doesNotMatch(legacy.text, /<html/i);
       }
-      phase = "re-authenticate synthetic owner";
+      localStagingPhase = "re-authenticate synthetic owner";
       await signIn(cdp, origin, state, "owner");
       await requireDom(cdp, "shared catalog survives role switch and fresh authentication",
         "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(marker) + ")");
@@ -526,6 +526,6 @@ async function main() {
 }
 
 main().catch(() => {
-  console.error(`Local staging failed during ${phase}. Check Node 26, Docker, Chrome/Edge, build:runtime and local ports. No credentials logged.`);
+  console.error(`Local staging failed during ${localStagingPhase}. Check Node 26, Docker, Chrome/Edge, build:runtime and local ports. No credentials logged.`);
   process.exitCode = 1;
 });
