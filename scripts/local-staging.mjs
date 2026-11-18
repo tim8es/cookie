@@ -382,6 +382,7 @@ async function main() {
       ...env, HOST: "127.0.0.1", PORT: String(port),
       DATABASE_URL: databaseUrl, COOKIE_WEB_DIST: join(root, "apps/web/dist"),
       COOKIE_TELEGRAM_AUTH_MODE: "enabled",
+      COOKIE_TELEGRAM_SELF_REGISTRATION_MODE: "enabled",
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
       COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled",
       ...(cutoff === undefined ? {} : { COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: String(cutoff) }),
