@@ -411,9 +411,16 @@ async function main() {
     assert.equal(onboardingRows.rowCount,1);
     assert.equal(onboardingRows.rows[0].time_zone,"Europe/Moscow");
 
+    const browserAuthResponsesBefore = responses.length;
     script = await load(cdp, origin, "", script);
+    await poll("regular browser auth methods response", () =>
+      responses.slice(browserAuthResponsesBefore).some((r) => r.path === "/v1/auth/methods" && r.status === 200),
+    );
+    await button(cdp, "Я представляю бизнес");
+    await requireDom(cdp, "single regular-browser Telegram action",
+      "!document.body.innerText.includes('email и пароль') && [...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Войти через Telegram').length===1");
     await evaluate(cdp, "window.Telegram.WebApp.initData='synthetic-browser-only';window.__cookieTelegramAuthRequests=[];const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const path=new URL(String(input),window.location.href).pathname;if(path==='/v1/auth/telegram/oidc/start'){window.__cookieTelegramAuthRequests.push(path);return Promise.resolve(new Response(null,{status:503}));}return nativeFetch(input,init);};");
-    await enterTelegram(cdp, "business");
+    await button(cdp, "Войти через Telegram");
     await requireDom(cdp, "regular browser starts Telegram Web authorization",
       "window.__cookieTelegramAuthRequests.length===1 && window.__cookieTelegramAuthRequests[0]==='/v1/auth/telegram/oidc/start' && document.body.innerText.includes('Сервер недоступен или не подтвердил действие. Попробуйте ещё раз.')");
 
