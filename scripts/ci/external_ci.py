@@ -67,6 +67,33 @@ def private_repo(token, repo):
     return repo
 
 
+def executor_sha():
+    expected = os.environ.get("CI_EXECUTION_SHA", "")
+    if not SHA.fullmatch(expected):
+        raise ValueError("Approved executor SHA required")
+    return expected
+
+
+def verify_executor_ref(token, runner, expected):
+    if not SHA.fullmatch(expected):
+        raise ValueError("Approved executor SHA required")
+    ref = api(token, "/repos/" + require_slug(runner) + "/git/ref/heads/main")
+    if not isinstance(ref, dict) or ref.get("object", {}).get("sha") != expected:
+        raise ValueError("Executor main differs from reviewed revision")
+
+
+def valid_run(run, run_id, expected):
+    return (
+        isinstance(expected, str) and SHA.fullmatch(expected) is not None
+        and isinstance(run, dict) and type(run.get("id")) is int
+        and run["id"] == run_id and run.get("event") == "workflow_dispatch"
+        and run.get("head_branch") == "main" and run.get("head_sha") == expected
+        and isinstance(run.get("path"), str)
+        and run["path"].split("@")[0] == ".github/workflows/universal.yml"
+        and type(run.get("run_attempt")) is int and run["run_attempt"] == 1
+    )
+
+
 def manifest(source, commit, suite):
     if not SHA.fullmatch(commit) or suite not in SUITES:
         raise ValueError("Invalid CI request")
@@ -218,6 +245,8 @@ def dispatch(source, commit):
     registry = private_repo(registry_token, os.environ["CI_REGISTRY_REPO"])
     evidence = private_repo(evidence_token, os.environ["CI_EVIDENCE_REPO"])
     runner = require_slug(os.environ["CI_EXECUTION_REPO"])
+    expected_executor = executor_sha()
+    verify_executor_ref(runner_token, runner, expected_executor)
     if len({r.lower() for r in (source, registry, evidence, runner)}) != 4:
         raise ValueError("Separate trust destinations required")
     ref = os.environ.get("CI_REGISTRY_REF", "main")
@@ -244,8 +273,9 @@ def dispatch(source, commit):
             encoded = base64.b64encode(json.dumps(manifest(source, commit, suite)).encode()).decode()
             api(registry_token, "/repos/" + registry + "/contents/jobs/" + job + ".json",
                 "PUT", {"message": "Create execution request", "content": encoded, "branch": ref})
+            verify_executor_ref(runner_token, runner, expected_executor)
             result = api(runner_token, "/repos/" + runner + "/actions/workflows/universal.yml/dispatches",
-                         "POST", {"ref": "main", "inputs": {"job_id": job}})
+                         "POST", {"ref": "main", "inputs": {"job_id": job}, "return_run_details": True})
             run_id = result.get("workflow_run_id") if isinstance(result, dict) else None
             if type(run_id) is not int or run_id < 1:
                 raise ValueError("No verified run ID returned")
@@ -258,14 +288,14 @@ def dispatch(source, commit):
             for suite in tuple(pending):
                 job, run_id = runs[suite]
                 run = api(runner_token, "/repos/" + runner + "/actions/runs/" + str(run_id))
-                if run.get("id") != run_id or run.get("event") != "workflow_dispatch":
+                if not valid_run(run, run_id, expected_executor):
                     raise ValueError("Unexpected workflow run")
                 if run.get("status") != "completed":
                     continue
                 passed = False
                 if run.get("conclusion") == "success":
                     release = api(evidence_token, "/repos/" + evidence + "/releases/tags/" + job)
-                    passed = valid_evidence(release, job, commit, suite, run_id, run.get("run_attempt"))
+                    passed = valid_evidence(release, job, commit, suite, run_id, 1)
                 status(suite, "success" if passed else "failure",
                        "Verified private evidence" if passed else "Execution or evidence failed")
                 failed |= not passed

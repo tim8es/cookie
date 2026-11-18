@@ -80,6 +80,7 @@ class Controller:
         self.registry = ci.private_repo(self.registry_token, os.environ["CI_REGISTRY_REPO"])
         self.evidence = ci.private_repo(self.evidence_token, os.environ["CI_EVIDENCE_REPO"])
         self.runner = ci.require_slug(os.environ["CI_EXECUTION_REPO"])
+        self.executor_sha = ci.executor_sha()
         if len({s.lower() for s in (self.source, self.registry, self.evidence, self.runner)}) != 4:
             raise ValueError("Separate repositories required")
         self.ref = os.environ.get("CI_REGISTRY_REF", "main")
@@ -161,17 +162,20 @@ class Controller:
         # are not retried automatically, including after a controller crash.
         item["phase"] = "submitting"
         item["job"] = secrets.token_hex(16)
+        item["executor_sha"] = self.executor_sha
         self.save()
         try:
             self.status(record, suite, "pending", "Awaiting verified external CI")
+            ci.verify_executor_ref(self.runner_token, self.runner, item["executor_sha"])
             encoded = base64.b64encode(json.dumps(ci.manifest(
                 self.source, record["commit"], suite)).encode()).decode()
             ci.api(self.registry_token, "/repos/" + self.registry + "/contents/jobs/" +
                    item["job"] + ".json", "PUT", {
                        "message": "Create execution request", "content": encoded, "branch": self.ref,
                    })
+            ci.verify_executor_ref(self.runner_token, self.runner, item["executor_sha"])
             result = self.run_api("/actions/workflows/universal.yml/dispatches", "POST", {
-                "ref": "main", "inputs": {"job_id": item["job"]},
+                "ref": "main", "inputs": {"job_id": item["job"]}, "return_run_details": True,
             })
             run_id = result.get("workflow_run_id") if isinstance(result, dict) else None
             if type(run_id) is not int or run_id < 1:
@@ -215,10 +219,7 @@ class Controller:
                 return
             passed = False
             evidence_job = None
-            if (run.get("id") == item["run"] and run.get("event") == "workflow_dispatch"
-                    and run.get("head_branch") == "main"
-                    and run.get("path", "").split("@")[0] == ".github/workflows/universal.yml"
-                    and run.get("run_attempt") == 1):
+            if ci.valid_run(run, item["run"], item.get("executor_sha")):
                 try:
                     release = ci.api(self.evidence_token, "/repos/" + self.evidence +
                                      "/releases/tags/" + item["job"])

@@ -55,11 +55,14 @@ class ControllerContract(unittest.TestCase):
         c.run_api = Mock()
         c.submit = Mock()
         c.snapshot = Mock()
+        c.executor_sha = "d" * 40
+        c.runner = "example/executor"
+        c.runner_token = "synthetic"
         c.evidence_token = "synthetic"
         c.evidence = "example/results"
         record = {"pr": 7, "head": self.head, "base": self.base,
                   "commit": self.merge, "created": 1000,
-                  "suites": {"quality": {"phase": phase, "run": 42, "job": "f" * 32}}}
+                  "suites": {"quality": {"phase": phase, "run": 42, "job": "f" * 32, "executor_sha": c.executor_sha}}}
         return c, record
 
     @patch.object(ctl.time, "time", return_value=1001)
@@ -123,11 +126,11 @@ class ControllerContract(unittest.TestCase):
         c.run_api.return_value = {"workflow_run_id": 42}
         job = "e" * 32
         digest = "f" * 64
-        with patch.object(ctl.secrets, "token_hex", return_value=job), patch.object(ctl.ci, "api") as api:
+        with patch.object(ctl.secrets, "token_hex", return_value=job), patch.object(ctl.ci, "verify_executor_ref"), patch.object(ctl.ci, "api") as api:
             c.reconcile(record, "quality", self.select())
             c.run_api.assert_called_once_with(
                 "/actions/workflows/universal.yml/dispatches", "POST",
-                {"ref": "main", "inputs": {"job_id": job}})
+                {"ref": "main", "inputs": {"job_id": job}, "return_run_details": True})
             manifest = json.loads(base64.b64decode(api.call_args.args[3]["content"]))
             self.assertEqual(manifest, ctl.ci.manifest(self.source, self.merge, "quality"))
             self.assertEqual(record["suites"]["quality"]["phase"], "running")
@@ -136,7 +139,7 @@ class ControllerContract(unittest.TestCase):
             c.run_api.return_value = {
                 "id": 42, "status": "completed", "conclusion": "success",
                 "event": "workflow_dispatch", "head_branch": "main",
-                "path": ".github/workflows/universal.yml", "run_attempt": 1,
+                "path": ".github/workflows/universal.yml", "run_attempt": 1, "head_sha": c.executor_sha,
             }
             api.return_value = {
                 "tag_name": job, "draft": False,
@@ -154,11 +157,11 @@ class ControllerContract(unittest.TestCase):
             c.reconcile(record, "quality", self.select())
             c.run_api.assert_not_called()
 
-    def test_private_repo_uses_only_private_self_hosted_runner(self):
+    def test_private_self_hosted_runner_requires_explicit_cutover(self):
         workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/f1-ci.yml").read_text()
-        selector = "runs-on: ${{ github.event.repository.private && 'cookie-ci-private' || 'ubuntu-latest' }}"
+        selector = "runs-on: ${{ github.event.repository.private && vars.F1_EXECUTION_BACKEND == 'self-hosted' && 'cookie-ci-private' || 'ubuntu-latest' }}"
         self.assertEqual(workflow.count(selector), 3)
-        self.assertNotIn("vars.F1_EXECUTION_BACKEND", workflow)
+        self.assertIn("bash scripts/ci/f1-gates.sh pg17_restore", workflow)
 
 
 if __name__ == "__main__":

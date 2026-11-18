@@ -18,7 +18,7 @@ permissions:
 jobs:
   build-and-test:
     name: Types, lint, unit, PostgreSQL integration, web build
-    runs-on: ${{ github.event.repository.private && 'cookie-ci-private' || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.F1_EXECUTION_BACKEND == 'self-hosted' && 'cookie-ci-private' || 'ubuntu-latest' }}
     timeout-minutes: 15
     services:
       postgres:
@@ -109,7 +109,7 @@ jobs:
 
   staging-runtime:
     name: Compiled staging Compose / persistent PostgreSQL / fail-closed web
-    runs-on: ${{ github.event.repository.private && 'cookie-ci-private' || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.F1_EXECUTION_BACKEND == 'self-hosted' && 'cookie-ci-private' || 'ubuntu-latest' }}
     timeout-minutes: 20
     permissions:
       contents: read
@@ -124,7 +124,7 @@ jobs:
 
   postgres17-compatibility:
     name: PostgreSQL 17 migration and transaction compatibility (Altare)
-    runs-on: ${{ github.event.repository.private && 'cookie-ci-private' || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.F1_EXECUTION_BACKEND == 'self-hosted' && 'cookie-ci-private' || 'ubuntu-latest' }}
     timeout-minutes: 18
     permissions:
       contents: read
@@ -162,3 +162,5 @@ jobs:
         run: bash scripts/ci/f1-gates.sh pg17_verify
       - name: Run real PG17 migrations and integration regression
         run: bash scripts/ci/f1-gates.sh integration
+      - name: Synthetic PostgreSQL 17 backup, restore and Booking replay
+        run: bash scripts/ci/f1-gates.sh pg17_restore
