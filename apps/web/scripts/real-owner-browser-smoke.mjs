@@ -155,11 +155,7 @@ async function enterTelegram(cdp, role) {
     await requireDom(cdp, "business role choice", "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я представляю бизнес')");
     await button(cdp, "Я представляю бизнес");
   }
-  const methodDescription = role === "business"
-    ? "Доступные способы входа: Telegram Mini App."
-    : "Клиентский вход: Telegram Mini App.";
-  await requireDom(cdp, "enabled Telegram-only method", "document.body.innerText.includes(" + JSON.stringify(methodDescription) + ") && !document.body.innerText.includes('email и пароль')");
-  await requireDom(cdp, "single Telegram login action", "[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Войти через Telegram').length===1");
+  await requireDom(cdp, "single Telegram-only login action", "!document.body.innerText.includes('email и пароль') && [...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Войти через Telegram').length===1");
   await button(cdp, "Войти через Telegram");
 }
 
@@ -416,10 +412,10 @@ async function main() {
     assert.equal(onboardingRows.rows[0].time_zone,"Europe/Moscow");
 
     script = await load(cdp, origin, "", script);
-    await evaluate(cdp, "window.Telegram.WebApp.initData='synthetic-browser-only';const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>String(input)==='/v1/auth/telegram/identity'?Promise.resolve(new Response(null,{status:503})):nativeFetch(input,init);");
+    await evaluate(cdp, "window.Telegram.WebApp.initData='synthetic-browser-only';window.__cookieTelegramAuthRequests=[];const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const path=new URL(String(input),window.location.href).pathname;if(path==='/v1/auth/telegram/oidc/start'){window.__cookieTelegramAuthRequests.push(path);return Promise.resolve(new Response(null,{status:503}));}return nativeFetch(input,init);};");
     await enterTelegram(cdp, "business");
-    await requireDom(cdp, "regular-browser Mini App guidance",
-      "document.body.innerText.includes('Откройте Mini App из бота в Telegram, чтобы войти этим способом.')");
+    await requireDom(cdp, "regular browser starts Telegram Web authorization",
+      "window.__cookieTelegramAuthRequests.length===1 && window.__cookieTelegramAuthRequests[0]==='/v1/auth/telegram/oidc/start' && document.body.innerText.includes('Сервер недоступен или не подтвердил действие. Попробуйте ещё раз.')");
 
     // Malformed proof must not show authenticated UI or a synthetic fallback.
     script = await load(cdp, origin, "invalid-synthetic-proof", script);
