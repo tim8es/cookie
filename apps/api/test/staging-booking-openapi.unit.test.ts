@@ -20,14 +20,9 @@ interface Operation {
   operationId: string;
   responses: Record<string, HandlerResponse>;
 }
+const contractPath = "packages/contracts/openapi/f1-staging-customer-v1.json";
 const spec = JSON.parse(
-  readFileSync(
-    resolve(
-      process.cwd(),
-      "packages/contracts/openapi/f1-staging-customer-v1.json",
-    ),
-    "utf8",
-  ),
+  readFileSync(resolve(process.cwd(), contractPath), "utf8"),
 ) as { paths: Record<string, Partial<Record<"get" | "post", Operation>>> };
 
 const tenant = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -74,9 +69,8 @@ const cases = [
 type RouteCase = (typeof cases)[number];
 
 function operation(item: RouteCase): Operation {
-  const op = spec.paths[prefix + item.route]?.[
-    item.method === "GET" ? "get" : "post"
-  ];
+  const method = item.method === "GET" ? "get" : "post";
+  const op = spec.paths[prefix + item.route]?.[method];
   assert.ok(op);
   return op;
 }
@@ -97,7 +91,7 @@ function payload(item: RouteCase): object | undefined {
     : {};
 }
 
-test("documented customer Booking routes are opt-in and fail closed", async () => {
+test("customer Booking routes are opt-in and fail closed", async () => {
   let databaseCalls = 0;
   const pool = {
     async connect() {
@@ -158,8 +152,8 @@ test("documented customer Booking routes are opt-in and fail closed", async () =
         assert.equal(response.statusCode, status, op.operationId);
         const contract = op.responses[String(status)];
         assert.ok(contract);
-        const codes =
-          contract.content["application/json"].schema.properties.error.enum;
+        const schema = contract.content["application/json"].schema;
+        const codes = schema.properties.error.enum;
         assert.ok(codes.includes(error));
         assert.deepEqual(response.json(), { error });
         for (const [name, header] of Object.entries(contract.headers)) {
@@ -181,8 +175,7 @@ test("documented customer Booking routes are opt-in and fail closed", async () =
       if (hasInvalidRequest) {
         const invalid = await app.inject({
           ...input,
-          url:
-            input.url + (input.url.includes("?") ? "&" : "?") + "unexpected=1",
+          url: input.url + (input.url.includes("?") ? "&" : "?") + "unexpected=1",
           headers: { authorization, "idempotency-key": key },
         });
         check(400, "invalid-request", invalid);
