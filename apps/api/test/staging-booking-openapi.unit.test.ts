@@ -7,6 +7,7 @@ import test from "node:test";
 import type { Pool } from "pg";
 
 import { createApp } from "../src/app.js";
+import { assertSchema } from "./staging-booking-contract.js";
 
 interface HandlerResponse {
   headers: Record<string, { schema: { const: string } }>;
@@ -173,9 +174,10 @@ test("customer Booking routes are opt-in and fail closed", async () => {
       );
       const hasInvalidRequest = Object.hasOwn(op.responses, "400");
       if (hasInvalidRequest) {
+        const separator = input.url.includes("?") ? "&" : "?";
         const invalid = await app.inject({
           ...input,
-          url: input.url + (input.url.includes("?") ? "&" : "?") + "unexpected=1",
+          url: input.url + separator + "unexpected=1",
           headers: { authorization, "idempotency-key": key },
         });
         check(400, "invalid-request", invalid);
@@ -196,4 +198,28 @@ test("customer Booking routes are opt-in and fail closed", async () => {
     await app.close();
     await disabled.close();
   }
+});
+test("staging schema assertions reject incompatible response shapes", () => {
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["bookingId", "status"],
+    properties: {
+      bookingId: { $ref: "#/components/schemas/Uuid" },
+      status: { const: "Confirmed" },
+    },
+  };
+  const good = { bookingId: booking, status: "Confirmed" };
+  assert.doesNotThrow(() => assertSchema(schema, good));
+  for (const invalid of [
+    { bookingId: booking },
+    { ...good, customerId: identity },
+    { ...good, bookingId: "invalid" },
+    { ...good, status: "Pending" },
+  ]) {
+    assert.throws(() => assertSchema(schema, invalid));
+  }
+  assert.throws(() =>
+    assertSchema({ type: "string", format: "date-time" }, "2027-02-30"),
+  );
 });
