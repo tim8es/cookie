@@ -201,6 +201,8 @@ export function registerTelegramOidcAuth(
       .update(request.ip, "utf8")
       .digest();
 
+    let operation: "reserve-source" | "cleanup-expired-state" | "insert-state" =
+      "reserve-source";
     try {
       const admitted = await transaction(async (client) => {
         const admission = await reserveEmailLoginAttempt(
@@ -210,6 +212,7 @@ export function registerTelegramOidcAuth(
           null,
         );
         if (!admission) return false;
+        operation = "cleanup-expired-state";
         await client.query(
           `WITH expired AS (
              SELECT state_sha256
@@ -220,6 +223,7 @@ export function registerTelegramOidcAuth(
            DELETE FROM cookie_identity.telegram_oidc_authorizations AS authorization
            USING expired WHERE authorization.state_sha256=expired.state_sha256`,
         );
+        operation = "insert-state";
         await client.query(
           `INSERT INTO cookie_identity.telegram_oidc_authorizations
              (state_sha256,nonce_sha256,expires_at)
@@ -259,7 +263,18 @@ export function registerTelegramOidcAuth(
         /^[A-Z0-9_]{1,32}$/.test(reason.code)
           ? reason.code
           : "UNKNOWN";
-      request.log.warn({ code }, "Telegram OIDC state reservation failed");
+      const position =
+        typeof reason === "object" &&
+        reason !== null &&
+        "position" in reason &&
+        typeof reason.position === "string" &&
+        /^\d{1,6}$/.test(reason.position)
+          ? Number(reason.position)
+          : undefined;
+      request.log.warn(
+        { code, operation, position },
+        "Telegram OIDC state reservation failed",
+      );
       return reply.code(503).send({ error: "BACKEND_UNAVAILABLE" });
     } finally {
       source.fill(0);
