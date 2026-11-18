@@ -13,10 +13,6 @@
     "../../../packages/platform-identity/src/authorization.js",
     "../../../packages/platform-identity/src/postgres.js"
   ],
-  "apps/api/src/synthetic-worker-main.ts": [
-    "../../../packages/platform-db/src/delivery-port.js",
-    "../../../packages/platform-db/src/worker.js"
-  ],
   "apps/api/src/workspace-http.ts": [
     "../../../packages/platform-identity/src/authorization.js",
     "../../../packages/platform-identity/src/postgres.js"
