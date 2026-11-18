@@ -132,7 +132,7 @@
     identitySession = session;
     providers = null;
     organizations = [];
-    notice = "Вход подтверждён. Выберите, как пользоваться Cookie.";
+    notice = "Вход подтверждён. Выберите, как пользоваться kuki.";
     void refreshAccount();
     stopIdentityExpiry = watchOwnerSessionExpiry(
       session.expiresAtUnixSeconds,
@@ -478,7 +478,7 @@
 
 <section class="identity-auth-page" aria-labelledby="identity-auth-title">
   <div class="identity-auth-card">
-    <span class="identity-auth-overline">COOKIE / ПРОВЕРЕННЫЙ ВХОД</span>
+    <span class="identity-auth-overline">kuki / ПРОВЕРЕННЫЙ ВХОД</span>
     {#if identitySession && emailLinkToken}
       <h1 id="identity-auth-title">Подключить email</h1>
       <p>Введите пароль для нового email. Подтверждение завершится только для этой же учётной записи.</p>
@@ -488,7 +488,7 @@
         <Button type="submit" disabled={busy}>{busy ? "Подключаем…" : "Подтвердить email"}</Button>
       </form>
     {:else if identitySession}
-      <h1 id="identity-auth-title">Настройте Cookie</h1>
+      <h1 id="identity-auth-title">Настройте kuki</h1>
       <p>Одна учётная запись может использоваться для кабинета бизнеса или клиентской записи. Выберите нужный сценарий.</p>
 
       {#if !role}
@@ -612,7 +612,7 @@
       <p>{notice}</p>
       <Button variant="outline" onclick={() => page = "login"}>Перейти ко входу</Button>
     {:else}
-      <h1 id="identity-auth-title">{page === "register" ? "Создать учётную запись" : role === "customer" ? "Вход клиента" : "Вход в Cookie"}</h1>
+      <h1 id="identity-auth-title">{page === "register" ? "Создать учётную запись" : role === "customer" ? "Вход клиента" : "Вход в kuki"}</h1>
       <p>{role === "customer" ? "Для клиента доступен вход по email и паролю или Telegram." : "Войдите или зарегистрируйтесь. После входа можно подключить второй способ к той же учётной записи."}</p>
       {#if methodsLoading}
         <p role="status">Проверяем доступные способы входа…</p>

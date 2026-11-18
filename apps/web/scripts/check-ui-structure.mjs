@@ -72,6 +72,7 @@ for (const path of ["OnboardingScreen.svelte", "OwnerOverview.svelte", "BookingF
 const runtime = read("App.svelte");
 assert.match(runtime, /<RealOwnerWorkspace\b/, "Runtime must compose the real owner workspace");
 assert.match(runtime, /<StagingCustomerGate\b/, "Runtime must compose the real customer workspace");
+assert.match(runtime, /<IdentityAuthGate\b/, "Runtime must compose the self-service identity gate");
 assert.doesNotMatch(runtime, /createCookieUiApi|LegacyFixture|MockCookieApi|<DemoFooter\b/, "Runtime must not orchestrate the old mock");
 const app = read("LegacyFixture.svelte");
 assert.match(app, /<OnboardingScreen\b/, "App must compose the onboarding screen");
@@ -81,7 +82,6 @@ assert.match(app, /<CalendarView\b/, "App must compose the calendar");
 for (const name of ["OwnerServicesPage", "OwnerStaffPage", "OwnerSchedulePage", "OwnerLocationsPage", "BookingConfirmation", "DemoState", "PublicBookingHero", "DemoFooter", "DemoNotices", "BookingSetupHint"]) {
   assert.match(app, new RegExp("<" + name + "\\b"), "App must compose " + name + " instead of inline screen markup");
 }
-assert.match(app, /<IdentityAuthGate\b/, "API-mode identity flows must stay in a presentational gate");
 assert.ok(!app.includes('<div class="workspace-grid">'), "Owner screen markup belongs in separate Page components");
 assert.ok(!app.includes('<section class="booking-head booking-hero"'), "Public booking hero belongs in a presentation component");
 assert.ok(!app.includes('<footer class="footer"'), "Footer belongs in a presentation component");
