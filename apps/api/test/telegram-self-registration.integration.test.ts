@@ -69,7 +69,7 @@ async function waitForIdentitySessionRevocationWaiter(
       `SELECT count(*)::int AS count FROM pg_stat_activity
         WHERE application_name='cookie-telegram-identity-link'
           AND state='active' AND wait_event_type='Lock'
-          AND query LIKE 'UPDATE cookie_identity.identity_sessions SET revoked_at%'`,
+          AND query LIKE '%UPDATE cookie_identity.identity_sessions SET revoked_at%'`,
     );
     if (result.rows[0]?.count === 1) return;
     await new Promise((resolveWait) => setTimeout(resolveWait, 10));

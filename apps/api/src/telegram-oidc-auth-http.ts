@@ -250,7 +250,16 @@ export function registerTelegramOidcAuth(
           codeChallenge: challenge,
         }),
       });
-    } catch {
+    } catch (reason) {
+      const code =
+        typeof reason === "object" &&
+        reason !== null &&
+        "code" in reason &&
+        typeof reason.code === "string" &&
+        /^[A-Z0-9_]{1,32}$/.test(reason.code)
+          ? reason.code
+          : "UNKNOWN";
+      request.log.warn({ code }, "Telegram OIDC state reservation failed");
       return reply.code(503).send({ error: "BACKEND_UNAVAILABLE" });
     } finally {
       source.fill(0);

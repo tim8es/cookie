@@ -119,6 +119,7 @@ test(
       "SELECT clock_timestamp() AS now",
     );
     const app = createApp(pool, {
+      logger: true,
       telegramOidcRoutes: {
         pool,
         provider,
