@@ -27,6 +27,14 @@ export interface AuthMethods {
   readonly stagingCustomerEnrollment: boolean;
 }
 
+export function selectTelegramTransport(
+  methods: AuthMethods | null,
+  hasMiniAppProof: boolean,
+): "mini-app" | "web" | null {
+  if (methods?.telegramMiniApp && hasMiniAppProof) return "mini-app";
+  return methods?.telegramWebOidc ? "web" : null;
+}
+
 export interface IdentityProviders {
   readonly email: boolean;
   readonly telegram: boolean;

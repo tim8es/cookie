@@ -21,7 +21,10 @@ export {
   linkTrustedTelegramUser,
   linkSelfServiceTelegram,
 } from "./telegram-self-registration.js";
-export { createTelegramOidcProvider } from "./telegram-oidc.js";
+export {
+  createTelegramOidcProvider,
+  TelegramOidcUpstreamError,
+} from "./telegram-oidc.js";
 export type { TelegramOidcConfig } from "./telegram-oidc.js";
 export type { TelegramMiniAppProofVerifier } from "./telegram-init-data.js";
 export { telegramUserFingerprint } from "./telegram-links.js";

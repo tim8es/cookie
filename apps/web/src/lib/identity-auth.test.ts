@@ -9,6 +9,7 @@ import {
   IdentityAuthFailure,
   loginEmailPassword,
   loginTelegramMiniApp,
+  selectTelegramTransport,
   verifyStagingCustomerSession,
   type IdentityAuthSession,
 } from "./identity-auth.js";
@@ -40,6 +41,26 @@ test("auth method discovery is private and reports independently enabled provide
   });
   assert.equal(request?.cache, "no-store");
   assert.equal(request?.credentials, "omit");
+});
+
+test("Telegram uses one transport for the current environment", () => {
+  const both = {
+    email: false,
+    telegramMiniApp: true,
+    telegramWebOidc: true,
+    stagingCustomerEnrollment: false,
+  };
+  assert.equal(selectTelegramTransport(both, true), "mini-app");
+  assert.equal(selectTelegramTransport(both, false), "web");
+  assert.equal(
+    selectTelegramTransport({ ...both, telegramWebOidc: false }, false),
+    null,
+  );
+  assert.equal(
+    selectTelegramTransport({ ...both, telegramMiniApp: false }, true),
+    "web",
+  );
+  assert.equal(selectTelegramTransport(null, true), null);
 });
 
 test("email login rejects a malformed session instead of retaining a token", async () => {

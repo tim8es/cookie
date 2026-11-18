@@ -21,6 +21,7 @@
     requestEmailCredentialLink,
     requestEmailPasswordRecovery,
     requestEmailRegistration,
+    selectTelegramTransport,
     startTelegramOidc,
     verifyStagingCustomerSession,
     type AuthMethods,
@@ -30,6 +31,7 @@
   } from "../identity-auth.js";
   import {
     loadTelegramInitData,
+    readTelegramInitData,
     watchOwnerSessionExpiry,
     type VerifiedCustomerSession,
     type VerifiedOwnerSession,
@@ -54,6 +56,8 @@
   let page: Page = customerSurface ? "login" : "choose-role";
   let role: Role | null = customerSurface ? "customer" : null;
   let methods: AuthMethods | null = null;
+  let telegramInitData: string | null = null;
+  $: telegramTransport = selectTelegramTransport(methods, telegramInitData !== null);
   let identitySession: IdentityAuthSession | null = null;
   let providers: IdentityProviders | null = null;
   let organizations: IdentityOrganization[] = [];
@@ -107,14 +111,6 @@
       if (reason.reason === "registration-pending") return "Проверьте почту и завершите регистрацию по ссылке из письма.";
     }
     return "Сервер недоступен или не подтвердил действие. Попробуйте ещё раз.";
-  }
-
-  function availableMethodsLabel(): string {
-    const labels: string[] = [];
-    if (methods?.email) labels.push("email и пароль");
-    if (methods?.telegramMiniApp) labels.push("Telegram Mini App");
-    if (methods?.telegramWebOidc) labels.push("Telegram Web");
-    return labels.join(" или ") || "не настроены";
   }
 
   function utcOffsetLabel(timeZoneId: string): string {
@@ -176,7 +172,12 @@
     try {
       acceptIdentity(await completeTelegramOidc(code, state));
     } catch (reason) {
-      error = errorMessage(reason);
+      if (reason instanceof IdentityAuthFailure && reason.reason === "unavailable") {
+        error = "kuki не смог завершить вход через Telegram. Начните вход заново.";
+      } else {
+        error = errorMessage(reason);
+      }
+      page = "login";
     } finally {
       busy = false;
     }
@@ -194,15 +195,24 @@
     ]
       .map((id) => ({ id, utcOffset: utcOffsetLabel(id) }));
     if (!timeZone) timeZone = browserTimeZone;
+    const url = new URL(window.location.href);
+    const hash = new URLSearchParams(url.hash.slice(1));
     void discoverAuthMethods()
-      .then((result) => (methods = result))
+      .then(async (result) => {
+        methods = result;
+        if (!result.telegramMiniApp) return;
+        // Launch metadata only tells us whether to load the official bridge.
+        telegramInitData = readTelegramInitData(window);
+        if (!telegramInitData && hash.has("tgWebAppPlatform")) {
+          telegramInitData = await loadTelegramInitData(window, document);
+        }
+      })
       .catch((reason) => (error = errorMessage(reason)))
       .finally(() => (methodsLoading = false));
 
-    const url = new URL(window.location.href);
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
-    const proof = new URLSearchParams(url.hash.slice(1)).get("token") ?? "";
+    const proof = hash.get("token") ?? "";
     if (url.pathname.endsWith("/auth/telegram/callback") && code && state) {
       void finishTelegramReturn(code, state);
     } else if (url.pathname.endsWith("/register")) {
@@ -307,11 +317,8 @@
     busy = true;
     error = "";
     try {
-      const initData = await loadTelegramInitData(window, document);
-      if (!initData) {
-        throw new IdentityAuthFailure("unavailable");
-      }
-      const result = await loginTelegramMiniApp(initData, intent);
+      if (!telegramInitData) throw new IdentityAuthFailure("unauthorized");
+      const result = await loginTelegramMiniApp(telegramInitData, intent);
       if ("tenantId" in result) {
         if (role === "customer") {
           const customer = await verifyStagingCustomerSession(result);
@@ -323,13 +330,7 @@
         acceptIdentity(result);
       }
     } catch (reason) {
-      error = reason instanceof IdentityAuthFailure && reason.reason === "unavailable"
-        ? methods?.telegramWebOidc
-          ? "Откройте Mini App внутри Telegram или войдите через Telegram Web."
-          : methods?.email
-            ? "Откройте Mini App из бота в Telegram или войдите по email."
-            : "Откройте Mini App из бота в Telegram, чтобы войти этим способом."
-        : errorMessage(reason);
+      error = errorMessage(reason);
     } finally {
       busy = false;
     }
@@ -390,17 +391,12 @@
     busy = true;
     error = "";
     try {
-      const initData = await loadTelegramInitData(window, document);
-      if (!initData) throw new IdentityAuthFailure("unavailable");
-      await linkTelegramMiniApp(identitySession, initData);
+      if (!telegramInitData) throw new IdentityAuthFailure("unauthorized");
+      await linkTelegramMiniApp(identitySession, telegramInitData);
       await refreshAccount();
       notice = "Telegram привязан к этой учётной записи.";
     } catch (reason) {
-      error = reason instanceof IdentityAuthFailure && reason.reason === "unavailable"
-        ? methods?.telegramWebOidc
-          ? "Откройте Mini App внутри Telegram или привяжите Telegram через Telegram Web."
-          : "Откройте Mini App из бота Telegram, чтобы привязать его к этой учётной записи."
-        : errorMessage(reason);
+      error = errorMessage(reason);
     } finally {
       busy = false;
     }
@@ -611,11 +607,8 @@
               {#if emailLinkRequested}<p role="status">Откройте ссылку из письма в этом браузере и войдите в эту учётную запись.</p>{/if}
             </form>
           {/if}
-          {#if methods?.telegramMiniApp && !providers.telegram}
-            <Button variant="outline" disabled={busy} onclick={() => void linkTelegramMiniAppNow()}>Привязать Telegram Mini App</Button>
-          {/if}
-          {#if methods?.telegramWebOidc && !providers.telegram}
-            <Button variant="outline" disabled={busy} onclick={() => void linkTelegramWeb()}>Привязать Telegram через сайт</Button>
+          {#if telegramTransport && !providers.telegram}
+            <Button variant="outline" disabled={busy} onclick={() => void (telegramTransport === "mini-app" ? linkTelegramMiniAppNow() : linkTelegramWeb())}>Привязать Telegram</Button>
           {/if}
         {/if}
       </div>
@@ -659,14 +652,6 @@
       <Button variant="outline" onclick={() => page = "login"}>Перейти ко входу</Button>
     {:else}
       <h1 id="identity-auth-title">{page === "register" ? "Создать учётную запись" : role === "customer" ? "Вход клиента" : "Вход в kuki"}</h1>
-      <p>
-        {#if methods}
-          {role === "customer" ? "Клиентский вход" : "Доступные способы входа"}: {availableMethodsLabel()}.
-          {#if role !== "customer"} После входа можно привязать другой включённый способ к той же учётной записи.{/if}
-        {:else}
-          Войдите или зарегистрируйтесь.
-        {/if}
-      </p>
       {#if methodsLoading}
         <p role="status">Проверяем доступные способы входа…</p>
       {:else if methods}
@@ -681,13 +666,14 @@
             <Button type="submit" disabled={busy}>{busy ? "Подождите…" : page === "register" ? "Отправить письмо для регистрации" : "Войти по email"}</Button>
           </form>
         {/if}
-        {#if methods.telegramMiniApp}
-          <Button variant="outline" disabled={busy} onclick={() => void telegramLogin(page === "register" ? "register" : "login")}>{page === "register" ? "Зарегистрироваться через Telegram Mini App" : "Войти через Telegram Mini App"}</Button>
-        {/if}
-        {#if methods.telegramWebOidc}
-          <Button variant="outline" disabled={busy} onclick={() => void telegramWebLogin(page === "register" ? "register" : "login")}>{page === "register" ? "Зарегистрироваться через Telegram" : "Войти через Telegram"}</Button>
-        {/if}
-        {#if !methods.email && !methods.telegramMiniApp && !methods.telegramWebOidc}
+        {#if telegramTransport}
+          <Button variant="outline" disabled={busy} onclick={() => {
+            const intent = page === "register" ? "register" : "login";
+            void (telegramTransport === "mini-app" ? telegramLogin(intent) : telegramWebLogin(intent));
+          }}>{page === "register" ? "Зарегистрироваться через Telegram" : "Войти через Telegram"}</Button>
+        {:else if methods.telegramMiniApp}
+          <p>Для входа через Telegram откройте kuki из бота.</p>
+        {:else if !methods.email}
           <p role="alert">На сервере не включён ни один способ входа.</p>
         {/if}
       {/if}

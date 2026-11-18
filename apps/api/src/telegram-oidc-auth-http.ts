@@ -15,6 +15,7 @@ import {
   exchangeTrustedTelegramUser,
   linkTrustedTelegramUser,
   reserveEmailLoginAttempt,
+  TelegramOidcUpstreamError,
   type EmailLoginLimits,
   type IdentitySessions,
 } from "../../../packages/platform-identity/src/index.js";
@@ -22,6 +23,17 @@ import type { createTelegramOidcProvider } from "../../../packages/platform-iden
 
 const COOKIE_NAME = "cookie_tg_oidc";
 const STATE_TTL_SECONDS = 300;
+const PROVIDER_VALIDATION_ERRORS = new Set([
+  "Invalid Telegram OIDC keys",
+  "Invalid Telegram OIDC token response",
+  "Invalid Telegram OIDC token",
+  "Invalid Telegram OIDC token claims",
+  "Invalid Telegram OIDC signature",
+  "Telegram OIDC signing key unavailable",
+  "Invalid Telegram OIDC identity claims",
+  "Telegram OIDC profile is missing user ID",
+]);
+
 const IDENTITY_TOKEN = /^is_[A-Za-z0-9_-]{43}$/;
 
 type TelegramOidcProvider = ReturnType<typeof createTelegramOidcProvider>;
@@ -347,6 +359,11 @@ export function registerTelegramOidcAuth(
 
     const stateHash = createHash("sha256").update(payload.state).digest();
     const nonceHash = createHash("sha256").update(payload.nonce).digest();
+    let stage:
+      | "consume-state"
+      | "telegram-exchange"
+      | "link-account"
+      | "issue-session" = "consume-state";
     try {
       const consumed = await transaction(async (client) => {
         const result = await client.query(
@@ -361,6 +378,7 @@ export function registerTelegramOidcAuth(
       });
       if (!consumed) return reply.code(401).send({ error: "UNAUTHENTICATED" });
 
+      stage = "telegram-exchange";
       const verified = await dependencies.provider.exchangeCode({
         code: body.code,
         codeVerifier: payload.verifier,
@@ -371,6 +389,7 @@ export function registerTelegramOidcAuth(
         .update(stateHash)
         .digest();
       if (payload.intent === "link") {
+        stage = "link-account";
         const linked = await linkTrustedTelegramUser(
           transaction,
           dependencies.identitySessionProviders,
@@ -388,6 +407,7 @@ export function registerTelegramOidcAuth(
             })
           : reply.code(409).send({ error: "TELEGRAM_LINK_CONFLICT" });
       }
+      stage = "issue-session";
       const session = await exchangeTrustedTelegramUser(
         transaction,
         fingerprintSecret,
@@ -403,7 +423,33 @@ export function registerTelegramOidcAuth(
         scope: "identity",
         expiresAtUnixSeconds: session.expiresAtUnixSeconds,
       });
-    } catch {
+    } catch (reason) {
+      const status =
+        reason instanceof TelegramOidcUpstreamError ? reason.status : undefined;
+      const endpoint =
+        reason instanceof TelegramOidcUpstreamError
+          ? reason.endpoint
+          : undefined;
+      const code =
+        typeof reason === "object" &&
+        reason !== null &&
+        "code" in reason &&
+        typeof reason.code === "string" &&
+        /^[A-Z0-9_]{1,32}$/.test(reason.code)
+          ? reason.code
+          : undefined;
+      const diagnostic =
+        reason instanceof Error
+          ? PROVIDER_VALIDATION_ERRORS.has(reason.message)
+            ? reason.message
+            : reason.name === "TimeoutError"
+              ? "timeout"
+              : undefined
+          : undefined;
+      request.log.warn(
+        { stage, endpoint, status, code, diagnostic },
+        "Telegram OIDC completion failed",
+      );
       return reply.code(503).send({ error: "BACKEND_UNAVAILABLE" });
     } finally {
       stateHash.fill(0);

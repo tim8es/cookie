@@ -127,7 +127,19 @@ export function createApp(
   } = {},
 ): FastifyInstance {
   const app = Fastify({
-    logger: options.logger ?? false,
+    logger: options.logger
+      ? {
+          serializers: {
+            req(request: { method: string; url: string }) {
+              // Callback URLs can contain an authorization code and state.
+              return {
+                method: request.method,
+                url: request.url.split("?", 1)[0],
+              };
+            },
+          },
+        }
+      : false,
     bodyLimit: 16_384,
   });
   const identitySessionProviders =

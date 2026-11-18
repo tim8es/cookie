@@ -11,6 +11,16 @@ export interface TelegramOidcConfig {
   readonly redirectUri: string;
 }
 
+export class TelegramOidcUpstreamError extends Error {
+  constructor(
+    readonly endpoint: "token" | "keys",
+    readonly status: number,
+  ) {
+    super("Telegram OIDC request failed");
+    this.name = "TelegramOidcUpstreamError";
+  }
+}
+
 interface Jwk {
   readonly kty?: unknown;
   readonly kid?: unknown;
@@ -39,10 +49,14 @@ function decodeJson(value: string): unknown {
   return JSON.parse(decoded.toString("utf8")) as unknown;
 }
 
-async function responseJson(response: Response): Promise<unknown> {
+async function responseJson(
+  response: Response,
+  endpoint: "token" | "keys",
+): Promise<unknown> {
+  if (!response.ok)
+    throw new TelegramOidcUpstreamError(endpoint, response.status);
   const length = Number(response.headers.get("content-length"));
   if (
-    !response.ok ||
     (Number.isFinite(length) && length > 32_768) ||
     !response.headers.get("content-type")?.includes("application/json")
   ) {
@@ -126,7 +140,7 @@ export function createTelegramOidcProvider(
         signal: AbortSignal.timeout(8_000),
       },
     );
-    const body = await responseJson(response);
+    const body = await responseJson(response, "keys");
     if (!record(body) || !Array.isArray(body.keys) || body.keys.length > 16) {
       throw new Error("Invalid Telegram OIDC keys");
     }
@@ -190,7 +204,7 @@ export function createTelegramOidcProvider(
         redirect: "error",
         signal: AbortSignal.timeout(8_000),
       });
-      const tokens = await responseJson(response);
+      const tokens = await responseJson(response, "token");
       if (!record(tokens) || typeof tokens.id_token !== "string") {
         throw new Error("Invalid Telegram OIDC token response");
       }
