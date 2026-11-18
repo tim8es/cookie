@@ -3,7 +3,7 @@ import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 
 import { createApp } from "../src/app.js";
 import { provisionStagingCustomer } from "../../../packages/domain-customers/src/staging-customer.js";
@@ -394,6 +394,113 @@ test(
       assert.equal(
         (await submit(first.shiftId, 1)).json().error,
         "SHIFT_STALE_REVISION",
+      );
+      // Deny a real verified owner while the draft/target/grant are valid.
+      // The denial must commit its sanitized audit, never publication.
+      const deniedAudit = async () =>
+        (
+          await pool.query(
+            `SELECT permission,allowed,reason,location_id::text
+               FROM cookie_identity.authorization_audit
+              WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid
+                AND permission='staging.shift.publish' AND NOT allowed
+              ORDER BY id`,
+            [owner.tenantId, ownerId],
+          )
+        ).rows;
+      const publicationEffects = async () =>
+        (
+          await pool.query(
+            `SELECT
+               (SELECT active FROM cookie_scheduling.shift_windows
+                 WHERE tenant_id=$1::uuid AND id=$2::uuid) AS active,
+               (SELECT count(*)::int FROM cookie_scheduling.shift_publish_receipts
+                 WHERE tenant_id=$1::uuid AND shift_id=$2::uuid) AS receipts,
+               (SELECT count(*)::int FROM cookie_scheduling.shift_publish_audit
+                 WHERE tenant_id=$1::uuid AND shift_id=$2::uuid) AS audits,
+               (SELECT count(*)::int FROM cookie_jobs.outbox_events
+                 WHERE tenant_id=$1::uuid AND topic='schedule.shift.published'
+                   AND payload->>'shiftId'=($2::uuid)::text) AS events`,
+            [owner.tenantId, first.shiftId],
+          )
+        ).rows;
+      const initialDenials = await deniedAudit();
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.shift.publish') WHERE tenant_id=$1::uuid AND base_type='owner'",
+        [owner.tenantId],
+      );
+      const denied = await submit();
+      assert.equal(denied.statusCode, 403);
+      assert.deepEqual(denied.json(), { error: "forbidden" });
+      assert.equal(denied.headers["cache-control"], "no-store");
+      const afterDenial = await deniedAudit();
+      assert.deepEqual(afterDenial, [
+        ...initialDenials,
+        {
+          permission: "staging.shift.publish",
+          allowed: false,
+          reason: "owner-required",
+          location_id: owner.locationId,
+        },
+      ]);
+      const noPublication = [
+        { active: false, receipts: 0, audits: 0, events: 0 },
+      ];
+      assert.deepEqual(await publicationEffects(), noPublication);
+
+      // Abort the denied-audit transaction immediately before COMMIT.
+      // A rolled-back audit cannot be presented as an acknowledged 403.
+      const completion: string[] = [];
+      const faultPool = {
+        async connect(): Promise<PoolClient> {
+          const physical = await pool.connect();
+          return {
+            async query(sql: string, params?: unknown[]): Promise<unknown> {
+              if (sql === "COMMIT") {
+                await assert.rejects(physical.query("SELECT 1 / 0"), {
+                  code: "22012",
+                });
+                const result = await physical.query(sql, params);
+                completion.push(result.command);
+                return result;
+              }
+              return physical.query(sql, params);
+            },
+            release(discard?: boolean): void {
+              completion.push(discard ? "discard" : "reuse");
+              physical.release(discard);
+            },
+          } as unknown as PoolClient;
+        },
+      } as unknown as Pool;
+      const faulty = createApp(pool, {
+        stagingPublicationRoutes: {
+          pool: faultPool,
+          verifier: sessions,
+          enabled: true,
+        },
+      });
+      try {
+        const unavailable = await faulty.inject({
+          method: "POST",
+          url: publishUrl,
+          headers: { ...headers, "idempotency-key": key },
+          payload: {
+            shiftId: first.shiftId,
+            expectedRevision: first.revision,
+          },
+        });
+        assert.equal(unavailable.statusCode, 503);
+        assert.deepEqual(unavailable.json(), { error: "unavailable" });
+      } finally {
+        await faulty.close();
+      }
+      assert.deepEqual(completion, ["ROLLBACK", "discard"]);
+      assert.deepEqual(await deniedAudit(), afterDenial);
+      assert.deepEqual(await publicationEffects(), noPublication);
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.shift.publish') WHERE tenant_id=$1::uuid AND base_type='owner'",
+        [owner.tenantId],
       );
       const [left, right] = await Promise.all([submit(), submit()]);
       assert.equal(left.statusCode, 200);
