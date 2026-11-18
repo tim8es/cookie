@@ -24,3 +24,75 @@ test("identity provider state is private to an identity bearer", async (t) => {
   assert.equal(response.headers["cache-control"], "no-store");
   assert.equal(response.headers.vary, "Authorization");
 });
+
+
+test("browser continuity verifies a global bearer and resumes without replay", async (t) => {
+  const token = "is_" + "A".repeat(43);
+  const expiry = Math.floor(Date.now() / 1000) + 120;
+  let revoked = false;
+  const provider = {
+    async resolveWithExpiry(input: string) {
+      return input === token && !revoked
+        ? { identityId: "11111111-1111-4111-8111-111111111111", expiresAtUnixSeconds: expiry }
+        : null;
+    },
+    async revoke(input: string) {
+      if (input === token) revoked = true;
+    },
+  } as unknown as IdentitySessions;
+  const app = createApp(
+    { query: async () => ({ rows: [] }) },
+    { identitySessionProviders: [provider] },
+  );
+  t.after(() => app.close());
+  const browser = { "sec-fetch-site": "same-origin", "x-kuki-session": "1" };
+  const path = "/v1/auth/browser-session";
+  const unauthorized = await app.inject({
+    method: "POST", url: path, headers: browser,
+  });
+  assert.equal(unauthorized.statusCode, 401);
+  const crossSite = await app.inject({
+    method: "POST", url: path,
+    headers: { ...browser, "sec-fetch-site": "cross-site", authorization: "Bearer " + token },
+  });
+  assert.equal(crossSite.statusCode, 403);
+  assert.equal(crossSite.headers["set-cookie"], undefined);
+  const bound = await app.inject({
+    method: "POST", url: path,
+    headers: { ...browser, authorization: "Bearer " + token },
+  });
+  assert.equal(bound.statusCode, 204);
+  const cookie = String(bound.headers["set-cookie"]);
+  assert.match(cookie, /^__Host-kuki-session=is_/);
+  assert.match(cookie, /HttpOnly; Secure; SameSite=Strict/);
+  assert.match(cookie, /Path=\//);
+  assert.equal(bound.headers["cache-control"], "no-store");
+  const header = cookie.split(";", 1)[0]!;
+  const resumed = await app.inject({
+    method: "GET", url: path,
+    headers: { ...browser, cookie: header },
+  });
+  assert.equal(resumed.statusCode, 200);
+  assert.deepEqual(resumed.json(), {
+    tokenType: "Bearer", accessToken: token, scope: "identity", expiresAtUnixSeconds: expiry,
+  });
+  assert.equal(resumed.headers["cache-control"], "no-store");
+  const denied = await app.inject({
+    method: "GET", url: path,
+    headers: { ...browser, "sec-fetch-site": "same-site", cookie: header },
+  });
+  assert.equal(denied.statusCode, 403);
+  const duplicate = await app.inject({
+    method: "GET", url: path,
+    headers: { ...browser, cookie: header + "; " + header },
+  });
+  assert.equal(duplicate.statusCode, 401);
+  const logout = await app.inject({
+    method: "POST", url: "/v1/auth/identity/logout",
+    headers: { ...browser, authorization: "Bearer " + token, cookie: header },
+  });
+  assert.equal(logout.statusCode, 204);
+  assert.match(String(logout.headers["set-cookie"]), /Max-Age=0/);
+  const after = await app.inject({ method: "GET", url: path, headers: { ...browser, cookie: header } });
+  assert.equal(after.statusCode, 401);
+});

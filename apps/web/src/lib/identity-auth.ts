@@ -628,9 +628,59 @@ export async function logoutIdentitySession(
     "/v1/auth/identity/logout",
     {
       method: "POST",
-      headers: { authorization: "Bearer " + session.accessToken },
+      headers: {
+        authorization: "Bearer " + session.accessToken,
+        "x-kuki-session": "1",
+      },
     },
     fetcher,
+    "same-origin",
   );
   if (response.status !== 204) throw new IdentityAuthFailure("unavailable");
+}
+
+/** Persist only verified global Identity credentials in a server-set cookie. */
+export async function persistBrowserIdentitySession(
+  session: IdentityAuthSession,
+  fetcher: typeof fetch = globalThis.fetch,
+): Promise<void> {
+  const response = await request(
+    "/v1/auth/browser-session",
+    {
+      method: "POST",
+      headers: {
+        authorization: "Bearer " + session.accessToken,
+        "x-kuki-session": "1",
+      },
+    },
+    fetcher,
+    "same-origin",
+  );
+  if (response.status !== 204)
+    throw new IdentityAuthFailure("unavailable");
+  // Some WebViews reject Secure cookies. Verify persistence rather than
+  // assuming a successful Set-Cookie response means the browser retained it.
+  const restored = await restoreBrowserIdentitySession(fetcher);
+  if (!restored || restored.accessToken !== session.accessToken)
+    throw new IdentityAuthFailure("unavailable");
+}
+
+export async function restoreBrowserIdentitySession(
+  fetcher: typeof fetch = globalThis.fetch,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<IdentityAuthSession | null> {
+  const response = await request(
+    "/v1/auth/browser-session",
+    { method: "GET", headers: { "x-kuki-session": "1" } },
+    fetcher,
+    "same-origin",
+  );
+  if (response.status === 401 || response.status === 404) return null;
+  if (response.status !== 200) throw new IdentityAuthFailure("unavailable");
+  try {
+    return identitySession(await response.json(), nowSeconds);
+  } catch (error) {
+    if (error instanceof IdentityAuthFailure) throw error;
+    throw new IdentityAuthFailure("invalid-response");
+  }
 }

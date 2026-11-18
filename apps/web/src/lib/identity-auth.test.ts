@@ -10,6 +10,7 @@ import {
   loginEmailPassword,
   loginTelegramMiniApp,
   selectTelegramTransport,
+  restoreBrowserIdentitySession,
   verifyStagingCustomerSession,
   type IdentityAuthSession,
 } from "./identity-auth.js";
@@ -217,4 +218,21 @@ test("a non-customer Telegram tenant session is revoked when client context fail
     `/v1/organizations/${tenantId}/staging-customer-context`,
     "/v1/auth/logout",
   ]);
+});
+
+
+test("restore uses same-origin cookie without replay or browser storage", async () => {
+  let sent: Request | undefined;
+  const result = await restoreBrowserIdentitySession(async (_input, init) => {
+    sent = new Request("https://cookie.example.invalid/v1/auth/browser-session", init);
+    return Response.json({ tokenType: "Bearer", scope: "identity", ...session });
+  }, 1000);
+  assert.deepEqual(result, session);
+  assert.equal(sent?.method, "GET");
+  assert.equal(sent?.credentials, "same-origin");
+  assert.equal(sent?.cache, "no-store");
+  assert.equal(sent?.headers.get("authorization"), null);
+  assert.equal(sent?.headers.get("x-kuki-session"), "1");
+  assert.equal(await restoreBrowserIdentitySession(async () => new Response(null, { status: 401 })), null);
+  await assert.rejects(restoreBrowserIdentitySession(async () => new Response(null, { status: 503 })));
 });

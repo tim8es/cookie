@@ -4,6 +4,8 @@ import type { Pool } from "pg";
 import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
 import type { IdentitySessions } from "../../../packages/platform-identity/src/index.js";
 
+import { clearMatchingBrowserSession, registerBrowserIdentitySession } from "./browser-identity-session.js";
+
 function noStore(reply: FastifyReply): void {
   reply.header("Cache-Control", "no-store");
   reply.header("Pragma", "no-cache");
@@ -15,12 +17,14 @@ export function registerIdentitySessionLogout(
   providers: readonly IdentitySessions[],
 ): void {
   if (providers.length === 0) throw new Error("Identity providers required");
+  registerBrowserIdentitySession(app, providers);
   app.post("/v1/auth/identity/logout", async (request, reply) => {
     noStore(reply);
     const token = /^Bearer (is_[A-Za-z0-9_-]{43})$/.exec(
       request.headers.authorization ?? "",
     )?.[1];
     if (!token) return reply.code(401).send({ error: "UNAUTHENTICATED" });
+    clearMatchingBrowserSession(request, reply, token);
     try {
       await Promise.all(providers.map((provider) => provider.revoke(token)));
       return reply.code(204).send();

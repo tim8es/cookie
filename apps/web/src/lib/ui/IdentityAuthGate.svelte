@@ -18,6 +18,8 @@
     loginTelegramMiniApp,
     linkTelegramMiniApp,
     logoutIdentitySession,
+    persistBrowserIdentitySession,
+    restoreBrowserIdentitySession,
     requestEmailCredentialLink,
     requestEmailPasswordRecovery,
     requestEmailRegistration,
@@ -40,6 +42,8 @@
   export let customerSurface = false;
   export let customerTenantId = "";
   export let authNotice = "";
+  export let initialIdentitySession: IdentityAuthSession | null = null;
+  export let restoreAllowed = true;
   export let onOwnerSession: (session: VerifiedOwnerSession) => void;
   export let onCustomerSession: (session: VerifiedCustomerSession) => void;
 
@@ -174,12 +178,36 @@
     );
   }
 
+  async function acceptNewIdentity(session: IdentityAuthSession): Promise<void> {
+    let persisted = false;
+    try {
+      await persistBrowserIdentitySession(session);
+      persisted = true;
+    } catch {
+      // Authentication remains valid in this tab, but persistence is not proven.
+    }
+    acceptIdentity(session);
+    if (!persisted) notice = "Вход подтверждён, но браузер не сохранил сессию. При обновлении может потребоваться повторный вход.";
+  }
+
+  async function restoreIdentity(): Promise<void> {
+    busy = true;
+    try {
+      const restored = initialIdentitySession ?? await restoreBrowserIdentitySession();
+      if (restored) acceptIdentity(restored);
+    } catch (reason) {
+      error = errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function finishTelegramReturn(code: string, state: string): Promise<void> {
     busy = true;
     error = "";
     clearUrlSecret();
     try {
-      acceptIdentity(await completeTelegramOidc(code, state));
+      await acceptNewIdentity(await completeTelegramOidc(code, state));
     } catch (reason) {
       if (reason instanceof IdentityAuthFailure && reason.reason === "unavailable") {
         error = "kuki не смог завершить вход через Telegram. Начните вход заново.";
@@ -232,6 +260,9 @@
       page = proof ? "recovery-complete" : "recovery-request";
     } else if (url.pathname.endsWith("/link-email")) {
       emailLinkToken = proof;
+      if (restoreAllowed) void restoreIdentity();
+    } else if (restoreAllowed) {
+      void restoreIdentity();
     }
 
     return () => {
@@ -244,7 +275,7 @@
     busy = true;
     error = "";
     try {
-      acceptIdentity(await loginEmailPassword(email, password));
+      await acceptNewIdentity(await loginEmailPassword(email, password));
       password = "";
     } catch (reason) {
       error = errorMessage(reason);
@@ -336,7 +367,7 @@
           onOwnerSession(result);
         }
       } else {
-        acceptIdentity(result);
+        await acceptNewIdentity(result);
       }
     } catch (reason) {
       error = errorMessage(reason);
@@ -705,6 +736,6 @@
     {#if error}<p class="identity-auth-error" role="alert">{error}</p>{/if}
     {#if notice && page !== "email-sent"}<p class="identity-auth-notice" role="status">{notice}</p>{/if}
     {#if busy && page === "choose-role"}<p role="status">Завершаем вход…</p>{/if}
-    <p class="identity-auth-footnote">Токен входа хранится только в памяти вкладки. Клиентская роль доступна только после явного подтверждения и проверки тестовой организации сервером.</p>
+    <p class="identity-auth-footnote">Глобальная сессия восстанавливается до окончания её срока. Права клиента и бизнеса проверяются сервером отдельно.</p>
   </div>
 </section>

@@ -8,6 +8,7 @@
   import { authenticateTelegramCustomer, loadTelegramInitData, revokeTelegramOwnerSession, watchOwnerSessionExpiry, type VerifiedCustomerSession } from "../owner-auth";
   type SessionClearReason = "expired" | "signed-out" | "logout-failed";
   export let initialSession: VerifiedCustomerSession | null = null;
+  export let onSwitchAccount: (() => void) | undefined = undefined;
   export let onSessionCleared: (reason: SessionClearReason) => void = () => {};
   let session: VerifiedCustomerSession | null = initialSession;
   let phase: "loading" | "unavailable" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" = "loading";
@@ -64,6 +65,9 @@
     <h1>Вход клиента подтверждён</h1>
     <p>Сервер подтвердил вашу клиентскую учётную запись в тестовой организации. Это не даёт доступа к кабинету владельца.</p>
     <p>Доступные операции определяет сервер. Реальные клиентские данные не используются.</p>
+    {#if onSwitchAccount}
+      <Button type="button" variant="outline" onclick={onSwitchAccount}>Сменить кабинет</Button>
+    {/if}
     <Button type="button" onclick={() => void logout()}>Выйти</Button>
   {:else if phase === "loading"}
     <h1>Проверяем вход клиента</h1>

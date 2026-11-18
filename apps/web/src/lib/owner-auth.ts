@@ -70,11 +70,12 @@ async function request(
   fetcher: typeof fetch,
   url: string,
   init: RequestInit,
+  credentials: RequestCredentials = "omit",
 ): Promise<Response> {
   try {
     return await fetcher(url, {
       ...init,
-      credentials: "omit",
+      credentials,
       cache: "no-store",
       redirect: "error",
       referrerPolicy: "no-referrer",
@@ -201,8 +202,12 @@ export async function revokeTelegramOwnerSession(
       : "/v1/auth/logout",
     {
       method: "POST",
-      headers: { authorization: "Bearer " + session.accessToken },
+      headers: {
+        authorization: "Bearer " + session.accessToken,
+        ...(session.accessToken.startsWith("is_") ? { "x-kuki-session": "1" } : {}),
+      },
     },
+    session.accessToken.startsWith("is_") ? "same-origin" : "omit",
   );
   if (result.status !== 204) {
     throw new OwnerAuthFailure("unavailable");
