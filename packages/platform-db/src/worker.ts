@@ -1,4 +1,4 @@
-import type { Pool, PoolClient } from "pg";
+import type { Pool } from "pg";
 
 import {
   acknowledgeOutbox,
@@ -9,6 +9,7 @@ import {
   type OutboxClaimOptions,
   type OutboxLease,
 } from "./outbox.js";
+import { runSqlTransaction } from "./transaction.js";
 
 export interface OutboxQueueMetrics {
   readonly pending: number;
@@ -240,82 +241,68 @@ async function runBoundedOutboxBatch(
   // NEVER await the external handler while this transaction is open.
   const handlerController = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let work: Promise<HandlerOutcome> | undefined;
-  let timeout: Promise<HandlerOutcome> | undefined;
   let handlerStarted = false;
-  let client: PoolClient;
+  let dispatch: {
+    work: Promise<HandlerOutcome>;
+    timeout: Promise<HandlerOutcome>;
+  };
   try {
-    client = await pool.connect();
-  } catch {
-    // An already-claimed lease with an unknown dispatch authority must not
-    // be returned to a polling loop (including incomplete Pool adapters).
-    throw new AbandonedOutboxLeaseError();
-  }
-  let transactionOpen = false;
-  try {
-    await client.query("BEGIN");
-    transactionOpen = true;
-    await client.query("SET LOCAL lock_timeout = '1000ms'");
-    const authority = await client.query(
-      `WITH owned AS (
-         SELECT id FROM cookie_jobs.outbox_events
-          WHERE id=$1::uuid AND lease_token=$2::uuid AND status='leased'
-            AND lease_until > clock_timestamp()
-          FOR UPDATE SKIP LOCKED
-       )
-       UPDATE cookie_jobs.outbox_events AS event
-          SET lease_until=clock_timestamp()
-            + ($3::integer * interval '1 millisecond')
-         FROM owned
-        WHERE event.id=owned.id
-        RETURNING event.id`,
-      [lease.id, lease.leaseToken, leaseMs],
-    );
-    if (authority.rowCount !== 1 || options.signal.aborted) {
-      throw new AbandonedOutboxLeaseError();
-    }
-
-    timeout = new Promise<HandlerOutcome>((resolve) => {
-      timer = setTimeout(() => {
-        handlerController.abort();
-        resolve("timed-out");
-      }, timeoutMs);
-    });
-
-    // Invoke synchronously WHILE PostgreSQL still owns the row lock.
-    // Promise.resolve().then(handler) would defer invocation until AFTER
-    // COMMIT and reopen the race with a second worker.
-    try {
-      handlerStarted = true;
-      work = Promise.resolve(handler(lease, handlerController.signal)).then(
-        (): HandlerOutcome => "completed",
-        (): HandlerOutcome => "failed",
+    dispatch = await runSqlTransaction(pool, async (client) => {
+      await client.query("SET LOCAL lock_timeout = '1000ms'");
+      const authority = await client.query(
+        `WITH owned AS (
+           SELECT id FROM cookie_jobs.outbox_events
+            WHERE id=$1::uuid AND lease_token=$2::uuid AND status='leased'
+              AND lease_until > clock_timestamp()
+            FOR UPDATE SKIP LOCKED
+         )
+         UPDATE cookie_jobs.outbox_events AS event
+            SET lease_until=clock_timestamp()
+              + ($3::integer * interval '1 millisecond')
+           FROM owned
+          WHERE event.id=owned.id
+          RETURNING event.id`,
+        [lease.id, lease.leaseToken, leaseMs],
       );
-    } catch {
-      work = Promise.resolve<HandlerOutcome>("failed");
-    }
-    await client.query("COMMIT");
-    transactionOpen = false;
+      if (authority.rowCount !== 1 || options.signal.aborted) {
+        throw new AbandonedOutboxLeaseError();
+      }
+
+      const timeout = new Promise<HandlerOutcome>((resolve) => {
+        timer = setTimeout(() => {
+          handlerController.abort();
+          resolve("timed-out");
+        }, timeoutMs);
+      });
+
+      // Invoke synchronously WHILE PostgreSQL still owns the row lock.
+      // Await only the dispatch transaction, never the external handler.
+      let work: Promise<HandlerOutcome>;
+      try {
+        handlerStarted = true;
+        work = Promise.resolve(handler(lease, handlerController.signal)).then(
+          (): HandlerOutcome => "completed",
+          (): HandlerOutcome => "failed",
+        );
+      } catch {
+        work = Promise.resolve<HandlerOutcome>("failed");
+      }
+      return { work, timeout };
+    });
   } catch {
-    if (transactionOpen) {
-      await client.query("ROLLBACK").catch(() => undefined);
-    }
     if (timer) clearTimeout(timer);
     if (handlerStarted) {
       // The handler may already have issued an irreversible effect.
       handlerController.abort();
     }
-    // A claimed event with no verified start authority must never be
-    // retried by this supervisor, even if BEGIN/COMMIT failed.
+    // No confirmed dispatch transaction: leave the lease fenced and stop.
+    // Do not acknowledge/fail the event or start another handler here.
     throw new AbandonedOutboxLeaseError();
-  } finally {
-    client.release();
   }
 
-  if (!work || !timeout) throw new AbandonedOutboxLeaseError();
   let outcome: HandlerOutcome;
   try {
-    outcome = await Promise.race([work, timeout]);
+    outcome = await Promise.race([dispatch.work, dispatch.timeout]);
   } finally {
     if (timer) clearTimeout(timer);
   }
