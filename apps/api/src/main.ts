@@ -40,6 +40,8 @@ const pool = new Pool({
   connectionString: config.databaseUrl,
   application_name: "cookie-api",
   max: 5,
+  // Keep connections available across the one-minute staging readiness probes.
+  idleTimeoutMillis: 90_000,
   connectionTimeoutMillis: 3_000,
 });
 // pg emits idle-client failures on the pool itself. Without a listener a
