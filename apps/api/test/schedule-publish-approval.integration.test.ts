@@ -313,10 +313,7 @@ test(
       await expectApprovalCommitFailure(pool, "abort", (faultPool) =>
         reviewPublishShiftInternal(faultPool, review, allow),
       );
-      assert.deepEqual(
-        await approvalSnapshot(pool, tenant),
-        beforeReviewFault,
-      );
+      assert.deepEqual(await approvalSnapshot(pool, tenant), beforeReviewFault);
 
       const [applied, replay] = await Promise.all([
         reviewPublishShiftInternal(pool, review, allow),
@@ -491,19 +488,12 @@ test(
       await expectApprovalCommitFailure(pool, "abort", (faultPool) =>
         reviewPublishShiftInternal(faultPool, rejection, allow),
       );
-      assert.deepEqual(
-        await approvalSnapshot(pool, tenant),
-        beforeRejection,
-      );
+      assert.deepEqual(await approvalSnapshot(pool, tenant), beforeRejection);
       await expectApprovalCommitFailure(pool, "lose-ack", (faultPool) =>
         reviewPublishShiftInternal(faultPool, rejection, allow),
       );
       const afterRejection = await approvalSnapshot(pool, tenant, false);
-      const rejected = await reviewPublishShiftInternal(
-        pool,
-        rejection,
-        allow,
-      );
+      const rejected = await reviewPublishShiftInternal(pool, rejection, allow);
       assert.equal(rejected.status, "rejected");
       assert.deepEqual(
         await approvalSnapshot(pool, tenant, false),
