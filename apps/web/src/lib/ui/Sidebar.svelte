@@ -18,13 +18,13 @@
   <div class="brand">
     <span class="brand-seal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
     <div>
-      <strong>cookie<span class="brand-dot">.</span></strong>
+      <strong>kuki<span class="brand-dot">.</span></strong>
       <small>studio manager</small>
     </div>
   </div>
 
   <div class="sidebar-heading">Пространство</div>
-  <nav class="nav-links" aria-label="Разделы Cookie">
+  <nav class="nav-links" aria-label="Разделы kuki">
     {#each screens as item (item.id)}
       <button type="button" data-screen={item.id} class:active={screen === item.id}
         onclick={() => navigate(item.id)}

@@ -1,4 +1,4 @@
-# Cookie UI: how to change the design safely
+# kuki UI: how to change the design safely
 
 ## Approved direction
 **Studio Appointment Journal** is approved as the current visual direction, not as final screen sign-off. Do not independently replace it with a new color theme or generic dashboard design. [DESIGN.md](./DESIGN.md) describes the visual intent.

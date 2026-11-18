@@ -5,6 +5,7 @@ import test from "node:test";
 
 import { Pool } from "pg";
 
+import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { PostgresOpaqueSessionMaintenance } from "../../../packages/platform-identity/src/opaque-session-maintenance.js";
 
@@ -24,6 +25,7 @@ test(
     const tokenHash = randomBytes(32);
     const maintenance = new PostgresOpaqueSessionMaintenance({
       pool,
+      runTransaction: runSqlTransaction,
       retentionSeconds: 7_200,
       batchSize: 1,
     });

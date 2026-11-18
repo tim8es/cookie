@@ -12,7 +12,7 @@
           <div class="welcome-grid atelier-welcome">
             <div class="welcome-copy">
               <div class="welcome-introline">
-                <span class="welcome-brand">COOKIE / STUDIO</span>
+                <span class="welcome-brand">kuki / STUDIO</span>
                 <span class="welcome-edition">Практика красивого сервиса</span>
               </div>
               <div class="welcome-illustration" aria-hidden="true">
@@ -22,7 +22,7 @@
                 <span class="welcome-illustration-core"></span>
               </div>
               <h1>Красивый сервис<br /><span>начинается здесь.</span></h1>
-              <p>Записи, специалисты и расписание — в одном понятном пространстве. Попробуйте Cookie с демонстрационными данными.</p>
+              <p>Записи, специалисты и расписание — в одном понятном пространстве. Попробуйте kuki с демонстрационными данными.</p>
               <div class="welcome-caption">
                 <span class="welcome-caption-line" aria-hidden="true"></span>
                 <span>Один салон. Сотни деталей. Один спокойный процесс.</span>
@@ -42,7 +42,7 @@
                   oninput={(event) => onOrganizationNameChange(event.currentTarget.value)}
                   required
                   maxlength={80}
-                  placeholder="Студия Cookie (тест)"
+                  placeholder="Студия kuki (тест)"
                 />
               </label>
               <div class="welcome-form-help">Филиал для демо создадим автоматически. Следом добавим услуги и мастеров.</div>

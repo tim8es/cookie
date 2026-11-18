@@ -1,4 +1,4 @@
-# Cookie · visual system 02
+# kuki · visual system 02
 
 **Mode:** Operate. Salon owner performs daily operations; customer selects a service, day, and hour. This frontend is synthetic and must never suggest a server reservation has happened.
 
@@ -34,7 +34,7 @@ The repository F1 workflow saves Chromium screenshots at 1280×800, 375×812, an
 
 ## UX iteration 2026-11-16 (design review, pending owner acceptance)
 
-- Salon name is primary on the public page; Cookie becomes a small platform credit.
+- Salon name is primary on the public page; kuki becomes a small platform credit.
 - Booking has an honest single-form description (no static fake step progress), base-price preview and branch/address in the receipt.
 - Mobile owner shell uses a four-destination bottom navigation with a secondary-section sheet.
 - Existing synthetic bookings can be viewed on a day-by-staff/time grid on desktop; narrow screens keep a readable list. This **does not** compute available slots.
