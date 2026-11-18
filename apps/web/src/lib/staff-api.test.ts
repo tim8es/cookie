@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createRealStaff, readRealStaff, StaffApiFailure } from "./staff-api";
+import {
+  createRealStaff,
+  readRealStaff,
+  retainStaffCreateKey,
+  StaffApiFailure,
+} from "./staff-api";
 import type { VerifiedOwnerSession } from "./owner-auth";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
@@ -174,5 +179,106 @@ test("staff capacity differs from replay conflict", async () => {
     createRealStaff(session, draft, KEY, mock(response, [])),
     (error: unknown) =>
       error instanceof StaffApiFailure && error.reason === "capacity",
+  );
+});
+
+test("staff create rejects a mismatched or prematurely published receipt", async () => {
+  const draft = {
+    displayName: staff.displayName,
+    positionTitle: staff.positionTitle,
+    locationId: LOCATION,
+    serviceId: SERVICE,
+  };
+  for (const invalid of [
+    { ...staff, displayName: "Different master" },
+    { ...staff, positionTitle: "Different title" },
+    { ...staff, active: false },
+    { ...staff, bookable: true },
+    { ...staff, assignments: [{ locationId: STAFF, serviceIds: [SERVICE] }] },
+    { ...staff, assignments: [{ locationId: LOCATION, serviceIds: [STAFF] }] },
+  ]) {
+    await assert.rejects(
+      createRealStaff(
+        session,
+        draft,
+        KEY,
+        mock(Response.json({ staff: invalid }, { status: 201 }), []),
+      ),
+      (error: unknown) =>
+        error instanceof StaffApiFailure && error.reason === "invalid-response",
+    );
+  }
+  const published = { ...staff, bookable: true };
+  assert.deepEqual(
+    await createRealStaff(
+      session,
+      draft,
+      KEY,
+      mock(Response.json({ staff: published }, { status: 200 }), []),
+    ),
+    published,
+  );
+});
+
+test("unknown staff creation preserves key even after a subsequent denial", async () => {
+  const draft = {
+    displayName: staff.displayName,
+    positionTitle: staff.positionTitle,
+    locationId: LOCATION,
+    serviceId: SERVICE,
+  };
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  let unresolved = false;
+  for (const status of [503, 403]) {
+    await assert.rejects(
+      createRealStaff(
+        session,
+        draft,
+        KEY,
+        mock(new Response(null, { status }), calls),
+      ),
+      (error: unknown) => {
+        assert.ok(error instanceof StaffApiFailure);
+        assert.equal(
+          error.reason,
+          status === 503 ? "unavailable" : "unauthorized",
+        );
+        unresolved = retainStaffCreateKey(unresolved, error);
+        return true;
+      },
+    );
+    assert.equal(unresolved, true);
+  }
+  assert.deepEqual(
+    await createRealStaff(
+      session,
+      draft,
+      KEY,
+      mock(Response.json({ staff }, { status: 200 }), calls),
+    ),
+    staff,
+  );
+  assert.equal(calls.length, 3);
+  for (const call of calls) {
+    assert.deepEqual(JSON.parse(String(call.init.body)), draft);
+    assert.equal(
+      (call.init.headers as Record<string, string>)["idempotency-key"],
+      KEY,
+    );
+  }
+  for (const reason of [
+    "capacity",
+    "conflict",
+    "missing-reference",
+    "unauthorized",
+  ] as const) {
+    assert.equal(
+      retainStaffCreateKey(false, new StaffApiFailure(reason)),
+      false,
+    );
+  }
+  assert.equal(
+    retainStaffCreateKey(false, new StaffApiFailure("invalid-response")),
+    true,
   );
 });

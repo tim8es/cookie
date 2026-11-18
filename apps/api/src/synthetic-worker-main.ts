@@ -17,6 +17,12 @@ const pool = new Pool({
   connectionTimeoutMillis: 3_000,
 });
 
+// pg reports idle-client failures on the pool. Losing an existing DB
+// connection must not bypass the worker's bounded polling error policy.
+pool.on("error", () => {
+  process.stderr.write("Synthetic outbox worker idle connection lost\n");
+});
+
 const signal = new AbortController();
 for (const event of ["SIGINT", "SIGTERM"] as const) {
   process.once(event, () => signal.abort());

@@ -5,7 +5,7 @@
 | ID | Решение | Статус | Основание/последующее действие |
 |---|---|---|---|
 | DEC-001 | Цель — салоны 2–10 сотрудников | ACCEPTED | Приоритет перед solo-мастерами |
-| DEC-002 | Рабочее имя Cookie/Kuki; бренд позже | ACCEPTED | Нужен нейминг до публичного запуска |
+| DEC-002 | Рабочее имя Cookie/Kuki; бренд позже | ACCEPTED (historical) | Решение владельца от 2026-11-17 supersedes working name: **kuki** (lowercase), [#305](https://github.com/tim8es/cookie/issues/305); [migration inventory](../operations/brand-migration.md) |
 | DEC-003 | Минимальное plugin kernel без бизнес-сущностей | ACCEPTED | ADR-0001 — детали PROPOSED |
 | DEC-004 | Монорепозиторий и модульный монолит сначала | ACCEPTED | Подготовка к возможному extraction |
 | DEC-005 | Одна общая кодовая база booking UI: web/embed/Mini App | ACCEPTED | Архитектура auth/iframe PROPOSED |

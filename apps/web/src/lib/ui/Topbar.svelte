@@ -11,7 +11,7 @@
   export let onLogout: (() => void) | undefined = undefined;
   export let onNavigate: (next: Screen) => void;
 
-  $: displayTitle = screens.find((item) => item.id === screen)?.label ?? "Cookie";
+  $: displayTitle = screens.find((item) => item.id === screen)?.label ?? "kuki";
 </script>
 
 {#if demoMode}
