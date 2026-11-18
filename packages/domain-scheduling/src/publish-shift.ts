@@ -149,7 +149,6 @@ export async function publishShiftInternal(
     ),
   );
   const work = async (client: PoolClient): Promise<PublishedShiftReceipt> => {
-
     // Never let a request supply or override the authoritative staff/branch.
     const initial = await client.query<ShiftRow>(
       `SELECT staff_id::text, location_id::text
@@ -373,7 +372,6 @@ export async function publishShiftInternal(
 
     return receipt;
   };
-  return transactionClient
-    ? work(transactionClient)
-    : runSqlTransaction(pool, work);
+  if (transactionClient) return work(transactionClient);
+  return runSqlTransaction(pool, work);
 }
