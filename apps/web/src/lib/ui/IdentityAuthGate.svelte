@@ -108,6 +108,14 @@
     return "Сервер недоступен или не подтвердил действие. Попробуйте ещё раз.";
   }
 
+  function availableMethodsLabel(): string {
+    const labels: string[] = [];
+    if (methods?.email) labels.push("email и пароль");
+    if (methods?.telegramMiniApp) labels.push("Telegram Mini App");
+    if (methods?.telegramWebOidc) labels.push("Telegram Web");
+    return labels.join(" или ") || "не настроены";
+  }
+
   async function refreshAccount(): Promise<void> {
     const current = identitySession;
     if (!current) return;
@@ -295,7 +303,11 @@
       }
     } catch (reason) {
       error = reason instanceof IdentityAuthFailure && reason.reason === "unavailable"
-        ? "Mini App вход доступен внутри Telegram. В обычном браузере используйте Telegram Web."
+        ? methods?.telegramWebOidc
+          ? "Откройте Mini App внутри Telegram или войдите через Telegram Web."
+          : methods?.email
+            ? "Откройте Mini App из бота в Telegram или войдите по email."
+            : "Откройте Mini App из бота в Telegram, чтобы войти этим способом."
         : errorMessage(reason);
     } finally {
       busy = false;
@@ -364,7 +376,9 @@
       notice = "Telegram привязан к этой учётной записи.";
     } catch (reason) {
       error = reason instanceof IdentityAuthFailure && reason.reason === "unavailable"
-        ? "Привязка Mini App доступна внутри Telegram. Для сайта используйте Telegram Web."
+        ? methods?.telegramWebOidc
+          ? "Откройте Mini App внутри Telegram или привяжите Telegram через Telegram Web."
+          : "Откройте Mini App из бота Telegram, чтобы привязать его к этой учётной записи."
         : errorMessage(reason);
     } finally {
       busy = false;
@@ -577,7 +591,7 @@
       <Button variant="ghost" disabled={busy} onclick={() => void signOutIdentity()}>Выйти из учётной записи</Button>
     {:else if page === "choose-role"}
       <h1 id="identity-auth-title">Кто вы?</h1>
-      <p>Выберите сценарий регистрации. Методы входа можно подключать независимо и затем объединить в одной учётной записи.</p>
+      <p>Выберите сценарий. Доступные способы входа задаются настройками сервера; после входа можно привязать другой включённый способ.</p>
       <div class="identity-role-options" aria-label="Тип учётной записи">
         <Button variant="outline" onclick={() => { role = "business"; page = "login"; }}>Я представляю бизнес</Button>
         <Button variant="outline" disabled={!methods?.stagingCustomerEnrollment} onclick={() => { role = "customer"; page = "login"; }}>Я клиент</Button>
@@ -614,7 +628,14 @@
       <Button variant="outline" onclick={() => page = "login"}>Перейти ко входу</Button>
     {:else}
       <h1 id="identity-auth-title">{page === "register" ? "Создать учётную запись" : role === "customer" ? "Вход клиента" : "Вход в kuki"}</h1>
-      <p>{role === "customer" ? "Для клиента доступен вход по email и паролю или Telegram." : "Войдите или зарегистрируйтесь. После входа можно подключить второй способ к той же учётной записи."}</p>
+      <p>
+        {#if methods}
+          {role === "customer" ? "Клиентский вход" : "Доступные способы входа"}: {availableMethodsLabel()}.
+          {#if role !== "customer"} После входа можно привязать другой включённый способ к той же учётной записи.{/if}
+        {:else}
+          Войдите или зарегистрируйтесь.
+        {/if}
+      </p>
       {#if methodsLoading}
         <p role="status">Проверяем доступные способы входа…</p>
       {:else if methods}

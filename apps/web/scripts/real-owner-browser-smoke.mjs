@@ -155,6 +155,10 @@ async function enterTelegram(cdp, role) {
     await requireDom(cdp, "business role choice", "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я представляю бизнес')");
     await button(cdp, "Я представляю бизнес");
   }
+  const methodDescription = role === "business"
+    ? "Доступные способы входа: Telegram Mini App."
+    : "Клиентский вход: Telegram Mini App.";
+  await requireDom(cdp, "enabled Telegram-only method", "document.body.innerText.includes(" + JSON.stringify(methodDescription) + ") && !document.body.innerText.includes('email и пароль')");
   await requireDom(cdp, "Telegram Mini App login option", "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Войти через Telegram Mini App')");
   await button(cdp, "Войти через Telegram Mini App");
 }
@@ -373,6 +377,11 @@ async function main() {
       await checkLabeledControls(cdp,"self-service role selection "+width+"px");
     }
     await viewport(cdp,375,812);
+
+    script = await load(cdp, origin, "", script);
+    await enterTelegram(cdp, "business");
+    await requireDom(cdp, "regular-browser Mini App guidance",
+      "document.body.innerText.includes('Откройте Mini App из бота в Telegram, чтобы войти этим способом.')");
 
     // Malformed proof must not show authenticated UI or a synthetic fallback.
     script = await load(cdp, origin, "invalid-synthetic-proof", script);
