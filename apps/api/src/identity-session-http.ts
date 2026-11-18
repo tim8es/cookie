@@ -4,7 +4,10 @@ import type { Pool } from "pg";
 import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
 import type { IdentitySessions } from "../../../packages/platform-identity/src/index.js";
 
-import { clearMatchingBrowserSession, registerBrowserIdentitySession } from "./browser-identity-session.js";
+import {
+  clearMatchingBrowserSession,
+  registerBrowserIdentitySession,
+} from "./browser-identity-session.js";
 
 function noStore(reply: FastifyReply): void {
   reply.header("Cache-Control", "no-store");

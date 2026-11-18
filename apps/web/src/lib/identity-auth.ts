@@ -656,8 +656,7 @@ export async function persistBrowserIdentitySession(
     fetcher,
     "same-origin",
   );
-  if (response.status !== 204)
-    throw new IdentityAuthFailure("unavailable");
+  if (response.status !== 204) throw new IdentityAuthFailure("unavailable");
   // Some WebViews reject Secure cookies. Verify persistence rather than
   // assuming a successful Set-Cookie response means the browser retained it.
   const restored = await restoreBrowserIdentitySession(fetcher);

@@ -220,11 +220,13 @@ test("a non-customer Telegram tenant session is revoked when client context fail
   ]);
 });
 
-
 test("restore uses same-origin cookie without replay or browser storage", async () => {
   let sent: Request | undefined;
   const result = await restoreBrowserIdentitySession(async (_input, init) => {
-    sent = new Request("https://cookie.example.invalid/v1/auth/browser-session", init);
+    sent = new Request(
+      "https://cookie.example.invalid/v1/auth/browser-session",
+      init,
+    );
     return Response.json({ tokenType: "Bearer", scope: "identity", ...session });
   }, 1000);
   assert.deepEqual(result, session);
@@ -233,6 +235,13 @@ test("restore uses same-origin cookie without replay or browser storage", async 
   assert.equal(sent?.cache, "no-store");
   assert.equal(sent?.headers.get("authorization"), null);
   assert.equal(sent?.headers.get("x-kuki-session"), "1");
-  assert.equal(await restoreBrowserIdentitySession(async () => new Response(null, { status: 401 })), null);
-  await assert.rejects(restoreBrowserIdentitySession(async () => new Response(null, { status: 503 })));
+  assert.equal(
+    await restoreBrowserIdentitySession(
+      async () => new Response(null, { status: 401 }),
+    ),
+    null,
+  );
+  await assert.rejects(
+    restoreBrowserIdentitySession(async () => new Response(null, { status: 503 })),
+  );
 });

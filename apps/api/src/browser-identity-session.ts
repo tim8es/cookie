@@ -40,7 +40,10 @@ export function clearMatchingBrowserSession(
   bearer: string,
 ): void {
   // A stale tab logging out must not erase a different account's cookie.
-  if (sameOriginBrowser(request) && cookieToken(request.headers.cookie) === bearer)
+  if (
+    sameOriginBrowser(request) &&
+    cookieToken(request.headers.cookie) === bearer
+  )
     reply.header("Set-Cookie", cookieHeader("", 0));
 }
 
@@ -54,11 +57,14 @@ export function registerBrowserIdentitySession(
       if (session) {
         const expires = session.expiresAtUnixSeconds;
         const now = Math.floor(Date.now() / 1000);
-        return Number.isSafeInteger(expires) &&
-          expires > now &&
-          expires <= now + 3600
-          ? expires
-          : null;
+        if (
+          !Number.isSafeInteger(expires) ||
+          expires <= now ||
+          expires > now + 3600
+        ) {
+          return null;
+        }
+        return expires;
       }
     }
     return null;

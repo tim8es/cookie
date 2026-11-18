@@ -204,7 +204,9 @@ export async function revokeTelegramOwnerSession(
       method: "POST",
       headers: {
         authorization: "Bearer " + session.accessToken,
-        ...(session.accessToken.startsWith("is_") ? { "x-kuki-session": "1" } : {}),
+        ...(session.accessToken.startsWith("is_")
+          ? { "x-kuki-session": "1" }
+          : {}),
       },
     },
     session.accessToken.startsWith("is_") ? "same-origin" : "omit",
