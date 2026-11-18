@@ -11,6 +11,7 @@
     type RealService,
   } from "../services-api";
   import ServiceForm from "./ServiceForm.svelte";
+  import { emptyRealServiceForm, realServiceDraftFromForm } from "../real-service-form";
 
   export let session: VerifiedOwnerSession;
 
@@ -21,9 +22,7 @@
   let readError = "";
   let saveError = "";
   let notice = "";
-  let serviceName = "";
-  let serviceDuration = 60;
-  let servicePrice = 0;
+  let form = emptyRealServiceForm();
   // Keep the same key when an uncertain HTTP response is retried.
   let pendingKey = "";
   let editing: RealService | null = null;
@@ -54,19 +53,19 @@
 
   function editName(value: string): void {
     if (saving || uncertain || stale) return;
-    serviceName = value;
+    form.serviceName = value;
     pendingKey = "";
     saveError = "";
   }
   function editDuration(value: number): void {
     if (saving || uncertain || stale) return;
-    serviceDuration = value;
+    form.serviceDuration = Number.isNaN(value) ? undefined : value;
     pendingKey = "";
     saveError = "";
   }
   function editPrice(value: number): void {
     if (saving || uncertain || stale) return;
-    servicePrice = value;
+    form.servicePrice = Number.isNaN(value) ? undefined : value;
     pendingKey = "";
     saveError = "";
   }
@@ -74,9 +73,11 @@
   function startEdit(service: RealService): void {
     if (saving || loading || uncertain || service.active) return;
     editing = service;
-    serviceName = service.displayName;
-    serviceDuration = service.durationMinutes;
-    servicePrice = service.basePriceKopecks / 100;
+    form = {
+      serviceName: service.displayName,
+      serviceDuration: service.durationMinutes,
+      servicePrice: service.basePriceKopecks / 100,
+    };
     pendingKey = "";
     stale = false;
     saveError = "";
@@ -85,9 +86,7 @@
 
   function resetForm(): void {
     editing = null;
-    serviceName = "";
-    serviceDuration = 60;
-    servicePrice = 0;
+    form = emptyRealServiceForm();
     pendingKey = "";
     stale = false;
     uncertain = false;
@@ -111,14 +110,9 @@
 
   async function save(): Promise<void> {
     if (saving || loading || !loaded || stale) return;
-    if (
-      !serviceName.trim() || [...serviceName.trim()].length > 200 ||
-      !Number.isInteger(serviceDuration) || serviceDuration < 1 ||
-      serviceDuration > 1440 ||
-      !Number.isFinite(servicePrice) || servicePrice !== Number(servicePrice.toFixed(2)) ||
-      servicePrice < 0 || servicePrice > 9_999_999_999.99
-    ) {
-      saveError = "Проверьте название, длительность и цену с точностью до копеек.";
+    const draft = realServiceDraftFromForm(form);
+    if (!draft) {
+      saveError = "Укажите название, длительность и цену с точностью до копеек. Для бесплатной услуги явно введите 0.";
       return;
     }
 
@@ -128,11 +122,6 @@
     const key = pendingKey || crypto.randomUUID();
     pendingKey = key;
     try {
-      const draft = {
-        displayName: serviceName.trim().normalize("NFC"),
-        durationMinutes: serviceDuration,
-        basePriceKopecks: Math.round(servicePrice * 100),
-      };
       const wasEditing = editing !== null;
       if (editing) await editRealService(session, editing.id,
         { ...draft, expectedRevision: editing.revision }, key);
@@ -160,7 +149,7 @@
 
 <div class="section-head">
   <div>
-    <span class="eyebrow">COOKIE / ЗАЩИЩЁННЫЙ КАБИНЕТ</span>
+    <span class="eyebrow">kuki / ЗАЩИЩЁННЫЙ КАБИНЕТ</span>
     <h1>Услуги салона</h1>
     <p>Изменения сохраняются в PostgreSQL. Новые услуги — черновики до публикации.</p>
   </div>
@@ -209,9 +198,9 @@
   </section>
   {#if loaded}
     <ServiceForm
-      {serviceName}
-      {serviceDuration}
-      {servicePrice}
+      serviceName={form.serviceName}
+      serviceDuration={form.serviceDuration}
+      servicePrice={form.servicePrice}
       onNameChange={editName}
       onDurationChange={editDuration}
       onPriceChange={editPrice}

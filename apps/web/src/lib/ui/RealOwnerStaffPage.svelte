@@ -160,7 +160,7 @@
 
 <div class="section-head">
   <div>
-    <span class="eyebrow">COOKIE / КОМАНДА</span>
+    <span class="eyebrow">kuki / КОМАНДА</span>
     <h1>Мастера</h1>
     <p>Один профиль на организацию. Услуги и филиалы привязываются как черновики.</p>
   </div>

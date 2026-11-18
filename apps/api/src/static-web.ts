@@ -73,7 +73,10 @@ export async function registerCompiledWeb(
     const path = request.url.split("?", 1)[0] ?? "";
     if (
       !/^\/[A-Za-z0-9_/-]*$/.test(path) ||
-      /^\/(?:v1|health|api|assets)(?:\/|$)/.test(path)
+      /^\/(?:v1|health|api|assets)(?:\/|$)/.test(path) ||
+      // The former mock UI is a developer fixture only. Real demos run this
+      // same authenticated application on a disposable synthetic database.
+      /^\/+demo(?:\/|$)/i.test(path)
     ) {
       return reply.callNotFound();
     }

@@ -67,7 +67,11 @@ for (const name of [
 for (const path of ["OnboardingScreen.svelte", "OwnerOverview.svelte", "BookingForm.svelte", "BookingSummary.svelte", "ServiceForm.svelte", "StaffForm.svelte", "ScheduleForm.svelte", "LocationForm.svelte", "OwnerFormHeader.svelte", "CalendarView.svelte", "BookingDetail.svelte", "OwnerServicesPage.svelte", "OwnerStaffPage.svelte", "OwnerSchedulePage.svelte", "OwnerLocationsPage.svelte", "BookingConfirmation.svelte", "DemoState.svelte", "PublicBookingHero.svelte", "DemoFooter.svelte", "DemoNotices.svelte", "BookingSetupHint.svelte"]) {
   assert.ok(existsSync(join(root, "lib/ui", path)), `Missing presentational screen: ${path}`);
 }
-const app = read("App.svelte");
+const runtime = read("App.svelte");
+assert.match(runtime, /<RealOwnerWorkspace\b/, "Runtime must compose the real owner workspace");
+assert.match(runtime, /<StagingCustomerGate\b/, "Runtime must compose the real customer workspace");
+assert.doesNotMatch(runtime, /createCookieUiApi|LegacyFixture|MockCookieApi|<DemoFooter\b/, "Runtime must not orchestrate the old mock");
+const app = read("LegacyFixture.svelte");
 assert.match(app, /<OnboardingScreen\b/, "App must compose the onboarding screen");
 assert.match(app, /<OwnerOverview\b/, "App must compose the owner overview");
 assert.match(app, /<BookingForm\b/, "App must compose the booking form");
