@@ -24,6 +24,7 @@
   let preview: ViewState = "normal";
   let ownerSession: VerifiedOwnerSession | null = null;
   let customerSession: VerifiedCustomerSession | null = null;
+  let customerAuthNotice = "";
   let ownerAuthPhase: "unavailable" | "verified" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
   let stopOwnerExpiry: (() => void) | null = null;
 
@@ -60,11 +61,17 @@
   }
 
   function acceptCustomerSession(session: VerifiedCustomerSession): void {
+    customerAuthNotice = "";
     customerSession = session;
   }
 
-  function clearCustomerSession(): void {
+  function clearCustomerSession(reason: "expired" | "signed-out" | "logout-failed"): void {
     customerSession = null;
+    customerAuthNotice = reason === "signed-out"
+      ? "Вы вышли. Серверная сессия отозвана."
+      : reason === "logout-failed"
+        ? "Локальный клиентский вход закрыт, но сервер не подтвердил отзыв. Не используйте эту сессию."
+        : "Клиентская сессия завершена или отозвана. Войдите снова.";
   }
 
   async function logoutOwner(): Promise<void> {
@@ -107,7 +114,7 @@
         <IdentityAuthGate
           customerSurface={customerSurface}
           {customerTenantId}
-          authNotice={ownerAuthNotice}
+          authNotice={customerAuthNotice || ownerAuthNotice}
           onOwnerSession={acceptOwnerSession}
           onCustomerSession={acceptCustomerSession}
         />

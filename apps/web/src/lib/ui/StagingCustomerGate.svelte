@@ -6,8 +6,9 @@
   import { Button } from "../components/ui/button/index.js";
   import * as Card from "../components/ui/card/index.js";
   import { authenticateTelegramCustomer, loadTelegramInitData, revokeTelegramOwnerSession, watchOwnerSessionExpiry, type VerifiedCustomerSession } from "../owner-auth";
+  type SessionClearReason = "expired" | "signed-out" | "logout-failed";
   export let initialSession: VerifiedCustomerSession | null = null;
-  export let onSessionCleared: () => void = () => {};
+  export let onSessionCleared: (reason: SessionClearReason) => void = () => {};
   let session: VerifiedCustomerSession | null = initialSession;
   let phase: "loading" | "unavailable" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" = "loading";
   let stopExpiry: (() => void) | null = null;
@@ -22,7 +23,7 @@
     session = null;
     phase = "error";
     stopExpiry?.(); stopExpiry = null;
-    onSessionCleared();
+    onSessionCleared("expired");
   }
   async function signIn(): Promise<void> {
     try {
@@ -46,7 +47,7 @@
     phase = "signing-out";
     try { await revokeTelegramOwnerSession(current); phase = "signed-out"; }
     catch { phase = "logout-failed"; }
-    onSessionCleared();
+    onSessionCleared(phase === "signed-out" ? "signed-out" : "logout-failed");
   }
   onMount(() => {
     if (initialSession) {
