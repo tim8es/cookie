@@ -84,7 +84,7 @@
 </script>
 
 <svelte:head>
-  <title>{customerMode ? "kuki — вход клиента (staging)" : "kuki — вход и кабинет салона"}</title>
+  <title>{customerMode ? "kuki — вход клиента (staging)" : verifiedOwner ? "kuki — кабинет салона" : "kuki — вход и регистрация"}</title>
   <meta name="description" content="kuki: защищённый кабинет услуг и мастеров." />
 </svelte:head>
 
