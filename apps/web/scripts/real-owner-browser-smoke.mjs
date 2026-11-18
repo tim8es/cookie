@@ -398,9 +398,12 @@ async function main() {
     await fill(cdp,"#location-name",onboardingLocation);
     await evaluate(cdp,"(()=>{const s=document.querySelector('#identity-time-zone');s.value='Europe/Moscow';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
     await submitValidForm(cdp,".identity-auth-fields");
+    const workspaceResponse=await poll("owner workspace API response",()=>responses.find(r=>r.path==="/v1/auth/owner/workspace"));
+    assert.equal(workspaceResponse.status,201,"Owner workspace response should create a workspace; UI: "+(await evaluate(cdp,"document.body.innerText")).slice(-500));
+    await requireDom(cdp,"new owner navigation after signup","document.querySelector('.real-owner-nav')");
+    await button(cdp,"Обзор");
     await requireDom(cdp,"new owner workspace appears after signup",
-      "document.querySelector('.real-owner-nav') && document.body.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
-    await poll("owner workspace API response",()=>responses.some(r=>r.path==="/v1/auth/owner/workspace"&&r.status===201));
+      "document.querySelector('h1')?.textContent.trim()==="+JSON.stringify(onboardingOrganization)+" && document.querySelector('.list-items')?.innerText.includes("+JSON.stringify(onboardingLocation)+")");
     const onboardingRows=await pool.query(
       `SELECT o.id::text AS tenant_id,l.id::text AS location_id,l.time_zone
          FROM cookie_tenancy.organizations o
