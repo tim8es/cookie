@@ -210,6 +210,7 @@ export async function assertActiveOpaqueSession(
     typeof authority.tokenSha256 !== "string" ||
     typeof authority.issuer !== "string" ||
     typeof authority.audience !== "string" ||
+    (authority.kind !== undefined && authority.kind !== "identity") ||
     !SHA256_HEX.test(authority.tokenSha256) ||
     !SESSION_LABEL.test(authority.issuer) ||
     !SESSION_LABEL.test(authority.audience) ||
@@ -217,6 +218,23 @@ export async function assertActiveOpaqueSession(
     !UUID_RE.test(actor.identityId)
   ) {
     throw new AuthorizationDeniedError();
+  }
+  if (authority.kind === "identity") {
+    const current = await client.query(
+      `SELECT token_sha256 FROM cookie_identity.identity_sessions
+        WHERE token_sha256=decode($1::text,'hex')
+          AND identity_id=$2::uuid AND issuer=$3::text AND audience=$4::text
+          AND revoked_at IS NULL AND expires_at>clock_timestamp()
+        FOR SHARE`,
+      [
+        authority.tokenSha256,
+        actor.identityId,
+        authority.issuer,
+        authority.audience,
+      ],
+    );
+    if (current.rowCount !== 1) throw new AuthorizationDeniedError();
+    return;
   }
   const params = [
     authority.tokenSha256,

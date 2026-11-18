@@ -22,8 +22,11 @@ export interface AuthMailLease {
 type LeaseRow = QueryResultRow & AuthMailLease;
 interface StartRow extends QueryResultRow {
   purpose: AuthMailPurpose;
+  identity_id: string | null;
   sealed_recipient: Buffer;
 }
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type AuthMailTerminal = "submitted" | "skipped" | "unknown";
 
@@ -69,8 +72,16 @@ export function createAuthMailQueue(config: {
       purpose: AuthMailPurpose,
       email: unknown,
       sourceFingerprint: Buffer,
+      identityId?: string,
     ): Promise<void> {
-      if (purpose !== "registration" && purpose !== "password-recovery") {
+      if (
+        (purpose !== "registration" &&
+          purpose !== "password-recovery" &&
+          purpose !== "email-link") ||
+        (purpose === "email-link" &&
+          (typeof identityId !== "string" || !UUID.test(identityId))) ||
+        (purpose !== "email-link" && identityId !== undefined)
+      ) {
         throw new Error("Invalid auth mail purpose");
       }
       const address = canonicalRegistrationEmail(email);
@@ -89,10 +100,10 @@ export function createAuthMailQueue(config: {
         const sealed = envelope.seal(id, purpose, address);
         await client.query(
           `INSERT INTO cookie_identity.auth_mail_jobs
-           (id,purpose,sealed_recipient,status,created_at,expires_at)
-           VALUES ($1::uuid,$2,$3,'pending',statement_timestamp(),
-             statement_timestamp()+$4::integer*interval '1 second')`,
-          [id, purpose, sealed, queueTtlSeconds],
+           (id,purpose,identity_id,sealed_recipient,status,created_at,expires_at)
+           VALUES ($1::uuid,$2,$3::uuid,$4,'pending',statement_timestamp(),
+             statement_timestamp()+$5::integer*interval '1 second')`,
+          [id, purpose, identityId ?? null, sealed, queueTtlSeconds],
         );
       });
     },
@@ -126,12 +137,13 @@ export function createAuthMailQueue(config: {
      */
     async start(lease: AuthMailLease): Promise<{
       purpose: AuthMailPurpose;
+      identityId?: string;
       address: string;
     } | null> {
       const row = await transaction(async (client) => {
         const result = await client.query<StartRow>(
           `WITH chosen AS (
-             SELECT id,purpose,sealed_recipient
+             SELECT id,purpose,identity_id,sealed_recipient
              FROM cookie_identity.auth_mail_jobs
              WHERE id=$1::uuid AND lease_token=$2::uuid AND status='leased'
                AND expires_at>clock_timestamp()
@@ -142,7 +154,7 @@ export function createAuthMailQueue(config: {
            SET status='dispatching',sealed_recipient=NULL,
              lease_until=clock_timestamp()+$3::integer*interval '1 second'
            FROM chosen WHERE job.id=chosen.id
-           RETURNING chosen.purpose,chosen.sealed_recipient`,
+           RETURNING chosen.purpose,chosen.identity_id::text,chosen.sealed_recipient`,
           [lease.id, lease.lease_token, dispatchSeconds],
         );
         return result.rows[0];
@@ -150,6 +162,7 @@ export function createAuthMailQueue(config: {
       if (!row) return null;
       return {
         purpose: row.purpose,
+        ...(row.identity_id ? { identityId: row.identity_id } : {}),
         address: envelope.open(lease.id, row.purpose, row.sealed_recipient),
       };
     },

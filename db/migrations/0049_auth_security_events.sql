@@ -4,7 +4,9 @@ CREATE TABLE cookie_identity.auth_security_events (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   occurred_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   event_type text NOT NULL CHECK (event_type IN (
-    'email_registered','email_login','password_recovered',
+    'email_registered','email_login','email_provider_linked','password_recovered',
+    'telegram_registered','telegram_login','telegram_provider_linked',
+    'owner_workspace_created','customer_enrolled',
     'identity_session_revoked',
     'mail_submitted','mail_skipped','mail_unknown','mail_expired'
   )),
@@ -12,7 +14,9 @@ CREATE TABLE cookie_identity.auth_security_events (
   mail_job_id uuid,
   CHECK (
     (event_type IN (
-      'email_registered','email_login','password_recovered','identity_session_revoked'
+      'email_registered','email_login','email_provider_linked','password_recovered',
+      'telegram_registered','telegram_login','telegram_provider_linked',
+      'owner_workspace_created','customer_enrolled','identity_session_revoked'
     ) AND identity_id IS NOT NULL AND mail_job_id IS NULL)
     OR
     (event_type IN (

@@ -118,7 +118,7 @@ export async function completeEmailRegistration(
   // not authorization: final consumption and expiry are rechecked atomically.
   const pending = await transaction(async (client) => {
     const result = await client.query(
-      "SELECT 1 FROM cookie_identity.email_registration_challenges WHERE token_sha256=$1 AND expires_at > clock_timestamp()",
+      "SELECT 1 FROM cookie_identity.email_registration_challenges WHERE token_sha256=$1 AND target_identity_id IS NULL AND expires_at > clock_timestamp()",
       [digest],
     );
     return result.rowCount === 1;
@@ -128,7 +128,7 @@ export async function completeEmailRegistration(
 
   return transaction(async (client) => {
     const consumed = await client.query<FingerprintRow>(
-      "DELETE FROM cookie_identity.email_registration_challenges WHERE token_sha256=$1 AND expires_at > clock_timestamp() RETURNING email_hmac_sha256",
+      "DELETE FROM cookie_identity.email_registration_challenges WHERE token_sha256=$1 AND target_identity_id IS NULL AND expires_at > clock_timestamp() RETURNING email_hmac_sha256",
       [digest],
     );
     const fingerprint = consumed.rows[0]?.email_hmac_sha256;

@@ -2,7 +2,16 @@ import type { PoolClient } from "pg";
 
 type Transaction = <T>(work: (client: PoolClient) => Promise<T>) => Promise<T>;
 
-type IdentityEvent = "email_registered" | "email_login" | "password_recovered";
+type IdentityEvent =
+  | "email_registered"
+  | "email_login"
+  | "email_provider_linked"
+  | "password_recovered"
+  | "telegram_registered"
+  | "telegram_login"
+  | "telegram_provider_linked"
+  | "owner_workspace_created"
+  | "customer_enrolled";
 
 /** Must use the same transaction as the successful identity change. */
 export async function appendAuthIdentityAudit(

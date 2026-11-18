@@ -19,6 +19,7 @@ const paths = [
   "styles/appearance.css",
   "styles/calendar.css",
   "styles/feedback.css",
+  "styles/identity-auth.css",
 ];
 
 for (const path of paths) {
@@ -46,7 +47,8 @@ for (const path of compatPaths) {
 }
 const compatibility = compatPaths.map(read).join("");
 assert.ok(
-  compatibility.length <= 35591,
+  // Count canonical LF so a Windows checkout does not inflate the CSS budget.
+  compatibility.replace(/\r\n/g, "\n").length <= 35591,
   "Compatibility CSS must shrink from its 2026-11-16 baseline. Add new styles to src/styles/<screen>.css",
 );
 assert.ok(!compatibility.includes("--green: #"), "Obsolete green palettes must not be reintroduced");
@@ -64,7 +66,7 @@ for (const name of [
   assert.ok(tokens.includes(name + ":"), `Missing design token ${name}`);
 }
 
-for (const path of ["OnboardingScreen.svelte", "OwnerOverview.svelte", "BookingForm.svelte", "BookingSummary.svelte", "ServiceForm.svelte", "StaffForm.svelte", "ScheduleForm.svelte", "LocationForm.svelte", "OwnerFormHeader.svelte", "CalendarView.svelte", "BookingDetail.svelte", "OwnerServicesPage.svelte", "OwnerStaffPage.svelte", "OwnerSchedulePage.svelte", "OwnerLocationsPage.svelte", "BookingConfirmation.svelte", "DemoState.svelte", "PublicBookingHero.svelte", "DemoFooter.svelte", "DemoNotices.svelte", "BookingSetupHint.svelte"]) {
+for (const path of ["OnboardingScreen.svelte", "OwnerOverview.svelte", "BookingForm.svelte", "BookingSummary.svelte", "ServiceForm.svelte", "StaffForm.svelte", "ScheduleForm.svelte", "LocationForm.svelte", "OwnerFormHeader.svelte", "CalendarView.svelte", "BookingDetail.svelte", "OwnerServicesPage.svelte", "OwnerStaffPage.svelte", "OwnerSchedulePage.svelte", "OwnerLocationsPage.svelte", "BookingConfirmation.svelte", "DemoState.svelte", "PublicBookingHero.svelte", "DemoFooter.svelte", "DemoNotices.svelte", "BookingSetupHint.svelte", "IdentityAuthGate.svelte"]) {
   assert.ok(existsSync(join(root, "lib/ui", path)), `Missing presentational screen: ${path}`);
 }
 const runtime = read("App.svelte");
@@ -79,6 +81,7 @@ assert.match(app, /<CalendarView\b/, "App must compose the calendar");
 for (const name of ["OwnerServicesPage", "OwnerStaffPage", "OwnerSchedulePage", "OwnerLocationsPage", "BookingConfirmation", "DemoState", "PublicBookingHero", "DemoFooter", "DemoNotices", "BookingSetupHint"]) {
   assert.match(app, new RegExp("<" + name + "\\b"), "App must compose " + name + " instead of inline screen markup");
 }
+assert.match(app, /<IdentityAuthGate\b/, "API-mode identity flows must stay in a presentational gate");
 assert.ok(!app.includes('<div class="workspace-grid">'), "Owner screen markup belongs in separate Page components");
 assert.ok(!app.includes('<section class="booking-head booking-hero"'), "Public booking hero belongs in a presentation component");
 assert.ok(!app.includes('<footer class="footer"'), "Footer belongs in a presentation component");

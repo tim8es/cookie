@@ -71,14 +71,94 @@ export class IdentitySessions {
   }
 
   async resolve(token: unknown): Promise<string | null> {
+    return (await this.resolveWithExpiry(token))?.identityId ?? null;
+  }
+
+  async resolveWithExpiry(
+    token: unknown,
+  ): Promise<{ identityId: string; expiresAtUnixSeconds: number } | null> {
     if (typeof token !== "string" || !TOKEN.test(token)) return null;
-    const result = await this.pool.query<{ identity_id: string }>(
-      `SELECT identity_id::text FROM cookie_identity.identity_sessions
+    const result = await this.pool.query<{
+      identity_id: string;
+      expires_at: Date;
+    }>(
+      `SELECT identity_id::text,expires_at FROM cookie_identity.identity_sessions
        WHERE token_sha256=$1 AND issuer=$2 AND audience=$3
          AND revoked_at IS NULL AND expires_at>clock_timestamp()`,
       [digest(token), this.issuer, this.audience],
     );
-    return result.rows[0]?.identity_id ?? null;
+    const row = result.rows[0];
+    if (
+      !row ||
+      !UUID.test(row.identity_id) ||
+      !(row.expires_at instanceof Date) ||
+      !Number.isFinite(row.expires_at.getTime())
+    ) {
+      return null;
+    }
+    return {
+      identityId: row.identity_id,
+      expiresAtUnixSeconds: Math.floor(row.expires_at.getTime() / 1000),
+    };
+  }
+
+  /**
+   * Resolve a global Identity session for a requested tenant path. The path is
+   * only a selection hint; tenant membership and permissions are rechecked
+   * under locks by the protected transaction before any data is returned.
+   */
+  async verifyBearerTokenForTenant(
+    token: unknown,
+    tenantId: unknown,
+  ): Promise<{
+    identityId: string;
+    tenantId: string;
+    expiresAtUnixSeconds: number;
+    opaqueSessionAuthority: {
+      tokenSha256: string;
+      issuer: string;
+      audience: string;
+      kind: "identity";
+    };
+  } | null> {
+    if (
+      typeof token !== "string" ||
+      !TOKEN.test(token) ||
+      typeof tenantId !== "string" ||
+      !UUID.test(tenantId)
+    ) {
+      return null;
+    }
+    const result = await this.pool.query<{
+      identity_id: string;
+      expires_at: Date;
+    }>(
+      `SELECT identity_id::text,expires_at
+       FROM cookie_identity.identity_sessions
+       WHERE token_sha256=$1 AND issuer=$2 AND audience=$3
+         AND revoked_at IS NULL AND expires_at>clock_timestamp()`,
+      [digest(token), this.issuer, this.audience],
+    );
+    const session = result.rows[0];
+    if (
+      !session ||
+      !UUID.test(session.identity_id) ||
+      !(session.expires_at instanceof Date) ||
+      !Number.isFinite(session.expires_at.getTime())
+    ) {
+      return null;
+    }
+    return {
+      identityId: session.identity_id,
+      tenantId,
+      expiresAtUnixSeconds: Math.floor(session.expires_at.getTime() / 1000),
+      opaqueSessionAuthority: {
+        tokenSha256: digest(token).toString("hex"),
+        issuer: this.issuer,
+        audience: this.audience,
+        kind: "identity",
+      },
+    };
   }
 
   /** Lock one valid Identity session for protected work in the caller transaction. */

@@ -18,6 +18,7 @@ import {
 } from "./email-registration.js";
 
 type Transaction = <T>(work: (client: PoolClient) => Promise<T>) => Promise<T>;
+type DirectMailPurpose = Exclude<AuthMailPurpose, "email-link">;
 
 /**
  * Trusted internal delivery worker capability, not a public request handler.
@@ -36,7 +37,7 @@ export function createEmailChallengeMailer(config: {
   recoveryTtlSeconds: number;
 }): {
   deliver(
-    purpose: AuthMailPurpose,
+    purpose: DirectMailPurpose,
     email: unknown,
     sourceFingerprint: Buffer,
   ): Promise<void>;

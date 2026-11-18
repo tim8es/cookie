@@ -6,7 +6,9 @@
   import { Button } from "../components/ui/button/index.js";
   import * as Card from "../components/ui/card/index.js";
   import { authenticateTelegramCustomer, loadTelegramInitData, revokeTelegramOwnerSession, watchOwnerSessionExpiry, type VerifiedCustomerSession } from "../owner-auth";
-  let session: VerifiedCustomerSession | null = null;
+  export let initialSession: VerifiedCustomerSession | null = null;
+  export let onSessionCleared: () => void = () => {};
+  let session: VerifiedCustomerSession | null = initialSession;
   let phase: "loading" | "unavailable" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" = "loading";
   let stopExpiry: (() => void) | null = null;
   let mounted = true;
@@ -20,6 +22,7 @@
     session = null;
     phase = "error";
     stopExpiry?.(); stopExpiry = null;
+    onSessionCleared();
   }
   async function signIn(): Promise<void> {
     try {
@@ -43,8 +46,15 @@
     phase = "signing-out";
     try { await revokeTelegramOwnerSession(current); phase = "signed-out"; }
     catch { phase = "logout-failed"; }
+    onSessionCleared();
   }
-  onMount(() => { void signIn(); return () => { mounted = false; stopExpiry?.(); stopExpiry = null; }; });
+  onMount(() => {
+    if (initialSession) {
+      phase = "verified";
+      stopExpiry = watchOwnerSessionExpiry(initialSession.expiresAtUnixSeconds, expire, window, document);
+    } else void signIn();
+    return () => { mounted = false; stopExpiry?.(); stopExpiry = null; };
+  });
 </script>
 
 <Card.Root class="state-card feedback-state" aria-label="Клиентский вход staging">

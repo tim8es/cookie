@@ -1,6 +1,9 @@
 import { canonicalRegistrationEmail } from "./email-registration.js";
 
-export type AuthMailPurpose = "registration" | "password-recovery";
+export type AuthMailPurpose =
+  | "registration"
+  | "password-recovery"
+  | "email-link";
 
 export interface AuthMailMessage {
   readonly recipient: string;
@@ -16,6 +19,7 @@ export interface AuthMailLinkConfig {
   readonly publicOrigin: string;
   readonly registrationPath: string;
   readonly recoveryPath: string;
+  readonly emailLinkPath?: string;
 }
 
 function configuredOrigin(input: string): URL {
@@ -62,7 +66,14 @@ export function createAuthMailDelivery(
   const origin = configuredOrigin(config.publicOrigin);
   const registration = configuredPath(config.registrationPath, origin);
   const recovery = configuredPath(config.recoveryPath, origin);
-  if (registration === recovery) {
+  const emailLink = config.emailLinkPath
+    ? configuredPath(config.emailLinkPath, origin)
+    : undefined;
+  if (
+    registration === recovery ||
+    (emailLink !== undefined &&
+      (emailLink === registration || emailLink === recovery))
+  ) {
     throw new Error("Authentication mail paths must be distinct");
   }
   return {
@@ -72,16 +83,23 @@ export function createAuthMailDelivery(
         throw new Error("Invalid authentication mail recipient");
       }
       const register = purpose === "registration";
-      if (!register && purpose !== "password-recovery") {
+      const isRecovery = purpose === "password-recovery";
+      const linking = purpose === "email-link";
+      if (!register && !isRecovery && !linking) {
         throw new Error("Invalid authentication mail purpose");
       }
       const pattern = register
         ? /^er_[A-Za-z0-9_-]{43}$/
-        : /^ep_[A-Za-z0-9_-]{43}$/;
+        : isRecovery
+          ? /^ep_[A-Za-z0-9_-]{43}$/
+          : /^el_[A-Za-z0-9_-]{43}$/;
       if (challenge.token.length !== 46 || !pattern.test(challenge.token)) {
         throw new Error("Invalid authentication mail proof");
       }
-      const link = new URL(register ? registration : recovery, origin);
+      const path = register ? registration : isRecovery ? recovery : emailLink;
+      if (!path)
+        throw new Error("Email credential link path is not configured");
+      const link = new URL(path, origin);
       link.hash = new URLSearchParams({ token: challenge.token }).toString();
       // Do not issue challenges here. The issuing transaction must already
       // have committed. Never expose the transport or its errors to clients.

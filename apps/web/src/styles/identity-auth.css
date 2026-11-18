@@ -1,0 +1,180 @@
+.identity-auth-page {
+  width: min(100%, 860px);
+  margin: 0 auto 28px;
+}
+
+.identity-auth-card {
+  display: grid;
+  gap: 16px;
+  padding: clamp(22px, 5vw, 42px);
+  border: 1px solid var(--cookie-border);
+  border-radius: var(--cookie-radius-surface);
+  background: var(--cookie-surface);
+  box-shadow: var(--shadow);
+}
+
+.identity-auth-overline,
+.identity-auth-section-head > div > span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 720;
+  letter-spacing: .08em;
+}
+
+.identity-auth-card h1 {
+  margin: 0;
+  color: var(--cookie-ink);
+  font-family: var(--cookie-font-editorial);
+  font-size: clamp(30px, 5vw, 42px);
+  font-weight: 400;
+  letter-spacing: -.035em;
+  line-height: 1.08;
+}
+
+.identity-auth-card h2 {
+  margin: 5px 0 0;
+  color: var(--cookie-ink);
+  font-size: 19px;
+  letter-spacing: -.025em;
+}
+
+.identity-auth-card p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.identity-auth-card button[data-slot=button] { min-height: 42px; }
+
+.identity-auth-fields {
+  display: grid;
+  width: min(100%, 460px);
+  gap: 10px;
+}
+
+.identity-auth-fields label[data-slot=label] { margin-top: 4px; }
+.identity-auth-fields input[data-slot=input] { min-height: 42px; }
+
+.identity-role-options,
+.identity-organization-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.identity-role-options button[data-slot=button] {
+  min-height: 72px;
+  justify-content: flex-start;
+  padding: 16px;
+  white-space: normal;
+  text-align: left;
+}
+
+.identity-auth-section {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--cookie-border);
+  border-radius: var(--cookie-radius-panel);
+  background: #fcfbfc;
+}
+
+.identity-auth-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.identity-auth-section-head button[data-slot=button] {
+  min-height: 34px;
+  flex: 0 0 auto;
+}
+
+.identity-organization-list { grid-template-columns: 1fr; }
+.identity-organization-list button[data-slot=button] {
+  min-height: 54px;
+  justify-content: space-between;
+  gap: 14px;
+  white-space: normal;
+  text-align: left;
+}
+.identity-organization-list small {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.identity-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.identity-consent input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--cookie-brand);
+}
+
+.identity-provider-section { background: var(--cookie-surface); }
+.identity-provider-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.identity-provider-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--cookie-border);
+  color: var(--cookie-ink);
+  font-size: 13px;
+}
+.identity-provider-list strong {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 650;
+}
+.identity-link-email { margin-top: 2px; }
+
+.identity-auth-error,
+.identity-auth-notice {
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px !important;
+}
+.identity-auth-error {
+  border: 1px solid #e7bec4;
+  background: #fff4f5;
+  color: #8b2634 !important;
+}
+.identity-auth-notice {
+  border: 1px solid #d9e4bd;
+  background: #f8fbeF;
+  color: #45542a !important;
+}
+.identity-auth-footnote {
+  padding-top: 2px;
+  font-size: 11px !important;
+}
+
+@media (max-width: 540px) {
+  .identity-auth-card { padding: 20px 16px; }
+  .identity-role-options { grid-template-columns: 1fr; }
+  .identity-role-options button[data-slot=button] { min-height: 54px; }
+  .identity-auth-section { padding: 16px; }
+  .identity-auth-section-head { flex-direction: column; }
+  .identity-organization-list button[data-slot=button] {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

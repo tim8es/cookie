@@ -10,6 +10,7 @@ import type {
   createAuthMailQueue,
 } from "./auth-mail-queue.js";
 import { issueEmailPasswordRecovery } from "./email-password-recovery.js";
+import { issueEmailCredentialLinkChallenge } from "./email-credential-link.js";
 import { issueEmailRegistrationChallenge } from "./email-registration.js";
 
 type Transaction = <T>(work: (client: PoolClient) => Promise<T>) => Promise<T>;
@@ -61,12 +62,22 @@ export function createAuthMailWorker(config: {
                 job.address,
                 registrationTtlSeconds,
               )
-            : await issueEmailPasswordRecovery(
-                transaction,
-                secret,
-                job.address,
-                recoveryTtlSeconds,
-              );
+            : job.purpose === "password-recovery"
+              ? await issueEmailPasswordRecovery(
+                  transaction,
+                  secret,
+                  job.address,
+                  recoveryTtlSeconds,
+                )
+              : job.identityId
+                ? await issueEmailCredentialLinkChallenge(
+                    transaction,
+                    secret,
+                    job.address,
+                    job.identityId,
+                    registrationTtlSeconds,
+                  )
+                : null;
         if (challenge) {
           await delivery.send(job.purpose, challenge);
           status = "submitted";

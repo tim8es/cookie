@@ -80,64 +80,68 @@ test("auth links use trusted origin and purpose fragments", async () => {
   }
 });
 
-test("sendmail submits MIME and sanitizes failures", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "kuki-auth-mail-"));
-  try {
-    const executable = join(dir, "synthetic-sendmail");
-    await writeFile(
-      executable,
-      '#!/bin/sh\nprintf "%s\\n" "$@" > "$0.args"\ncat > "$0.message"\n',
-      { mode: 0o700 },
-    );
-    const config = {
-      executable,
-      fromAddress: "auth@example.invalid",
-      timeoutMs: 1000,
-    };
-    const transport = createSendmailAuthTransport(config);
-    const delivery = createAuthMailDelivery(links, transport);
-    await delivery.send("registration", {
-      address: recipient,
-      token: regToken,
-    });
-    assert.equal(
-      await readFile(executable + ".args", "utf8"),
-      "-i\n-f\nauth@example.invalid\n-t\n",
-    );
-    const message = await readFile(executable + ".message", "utf8");
-    const [headers, encoded] = message.split("\r\n\r\n");
-    assert.match(headers ?? "", /To: <test@example\.invalid>/);
-    assert.match(headers ?? "", /Content-Transfer-Encoding: base64/);
-    assert.doesNotMatch(headers ?? "", /er_/);
-    const body = Buffer.from(encoded ?? "", "base64").toString("utf8");
-    assert.ok(body.includes("#token=" + regToken));
+test(
+  "sendmail submits MIME and sanitizes failures",
+  { skip: process.platform === "win32" },
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "kuki-auth-mail-"));
+    try {
+      const executable = join(dir, "synthetic-sendmail");
+      await writeFile(
+        executable,
+        '#!/bin/sh\nprintf "%s\\n" "$@" > "$0.args"\ncat > "$0.message"\n',
+        { mode: 0o700 },
+      );
+      const config = {
+        executable,
+        fromAddress: "auth@example.invalid",
+        timeoutMs: 1000,
+      };
+      const transport = createSendmailAuthTransport(config);
+      const delivery = createAuthMailDelivery(links, transport);
+      await delivery.send("registration", {
+        address: recipient,
+        token: regToken,
+      });
+      assert.equal(
+        await readFile(executable + ".args", "utf8"),
+        "-i\n-f\nauth@example.invalid\n-t\n",
+      );
+      const message = await readFile(executable + ".message", "utf8");
+      const [headers, encoded] = message.split("\r\n\r\n");
+      assert.match(headers ?? "", /To: <test@example\.invalid>/);
+      assert.match(headers ?? "", /Content-Transfer-Encoding: base64/);
+      assert.doesNotMatch(headers ?? "", /er_/);
+      const body = Buffer.from(encoded ?? "", "base64").toString("utf8");
+      assert.ok(body.includes("#token=" + regToken));
 
-    await writeFile(executable, "#!/bin/sh\ncat >/dev/null\nexit 7\n");
-    await assert.rejects(
-      delivery.send("registration", {
-        address: recipient,
-        token: regToken,
-      }),
-      /^Error: Authentication mail submission failed$/,
-    );
-    await writeFile(executable, "#!/bin/sh\nexec sleep 5\n");
-    await assert.rejects(
-      delivery.send("registration", {
-        address: recipient,
-        token: regToken,
-      }),
-      /^Error: Authentication mail submission failed$/,
-    );
-    assert.throws(() =>
-      createSendmailAuthTransport({ ...config, executable: "sendmail" }),
-    );
-    assert.throws(() =>
-      createSendmailAuthTransport({
-        ...config,
-        fromAddress: "-bad@example.invalid",
-      }),
-    );
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
+      await writeFile(executable, "#!/bin/sh\ncat >/dev/null\nexit 7\n");
+      await assert.rejects(
+        delivery.send("registration", {
+          address: recipient,
+          token: regToken,
+        }),
+        /^Error: Authentication mail submission failed$/,
+      );
+      await writeFile(executable, "#!/bin/sh\nexec sleep 5\n");
+      await assert.rejects(
+        delivery.send("registration", {
+          address: recipient,
+          token: regToken,
+        }),
+        /^Error: Authentication mail submission failed$/,
+      );
+      assert.throws(() =>
+        createSendmailAuthTransport({ ...config, executable: "sendmail" }),
+      );
+      assert.throws(() =>
+        createSendmailAuthTransport({
+          ...config,
+          fromAddress: "-bad@example.invalid",
+        }),
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);

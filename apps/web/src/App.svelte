@@ -5,79 +5,71 @@
   import Sidebar from "./lib/ui/Sidebar.svelte";
   import Topbar from "./lib/ui/Topbar.svelte";
   import OnboardingHeader from "./lib/ui/OnboardingHeader.svelte";
-  import OwnerAuthGate from "./lib/ui/OwnerAuthGate.svelte";
+  import IdentityAuthGate from "./lib/ui/IdentityAuthGate.svelte";
   import StagingCustomerGate from "./lib/ui/StagingCustomerGate.svelte";
   import RealOwnerWorkspace from "./lib/ui/RealOwnerWorkspace.svelte";
   import {
-    authenticateTelegramOwner,
-    loadTelegramInitData,
     revokeTelegramOwnerSession,
     watchOwnerSessionExpiry,
+    type VerifiedCustomerSession,
     type VerifiedOwnerSession,
   } from "./lib/owner-auth";
   import "./styles.css";
   import "./visual-system.css";
 
-  // Presentation selection is not a trusted tenant or role claim.
+  // URL selects a customer presentation only; all access is checked by the API.
   const customerSurface = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "customer-staging";
+  const customerTenantId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tenantId") ?? "" : "";
   let screen: Screen = "services";
   let preview: ViewState = "normal";
   let ownerSession: VerifiedOwnerSession | null = null;
-  let ownerAuthPhase: "unavailable" | "loading" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
+  let customerSession: VerifiedCustomerSession | null = null;
+  let ownerAuthPhase: "unavailable" | "verified" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
   let stopOwnerExpiry: (() => void) | null = null;
-  let ownerMounted = false;
 
-  $: verifiedOwner = !customerSurface && ownerAuthPhase === "verified" && ownerSession !== null;
+  $: customerMode = customerSurface || customerSession !== null;
+  $: verifiedOwner = !customerMode && ownerAuthPhase === "verified" && ownerSession !== null;
+  $: ownerAuthNotice = ownerAuthPhase === "signed-out"
+    ? "Вы вышли. Серверная сессия отозвана."
+    : ownerAuthPhase === "logout-failed"
+      ? "Локальный вход закрыт, но сервер не подтвердил отзыв. Старая сессия может действовать до истечения срока."
+      : ownerAuthPhase === "expired"
+        ? "Срок действия входа истёк. Войдите снова."
+        : "";
 
-  onMount(() => {
-    ownerMounted = true;
-    if (!customerSurface) void authenticateOwner();
-    return () => {
-      ownerMounted = false;
-      stopOwnerExpiry?.();
-      ownerSession = null;
-    };
+  onMount(() => () => {
+    stopOwnerExpiry?.();
+    ownerSession = null;
+    customerSession = null;
   });
 
-  async function authenticateOwner(): Promise<void> {
-    ownerAuthPhase = "loading";
-    try {
-      const initData = await loadTelegramInitData(window, document);
-      if (!ownerMounted) return;
-      if (!initData) {
-        ownerAuthPhase = "unavailable";
-        return;
-      }
-      const session = await authenticateTelegramOwner(initData);
-      if (!ownerMounted) {
-        await revokeTelegramOwnerSession(session).catch(() => undefined);
-        return;
-      }
-      stopOwnerExpiry?.();
-      ownerSession = session;
-      ownerAuthPhase = "verified";
-      stopOwnerExpiry = watchOwnerSessionExpiry(
-        session.expiresAtUnixSeconds,
-        () => {
-          if (ownerSession !== session) return;
-          ownerSession = null;
-          ownerAuthPhase = "expired";
-        },
-        window,
-        document,
-      );
-    } catch {
-      if (!ownerMounted) return;
-      ownerSession = null;
-      ownerAuthPhase = "error";
-    }
+  function acceptOwnerSession(session: VerifiedOwnerSession): void {
+    stopOwnerExpiry?.();
+    ownerSession = session;
+    ownerAuthPhase = "verified";
+    stopOwnerExpiry = watchOwnerSessionExpiry(
+      session.expiresAtUnixSeconds,
+      () => {
+        if (ownerSession !== session) return;
+        ownerSession = null;
+        ownerAuthPhase = "expired";
+      },
+      window,
+      document,
+    );
+  }
+
+  function acceptCustomerSession(session: VerifiedCustomerSession): void {
+    customerSession = session;
+  }
+
+  function clearCustomerSession(): void {
+    customerSession = null;
   }
 
   async function logoutOwner(): Promise<void> {
     const session = ownerSession;
     if (!session || ownerAuthPhase !== "verified") return;
-    // Discard the bearer immediately; even failed remote revocation cannot
-    // restore any owner permissions in the current browser session.
     stopOwnerExpiry?.();
     stopOwnerExpiry = null;
     ownerSession = null;
@@ -92,7 +84,7 @@
 </script>
 
 <svelte:head>
-  <title>{customerSurface ? "kuki — вход клиента (staging)" : "kuki — кабинет салона"}</title>
+  <title>{customerMode ? "kuki — вход клиента (staging)" : "kuki — вход и кабинет салона"}</title>
   <meta name="description" content="kuki: защищённый кабинет услуг и мастеров." />
 </svelte:head>
 
@@ -104,15 +96,21 @@
     {#if verifiedOwner}
       <Topbar {screen} bind:preview canCreateBooking={false} demoMode={false} onNavigate={(next) => screen = next} onLogout={() => void logoutOwner()} />
     {:else}
-      <OnboardingHeader apiMode={true} />
+      <OnboardingHeader apiMode={true} label={customerMode ? "Клиентский staging" : "Вход и регистрация"} />
     {/if}
     <main class="content">
-      {#if customerSurface}
-        <StagingCustomerGate />
-      {:else if ownerAuthPhase === "verified" && ownerSession}
+      {#if customerSession}
+        <StagingCustomerGate initialSession={customerSession} onSessionCleared={clearCustomerSession} />
+      {:else if verifiedOwner && ownerSession}
         <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} />
       {:else}
-        <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
+        <IdentityAuthGate
+          customerSurface={customerSurface}
+          {customerTenantId}
+          authNotice={ownerAuthNotice}
+          onOwnerSession={acceptOwnerSession}
+          onCustomerSession={acceptCustomerSession}
+        />
       {/if}
     </main>
   </div>

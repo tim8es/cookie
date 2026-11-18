@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { Button } from "../components/ui/button/index.js";
+  import { discoverAuthMethods } from "../identity-auth.js";
   import type { VerifiedOwnerSession } from "../owner-auth";
   import {
     WorkspaceOverviewFailure,
@@ -18,6 +19,14 @@
   let error = "";
   let activeRequest: AbortController | null = null;
   let expired = false;
+  let stagingCustomerEnabled = false;
+
+  function customerStagingPath(): string {
+    const url = new URL("/", window.location.origin);
+    url.searchParams.set("surface", "customer-staging");
+    url.searchParams.set("tenantId", session.tenantId);
+    return url.pathname + url.search;
+  }
 
   function description(reason: unknown): string {
     if (reason instanceof WorkspaceOverviewFailure) {
@@ -72,6 +81,9 @@
 
   onMount(() => {
     void refresh();
+    void discoverAuthMethods()
+      .then((methods) => (stagingCustomerEnabled = methods.stagingCustomerEnrollment))
+      .catch(() => undefined);
     return () => {
       activeRequest?.abort();
       activeRequest = null;
@@ -126,5 +138,13 @@
         <Button type="button" variant="outline" onclick={onOpenStaff}>Мастера</Button>
       </div>
     </section>
+    {#if stagingCustomerEnabled}
+      <section class="card" aria-label="Клиентский тест staging">
+        <span class="eyebrow">PRIVATE STAGING</span>
+        <h2>Проверить вход клиента</h2>
+        <p>Откройте тестовую страницу для этой организации. Сервер создаст клиентскую роль только после явного согласия и проверки staging-разрешения.</p>
+        <Button variant="outline" href={customerStagingPath()}>Открыть клиентский staging</Button>
+      </section>
+    {/if}
   </div>
 {/if}

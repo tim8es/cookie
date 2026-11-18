@@ -29,12 +29,29 @@ import {
 import { registerStagingCustomerBooking } from "./staging-customer-booking-http.js";
 import { registerStagingCustomerHistory } from "./staging-customer-history-http.js";
 import { registerStagingCustomerOffers } from "./staging-customer-offers-http.js";
-import { registerStagingCustomerContext } from "./staging-customer-http.js";
+import {
+  registerStagingCustomerContext,
+  registerStagingCustomerEnrollment,
+} from "./staging-customer-http.js";
 import { registerTelegramAuthExchange } from "./telegram-auth-http.js";
+import {
+  registerEmailIdentityAuth,
+  type EmailIdentityAuthDependencies,
+} from "./email-identity-auth-http.js";
+import {
+  registerIdentityOrganizations,
+  registerIdentityProviders,
+  registerIdentitySessionLogout,
+} from "./identity-session-http.js";
+import { registerOwnerWorkspaceEnrollment } from "./owner-workspace-enrollment-http.js";
 import {
   registerTelegramIdentityAuth,
   type TelegramIdentityAuthDependencies,
 } from "./telegram-identity-auth-http.js";
+import {
+  registerTelegramOidcAuth,
+  type TelegramOidcAuthDependencies,
+} from "./telegram-oidc-auth-http.js";
 import {
   registerStagingPublicationRoutes,
   type StagingPublicationDependencies,
@@ -96,6 +113,14 @@ export function createApp(
       readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
     readonly telegramIdentityRoutes?: TelegramIdentityAuthDependencies;
+    readonly telegramOidcRoutes?: TelegramOidcAuthDependencies;
+    readonly emailIdentityRoutes?: EmailIdentityAuthDependencies;
+    readonly ownerWorkspaceEnrollment?: {
+      readonly pool: import("pg").Pool;
+      readonly identitySessionProviders: readonly import("../../../packages/platform-identity/src/index.js").IdentitySessions[];
+    };
+    readonly identitySessionProviders?: readonly import("../../../packages/platform-identity/src/index.js").IdentitySessions[];
+    readonly identitySessionPool?: import("pg").Pool;
     readonly syntheticBookingRoutes?: SyntheticBookingHttpDependencies;
     readonly syntheticBookingMutations?: SyntheticBookingMutationDependencies;
     readonly syntheticWorkspaceReads?: SyntheticWorkspaceReadDependencies;
@@ -105,6 +130,10 @@ export function createApp(
     logger: options.logger ?? false,
     bodyLimit: 16_384,
   });
+  const identitySessionProviders =
+    options.identitySessionProviders ??
+    options.telegramIdentityRoutes?.identitySessionProviders ??
+    [];
 
   app.get<{ Reply: HealthResponse }>("/health/live", async () => ({
     service: SERVICE_NAME,
@@ -131,6 +160,24 @@ export function createApp(
     },
   );
 
+  app.get("/v1/auth/methods", async (_request, reply) =>
+    reply.header("Cache-Control", "no-store").send({
+      methods: [
+        ...(options.telegramIdentityRoutes || options.telegramOidcRoutes
+          ? ["telegram"]
+          : []),
+        ...(options.emailIdentityRoutes ? ["email"] : []),
+      ],
+      telegram: {
+        miniApp: options.telegramIdentityRoutes !== undefined,
+        webOidc: options.telegramOidcRoutes !== undefined,
+      },
+      stagingCustomerEnrollment:
+        options.stagingPublicationRoutes?.enabled === true &&
+        identitySessionProviders.length > 0,
+    }),
+  );
+
   // No session verifier is installed in the normal API bootstrap: fail closed.
   if (options.sessionRoutes)
     registerProtectedSessionContext(app, options.sessionRoutes);
@@ -141,6 +188,26 @@ export function createApp(
     registerTelegramAuthExchange(app, options.telegramAuthRoutes.sessions);
   if (options.telegramIdentityRoutes)
     registerTelegramIdentityAuth(app, options.telegramIdentityRoutes);
+  if (options.telegramOidcRoutes)
+    registerTelegramOidcAuth(app, options.telegramOidcRoutes);
+  if (options.emailIdentityRoutes)
+    registerEmailIdentityAuth(app, options.emailIdentityRoutes);
+  if (options.ownerWorkspaceEnrollment)
+    registerOwnerWorkspaceEnrollment(app, options.ownerWorkspaceEnrollment);
+  if (identitySessionProviders.length > 0)
+    registerIdentitySessionLogout(app, identitySessionProviders);
+  if (options.identitySessionPool && identitySessionProviders.length > 0)
+    registerIdentityProviders(
+      app,
+      options.identitySessionPool,
+      identitySessionProviders,
+    );
+  if (options.identitySessionPool && identitySessionProviders.length > 0)
+    registerIdentityOrganizations(
+      app,
+      options.identitySessionPool,
+      identitySessionProviders,
+    );
 
   if (options.appearanceDraftRoutes)
     registerRealAppearanceRoutes(app, {
@@ -165,6 +232,7 @@ export function createApp(
   if (options.stagingPublicationRoutes) {
     registerStagingPublicationRoutes(app, options.stagingPublicationRoutes);
     registerStagingCustomerContext(app, options.stagingPublicationRoutes);
+    registerStagingCustomerEnrollment(app, options.stagingPublicationRoutes);
     registerStagingCustomerOffers(app, options.stagingPublicationRoutes);
     registerStagingCustomerHistory(app, options.stagingPublicationRoutes);
     registerStagingAvailabilityRoutes(app, options.stagingPublicationRoutes);

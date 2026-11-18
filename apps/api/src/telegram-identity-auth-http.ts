@@ -88,24 +88,6 @@ export function registerTelegramIdentityAuth(
     },
   );
 
-  app.post("/v1/auth/identity/logout", async (request, reply) => {
-    reply.header("Cache-Control", "no-store");
-    const token = /^Bearer (is_[A-Za-z0-9_-]{43})$/.exec(
-      request.headers.authorization ?? "",
-    )?.[1];
-    if (!token) return reply.code(401).send({ error: "UNAUTHENTICATED" });
-    try {
-      await Promise.all(
-        dependencies.identitySessionProviders.map((provider) =>
-          provider.revoke(token),
-        ),
-      );
-      return reply.code(204).send();
-    } catch {
-      return reply.code(503).send({ error: "BACKEND_UNAVAILABLE" });
-    }
-  });
-
   app.post("/v1/auth/telegram/link", async (request, reply) => {
     reply.header("Cache-Control", "no-store");
     reply.header("Pragma", "no-cache");

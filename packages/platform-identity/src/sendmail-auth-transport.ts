@@ -23,13 +23,17 @@ function encodeMessage(message: AuthMailMessage, from: string): string {
   }
   const link = new URL(message.confirmationUrl);
   const isRegistration = message.purpose === "registration";
-  if (!isRegistration && message.purpose !== "password-recovery") {
+  const isRecovery = message.purpose === "password-recovery";
+  const isLink = message.purpose === "email-link";
+  if (!isRegistration && !isRecovery && !isLink) {
     throw new Error("Invalid authentication mail purpose");
   }
   const token = new URLSearchParams(link.hash.slice(1)).get("token");
   const pattern = isRegistration
     ? /^er_[A-Za-z0-9_-]{43}$/
-    : /^ep_[A-Za-z0-9_-]{43}$/;
+    : isRecovery
+      ? /^ep_[A-Za-z0-9_-]{43}$/
+      : /^el_[A-Za-z0-9_-]{43}$/;
   if (
     link.protocol !== "https:" ||
     link.username ||
@@ -45,7 +49,9 @@ function encodeMessage(message: AuthMailMessage, from: string): string {
   }
   const subject = isRegistration
     ? "Confirm your kuki email"
-    : "Reset your kuki password";
+    : isRecovery
+      ? "Reset your kuki password"
+      : "Link your kuki email";
   const body = [
     subject,
     "",

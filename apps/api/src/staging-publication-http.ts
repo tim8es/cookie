@@ -16,6 +16,7 @@ import {
 } from "../../../packages/domain-scheduling/src/index.js";
 import { PublishShiftFailure } from "../../../packages/domain-scheduling/src/index.js";
 import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
+import type { IdentitySessions } from "../../../packages/platform-identity/src/index.js";
 import { withTenantPermission } from "./protected-tenant-transaction.js";
 import {
   type BearerSessionVerifier,
@@ -26,6 +27,7 @@ export interface StagingPublicationDependencies {
   readonly pool: Pool;
   readonly verifier: BearerSessionVerifier;
   readonly enabled: boolean;
+  readonly identitySessionProviders?: readonly IdentitySessions[];
 }
 type Params = { tenantId: string };
 const UUID =

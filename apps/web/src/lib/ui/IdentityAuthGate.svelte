@@ -1,0 +1,655 @@
+<script lang="ts">
+  import { onMount } from "svelte";
+  import { Button } from "../components/ui/button/index.js";
+  import { Input } from "../components/ui/input/index.js";
+  import { Label } from "../components/ui/label/index.js";
+  import {
+    completeEmailCredentialLink,
+    completeEmailPasswordRecovery,
+    completeEmailRegistration,
+    completeTelegramOidc,
+    createOwnerWorkspace,
+    discoverAuthMethods,
+    enrollCustomer,
+    IdentityAuthFailure,
+    listIdentityOrganizations,
+    listIdentityProviders,
+    loginEmailPassword,
+    loginTelegramMiniApp,
+    linkTelegramMiniApp,
+    logoutIdentitySession,
+    requestEmailCredentialLink,
+    requestEmailPasswordRecovery,
+    requestEmailRegistration,
+    startTelegramOidc,
+    verifyStagingCustomerSession,
+    type AuthMethods,
+    type IdentityAuthSession,
+    type IdentityOrganization,
+    type IdentityProviders,
+  } from "../identity-auth.js";
+  import {
+    loadTelegramInitData,
+    watchOwnerSessionExpiry,
+    type VerifiedCustomerSession,
+    type VerifiedOwnerSession,
+  } from "../owner-auth.js";
+
+  export let customerSurface = false;
+  export let customerTenantId = "";
+  export let authNotice = "";
+  export let onOwnerSession: (session: VerifiedOwnerSession) => void;
+  export let onCustomerSession: (session: VerifiedCustomerSession) => void;
+
+  type Role = "business" | "customer";
+  type Page =
+    | "choose-role"
+    | "login"
+    | "register"
+    | "email-sent"
+    | "registration-complete"
+    | "recovery-request"
+    | "recovery-complete";
+
+  let page: Page = customerSurface ? "login" : "choose-role";
+  let role: Role | null = customerSurface ? "customer" : null;
+  let methods: AuthMethods | null = null;
+  let identitySession: IdentityAuthSession | null = null;
+  let providers: IdentityProviders | null = null;
+  let organizations: IdentityOrganization[] = [];
+  let methodsLoading = true;
+  let accountLoading = false;
+  let busy = false;
+  let email = "";
+  let password = "";
+  let newPassword = "";
+  let recoveryToken = "";
+  let registrationToken = "";
+  let emailLinkToken = "";
+  let emailLinkPassword = "";
+  let tenantId = customerTenantId;
+  let consentConfirmed = false;
+  let organizationName = "";
+  let locationName = "";
+  let timeZone = "";
+  let linkEmail = "";
+  let error = "";
+  let notice = authNotice;
+  let emailLinkRequested = false;
+  let stopIdentityExpiry: (() => void) | null = null;
+  let workspaceRetry: {
+    key: string;
+    organizationName: string;
+    locationName: string;
+    timeZone: string;
+  } | null = null;
+
+  $: ownerOrganizations = organizations.filter((organization) =>
+    organization.roleTypes.includes("owner") ||
+    organization.roleTypes.includes("admin"),
+  );
+
+  function clearUrlSecret(): void {
+    const current = new URL(window.location.href);
+    current.hash = "";
+    current.searchParams.delete("code");
+    current.searchParams.delete("state");
+    window.history.replaceState(window.history.state, "", current.pathname + current.search);
+  }
+
+  function errorMessage(reason: unknown): string {
+    if (reason instanceof IdentityAuthFailure) {
+      if (reason.reason === "unauthorized") return "Не удалось подтвердить вход. Проверьте данные и попробуйте снова.";
+      if (reason.reason === "invalid-request") return "Проверьте поля формы и попробуйте снова.";
+      if (reason.reason === "workspace-conflict") return "Для этой операции уже существует другая рабочая область. Обновите страницу и проверьте список организаций.";
+      if (reason.reason === "registration-pending") return "Проверьте почту и завершите регистрацию по ссылке из письма.";
+    }
+    return "Сервер недоступен или не подтвердил действие. Попробуйте ещё раз.";
+  }
+
+  async function refreshAccount(): Promise<void> {
+    const current = identitySession;
+    if (!current) return;
+    accountLoading = true;
+    error = "";
+    try {
+      const [linkedProviders, memberships] = await Promise.all([
+        listIdentityProviders(current),
+        listIdentityOrganizations(current),
+      ]);
+      if (identitySession !== current) return;
+      providers = linkedProviders;
+      organizations = memberships;
+    } catch (reason) {
+      error = errorMessage(reason);
+    } finally {
+      accountLoading = false;
+    }
+  }
+
+  function acceptIdentity(session: IdentityAuthSession): void {
+    stopIdentityExpiry?.();
+    identitySession = session;
+    providers = null;
+    organizations = [];
+    notice = "Вход подтверждён. Выберите, как пользоваться Cookie.";
+    void refreshAccount();
+    stopIdentityExpiry = watchOwnerSessionExpiry(
+      session.expiresAtUnixSeconds,
+      () => {
+        identitySession = null;
+        providers = null;
+        organizations = [];
+        role = customerSurface ? "customer" : null;
+        page = role ? "login" : "choose-role";
+        notice = "Срок действия входа истёк. Войдите снова.";
+      },
+      window,
+      document,
+    );
+  }
+
+  async function finishTelegramReturn(code: string, state: string): Promise<void> {
+    busy = true;
+    error = "";
+    clearUrlSecret();
+    try {
+      acceptIdentity(await completeTelegramOidc(code, state));
+    } catch (reason) {
+      error = errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
+  onMount(() => {
+    if (!timeZone) timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    void discoverAuthMethods()
+      .then((result) => (methods = result))
+      .catch((reason) => (error = errorMessage(reason)))
+      .finally(() => (methodsLoading = false));
+
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const proof = new URLSearchParams(url.hash.slice(1)).get("token") ?? "";
+    if (url.pathname.endsWith("/auth/telegram/callback") && code && state) {
+      void finishTelegramReturn(code, state);
+    } else if (url.pathname.endsWith("/register")) {
+      registrationToken = proof;
+      page = proof ? "registration-complete" : "register";
+    } else if (url.pathname.endsWith("/recover")) {
+      recoveryToken = proof;
+      page = proof ? "recovery-complete" : "recovery-request";
+    } else if (url.pathname.endsWith("/link-email")) {
+      emailLinkToken = proof;
+    }
+
+    return () => {
+      stopIdentityExpiry?.();
+      stopIdentityExpiry = null;
+    };
+  });
+
+  async function submitEmailLogin(): Promise<void> {
+    busy = true;
+    error = "";
+    try {
+      acceptIdentity(await loginEmailPassword(email, password));
+      password = "";
+    } catch (reason) {
+      error = errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function submitRegistrationRequest(): Promise<void> {
+    busy = true;
+    error = "";
+    try {
+      await requestEmailRegistration(email);
+      page = "email-sent";
+      notice = "Если адрес можно зарегистрировать и почтовый сервис настроен, на него придёт письмо со ссылкой.";
+    } catch (reason) {
+      error = errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function submitRegistration(): Promise<void> {
+    if ([...newPassword].length < 15) {
+      error = "Пароль должен содержать не менее 15 символов.";
+      return;
+    }
+    busy = true;
+    error = "";
+    try {
+      await completeEmailRegistration(registrationToken, newPassword);
+      clearUrlSecret();
+      registrationToken = "";
+      newPassword = "";
+      page = "login";
+      notice = "Email подтверждён. Теперь войдите с адресом и паролем.";
+    } catch (reason) {
+      error = errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function submitRecoveryRequest(): Promise<void> {
+    busy = true;
+    error = "";
+    try {
+      await requestEmailPasswordRecovery(email);
+      notice = "Если для адреса есть аккаунт, письмо для восстановления будет отправлено.";
+    } catch (reason) {
+      error = errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function submitPasswordRecovery(): Promise<void> {
+    if ([...newPassword].length < 15) {
+      error = "Пароль должен содержать не менее 15 символов.";
+      return;
+    }
+    busy = true;
+    error = "";
+    try {
+      await completeEmailPasswordRecovery(recoveryToken, newPassword);
+      clearUrlSecret();
+      recoveryToken = "";
+      newPassword = "";
+      page = "login";
+      notice = "Пароль изменён. Войдите с новым паролем.";
+    } catch (reason) {
+      error = errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function telegramLogin(intent: "login" | "register"): Promise<void> {
+    busy = true;
+    error = "";
+    try {
+      const initData = await loadTelegramInitData(window, document);
+      if (!initData) {
+        throw new IdentityAuthFailure("unavailable");
+      }
+      const result = await loginTelegramMiniApp(initData, intent);
+      if ("tenantId" in result) {
+        if (role === "customer") {
+          const customer = await verifyStagingCustomerSession(result);
+          onCustomerSession(customer);
+        } else {
+          onOwnerSession(result);
+        }
+      } else {
+        acceptIdentity(result);
+      }
+    } catch (reason) {
+      error = reason instanceof IdentityAuthFailure && reason.reason === "unavailable"
+        ? "Mini App вход доступен внутри Telegram. В обычном браузере используйте Telegram Web."
+        : errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function telegramWebLogin(intent: "login" | "register"): Promise<void> {
+    busy = true;
+    error = "";
+    try {
+      const authorizationUrl = await startTelegramOidc(intent);
+      window.location.assign(authorizationUrl);
+    } catch (reason) {
+      error = errorMessage(reason);
+      busy = false;
+    }
+  }
+
+  async function requestEmailLink(): Promise<void> {
+    if (!identitySession) return;
+    busy = true;
+    error = "";
+    try {
+      await requestEmailCredentialLink(identitySession, linkEmail);
+      emailLinkRequested = true;
+      linkEmail = "";
+      notice = "Если email можно привязать, письмо со ссылкой придёт на этот адрес.";
+    } catch (reason) {
+      error = errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function completeEmailLink(): Promise<void> {
+    if (!identitySession) return;
+    if ([...emailLinkPassword].length < 15) {
+      error = "Пароль должен содержать не менее 15 символов.";
+      return;
+    }
+    busy = true;
+    error = "";
+    try {
+      await completeEmailCredentialLink(identitySession, emailLinkToken, emailLinkPassword);
+      clearUrlSecret();
+      emailLinkToken = "";
+      emailLinkPassword = "";
+      await refreshAccount();
+      notice = "Email привязан к этой учётной записи.";
+    } catch (reason) {
+      error = errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function linkTelegramMiniAppNow(): Promise<void> {
+    if (!identitySession) return;
+    busy = true;
+    error = "";
+    try {
+      const initData = await loadTelegramInitData(window, document);
+      if (!initData) throw new IdentityAuthFailure("unavailable");
+      await linkTelegramMiniApp(identitySession, initData);
+      await refreshAccount();
+      notice = "Telegram привязан к этой учётной записи.";
+    } catch (reason) {
+      error = reason instanceof IdentityAuthFailure && reason.reason === "unavailable"
+        ? "Привязка Mini App доступна внутри Telegram. Для сайта используйте Telegram Web."
+        : errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function linkTelegramWeb(): Promise<void> {
+    if (!identitySession) return;
+    busy = true;
+    error = "";
+    try {
+      const authorizationUrl = await startTelegramOidc("link", identitySession);
+      window.location.assign(authorizationUrl);
+    } catch (reason) {
+      error = errorMessage(reason);
+      busy = false;
+    }
+  }
+
+  async function createWorkspace(): Promise<void> {
+    if (!identitySession) return;
+    if (!workspaceRetry) {
+      workspaceRetry = {
+        key: crypto.randomUUID(),
+        organizationName,
+        locationName,
+        timeZone,
+      };
+    }
+    busy = true;
+    error = "";
+    try {
+      const result = await createOwnerWorkspace(
+        identitySession,
+        workspaceRetry,
+        workspaceRetry.key,
+      );
+      onOwnerSession({ ...identitySession, tenantId: result.tenantId });
+    } catch (reason) {
+      if (reason instanceof IdentityAuthFailure && reason.reason === "invalid-request")
+        workspaceRetry = null;
+      error = errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function enterOrganization(organization: IdentityOrganization): Promise<void> {
+    if (!identitySession) return;
+    if (!organization.roleTypes.includes("owner") && !organization.roleTypes.includes("admin")) {
+      error = "Для кабинета бизнеса нужны права владельца или администратора.";
+      return;
+    }
+    onOwnerSession({ ...identitySession, tenantId: organization.tenantId });
+  }
+
+  async function enrollAsCustomer(): Promise<void> {
+    if (!identitySession) return;
+    if (!methods?.stagingCustomerEnrollment) {
+      error = "Самостоятельное клиентское зачисление включается только в контролируемом staging.";
+      return;
+    }
+    if (!consentConfirmed) {
+      error = "Подтвердите согласие на создание клиентской учётной записи в тестовой организации.";
+      return;
+    }
+    busy = true;
+    error = "";
+    try {
+      onCustomerSession(await enrollCustomer(identitySession, tenantId));
+    } catch (reason) {
+      error = reason instanceof IdentityAuthFailure && reason.reason === "unavailable"
+        ? "Тестовое зачисление не подтверждено. Проверьте ID организации и активное разрешение staging."
+        : errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function signOutIdentity(): Promise<void> {
+    const current = identitySession;
+    stopIdentityExpiry?.();
+    stopIdentityExpiry = null;
+    identitySession = null;
+    providers = null;
+    organizations = [];
+    role = customerSurface ? "customer" : null;
+    page = role ? "login" : "choose-role";
+    if (current) {
+      try {
+        await logoutIdentitySession(current);
+        notice = "Вы вышли. Серверная сессия отозвана.";
+      } catch {
+        notice = "Локальный вход закрыт, но сервер не подтвердил отзыв. Старая сессия может действовать до истечения срока.";
+      }
+    }
+  }
+
+  function chooseRole(value: Role): void {
+    role = value;
+    error = "";
+    notice = "";
+    if (value === "business") void refreshAccount();
+  }
+
+  function beginRegistration(): void {
+    page = "register";
+    error = "";
+    notice = "";
+  }
+</script>
+
+<section class="identity-auth-page" aria-labelledby="identity-auth-title">
+  <div class="identity-auth-card">
+    <span class="identity-auth-overline">COOKIE / ПРОВЕРЕННЫЙ ВХОД</span>
+    {#if identitySession && emailLinkToken}
+      <h1 id="identity-auth-title">Подключить email</h1>
+      <p>Введите пароль для нового email. Подтверждение завершится только для этой же учётной записи.</p>
+      <form class="identity-auth-fields" onsubmit={(event) => { event.preventDefault(); void completeEmailLink(); }}>
+        <Label for="linked-email-password">Пароль для email</Label>
+        <Input id="linked-email-password" type="password" autocomplete="new-password" bind:value={emailLinkPassword} minlength={15} maxlength={1024} required />
+        <Button type="submit" disabled={busy}>{busy ? "Подключаем…" : "Подтвердить email"}</Button>
+      </form>
+    {:else if identitySession}
+      <h1 id="identity-auth-title">Настройте Cookie</h1>
+      <p>Одна учётная запись может использоваться для кабинета бизнеса или клиентской записи. Выберите нужный сценарий.</p>
+
+      {#if !role}
+        <div class="identity-role-options" aria-label="Тип учётной записи">
+          <Button variant="outline" disabled={busy} onclick={() => chooseRole("business")}>Я представляю бизнес</Button>
+          <Button variant="outline" disabled={busy || !methods?.stagingCustomerEnrollment} onclick={() => chooseRole("customer")}>Я клиент</Button>
+        </div>
+        {#if !methodsLoading && !methods?.stagingCustomerEnrollment}<p>Клиентская регистрация доступна на приватной тестовой странице опубликованной организации.</p>{/if}
+      {:else if role === "business"}
+        <div class="identity-auth-section">
+          <div class="identity-auth-section-head">
+            <div><span>БИЗНЕС</span><h2>Кабинет организации</h2></div>
+            {#if !customerSurface}<Button variant="ghost" onclick={() => role = null}>Сменить сценарий</Button>{/if}
+          </div>
+          {#if accountLoading}
+            <p role="status">Проверяем организации…</p>
+          {:else if ownerOrganizations.length}
+            <div class="identity-organization-list">
+              {#each ownerOrganizations as organization (organization.tenantId)}
+                <Button variant="outline" disabled={busy} onclick={() => void enterOrganization(organization)}>
+                  <span>{organization.organizationName}</span><small>{organization.roleTypes.join(" · ")}</small>
+                </Button>
+              {/each}
+            </div>
+          {:else}
+            <p>Создайте рабочую область. Первичная настройка организации и филиала сохранится на сервере.</p>
+            <form class="identity-auth-fields" onsubmit={(event) => { event.preventDefault(); void createWorkspace(); }}>
+              <Label for="organization-name">Название организации</Label>
+              <Input id="organization-name" bind:value={organizationName} maxlength={120} required disabled={busy || workspaceRetry !== null} />
+              <Label for="location-name">Первый филиал</Label>
+              <Input id="location-name" bind:value={locationName} maxlength={120} required disabled={busy || workspaceRetry !== null} />
+              <Label for="identity-time-zone">Часовой пояс филиала</Label>
+              <Input id="identity-time-zone" bind:value={timeZone} maxlength={100} placeholder="Europe/Moscow" required disabled={busy || workspaceRetry !== null} />
+              <Button type="submit" disabled={busy || accountLoading}>{busy ? "Сохраняем…" : workspaceRetry ? "Повторить ту же операцию" : "Создать кабинет бизнеса"}</Button>
+            </form>
+          {/if}
+        </div>
+      {:else}
+        <div class="identity-auth-section">
+          <div class="identity-auth-section-head">
+            <div><span>КЛИЕНТСКИЙ СЦЕНАРИЙ / STAGING</span><h2>Клиентская запись</h2></div>
+            {#if !customerSurface}<Button variant="ghost" onclick={() => role = null}>Сменить сценарий</Button>{/if}
+          </div>
+          {#if !methods?.stagingCustomerEnrollment}
+            <p role="status">Клиентское тестовое зачисление отключено на этом сервере.</p>
+          {/if}
+          <p>Для приватного тестирования введите ID организации из staging. Сервер проверит опубликованную тестовую организацию перед созданием клиентской роли.</p>
+          <form class="identity-auth-fields" onsubmit={(event) => { event.preventDefault(); void enrollAsCustomer(); }}>
+            <Label for="customer-tenant-id">ID тестовой организации</Label>
+            <Input id="customer-tenant-id" bind:value={tenantId} pattern="[0-9a-fA-F-]{36}" maxlength={36} required disabled={busy} />
+            <label class="identity-consent">
+              <input type="checkbox" bind:checked={consentConfirmed} disabled={busy} />
+              <span>Согласен создать клиентскую учётную запись в этой тестовой организации.</span>
+            </label>
+            <Button type="submit" disabled={busy || !consentConfirmed || !methods?.stagingCustomerEnrollment}>{busy ? "Проверяем…" : "Продолжить как клиент"}</Button>
+          </form>
+        </div>
+      {/if}
+
+      <div class="identity-auth-section identity-provider-section">
+        <div class="identity-auth-section-head"><div><span>СПОСОБЫ ВХОДА</span><h2>Привязанные методы</h2></div></div>
+        {#if accountLoading || methodsLoading || providers === null}
+          <p role="status">Загружаем способы входа…</p>
+        {:else}
+          <ul class="identity-provider-list">
+            <li><span>Email и пароль</span><strong>{providers.email ? "Подключён" : "Не подключён"}</strong></li>
+            <li><span>Telegram</span><strong>{providers.telegram ? "Подключён" : "Не подключён"}</strong></li>
+          </ul>
+          {#if methods?.email && !providers.email}
+            <form class="identity-auth-fields identity-link-email" onsubmit={(event) => { event.preventDefault(); void requestEmailLink(); }}>
+              <Label for="link-email-address">Добавить email</Label>
+              <Input id="link-email-address" type="email" autocomplete="email" bind:value={linkEmail} maxlength={254} required />
+              <Button variant="outline" type="submit" disabled={busy}>{busy ? "Отправляем…" : "Отправить ссылку подтверждения"}</Button>
+              {#if emailLinkRequested}<p role="status">Откройте ссылку из письма в этом браузере и войдите в эту учётную запись.</p>{/if}
+            </form>
+          {/if}
+          {#if methods?.telegramMiniApp && !providers.telegram}
+            <Button variant="outline" disabled={busy} onclick={() => void linkTelegramMiniAppNow()}>Привязать Telegram Mini App</Button>
+          {/if}
+          {#if methods?.telegramWebOidc && !providers.telegram}
+            <Button variant="outline" disabled={busy} onclick={() => void linkTelegramWeb()}>Привязать Telegram через сайт</Button>
+          {/if}
+        {/if}
+      </div>
+      <Button variant="ghost" disabled={busy} onclick={() => void signOutIdentity()}>Выйти из учётной записи</Button>
+    {:else if page === "choose-role"}
+      <h1 id="identity-auth-title">Кто вы?</h1>
+      <p>Выберите сценарий регистрации. Методы входа можно подключать независимо и затем объединить в одной учётной записи.</p>
+      <div class="identity-role-options" aria-label="Тип учётной записи">
+        <Button variant="outline" onclick={() => { role = "business"; page = "login"; }}>Я представляю бизнес</Button>
+        <Button variant="outline" disabled={!methods?.stagingCustomerEnrollment} onclick={() => { role = "customer"; page = "login"; }}>Я клиент</Button>
+      </div>
+      {#if !methodsLoading && !methods?.stagingCustomerEnrollment}<p>Клиентская регистрация доступна на приватной тестовой странице опубликованной организации.</p>{/if}
+    {:else if page === "registration-complete"}
+      <h1 id="identity-auth-title">Завершите регистрацию</h1>
+      <p>Создайте пароль не короче 15 символов. Ссылка действует ограниченное время и используется один раз.</p>
+      <form class="identity-auth-fields" onsubmit={(event) => { event.preventDefault(); void submitRegistration(); }}>
+        <Label for="registration-password">Новый пароль</Label>
+        <Input id="registration-password" type="password" autocomplete="new-password" bind:value={newPassword} minlength={15} maxlength={1024} required />
+        <Button type="submit" disabled={busy || !registrationToken}>{busy ? "Проверяем…" : "Создать учётную запись"}</Button>
+      </form>
+    {:else if page === "recovery-complete"}
+      <h1 id="identity-auth-title">Задайте новый пароль</h1>
+      <p>Введите пароль не короче 15 символов. После смены прежние сессии будут отозваны.</p>
+      <form class="identity-auth-fields" onsubmit={(event) => { event.preventDefault(); void submitPasswordRecovery(); }}>
+        <Label for="recovery-password">Новый пароль</Label>
+        <Input id="recovery-password" type="password" autocomplete="new-password" bind:value={newPassword} minlength={15} maxlength={1024} required />
+        <Button type="submit" disabled={busy || !recoveryToken}>{busy ? "Сохраняем…" : "Изменить пароль"}</Button>
+      </form>
+    {:else if page === "recovery-request"}
+      <h1 id="identity-auth-title">Восстановление пароля</h1>
+      <p>Если для адреса есть учётная запись, мы отправим письмо со ссылкой для смены пароля.</p>
+      <form class="identity-auth-fields" onsubmit={(event) => { event.preventDefault(); void submitRecoveryRequest(); }}>
+        <Label for="recovery-email">Email</Label>
+        <Input id="recovery-email" type="email" autocomplete="email" bind:value={email} maxlength={254} required />
+        <Button type="submit" disabled={busy || !methods?.email}>{busy ? "Отправляем…" : "Отправить ссылку"}</Button>
+      </form>
+      <Button variant="ghost" onclick={() => page = "login"}>Вернуться ко входу</Button>
+    {:else if page === "email-sent"}
+      <h1 id="identity-auth-title">Проверьте почту</h1>
+      <p>{notice}</p>
+      <Button variant="outline" onclick={() => page = "login"}>Перейти ко входу</Button>
+    {:else}
+      <h1 id="identity-auth-title">{page === "register" ? "Создать учётную запись" : role === "customer" ? "Вход клиента" : "Вход в Cookie"}</h1>
+      <p>{role === "customer" ? "Для клиента доступен вход по email и паролю или Telegram." : "Войдите или зарегистрируйтесь. После входа можно подключить второй способ к той же учётной записи."}</p>
+      {#if methodsLoading}
+        <p role="status">Проверяем доступные способы входа…</p>
+      {:else if methods}
+        {#if methods.email}
+          <form class="identity-auth-fields" onsubmit={(event) => { event.preventDefault(); page === "register" ? void submitRegistrationRequest() : void submitEmailLogin(); }}>
+            <Label for="identity-email">Email</Label>
+            <Input id="identity-email" type="email" autocomplete="email" bind:value={email} maxlength={254} required />
+            {#if page === "login"}
+              <Label for="identity-password">Пароль</Label>
+              <Input id="identity-password" type="password" autocomplete="current-password" bind:value={password} maxlength={1024} required />
+            {/if}
+            <Button type="submit" disabled={busy}>{busy ? "Подождите…" : page === "register" ? "Отправить письмо для регистрации" : "Войти по email"}</Button>
+          </form>
+        {/if}
+        {#if methods.telegramMiniApp}
+          <Button variant="outline" disabled={busy} onclick={() => void telegramLogin(page === "register" ? "register" : "login")}>{page === "register" ? "Зарегистрироваться через Telegram Mini App" : "Войти через Telegram Mini App"}</Button>
+        {/if}
+        {#if methods.telegramWebOidc}
+          <Button variant="outline" disabled={busy} onclick={() => void telegramWebLogin(page === "register" ? "register" : "login")}>{page === "register" ? "Зарегистрироваться через Telegram" : "Войти через Telegram"}</Button>
+        {/if}
+        {#if !methods.email && !methods.telegramMiniApp && !methods.telegramWebOidc}
+          <p role="alert">На сервере не включён ни один способ входа.</p>
+        {/if}
+      {/if}
+      {#if page === "register"}
+        <Button variant="ghost" onclick={() => page = "login"}>Уже есть учётная запись? Войти</Button>
+      {:else}
+        <Button variant="ghost" onclick={beginRegistration}>Создать учётную запись</Button>
+        {#if methods?.email}<Button variant="ghost" onclick={() => page = "recovery-request"}>Забыли пароль?</Button>{/if}
+      {/if}
+      {#if !customerSurface}<Button variant="ghost" onclick={() => { page = "choose-role"; role = null; }}>Назад к выбору сценария</Button>{/if}
+    {/if}
+
+    {#if error}<p class="identity-auth-error" role="alert">{error}</p>{/if}
+    {#if notice && page !== "email-sent"}<p class="identity-auth-notice" role="status">{notice}</p>{/if}
+    {#if busy && page === "choose-role"}<p role="status">Завершаем вход…</p>{/if}
+    <p class="identity-auth-footnote">Токен входа хранится только в памяти вкладки. Клиентская роль доступна только после явного подтверждения и проверки тестовой организации сервером.</p>
+  </div>
+</section>
