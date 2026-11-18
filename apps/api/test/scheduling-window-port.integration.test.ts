@@ -181,6 +181,11 @@ test(
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
+        await client.query(
+          `SELECT id FROM cookie_staff.staff_profiles
+            WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
+          [tenant, staff],
+        );
         const scope = {
           tenantId: tenant,
           staffId: staff,
@@ -241,9 +246,16 @@ test(
           (await pool.query(shiftProbe, [tenant, shift])).rowCount,
           1,
         );
+        assert.equal(
+          (await pool.query(blockProbe, [tenant, breakId])).rowCount,
+          1,
+        );
       } finally {
-        await client.query("ROLLBACK");
-        client.release();
+        try {
+          await client.query("ROLLBACK");
+        } finally {
+          client.release();
+        }
       }
     } finally {
       try {
