@@ -16,6 +16,11 @@ import { createShiftDraftInternal } from "../../../packages/domain-scheduling/sr
 import { publishShiftInternal } from "../../../packages/domain-scheduling/src/publish-shift.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 
+import {
+  approvalSnapshot,
+  expectApprovalCommitFailure,
+} from "./approval-commit-fault.js";
+
 test(
   "owner approval mode applies a booking-safe shift edit atomically",
   { skip: !process.env.TEST_DATABASE_URL },
@@ -218,6 +223,15 @@ test(
         { code: "SCHEDULE_APPROVAL_REQUEST_NOT_FOUND" },
       );
 
+      const beforeRequestFault = await approvalSnapshot(pool, tenant);
+      await expectApprovalCommitFailure(pool, "abort", (faultPool) =>
+        requestPublishedShiftEditInternal(faultPool, requested),
+      );
+      assert.deepEqual(
+        await approvalSnapshot(pool, tenant),
+        beforeRequestFault,
+      );
+
       const [request, replay] = await Promise.all([
         requestPublishedShiftEditInternal(pool, requested),
         requestPublishedShiftEditInternal(pool, requested),
@@ -225,6 +239,18 @@ test(
       assert.deepEqual(replay, request);
       assert.equal(request.status, "pending");
       assert.equal(request.policyRevision, 0);
+      const beforeRequestReplay = await approvalSnapshot(pool, tenant, false);
+      await expectApprovalCommitFailure(pool, "lose-ack", (faultPool) =>
+        requestPublishedShiftEditInternal(faultPool, requested),
+      );
+      assert.deepEqual(
+        await requestPublishedShiftEditInternal(pool, requested),
+        request,
+      );
+      assert.deepEqual(
+        await approvalSnapshot(pool, tenant, false),
+        beforeRequestReplay,
+      );
       await assert.rejects(
         requestPublishedShiftEditInternal(pool, {
           ...requested,
@@ -304,12 +330,33 @@ test(
         [tenant, poisonId],
       );
 
+      const beforeReviewFault = await approvalSnapshot(pool, tenant);
+      await expectApprovalCommitFailure(pool, "abort", (faultPool) =>
+        reviewScheduleEditRequestInternal(faultPool, review, allow),
+      );
+      assert.deepEqual(
+        await approvalSnapshot(pool, tenant),
+        beforeReviewFault,
+      );
+
       const [approved, approvedReplay] = await Promise.all([
         reviewScheduleEditRequestInternal(pool, review, allow),
         reviewScheduleEditRequestInternal(pool, review, allow),
       ]);
       assert.deepEqual(approvedReplay, approved);
       assert.equal(approved.status, "applied");
+      const beforeReviewReplay = await approvalSnapshot(pool, tenant, false);
+      await expectApprovalCommitFailure(pool, "lose-ack", (faultPool) =>
+        reviewScheduleEditRequestInternal(faultPool, review, allow),
+      );
+      assert.deepEqual(
+        await reviewScheduleEditRequestInternal(pool, review, allow),
+        approved,
+      );
+      assert.deepEqual(
+        await approvalSnapshot(pool, tenant, false),
+        beforeReviewReplay,
+      );
       if (approved.status === "applied") {
         assert.equal(approved.editedShift.publishedRevision, 1);
         assert.equal(approved.editedShift.startAt, "2027-05-10T10:30:00.000Z");
@@ -359,6 +406,18 @@ test(
 
       // Mode update requires actual owner and CAS version. Switching to
       // direct invalidates requests with the old policy revision.
+      const beforePolicyFault = await approvalSnapshot(pool, tenant);
+      await expectApprovalCommitFailure(pool, "abort", (faultPool) =>
+        setScheduleEditPolicyInternal(faultPool, {
+          actor: ownerActor,
+          mode: "direct",
+          expectedRevision: 0,
+        }),
+      );
+      assert.deepEqual(
+        await approvalSnapshot(pool, tenant),
+        beforePolicyFault,
+      );
       const direct = await setScheduleEditPolicyInternal(pool, {
         actor: ownerActor,
         mode: "direct",
@@ -410,15 +469,33 @@ test(
 
       // Owner may explicitly reject an obsolete request: no mutation and
       // identical decision replay, regardless of a mode change.
+      const rejection = {
+        actor: ownerActor,
+        requestId: unsafe.requestId,
+        action: "reject" as const,
+        idempotencyKey: "reject-obsolete",
+      };
+      const beforeRejection = await approvalSnapshot(pool, tenant);
+      await expectApprovalCommitFailure(pool, "abort", (faultPool) =>
+        reviewScheduleEditRequestInternal(faultPool, rejection, allow),
+      );
+      assert.deepEqual(
+        await approvalSnapshot(pool, tenant),
+        beforeRejection,
+      );
+      await expectApprovalCommitFailure(pool, "lose-ack", (faultPool) =>
+        reviewScheduleEditRequestInternal(faultPool, rejection, allow),
+      );
+      const afterRejection = await approvalSnapshot(pool, tenant, false);
       const rejected = await reviewScheduleEditRequestInternal(
         pool,
-        {
-          actor: ownerActor,
-          requestId: unsafe.requestId,
-          action: "reject",
-          idempotencyKey: "reject-obsolete",
-        },
+        rejection,
         allow,
+      );
+      assert.equal(rejected.status, "rejected");
+      assert.deepEqual(
+        await approvalSnapshot(pool, tenant, false),
+        afterRejection,
       );
       assert.equal(rejected.status, "rejected");
       assert.deepEqual(
@@ -435,12 +512,22 @@ test(
         rejected,
       );
 
-      const back = await setScheduleEditPolicyInternal(pool, {
+      const backInput = {
         actor: ownerActor,
-        mode: "approval",
+        mode: "approval" as const,
         expectedRevision: 1,
+      };
+      await expectApprovalCommitFailure(pool, "lose-ack", (faultPool) =>
+        setScheduleEditPolicyInternal(faultPool, backInput),
+      );
+      const policyAfterLostAck = await approvalSnapshot(pool, tenant, false);
+      await assert.rejects(setScheduleEditPolicyInternal(pool, backInput), {
+        code: "SCHEDULE_APPROVAL_MODE_STALE",
       });
-      assert.equal(back.revision, 2);
+      assert.deepEqual(
+        await approvalSnapshot(pool, tenant, false),
+        policyAfterLostAck,
+      );
       await assert.rejects(
         editPublishedShiftDirectInternal(
           pool,

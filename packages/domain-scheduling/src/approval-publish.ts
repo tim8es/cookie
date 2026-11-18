@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool, QueryResultRow } from "pg";
 
-import { enqueueOutbox } from "../../platform-db/src/index.js";
+import { enqueueOutbox, runSqlTransaction } from "../../platform-db/src/index.js";
 import type { TrustedActor } from "../../platform-identity/src/index.js";
 import {
   readModeLocked,
@@ -167,9 +167,7 @@ export async function requestPublishShiftInternal(
   const requestHash = digest(
     JSON.stringify([input.shiftId, input.expectedDraftRevision]),
   );
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
+  return runSqlTransaction<PublishShiftRequestReceipt>(pool, async (client) => {
     const initial = await client.query<ShiftRow>(
       `SELECT staff_id::text,location_id::text
          FROM cookie_scheduling.shift_windows
@@ -223,7 +221,6 @@ export async function requestPublishShiftInternal(
       if (old.request_sha256 !== requestHash) {
         fail("SCHEDULE_PUBLISH_KEY_REUSED");
       }
-      await client.query("COMMIT");
       return {
         requestId: old.id,
         shiftId: old.shift_id,
@@ -297,7 +294,6 @@ export async function requestPublishShiftInternal(
       dedupeKey: `schedule.publish.requested:${requestId}`,
       payload: { requestId, shiftId: shift.id, locationId: shift.location_id },
     });
-    await client.query("COMMIT");
     return {
       requestId,
       shiftId: shift.id,
@@ -307,12 +303,7 @@ export async function requestPublishShiftInternal(
       policyRevision: policy.revision,
       status: "pending",
     };
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 /**
@@ -338,9 +329,7 @@ export async function reviewPublishShiftInternal(
   const tenantId = input.actor.tenantId;
   const reviewer = input.actor.identityId;
   const decisionHash = digest(input.idempotencyKey);
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
+  return runSqlTransaction<PublishShiftReviewReceipt>(pool, async (client) => {
     const initial = await client.query<RequestRow>(
       `SELECT shift_id::text,staff_id::text,location_id::text
          FROM cookie_scheduling.schedule_publish_requests
@@ -392,7 +381,6 @@ export async function reviewPublishShiftInternal(
       ) {
         fail("SCHEDULE_PUBLISH_ALREADY_DECIDED");
       }
-      await client.query("COMMIT");
       return request.status === "applied"
         ? {
             requestId: request.id,
@@ -418,7 +406,6 @@ export async function reviewPublishShiftInternal(
         dedupeKey: `schedule.publish.rejected:${request.id}`,
         payload: { requestId: request.id, shiftId: request.shift_id },
       });
-      await client.query("COMMIT");
       return { requestId: request.id, status: "rejected" };
     }
 
@@ -495,16 +482,10 @@ export async function reviewPublishShiftInternal(
       dedupeKey: `schedule.publish.applied:${request.id}`,
       payload: { requestId: request.id, shiftId: request.shift_id },
     });
-    await client.query("COMMIT");
     return {
       requestId: request.id,
       status: "applied",
       publishedShift: published,
     };
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
