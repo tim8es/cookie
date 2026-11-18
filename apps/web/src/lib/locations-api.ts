@@ -16,6 +16,7 @@ export type LocationApiFailureReason =
   | "unauthorized"
   | "conflict"
   | "limit"
+  | "invalid-request"
   | "unavailable"
   | "invalid-response";
 
@@ -29,6 +30,51 @@ export class LocationApiFailure extends Error {
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ZONE = /^[A-Za-z][A-Za-z0-9_+./-]*$/;
+
+function canonicalZone(value: string): string | null {
+  if (!value || value.length > 128 || !ZONE.test(value)) return null;
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: value,
+    }).resolvedOptions().timeZone;
+  } catch {
+    return null;
+  }
+}
+
+export function emptyLocationDraft(): LocationDraft {
+  return { displayName: "", timeZone: "" };
+}
+
+export function locationDraftFromForm(
+  name: string,
+  zone: string,
+): LocationDraft | null {
+  const displayName = name.normalize("NFC").trim();
+  const timeZone = zone.trim();
+  if (
+    !displayName ||
+    [...displayName].length > 200 ||
+    /[\p{Cc}\p{Cs}]/u.test(displayName) ||
+    !canonicalZone(timeZone)
+  ) {
+    return null;
+  }
+  return { displayName, timeZone };
+}
+
+/** A later rejection does not resolve an earlier ambiguous commit. */
+export function locationCreateIsUncertain(
+  previous: boolean,
+  reason: unknown,
+): boolean {
+  return (
+    previous ||
+    !(reason instanceof LocationApiFailure) ||
+    reason.reason === "unavailable" ||
+    reason.reason === "invalid-response"
+  );
+}
 
 function isLocation(value: unknown): value is RealLocation {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -77,6 +123,9 @@ async function request(
   }
   if (response.status === 401 || response.status === 403) {
     throw new LocationApiFailure("unauthorized");
+  }
+  if (response.status === 400) {
+    throw new LocationApiFailure("invalid-request");
   }
   if (response.status === 409) {
     let code = "";
@@ -137,6 +186,8 @@ export async function createRealLocation(
   if (!UUID.test(idempotencyKey)) {
     throw new LocationApiFailure("invalid-response");
   }
+  const input = locationDraftFromForm(draft.displayName, draft.timeZone);
+  if (!input) throw new LocationApiFailure("invalid-request");
   const result = await request(
     session,
     {
@@ -145,7 +196,7 @@ export async function createRealLocation(
         "content-type": "application/json",
         "idempotency-key": idempotencyKey,
       },
-      body: JSON.stringify(draft),
+      body: JSON.stringify(input),
     },
     fetcher,
   );
@@ -158,5 +209,13 @@ export async function createRealLocation(
   ) {
     throw new LocationApiFailure("invalid-response");
   }
-  return (result.body as { location: RealLocation }).location;
+  const saved = (result.body as { location: RealLocation }).location;
+  if (
+    saved.displayName !== input.displayName ||
+    !saved.timeZone ||
+    canonicalZone(saved.timeZone) !== canonicalZone(input.timeZone)
+  ) {
+    throw new LocationApiFailure("invalid-response");
+  }
+  return saved;
 }

@@ -6,8 +6,8 @@
   import OwnerFormHeader from "./OwnerFormHeader.svelte";
 
   export let serviceName: string;
-  export let serviceDuration: number;
-  export let servicePrice: number;
+  export let serviceDuration: number | undefined;
+  export let servicePrice: number | undefined;
   export let onNameChange: (value: string) => void;
   export let onDurationChange: (value: number) => void;
   export let onPriceChange: (value: number) => void;
@@ -32,13 +32,13 @@
       <div class="form-pair">
         <label class="field">
           Длительность · мин
-          <Input type="number" value={serviceDuration}
+          <Input type="number" value={serviceDuration ?? ""}
             oninput={(event) => onDurationChange(event.currentTarget.valueAsNumber)}
             min={1} max={1440} step={1} required disabled={busy || frozen} />
         </label>
         <label class="field">
           Базовая цена · ₽
-          <Input type="number" value={servicePrice}
+          <Input type="number" value={servicePrice ?? ""}
             oninput={(event) => onPriceChange(event.currentTarget.valueAsNumber)}
             min={0} max={apiMode ? 9999999999.99 : 9999999999} step={apiMode ? 0.01 : 1} required disabled={busy || frozen} />
         </label>
