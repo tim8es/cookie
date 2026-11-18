@@ -38,7 +38,13 @@ export async function probeChromiumPage(handle, { readPort, getLocal }) {
     return null;
   }
   handle.probeStage = "invalid-target-list";
-  const targets = JSON.parse(result.body);
+  let targets;
+  try {
+    targets = JSON.parse(result.body);
+  } catch {
+    // JSON.parse errors can include response fragments. Never log target data.
+    throw new SyntaxError("Invalid CDP target list JSON");
+  }
   if (!Array.isArray(targets)) return null;
   handle.probeStage = "no-page-target";
   const target = targets.find((x) => x?.type === "page" && x.webSocketDebuggerUrl);

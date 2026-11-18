@@ -189,7 +189,7 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
             return readFileSync(join(dir, "DevToolsActivePort"), "utf8");
           } catch (error) {
             if (error.code === "ENOENT") return null;
-            throw error;
+            throw new Error("CDP port file read failed: " + (error.code ?? "unknown"));
           }
         },
         getLocal,
