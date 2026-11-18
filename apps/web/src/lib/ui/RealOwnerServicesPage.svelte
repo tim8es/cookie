@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import type { OwnerReads } from "../owner-reads";
+  import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import { Button } from "../components/ui/button/index.js";
 
   import type { VerifiedOwnerSession } from "../owner-auth";
   import {
     createRealService,
     editRealService,
-    readRealServices,
     ServiceApiFailure,
     type RealService,
   } from "../services-api";
@@ -14,6 +15,7 @@
   import { emptyRealServiceForm, realServiceDraftFromForm } from "../real-service-form";
 
   export let session: VerifiedOwnerSession;
+  export let reads: OwnerReads;
 
   let services: RealService[] = [];
   let loading = true;
@@ -93,11 +95,16 @@
     saveError = "";
   }
 
-  async function refresh(): Promise<void> {
+  async function refresh(force = false): Promise<void> {
+    const cached = reads.services.peek();
+    if (cached) {
+      services = cached;
+      loaded = true;
+    }
     loading = true;
     readError = "";
     try {
-      services = await readRealServices(session);
+      services = await reads.services.load(force);
       loaded = true;
     } catch (reason) {
       loaded = false;
@@ -130,8 +137,16 @@
       // still current. Always re-read after both initial write and replay.
       resetForm();
       notice = wasEditing ? "Изменения черновика сохранены." : "Черновик услуги сохранён на сервере. Для записи клиентов он пока недоступен.";
-      await refresh();
+      reads.services.invalidate();
+      reads.staff.invalidate();
+      reads.invalidateCalendars();
+      reads.shifts.invalidate();
+      await refresh(true);
     } catch (reason) {
+      reads.services.invalidate();
+      reads.staff.invalidate();
+      reads.invalidateCalendars();
+      reads.shifts.invalidate();
       saveError = description(reason);
       stale = reason instanceof ServiceApiFailure &&
         (reason.reason === "stale-revision" || reason.reason === "draft-unavailable");
@@ -158,7 +173,7 @@
 {#if readError}
   <div class="alert-error" role="alert">
     <p>{readError}</p>
-    <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading}>Повторить загрузку</Button>
+    <Button type="button" variant="outline" onclick={() => void refresh(true)} disabled={loading}>Повторить загрузку</Button>
   </div>
 {/if}
 {#if saveError}
@@ -172,10 +187,10 @@
   <section class="card">
     <div class="card-title">
       <div><span class="eyebrow">КАТАЛОГ</span><h2>Сохранённые услуги</h2></div>
-      <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || saving}>Обновить</Button>
+      <Button type="button" variant="outline" onclick={() => void refresh(true)} disabled={loading || saving}>Обновить</Button>
     </div>
-    {#if loading}
-      <p role="status">Загружаем услуги с сервера…</p>
+    {#if loading && !loaded}
+      <OwnerReadPlaceholder label="Загружаем услуги с сервера…" />
     {:else if loaded && services.length === 0}
       <div class="empty-mini"><strong>Услуг пока нет</strong><p>Создайте первый черновик.</p></div>
     {:else if loaded}

@@ -109,7 +109,9 @@
       {#if customerSession}
         <StagingCustomerGate initialSession={customerSession} onSessionCleared={clearCustomerSession} />
       {:else if verifiedOwner && ownerSession}
-        <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} />
+        {#key ownerSession}
+          <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} />
+        {/key}
       {:else}
         <IdentityAuthGate
           customerSurface={customerSurface}
