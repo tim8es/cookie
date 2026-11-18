@@ -770,6 +770,40 @@ async function main() {
     assert.deepEqual(external, [], "Unexpected external requests after Booking restart");
     console.log("PASS actual UI-created Booking after compiled API restart: fresh client history and owner calendar, exact durable Booking/receipt/outbox, no repeated create.");
 
+    // Preserve the direct cancellation test above. Independently lose the
+    // second cancellation's actual committed response, then reconcile only
+    // from a fresh server history read, without issuing another mutation.
+    script = await load(cdp, origin+"?surface=customer-staging", signedProof(botToken, customerUserId), script);
+    await requireDom(cdp, "fresh client before lost cancellation response", "Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)");
+    let cancellationRequests = 0;
+    cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
+      if (request.url.startsWith(origin) && request.method === "POST" && new URL(request.url).pathname.endsWith("/staging-customer-cancellation/"+restartBookingId)) cancellationRequests++;
+    });
+    await evaluate(cdp, "(()=>{const send=window.fetch.bind(window);window.fetch=async(input,init)=>{const response=await send(input,init);if(init?.method==='POST'&&String(input).endsWith("+JSON.stringify("/staging-customer-cancellation/"+restartBookingId)+")&&response.status===200){window.fetch=send;throw new Error('synthetic lost cancellation response');}return response;};})()");
+    await button(cdp, "Отменить запись");
+    await button(cdp, "Подтвердить отмену");
+    await requireDom(cdp, "uncertain cancellation remains retryable", "document.body.innerText.includes('Результат отмены не подтверждён') && Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Повторить запрос отмены'&&!b.disabled)");
+    const cancelledProjection = await durableBooking();
+    assert.equal(cancelledProjection.booking.status, "CancelledByClient");
+    assert.equal(cancelledProjection.tenant_count, beforeBookingRestart.tenant_count);
+    assert.equal(cancelledProjection.receipts.length, 2);
+    assert.equal(cancelledProjection.receipts.filter(r=>r.operation==="booking.cancel").length, 1);
+    assert.equal(cancelledProjection.events.length, 2);
+    assert.equal(cancelledProjection.events.filter(e=>e.topic==="booking.cancelled").length, 1);
+    assert.equal(cancellationRequests, 1);
+    const cancellationHistoryStart = responses.length;
+    await button(cdp, "Обновить записи");
+    await poll("fresh history HTTP 200 for cancellation reconciliation", () => responses.slice(cancellationHistoryStart).some(r=>r.status===200&&r.path.endsWith("/staging-customer-history")));
+    await requireDom(cdp, "same cancelled booking resolves UI uncertainty without claiming receipt",
+      "(()=>{const rows=[...document.querySelectorAll('[aria-label=\\\"Мои записи\\\"] .customer-history li')];const row=rows.find(r=>r.querySelector('.history-id')?.textContent.includes("+JSON.stringify(restartBookingId)+"));return row?.querySelector('.history-heading span')?.textContent==='Отменена клиентом'&&document.body.innerText.includes('В списке сервера запись отменена клиентом.')&&!Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Повторить запрос отмены');})()");
+    assert.deepEqual(await durableBooking(), cancelledProjection);
+    assert.equal(cancellationRequests, 1, "History reconciliation must not repeat cancellation POST");
+    assert.equal(customerCreateRequests, writesBeforeRestart);
+    await button(cdp, "Выйти");
+    await requireDom(cdp, "client logout after cancellation reconciliation", "document.querySelector('[aria-label=\\\"Клиентский вход staging\\\"] h1')?.innerText==='Вы вышли'");
+    console.log("PASS lost real cancellation response reconciled by own history without a repeat mutation.");
+
+
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
     const demoApiRequests = [];
