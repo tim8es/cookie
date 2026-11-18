@@ -220,8 +220,8 @@ export function registerTelegramOidcAuth(
              WHERE expires_at<=clock_timestamp() OR consumed_at IS NOT NULL
              ORDER BY expires_at LIMIT 100 FOR UPDATE SKIP LOCKED
            )
-           DELETE FROM cookie_identity.telegram_oidc_authorizations AS authorization
-           USING expired WHERE authorization.state_sha256=expired.state_sha256`,
+           DELETE FROM cookie_identity.telegram_oidc_authorizations AS oidc_state
+           USING expired WHERE oidc_state.state_sha256=expired.state_sha256`,
         );
         operation = "insert-state";
         await client.query(
