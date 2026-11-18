@@ -145,7 +145,8 @@ test("documented customer Booking routes are opt-in and fail closed", async () =
       };
       const unmounted = await disabled.inject(input);
       assert.equal(unmounted.statusCode, 404, op.operationId);
-      const check = async (
+      const beforeDenials = databaseCalls;
+      const check = (
         status: number,
         error: string,
         response: {
@@ -157,21 +158,17 @@ test("documented customer Booking routes are opt-in and fail closed", async () =
         assert.equal(response.statusCode, status, op.operationId);
         const contract = op.responses[String(status)];
         assert.ok(contract);
-        assert.ok(
-          contract.content["application/json"].schema.properties.error.enum.includes(
-            error,
-          ),
-        );
+        const codes =
+          contract.content["application/json"].schema.properties.error.enum;
+        assert.ok(codes.includes(error));
         assert.deepEqual(response.json(), { error });
         for (const [name, header] of Object.entries(contract.headers)) {
-          assert.equal(
-            response.headers[name.toLowerCase()],
-            header.schema.const,
-          );
+          const actual = response.headers[name.toLowerCase()];
+          assert.equal(actual, header.schema.const);
         }
       };
-      await check(401, "unauthorized", await app.inject(input));
-      await check(
+      check(401, "unauthorized", await app.inject(input));
+      check(
         403,
         "forbidden",
         await app.inject({
@@ -188,10 +185,11 @@ test("documented customer Booking routes are opt-in and fail closed", async () =
             input.url + (input.url.includes("?") ? "&" : "?") + "unexpected=1",
           headers: { authorization, "idempotency-key": key },
         });
-        await check(400, "invalid-request", invalid);
+        check(400, "invalid-request", invalid);
       }
+      assert.equal(databaseCalls, beforeDenials, op.operationId);
       const before = databaseCalls;
-      await check(
+      check(
         503,
         "unavailable",
         await app.inject({
