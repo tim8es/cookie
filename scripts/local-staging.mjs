@@ -244,6 +244,7 @@ async function logoutVerified(cdp) {
 
 // Check the seeded offer via the real customer surface and persist a real booking.
 async function verifyDemoBooking(cdp, databaseUrl, tenantId, example) {
+  localStagingPhase = "select synthetic client booking offer";
   const panel = '[aria-label="Клиентская витрина staging"]';
   const selector = JSON.stringify(panel + " select");
   for (let i = 0; i < 3; i++) {
@@ -257,6 +258,7 @@ async function verifyDemoBooking(cdp, databaseUrl, tenantId, example) {
   const slot = "document.querySelector(" + JSON.stringify(panel + " .customer-slot-choice") + ")";
   await requireDom(cdp, "real available slot", slot);
   await evaluate(cdp, slot + ".click()");
+  localStagingPhase = "create synthetic booking from client UI";
   await pressButton(cdp, "Записаться");
   await requireDom(cdp, "server-confirmed demo booking", "document.querySelector(" + JSON.stringify(panel) + ")?.innerText.includes('Создание записи подтверждено')");
   const pool = new Pool({ connectionString: databaseUrl, max: 1 });
@@ -277,6 +279,7 @@ async function verifyDemoBooking(cdp, databaseUrl, tenantId, example) {
 }
 
 async function verifyDemoCalendar(cdp, example, expectedStatus) {
+  localStagingPhase = "verify owner calendar with status " + expectedStatus;
   await cdp.send("Emulation.setDeviceMetricsOverride", {
     width: 1280, height: 800, deviceScaleFactor: 1, mobile: false,
   });
@@ -305,19 +308,26 @@ async function verifyDemoCalendar(cdp, example, expectedStatus) {
 async function verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example) {
   // Both roles use their own ordinary verified session and the exact same
   // compiled application. Every mutation goes through the actual browser UI.
+  localStagingPhase = "create synthetic client booking";
   const id = await verifyDemoBooking(cdp, databaseUrl, tenantId, example);
+  localStagingPhase = "logout client after booking";
   await logoutVerified(cdp);
+  localStagingPhase = "authenticate owner for confirmed calendar";
   await signIn(cdp, origin, state, "owner");
   await verifyDemoCalendar(cdp, example, "Подтверждена");
+  localStagingPhase = "logout owner before client cancellation";
   await logoutVerified(cdp);
+  localStagingPhase = "authenticate client to cancel booking";
   await signIn(cdp, origin, state, "client");
   const history = "document.querySelector('[aria-label=\\\"Мои записи\\\"]')";
   await requireDom(cdp, "same booking after new client authentication",
     history + "?.innerText.includes(" + JSON.stringify(id) + ")");
+  localStagingPhase = "cancel synthetic booking from client UI";
   await pressButton(cdp, "Отменить запись");
   await pressButton(cdp, "Подтвердить отмену");
   await requireDom(cdp, "client cancellation on real runtime",
     history + "?.innerText.includes('Отменена клиентом')");
+  localStagingPhase = "verify persisted client cancellation";
   const pool = new Pool({ connectionString: databaseUrl, max: 1 });
   try {
     const result = await pool.query(
@@ -327,7 +337,9 @@ async function verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenan
     assert.deepEqual(result.rows, [{ id, status: "CancelledByClient", price: example.price }]);
   } finally { await pool.end(); }
   assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0);
+  localStagingPhase = "logout client after cancellation";
   await logoutVerified(cdp);
+  localStagingPhase = "authenticate owner to verify cancelled calendar";
   await signIn(cdp, origin, state, "owner");
   await verifyDemoCalendar(cdp, example, "Отменена клиентом");
   await logoutVerified(cdp);
