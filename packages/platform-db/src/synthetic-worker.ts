@@ -19,7 +19,10 @@ export function runSyntheticPostgresOutboxWorker(
   const syntheticHandler = idempotentProviderHandler({
     supportsIdempotencyKey: true,
     async send(event) {
-      if (event.topic !== "test.synthetic" || event.payload.synthetic !== true) {
+      if (
+        event.topic !== "test.synthetic" ||
+        event.payload.synthetic !== true
+      ) {
         throw new Error("Synthetic worker refuses non-synthetic event");
       }
       // No external side effect. Future real adapters require separate approval.
