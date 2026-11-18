@@ -46,15 +46,18 @@ export function registerIdentityOrganizations(
     if (Object.keys(request.query as object).length !== 0)
       return reply.code(400).send({ error: "INVALID_REQUEST" });
 
+    let stage = "begin-transaction";
     try {
       const organizations = await runSqlTransaction(pool, async (client) => {
         let identityId: string | null = null;
+        stage = "resolve-identity";
         for (const provider of providers) {
           identityId = await provider.resolve(token);
           if (identityId) break;
         }
         if (!identityId) return null;
 
+        stage = "read-memberships";
         const memberships = await client.query<{ tenant_id: string }>(
           `SELECT tenant_id::text FROM cookie_identity.memberships
            WHERE identity_id=$1::uuid AND active
@@ -62,6 +65,7 @@ export function registerIdentityOrganizations(
           [identityId],
         );
         const tenantIds = memberships.rows.map((row) => row.tenant_id);
+        stage = "read-role-assignments";
         const assignments = tenantIds.length
           ? await client.query<{
               tenant_id: string;
@@ -77,6 +81,7 @@ export function registerIdentityOrganizations(
         const roleIds = [
           ...new Set(assignments.rows.map((row) => row.role_id)),
         ];
+        stage = "read-roles";
         const roles =
           tenantIds.length && roleIds.length
             ? await client.query<{
@@ -91,6 +96,7 @@ export function registerIdentityOrganizations(
                 [tenantIds, roleIds],
               )
             : { rows: [] };
+        stage = "read-organizations";
         const rows = tenantIds.length
           ? await client.query<{
               id: string;
@@ -103,6 +109,7 @@ export function registerIdentityOrganizations(
           : { rows: [] };
 
         let verifiedIdentity: string | null = null;
+        stage = "revalidate-identity";
         for (const provider of providers) {
           verifiedIdentity = await provider.resolveWithinTransaction(
             client,
@@ -140,7 +147,23 @@ export function registerIdentityOrganizations(
       if (!organizations)
         return reply.code(401).send({ error: "UNAUTHENTICATED" });
       return reply.send({ organizations });
-    } catch {
+    } catch (reason) {
+      const code =
+        typeof reason === "object" &&
+        reason !== null &&
+        "code" in reason &&
+        typeof reason.code === "string" &&
+        /^[A-Z0-9_]{1,32}$/.test(reason.code)
+          ? reason.code
+          : undefined;
+      const diagnostic =
+        reason instanceof Error && /timeout/i.test(reason.message)
+          ? "timeout"
+          : undefined;
+      request.log.warn(
+        { stage, code, diagnostic },
+        "Identity organizations lookup failed",
+      );
       return reply.code(503).send({ error: "BACKEND_UNAVAILABLE" });
     }
   });

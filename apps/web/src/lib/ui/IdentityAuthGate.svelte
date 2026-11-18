@@ -63,6 +63,7 @@
   let organizations: IdentityOrganization[] = [];
   let methodsLoading = true;
   let accountLoading = false;
+  let accountLoaded = false;
   let busy = false;
   let email = "";
   let password = "";
@@ -125,7 +126,7 @@
 
   async function refreshAccount(): Promise<void> {
     const current = identitySession;
-    if (!current) return;
+    if (!current || accountLoading) return;
     accountLoading = true;
     error = "";
     try {
@@ -136,16 +137,22 @@
       if (identitySession !== current) return;
       providers = linkedProviders;
       organizations = memberships;
+      accountLoaded = true;
     } catch (reason) {
-      error = errorMessage(reason);
+      if (identitySession !== current) return;
+      error = reason instanceof IdentityAuthFailure && reason.reason === "unauthorized"
+        ? errorMessage(reason)
+        : "Вход подтверждён, но данные учётной записи не загрузились. Повторите загрузку.";
     } finally {
-      accountLoading = false;
+      if (identitySession === current) accountLoading = false;
     }
   }
 
   function acceptIdentity(session: IdentityAuthSession): void {
     stopIdentityExpiry?.();
     identitySession = session;
+    accountLoading = false;
+    accountLoaded = false;
     providers = null;
     organizations = [];
     notice = "Вход подтверждён. Выберите, как пользоваться kuki.";
@@ -154,6 +161,8 @@
       session.expiresAtUnixSeconds,
       () => {
         identitySession = null;
+        accountLoading = false;
+        accountLoaded = false;
         providers = null;
         organizations = [];
         role = customerSurface ? "customer" : null;
@@ -484,6 +493,8 @@
     stopIdentityExpiry?.();
     stopIdentityExpiry = null;
     identitySession = null;
+    accountLoading = false;
+    accountLoaded = false;
     providers = null;
     organizations = [];
     role = customerSurface ? "customer" : null;
@@ -502,7 +513,7 @@
     role = value;
     error = "";
     notice = "";
-    if (value === "business") void refreshAccount();
+    if (value === "business" && !accountLoaded && !accountLoading) void refreshAccount();
   }
 
   function beginRegistration(): void {
@@ -541,6 +552,8 @@
           </div>
           {#if accountLoading}
             <p role="status">Проверяем организации…</p>
+          {:else if !accountLoaded}
+            <p role="status">Список организаций не загружен. Создание кабинета пока недоступно.</p>
           {:else if ownerOrganizations.length}
             <div class="identity-organization-list">
               {#each ownerOrganizations as organization (organization.tenantId)}
@@ -592,8 +605,11 @@
 
       <div class="identity-auth-section identity-provider-section">
         <div class="identity-auth-section-head"><div><span>СПОСОБЫ ВХОДА</span><h2>Привязанные методы</h2></div></div>
-        {#if accountLoading || methodsLoading || providers === null}
+        {#if accountLoading || methodsLoading}
           <p role="status">Загружаем способы входа…</p>
+        {:else if !accountLoaded || providers === null}
+          <p role="status">Вход выполнен, но данные учётной записи временно недоступны.</p>
+          <Button variant="outline" disabled={busy} onclick={() => void refreshAccount()}>Повторить загрузку</Button>
         {:else}
           <ul class="identity-provider-list">
             <li><span>Email и пароль</span><strong>{providers.email ? "Подключён" : "Не подключён"}</strong></li>

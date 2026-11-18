@@ -387,9 +387,13 @@ async function main() {
     await button(cdp, "Я представляю бизнес");
     await button(cdp, "Создать учётную запись");
     await requireDom(cdp, "single Telegram registration action", "[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Зарегистрироваться через Telegram').length===1");
+    await evaluate(cdp, "window.__cookieOrganizationLookupCount=0;const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const path=new URL(String(input),window.location.href).pathname;if(path==='/v1/auth/identity/organizations'&&window.__cookieOrganizationLookupCount++===0)return Promise.resolve(new Response(null,{status:503}));return nativeFetch(input,init);};");
     await button(cdp, "Зарегистрироваться через Telegram");
+    await requireDom(cdp, "organization lookup failure keeps workspace creation closed",
+      "window.__cookieOrganizationLookupCount===1 && document.body.innerText.includes('Вход подтверждён, но данные учётной записи не загрузились. Повторите загрузку.') && !document.querySelector('#organization-name')");
+    await button(cdp, "Повторить загрузку");
     await requireDom(cdp, "workspace form offers IANA zones and UTC offsets",
-      "document.querySelector('#organization-name') && document.querySelector('#location-name') && document.querySelector('#identity-time-zone')?.tagName==='SELECT' && document.querySelector('#identity-time-zone')?.value===Intl.DateTimeFormat().resolvedOptions().timeZone && [...document.querySelectorAll('#identity-time-zone option')].some(o=>o.value==='Europe/Moscow'&&o.textContent.includes('UTC+03:00')) && document.body.innerText.includes('относительно UTC')");
+      "window.__cookieOrganizationLookupCount===2 && document.querySelector('#organization-name') && document.querySelector('#location-name') && document.querySelector('#identity-time-zone')?.tagName==='SELECT' && document.querySelector('#identity-time-zone')?.value===Intl.DateTimeFormat().resolvedOptions().timeZone && [...document.querySelectorAll('#identity-time-zone option')].some(o=>o.value==='Europe/Moscow'&&o.textContent.includes('UTC+03:00')) && document.body.innerText.includes('относительно UTC')");
     for (const [width, height] of [[320,568],[375,812],[1280,800]]) {
       await viewport(cdp,width,height);
       await checkWidth(cdp,"owner workspace signup "+width+"px");
