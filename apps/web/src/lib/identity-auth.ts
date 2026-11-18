@@ -537,7 +537,11 @@ export async function createOwnerWorkspace(
         "content-type": "application/json",
         "idempotency-key": idempotencyKey,
       },
-      body: JSON.stringify(input),
+      body: JSON.stringify({
+        organizationName: input.organizationName,
+        locationName: input.locationName,
+        timeZone: input.timeZone,
+      }),
     },
     fetcher,
   );

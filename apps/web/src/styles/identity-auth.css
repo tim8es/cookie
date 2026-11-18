@@ -55,6 +55,16 @@
 
 .identity-auth-fields label[data-slot=label] { margin-top: 4px; }
 .identity-auth-fields input[data-slot=input] { min-height: 42px; }
+.identity-auth-fields .identity-time-zone-select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--input);
+  border-radius: var(--cookie-radius-control);
+  background: var(--cookie-surface);
+  color: var(--cookie-ink);
+}
+.identity-auth-fields .identity-time-zone-help { max-width: 460px; }
 
 .identity-role-options,
 .identity-organization-list {

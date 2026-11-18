@@ -72,6 +72,7 @@
   let organizationName = "";
   let locationName = "";
   let timeZone = "";
+  let timeZoneOptions: { id: string; utcOffset: string }[] = [];
   let linkEmail = "";
   let error = "";
   let notice = authNotice;
@@ -114,6 +115,16 @@
     if (methods?.telegramMiniApp) labels.push("Telegram Mini App");
     if (methods?.telegramWebOidc) labels.push("Telegram Web");
     return labels.join(" или ") || "не настроены";
+  }
+
+  function utcOffsetLabel(timeZoneId: string): string {
+    const offset = new Intl.DateTimeFormat("en-US", {
+      timeZone: timeZoneId,
+      timeZoneName: "longOffset",
+    })
+      .formatToParts(new Date())
+      .find((part) => part.type === "timeZoneName")?.value ?? "GMT";
+    return offset === "GMT" ? "UTC+00:00" : offset.replace(/^GMT/, "UTC");
   }
 
   async function refreshAccount(): Promise<void> {
@@ -172,7 +183,17 @@
   }
 
   onMount(() => {
-    if (!timeZone) timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const browserTimeZone =
+      Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    const supportedTimeZones =
+      typeof Intl.supportedValuesOf === "function"
+        ? Intl.supportedValuesOf("timeZone")
+        : [browserTimeZone, "UTC"]; // shortcut: older browsers get only local zone and UTC; bundle IANA data if they become supported targets.
+    timeZoneOptions = [
+      ...new Set([browserTimeZone, "UTC", ...supportedTimeZones]),
+    ]
+      .map((id) => ({ id, utcOffset: utcOffsetLabel(id) }));
+    if (!timeZone) timeZone = browserTimeZone;
     void discoverAuthMethods()
       .then((result) => (methods = result))
       .catch((reason) => (error = errorMessage(reason)))
@@ -411,16 +432,20 @@
     busy = true;
     error = "";
     try {
+      const { key, ...workspaceInput } = workspaceRetry;
       const result = await createOwnerWorkspace(
         identitySession,
-        workspaceRetry,
-        workspaceRetry.key,
+        workspaceInput,
+        key,
       );
       onOwnerSession({ ...identitySession, tenantId: result.tenantId });
     } catch (reason) {
-      if (reason instanceof IdentityAuthFailure && reason.reason === "invalid-request")
+      if (reason instanceof IdentityAuthFailure && reason.reason === "invalid-request") {
         workspaceRetry = null;
-      error = errorMessage(reason);
+        error = "Проверьте названия организации и филиала; часовой пояс должен быть выбран из списка.";
+      } else {
+        error = errorMessage(reason);
+      }
     } finally {
       busy = false;
     }
@@ -536,7 +561,13 @@
               <Label for="location-name">Первый филиал</Label>
               <Input id="location-name" bind:value={locationName} maxlength={120} required disabled={busy || workspaceRetry !== null} />
               <Label for="identity-time-zone">Часовой пояс филиала</Label>
-              <Input id="identity-time-zone" bind:value={timeZone} maxlength={100} placeholder="Europe/Moscow" required disabled={busy || workspaceRetry !== null} />
+              <select id="identity-time-zone" class="identity-time-zone-select" bind:value={timeZone} required disabled={busy || workspaceRetry !== null}>
+                <option value="" disabled>Выберите часовой пояс</option>
+                {#each timeZoneOptions as option (option.id)}
+                  <option value={option.id}>{option.id} — {option.utcOffset}</option>
+                {/each}
+              </select>
+              <p class="identity-time-zone-help">По умолчанию выбран часовой пояс этого устройства. Смещение в списке указано относительно UTC на текущую дату; сезонные переходы учитываются автоматически.</p>
               <Button type="submit" disabled={busy || accountLoading}>{busy ? "Сохраняем…" : workspaceRetry ? "Повторить ту же операцию" : "Создать кабинет бизнеса"}</Button>
             </form>
           {/if}

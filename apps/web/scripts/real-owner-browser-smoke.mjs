@@ -294,6 +294,7 @@ async function main() {
   const botToken = "123456789:" + randomBytes(24).toString("base64url");
   const userHashSecret = randomBytes(32);
   const userId = randomInt(100000000, 999999999);
+  const onboardingUserId = userId + 2_000_000_000;
   let browserData;
   let api, chrome, cdp;
   const errors = [], external = [], responses = [];
@@ -377,6 +378,38 @@ async function main() {
       await checkLabeledControls(cdp,"self-service role selection "+width+"px");
     }
     await viewport(cdp,375,812);
+
+    const onboardingOrganization = "Synthetic onboarding salon";
+    const onboardingLocation = "Synthetic onboarding branch";
+    script = await load(cdp, origin, signedProof(botToken, onboardingUserId), script);
+    await requireDom(cdp, "business signup role", "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я представляю бизнес')");
+    await button(cdp, "Я представляю бизнес");
+    await button(cdp, "Создать учётную запись");
+    await button(cdp, "Зарегистрироваться через Telegram Mini App");
+    await requireDom(cdp, "workspace form offers IANA zones and UTC offsets",
+      "document.querySelector('#organization-name') && document.querySelector('#location-name') && document.querySelector('#identity-time-zone')?.tagName==='SELECT' && document.querySelector('#identity-time-zone')?.value===Intl.DateTimeFormat().resolvedOptions().timeZone && [...document.querySelectorAll('#identity-time-zone option')].some(o=>o.value==='Europe/Moscow'&&o.textContent.includes('UTC+03:00')) && document.body.innerText.includes('относительно UTC')");
+    for (const [width, height] of [[320,568],[375,812],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"owner workspace signup "+width+"px");
+      await checkLabeledControls(cdp,"owner workspace signup "+width+"px");
+    }
+    await viewport(cdp,375,812);
+    await fill(cdp,"#organization-name",onboardingOrganization);
+    await fill(cdp,"#location-name",onboardingLocation);
+    await evaluate(cdp,"(()=>{const s=document.querySelector('#identity-time-zone');s.value='Europe/Moscow';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await submitValidForm(cdp,".identity-auth-fields");
+    await requireDom(cdp,"new owner workspace appears after signup",
+      "document.querySelector('.real-owner-nav') && document.body.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+    await poll("owner workspace API response",()=>responses.some(r=>r.path==="/v1/auth/owner/workspace"&&r.status===201));
+    const onboardingRows=await pool.query(
+      `SELECT o.id::text AS tenant_id,l.id::text AS location_id,l.time_zone
+         FROM cookie_tenancy.organizations o
+         JOIN cookie_tenancy.locations l ON l.tenant_id=o.id
+        WHERE o.display_name=$1 AND l.display_name=$2`,
+      [onboardingOrganization,onboardingLocation],
+    );
+    assert.equal(onboardingRows.rowCount,1);
+    assert.equal(onboardingRows.rows[0].time_zone,"Europe/Moscow");
 
     script = await load(cdp, origin, "", script);
     await evaluate(cdp, "window.Telegram.WebApp.initData='synthetic-browser-only';const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>String(input)==='/v1/auth/telegram/identity'?Promise.resolve(new Response(null,{status:503})):nativeFetch(input,init);");

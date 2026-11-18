@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   completeEmailCredentialLink,
+  createOwnerWorkspace,
   discoverAuthMethods,
   enrollCustomer,
   IdentityAuthFailure,
@@ -88,6 +89,40 @@ test("Telegram-only registration uses the independent register intent", async ()
     intent: "register",
   });
   assert.deepEqual(result, session);
+});
+
+test("owner workspace request keeps the idempotency key out of the strict form body", async () => {
+  const input = {
+    key: "owner-setup-00000001",
+    organizationName: "Тестик",
+    locationName: "Тестик первый",
+    timeZone: "Europe/Moscow",
+  };
+  const locationId = "22222222-2222-4222-8222-222222222222";
+  let sent: Request | undefined;
+  const result = await createOwnerWorkspace(
+    session,
+    input,
+    input.key,
+    async (_url, init) => {
+      sent = new Request(
+        "https://cookie.example.invalid/v1/auth/owner/workspace",
+        init,
+      );
+      return Response.json(
+        { tenantId, locationId, replayed: false },
+        { status: 201 },
+      );
+    },
+  );
+
+  assert.equal(sent?.headers.get("idempotency-key"), input.key);
+  assert.deepEqual(await sent?.json(), {
+    organizationName: input.organizationName,
+    locationName: input.locationName,
+    timeZone: input.timeZone,
+  });
+  assert.deepEqual(result, { tenantId, locationId });
 });
 
 test("email linking uses the current identity bearer and one-time proof body", async () => {
