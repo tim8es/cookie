@@ -1,4 +1,4 @@
-# Cookie web — F1 interactive frontend foundation
+# kuki web — F1 interactive frontend foundation
 
 Existing workspace: `apps/web`. Svelte 5, TypeScript and Vite. No second application, no SSR or production deployment.
 
@@ -12,11 +12,13 @@ pnpm install --frozen-lockfile
 pnpm dev:web
 ```
 
-Open **http://127.0.0.1:5173/demo** for an explicitly isolated UI preview. Its data lives only in the synthetic browser-local adapter. Root **http://127.0.0.1:5173/** is the API-backed application; without the compiled runtime and verified Telegram session, it remains on its authentication gate. It never falls back to demo. The build-time mode switch is no longer used; both routes are served from the same build.
+For the product-shaped local demo, run `pnpm demo:local` from the repository root (Docker/Chrome required). It starts the same authenticated API and Svelte runtime on a disposable synthetic database with a populated sample catalog. See [manual staging and demo](../../docs/operations/manual-real-staging.md).
+
+For the legacy developer UI-test fixture only, run `pnpm --filter @cookie/web dev:fixture` and open **http://127.0.0.1:5173/demo**. Its data lives only in the synthetic browser-local adapter. Root **http://127.0.0.1:5173/** is the API-backed application; without the compiled runtime and verified Telegram session, it remains on its authentication gate. It never falls back to demo. The compiled API server does not serve `/demo` or its subroutes (404); the mock route remains a separately built dev/test fixture only, pending removal. Normal runtime builds reject mock controller/adapter modules; fixture builds write to `.tmp/ui-fixture-dist`, never `dist`.
 
 For real manual staging, build the runtime with `pnpm build:runtime` and follow the [staging operations runbook](../../docs/operations/staging-local-altare.md); run `pnpm staging:local` in the integrated checkout (see [manual staging](../../docs/operations/manual-real-staging.md)). Protected pages share the same sidebar and header as the demo. Calendar, catalog, staff, locations and schedule use their existing server adapters; appearance and owner-originated booking show an explicit unavailable state until the corresponding protected flows exist. The customer staging surface requires a separate verified customer session at `/?surface=customer-staging`.
 
-## Demo walkthrough
+## Legacy UI fixture walkthrough (not the product demo)
 
 1. Open the Overview page and create a **test organization** with a synthetic name.
 2. Add a service with one base price and organization-wide duration.
@@ -54,7 +56,7 @@ keyboard-scrollable within its own region rather than overflowing the page.
 **Change the screen only:** `src/lib/ui/OnboardingScreen.svelte`,
 `OwnerOverview.svelte`, `BookingForm.svelte`, `BookingSummary.svelte`,
 `CalendarView.svelte` and the owner forms contain screen presentation.
-`App.svelte` orchestrates state and synthetic adapter actions. The four owner
+`LegacyFixture.svelte` orchestrates state and synthetic adapter actions only for fixture builds. The four owner
 list+editor pages now live in standalone `Owner*Page.svelte` files and the
 confirmation/feedback flow in `BookingConfirmation.svelte` and `DemoState.svelte`.
 
@@ -71,7 +73,8 @@ the 39-screenshot Chromium browser smoke across desktop and mobile.
 
 ## Folder ownership / layering
 
-- `src/App.svelte`: shared UI state/orchestration across owner and public flows (no backend rules), with versioned slot-request guard against stale responses.
+- `src/App.svelte`: authenticated real owner/customer runtime, used for both demo and real data.
+- `src/LegacyFixture.svelte`: temporary UI regression fixture, with versioned slot-request guard against stale responses; excluded from runtime build.
 - `src/lib/navigation.ts`: typed, shared screen navigation metadata.
 - `src/lib/ui/Sidebar.svelte`: owner navigation with accessible onboarding progress.
 - `src/lib/ui/Topbar.svelte`: demo-mode ribbon, workspace controls and preview states.
@@ -119,19 +122,19 @@ Repo-wide `pnpm lint`, `pnpm format:check` and GitHub F1 quality gate remain app
 - Keyboard: Tab through owner navigation and booking form; open a calendar record with Enter; drawer must focus its close control, cycle focus between dialog buttons and close on Escape, returning focus to the invoking control.
 - Preview selector: empty, error, permission-denied and forced slot conflict are visual fixtures only. Real authorization remains API-enforced.
 - Reload page in same tab to verify synthetic state restoration; use Reset demo to clear it. Opening an independent browser session must not share state.
-- API mode: open `/` without a verified session; verify that the protected owner workspace and every demo control remain hidden. With the real runtime and verified session, use the shared navigation; only `/demo` permits mock operations.
+- API mode: open `/` without a verified session; verify that the protected owner workspace and every demo control remain hidden. With the real runtime and verified session, use the shared navigation; the compiled API refuses `/demo`, while the separate dev/static UI test server permits mock operations at that path.
 
 **Important:** GitHub CI does not replace physical device or browser visual QA. Do not close the mobile UX portion of Issue #13 solely from typecheck/CI.
 
 ## Automated Chromium browser smoke (CI)
 
 The repository F1 workflow runs `node apps/web/scripts/browser-smoke.mjs`
-**after** `pnpm --filter @cookie/web build`, using a headless Chrome/Chromium
+**after** `pnpm --filter @cookie/web build:fixture`, using a headless Chrome/Chromium
 binary already installed on the GitHub Ubuntu runner. Node.js 26 provides the
 native WebSocket client for Chrome DevTools; no Playwright, extra npm packages
 or remote browser provider are required.
 
-To execute locally, run `pnpm build:web`, then
+To execute locally, run `pnpm --filter @cookie/web build:fixture`, then
 `node apps/web/scripts/browser-smoke.mjs`; install Chrome/Chromium if absent,
 or set `COOKIE_BROWSER_BINARY` to its executable path.
 
@@ -189,7 +192,7 @@ not establish real iOS, Android or Telegram client compatibility.
 The contract-neutral `src/lib/transport.ts` has an explicitly injected
 fetch implementation, classifies generic HTTP failures and never retries
 unsafe requests on its own. Its response remains `unknown` until a reviewed
-OpenAPI/JSON Schema mapper exists. The legacy demo port in `api.ts` fails closed on the API route; real pages use their reviewed server-specific adapters. The explicit `/demo` route remains network-isolated.
+OpenAPI/JSON Schema mapper exists. The legacy demo port in `api.ts` fails closed on the API route; real pages use their reviewed server-specific adapters. The legacy `/demo` route remains network-isolated and is served only by the dev/static UI test server, not by the compiled API.
 
 **Acceptance still outstanding:** iOS Safari and Android Chrome physical
 device checks, Telegram iOS/Android/Desktop launch and keyboard/viewport

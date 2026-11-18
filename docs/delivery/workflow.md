@@ -23,6 +23,8 @@ Backlog -> Ready (REQ + AC + deps) -> In progress -> Review -> Done. Blocked ф�
 ## Definition of Done — code
 См. ../quality/test-strategy.md
 
+Для UI/бизнес-функций действует требование владельца [#311](https://github.com/tim8es/cookie/issues/311): demo и рабочий режим используют один runtime, общие компоненты и бизнес-правила; различия допустимы для synthetic data, безопасной изоляции и отключённых реальных внешних эффектов. В PR указывать проверенные общие сценарии, исключения и оставшиеся расхождения. Не засчитывать успех legacy mock как рабочий E2E.
+
 ## Review cadence
 В F0 первая ревизия по PR, затем consistency audit: требования -> ADR -> модули -> roadmap -> Issues. После принятия docs freeze можно начать F1. ADR менять через новый ADR или update с историей/ссылкой на Issue.
 
