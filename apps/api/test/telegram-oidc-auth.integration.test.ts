@@ -256,7 +256,13 @@ test(
     currentTelegramId = "123456789";
     const link = await begin("link", emailSession.token);
     const linked = await complete(link);
-    assert.equal(linked.statusCode, 204);
+    assert.equal(linked.statusCode, 200);
+    assert.deepEqual(linked.json(), {
+      tokenType: "Bearer",
+      accessToken: emailSession.token,
+      scope: "identity",
+      expiresAtUnixSeconds: emailSession.expiresAtUnixSeconds,
+    });
     const mapping = await pool.query<{ identity_id: string }>(
       "SELECT identity_id::text FROM cookie_identity.global_telegram_identities WHERE telegram_user_hmac_sha256=$1",
       [
