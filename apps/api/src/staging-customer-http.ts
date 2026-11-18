@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
+import { runAuditedRead } from "./protected-tenant-transaction.js";
 import { readStagingCustomerContext } from "../../../packages/domain-customers/src/index.js";
 import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
 import { verifyTenantActor } from "./session-context.js";
@@ -26,7 +26,7 @@ export function registerStagingCustomerContext(
       if (Object.keys(request.query as object).length !== 0)
         return reply.code(400).send({ error: "invalid-request" });
       try {
-        const context = await runSqlTransaction(pool, (client) =>
+        const context = await runAuditedRead(pool, (client) =>
           readStagingCustomerContext(client, verified.actor!),
         );
         return reply.send(context);

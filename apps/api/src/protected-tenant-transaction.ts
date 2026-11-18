@@ -40,6 +40,37 @@ export async function runProtectedTransaction<T>(
 }
 
 /**
+ * Only for protected SELECT projections whose sole writes are policy audit
+ * records. A denied read must retain those records, without returning data;
+ * unexpected failures still roll back. Never use for mutation commands.
+ */
+export async function runAuditedRead<T>(
+  pool: Pool,
+  read: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const result = await runSqlTransaction(
+    pool,
+    async (
+      client,
+    ): Promise<
+      | { allowed: true; value: T }
+      | { allowed: false; reason: AuthorizationDeniedError }
+    > => {
+      try {
+        return { allowed: true, value: await read(client) };
+      } catch (reason) {
+        if (reason instanceof AuthorizationDeniedError) {
+          return { allowed: false, reason };
+        }
+        throw reason;
+      }
+    },
+  );
+  if (!result.allowed) throw result.reason;
+  return result.value;
+}
+
+/**
  * Single transaction for owner policy, bearer/link locks, and business changes.
  * Revoked privileges cannot commit between policy check and the command.
  * Non-sensitive denials are audited before commit; business failures roll back.

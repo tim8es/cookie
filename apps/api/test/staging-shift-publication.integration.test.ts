@@ -808,12 +808,74 @@ test(
         [owner.tenantId],
       );
       // Remove only offers permission. Context remains readable; owner endpoints never widen access.
+      const clientIdentity = await pool.query<{ identity_id: string }>(
+        `SELECT identity_id::text FROM cookie_customers.staging_customer_identities
+          WHERE tenant_id=$1::uuid AND customer_id=$2::uuid`,
+        [owner.tenantId, clientContext.customerId],
+      );
+      const readDenials = async () =>
+        (
+          await pool.query(
+            `SELECT permission,allowed,reason,location_id
+               FROM cookie_identity.authorization_audit
+              WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid
+                AND permission IN ('staging.customer.context.read',
+                                   'staging.customer.offers.read')
+                AND NOT allowed ORDER BY id`,
+            [owner.tenantId, clientIdentity.rows[0]!.identity_id],
+          )
+        ).rows;
+      const initialReadDenials = await readDenials();
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.offers.read') WHERE tenant_id=$1::uuid AND base_type='client'",
         [owner.tenantId],
       );
-      assert.equal((await clientOffers()).statusCode, 403);
-      assert.equal((await clientSlots()).statusCode, 403);
+      for (const request of [clientOffers, clientSlots]) {
+        const denial = await request();
+        assert.equal(denial.statusCode, 403);
+        assert.deepEqual(denial.json(), { error: "forbidden" });
+        assert.equal(denial.headers["cache-control"], "no-store");
+      }
+      const offersDenial = {
+        permission: "staging.customer.offers.read",
+        allowed: false,
+        reason: "permission-denied",
+        location_id: null,
+      };
+      const expectedOfferDenials = [
+        ...initialReadDenials,
+        offersDenial,
+        offersDenial,
+      ];
+      assert.deepEqual(await readDenials(), expectedOfferDenials);
+      const foreignRead = await app.inject({
+        method: "GET",
+        url: offersUrl.replace(owner.tenantId, randomUUID()),
+        headers: clientHeaders,
+      });
+      assert.equal(foreignRead.statusCode, 403);
+      assert.deepEqual(await readDenials(), expectedOfferDenials);
+      const failedReadAudit = createApp(pool, {
+        stagingPublicationRoutes: {
+          pool: faultPool,
+          verifier: sessions,
+          enabled: true,
+        },
+      });
+      completion.length = 0;
+      try {
+        const failed = await failedReadAudit.inject({
+          method: "GET",
+          url: offersUrl,
+          headers: clientHeaders,
+        });
+        assert.equal(failed.statusCode, 503);
+        assert.deepEqual(failed.json(), { error: "unavailable" });
+      } finally {
+        await failedReadAudit.close();
+      }
+      assert.deepEqual(completion, ["ROLLBACK", "discard"]);
+      assert.deepEqual(await readDenials(), expectedOfferDenials);
       assert.equal(
         (
           await app.inject({
@@ -828,6 +890,32 @@ test(
         "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.offers.read') WHERE tenant_id=$1::uuid AND base_type='client'",
         [owner.tenantId],
       );
+      assert.equal((await clientOffers()).statusCode, 200);
+      assert.equal((await clientSlots()).statusCode, 200);
+      const clientContextUrl = prefix + "/staging-customer-context";
+      const readContext = () =>
+        app.inject({
+          method: "GET",
+          url: clientContextUrl,
+          headers: clientHeaders,
+        });
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.context.read') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
+      const contextDenied = await readContext();
+      assert.equal(contextDenied.statusCode, 403);
+      assert.deepEqual(contextDenied.json(), { error: "forbidden" });
+      assert.equal(contextDenied.headers["cache-control"], "no-store");
+      assert.deepEqual(await readDenials(), [
+        ...expectedOfferDenials,
+        { ...offersDenial, permission: "staging.customer.context.read" },
+      ]);
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.context.read') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
+      assert.deepEqual((await readContext()).json(), clientContext);
       assert.ok(
         slots.every(
           (s) =>

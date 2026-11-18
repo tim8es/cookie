@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { PoolClient } from "pg";
-import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
+import { runAuditedRead } from "./protected-tenant-transaction.js";
 import {
   listStagingCustomerOffers,
   listStagingCustomerSlots,
@@ -32,7 +32,7 @@ export function registerStagingCustomerOffers(
   ) {
     try {
       return reply.send(
-        await runSqlTransaction(pool, (client) => action(client, actor)),
+        await runAuditedRead(pool, (client) => action(client, actor)),
       );
     } catch (error) {
       if (error instanceof AuthorizationDeniedError)
