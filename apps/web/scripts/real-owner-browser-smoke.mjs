@@ -697,6 +697,79 @@ async function main() {
     assert.equal(customerCreateRequests,recoveryPostCount,"Receipt recovery must not send any Create POST, including failed requests");
     assert.deepEqual((await recoveryProjection()).rows,beforeProjection.rows,"Recovery must leave durable bookings, create receipts and outbox counts unchanged");
     await checkWidth(cdp,"cancelled customer booking");
+
+    // The recovered second real Booking must survive a new API process and
+    // freshly authenticated client/owner reads, not just a browser reload.
+    const restartBookingId = beforeRecovery.rows[0].id;
+    const durableBooking = async () => {
+      const result = await pool.query(
+        `SELECT
+          (SELECT to_jsonb(b) FROM cookie_booking.bookings b
+            WHERE b.tenant_id=$1::uuid AND b.id=$2::uuid) AS booking,
+          (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.operation,r.key_sha256),'[]'::jsonb)
+            FROM cookie_booking.command_receipts r
+            WHERE r.tenant_id=$1::uuid AND r.booking_id=$2::uuid) AS receipts,
+          (SELECT COALESCE(jsonb_agg(to_jsonb(e) ORDER BY e.id),'[]'::jsonb)
+            FROM cookie_jobs.outbox_events e
+            WHERE e.tenant_id=$1::uuid AND e.payload->>'bookingId'=($2::uuid)::text) AS events,
+          (SELECT count(*)::int FROM cookie_booking.bookings b
+            WHERE b.tenant_id=$1::uuid) AS tenant_count`,
+        [owner.tenantId, restartBookingId],
+      );
+      return result.rows[0];
+    };
+    const beforeBookingRestart = await durableBooking();
+    assert.equal(beforeBookingRestart.booking.id, restartBookingId);
+    assert.equal(beforeBookingRestart.booking.status, "Confirmed");
+    assert.equal(beforeBookingRestart.tenant_count, 3, "Expected seeded, cancelled and recovered Booking");
+    assert.equal(beforeBookingRestart.receipts.length, 1);
+    assert.equal(beforeBookingRestart.receipts[0].operation, "booking.create");
+    assert.equal(beforeBookingRestart.events.length, 1);
+    assert.equal(beforeBookingRestart.events[0].topic, "booking.confirmed");
+    const originalReceipt = beforeBookingRestart.receipts[0].result;
+    assert.equal(originalReceipt.bookingId, restartBookingId);
+    assert.equal(originalReceipt.priceKopecks, "125050");
+    const restartStart = new Date(originalReceipt.startAt).toISOString();
+    const restartEnd = new Date(originalReceipt.endAt).toISOString();
+    const writesBeforeRestart = customerCreateRequests;
+    await button(cdp, "Выйти");
+    await requireDom(cdp, "customer logout before Booking restart",
+      "document.querySelector('[aria-label=\\\"Клиентский вход staging\\\"] h1')?.innerText==='Вы вышли' && !document.querySelector('[aria-label=\\\"Мои записи\\\"]')");
+    await stopServer(api);
+    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60" }, origin);
+
+    const historyResponseStart = responses.length;
+    script = await load(cdp, origin+"?surface=customer-staging", signedProof(botToken, customerUserId), script);
+    await poll("fresh client history HTTP 200 after Booking restart", () => responses.slice(historyResponseStart).some(r=>r.status===200&&r.path.endsWith("/staging-customer-history")));
+    await requireDom(cdp, "own Booking survives restart with ID, status, price and times",
+      "(()=>{const rows=[...document.querySelectorAll('[aria-label=\\\"Мои записи\\\"] .customer-history li')];const row=rows.find(r=>r.querySelector('.history-id')?.textContent.includes("+JSON.stringify(restartBookingId)+"));return rows.length===2&&row?.querySelector('.history-heading span')?.textContent==='Подтверждена'&&row.querySelectorAll('time')[0]?.dateTime==="+JSON.stringify(restartStart)+"&&row.querySelectorAll('time')[1]?.dateTime==="+JSON.stringify(restartEnd)+"&&row.innerText.replace(/\\s/g,'').includes('1250,50')&&rows.some(r=>r.querySelector('.history-id')?.textContent.includes("+JSON.stringify(realBooking.rows[0].id)+")&&r.querySelector('.history-heading span')?.textContent==='Отменена клиентом');})()");
+    assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0);
+    assert.deepEqual(await durableBooking(), beforeBookingRestart);
+    await button(cdp, "Выйти");
+    await requireDom(cdp, "customer logout before fresh owner calendar",
+      "document.querySelector('[aria-label=\\\"Клиентский вход staging\\\"] h1')?.innerText==='Вы вышли'");
+    script = await load(cdp, origin, signedProof(botToken, userId), script);
+    await requireDom(cdp, "fresh owner after Booking restart", "document.querySelector('.real-owner-nav')");
+    await button(cdp, "Календарь");
+    await requireDom(cdp, "owner calendar initialized after Booking restart",
+      "document.querySelector('.owner-calendar select')?.options.length===2 && !document.querySelector('.owner-calendar select')?.disabled");
+    await evaluate(cdp, "(()=>{const s=document.querySelector('.owner-calendar select');s.value="+JSON.stringify(locationId)+";s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await requireDom(cdp, "persisted branch selected after restart",
+      "document.querySelector('.owner-calendar select')?.value==="+JSON.stringify(locationId)+" && !document.querySelector('.owner-calendar input[type=date]')?.disabled");
+    const calendarResponseStart = responses.length;
+    await fill(cdp, ".owner-calendar input[type=date]", date, "change");
+    await poll("fresh owner calendar HTTP 200 after Booking restart", () => responses.slice(calendarResponseStart).some(r=>r.status===200&&r.path.endsWith("/owner-calendar")));
+    await requireDom(cdp, "actual persisted Booking visible in owner's calendar after restart",
+      "(()=>{const rows=[...document.querySelectorAll('[aria-label=\\\"Записи за выбранный период\\\"] .schedule-summary')];const fmt=value=>new Intl.DateTimeFormat('ru-RU',{timeZone:"+JSON.stringify(BRANCH_ZONE)+",dateStyle:'short',timeStyle:'short'}).format(new Date(value));const interval=fmt("+JSON.stringify(restartStart)+")+' — '+fmt("+JSON.stringify(restartEnd)+");const price=new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(1250.5);return rows.length===3&&rows.filter(row=>row.innerText.includes(interval)&&row.innerText.includes(price)&&row.innerText.includes('Synthetic E2E Edited Service')&&row.innerText.includes('Synthetic E2E Staff')&&row.querySelector('.status-pill')?.innerText==='Подтверждена').length===1;})()");
+    assert.deepEqual(await durableBooking(), beforeBookingRestart, "Fresh authenticated reads changed durable Booking/receipt/outbox");
+    assert.deepEqual((await recoveryProjection()).rows, beforeProjection.rows);
+    assert.equal(customerCreateRequests, writesBeforeRestart, "Restart recovery must not issue any Create POST");
+    await button(cdp, "Выйти");
+    await requireDom(cdp, "owner logout after Booking restart", "document.body.innerText.includes('Вы вышли') && !document.querySelector('.real-owner-nav')");
+    assert.deepEqual(errors, [], "Unexpected browser runtime errors after Booking restart");
+    assert.deepEqual(external, [], "Unexpected external requests after Booking restart");
+    console.log("PASS actual UI-created Booking after compiled API restart: fresh client history and owner calendar, exact durable Booking/receipt/outbox, no repeated create.");
+
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
     const demoApiRequests = [];
