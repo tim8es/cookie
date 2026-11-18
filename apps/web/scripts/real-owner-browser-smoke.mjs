@@ -370,7 +370,7 @@ async function main() {
     let script = await load(cdp, origin, "", undefined);
     await requireDom(cdp, "self-service role selection before authentication",
       "document.body.innerText.includes('Вход и регистрация') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я представляю бизнес') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я клиент')");
-    assert.ok(responses.some((r) => r.path === "/v1/auth/methods" && r.status === 200));
+    await poll("auth methods response", () => responses.some((r) => r.path === "/v1/auth/methods" && r.status === 200));
     for (const [width, height] of [[320,568],[375,812],[1280,800]]) {
       await viewport(cdp,width,height);
       await checkWidth(cdp,"self-service role selection "+width+"px");
