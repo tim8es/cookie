@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import {
@@ -13,6 +13,56 @@ import {
 } from "../../../packages/platform-db/src/outbox.js";
 import { replayDeadOutbox } from "../../../packages/platform-db/src/replay.js";
 import type { TrustedActor } from "../../../packages/platform-identity/src/authorization.js";
+
+/** Test-only facade around a real PostgreSQL connection. */
+function faultAtCommit(realPool: Pool, mode: "abort" | "lose-ack") {
+  const releases: boolean[] = [];
+  const commands: string[] = [];
+  let commitTag: string | undefined;
+  let isolation: string | undefined;
+  const pool = {
+    async connect(): Promise<PoolClient> {
+      const physical = await realPool.connect();
+      return {
+        async query(sql: string, params?: unknown[]): Promise<unknown> {
+          commands.push(sql);
+          if (sql === "COMMIT") {
+            const setting = await physical.query<{
+              transaction_isolation: string;
+            }>("SHOW transaction_isolation");
+            isolation = setting.rows[0]?.transaction_isolation;
+            if (mode === "abort") {
+              await assert.rejects(physical.query("SELECT 1 / 0"), {
+                code: "22012",
+              });
+            }
+            const result = await physical.query(sql);
+            commitTag = result.command;
+            if (mode === "lose-ack") {
+              throw new Error("SYNTHETIC_COMMIT_ACK_LOST");
+            }
+            return result;
+          }
+          return physical.query(sql, params);
+        },
+        release(discard: boolean): void {
+          releases.push(discard);
+          physical.release(discard);
+        },
+      } as unknown as PoolClient;
+    },
+  } as unknown as Pool;
+  return {
+    pool,
+    assertDiscarded(): void {
+      assert.equal(isolation, "serializable");
+      assert.equal(commitTag, mode === "abort" ? "ROLLBACK" : "COMMIT");
+      assert.deepEqual(releases, [true]);
+      assert.equal(commands.filter((sql) => sql === "COMMIT").length, 1);
+      assert.equal(commands.includes("ROLLBACK"), false);
+    },
+  };
+}
 
 test(
   "dead-letter replay requires actual Owner permission, is audited and bounded",
@@ -149,6 +199,35 @@ test(
         { requeued: false, replayCount: null },
         "a cross-tenant event must never be visible or replayed",
       );
+      async function snapshot() {
+        const result = await pool.query(
+          `SELECT to_jsonb(e) AS event,
+                  (SELECT count(*)::text FROM cookie_jobs.outbox_replay_audit
+                   WHERE event_id=e.id) AS replays,
+                  (SELECT count(*)::text FROM cookie_identity.authorization_audit
+                   WHERE tenant_id=e.tenant_id) AS authorizations
+             FROM cookie_jobs.outbox_events e WHERE id=$1::uuid`,
+          [deadId],
+        );
+        assert.ok(result.rows[0]);
+        return result.rows[0];
+      }
+
+      async function expectCommitFailure(mode: "abort" | "lose-ack") {
+        const fault = faultAtCommit(pool, mode);
+        await assert.rejects(
+          replayDeadOutbox(fault.pool, { actor, eventId: deadId }),
+          /^Error: Outbox dead-letter replay refused$/,
+        );
+        fault.assertDiscarded();
+      }
+
+      // Real PostgreSQL returns ROLLBACK on COMMIT after a late SQL error.
+      // The command must not report a replay or persist either audit.
+      const beforeAbort = await snapshot();
+      await expectCommitFailure("abort");
+      assert.deepEqual(await snapshot(), beforeAbort);
+
       assert.deepEqual(
         await replayDeadOutbox(pool, { actor, eventId: deadId }),
         { requeued: true, replayCount: 1 },
@@ -157,6 +236,18 @@ test(
         await replayDeadOutbox(pool, { actor, eventId: deadId }),
         { requeued: false, replayCount: 1 },
         "a pending event cannot be replayed twice",
+      );
+
+      const beforeNoop = await snapshot();
+      await expectCommitFailure("abort");
+      assert.deepEqual(await snapshot(), beforeNoop);
+      await expectCommitFailure("lose-ack");
+      const afterNoop = await snapshot();
+      assert.deepEqual(afterNoop.event, beforeNoop.event);
+      assert.equal(afterNoop.replays, beforeNoop.replays);
+      assert.equal(
+        Number(afterNoop.authorizations),
+        Number(beforeNoop.authorizations) + 1,
       );
 
       let row = await pool.query<{
@@ -173,7 +264,23 @@ test(
         manual_replay_count: 1,
       });
 
-      for (const replayCount of [2, 3]) {
+      // The actual commit succeeded, but the acknowledgement was lost.
+      // Do not return success, retry automatically, or duplicate the replay.
+      await exhaust();
+      const beforeLost = await snapshot();
+      await expectCommitFailure("lose-ack");
+      const afterLost = await snapshot();
+      assert.equal(Number(afterLost.replays), Number(beforeLost.replays) + 1);
+      assert.equal(
+        Number(afterLost.authorizations),
+        Number(beforeLost.authorizations) + 1,
+      );
+      assert.deepEqual(
+        await replayDeadOutbox(pool, { actor, eventId: deadId }),
+        { requeued: false, replayCount: 2 },
+      );
+
+      for (const replayCount of [3]) {
         await exhaust();
         assert.deepEqual(
           await replayDeadOutbox(pool, { actor, eventId: deadId }),
