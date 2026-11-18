@@ -3,6 +3,14 @@ import test from "node:test";
 
 import { createOwnerRead } from "./owner-reads";
 
+function deferredNumber() {
+  let resolve!: (value: number) => void;
+  const promise = new Promise<number>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
 test("workspace shows recent data immediately and shares the refresh", async () => {
   let now = 1_000;
   let calls = 0;
@@ -23,7 +31,7 @@ test("workspace shows recent data immediately and shares the refresh", async () 
 });
 
 test("a late response started before a write cannot restore the old data", async () => {
-  const previous = Promise.withResolvers<number>();
+  const previous = deferredNumber();
   let calls = 0;
   const slot = createOwnerRead(
     () => (++calls === 1 ? previous.promise : Promise.resolve(2)),
@@ -39,7 +47,7 @@ test("a late response started before a write cannot restore the old data", async
 });
 
 test("an API rejection clears the snapshot and closing the session discards in-flight data", async () => {
-  const slow = Promise.withResolvers<number>();
+  const slow = deferredNumber();
   let active = true;
   let calls = 0;
   const slot = createOwnerRead(
