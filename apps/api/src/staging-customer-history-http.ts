@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { listOwnStagingBookings } from "../../../packages/domain-booking/src/index.js";
-import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
+import { runAuditedRead } from "./protected-tenant-transaction.js";
 import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
 import { verifyTenantActor } from "./session-context.js";
 import type { StagingPublicationDependencies } from "./staging-publication-http.js";
@@ -28,7 +28,7 @@ export function registerStagingCustomerHistory(
         return reply.code(400).send({ error: "invalid-request" });
       const actor = verified.actor;
       try {
-        const result = await runSqlTransaction(pool, (client) =>
+        const result = await runAuditedRead(pool, (client) =>
           listOwnStagingBookings(client, actor),
         );
         return reply.send(result);

@@ -788,15 +788,84 @@ test(
         ],
         hasMore: false,
       });
+      const beforeHistoryDenial = await history();
+      assert.equal(beforeHistoryDenial.statusCode, 200);
+      assert.equal(beforeHistoryDenial.json().bookings[0].status, "Confirmed");
+      const historyDenials = async () =>
+        (
+          await pool.query(
+            `SELECT a.permission,a.allowed,a.reason,a.location_id
+               FROM cookie_identity.authorization_audit a
+               JOIN cookie_customers.staging_customer_identities c
+                 ON c.tenant_id=a.tenant_id
+                AND c.identity_id=a.actor_identity_id
+              WHERE c.tenant_id=$1::uuid AND c.customer_id=$2::uuid
+                AND a.permission='staging.customer.bookings.read'
+                AND NOT a.allowed ORDER BY a.id`,
+            [owner.tenantId, clientContext.customerId],
+          )
+        ).rows;
+      const priorHistoryDenials = await historyDenials();
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.bookings.read') WHERE tenant_id=$1::uuid AND base_type='client'",
         [owner.tenantId],
       );
-      assert.equal((await history()).statusCode, 403);
+      const deniedHistory = await history();
+      assert.equal(deniedHistory.statusCode, 403);
+      assert.deepEqual(deniedHistory.json(), { error: "forbidden" });
+      assert.equal(deniedHistory.headers["cache-control"], "no-store");
+      const expectedHistoryDenials = [
+        ...priorHistoryDenials,
+        {
+          permission: "staging.customer.bookings.read",
+          allowed: false,
+          reason: "permission-denied",
+          location_id: null,
+        },
+      ];
+      assert.deepEqual(await historyDenials(), expectedHistoryDenials);
+      const readableContext = await app.inject({
+        method: "GET",
+        url: prefix + "/staging-customer-context",
+        headers: clientHeaders,
+      });
+      assert.equal(readableContext.statusCode, 200);
+      assert.deepEqual(readableContext.json(), clientContext);
+      const crossTenantHistory = await app.inject({
+        method: "GET",
+        url: historyUrl.replace(owner.tenantId, randomUUID()),
+        headers: clientHeaders,
+      });
+      assert.equal(crossTenantHistory.statusCode, 403);
+      assert.deepEqual(await historyDenials(), expectedHistoryDenials);
+      const faultyHistory = createApp(pool, {
+        stagingPublicationRoutes: {
+          pool: faultPool,
+          verifier: sessions,
+          enabled: true,
+        },
+      });
+      completion.length = 0;
+      try {
+        const failed = await faultyHistory.inject({
+          method: "GET",
+          url: historyUrl,
+          headers: clientHeaders,
+        });
+        assert.equal(failed.statusCode, 503);
+        assert.deepEqual(failed.json(), { error: "unavailable" });
+      } finally {
+        await faultyHistory.close();
+      }
+      assert.deepEqual(completion, ["ROLLBACK", "discard"]);
+      assert.deepEqual(await historyDenials(), expectedHistoryDenials);
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.bookings.read') WHERE tenant_id=$1::uuid AND base_type='client'",
         [owner.tenantId],
       );
+      const restoredHistory = await history();
+      assert.equal(restoredHistory.statusCode, 200);
+      assert.deepEqual(restoredHistory.json(), beforeHistoryDenial.json());
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.booking.create') WHERE tenant_id=$1::uuid AND base_type='client'",
         [owner.tenantId],
