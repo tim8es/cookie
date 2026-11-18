@@ -159,8 +159,8 @@ async function enterTelegram(cdp, role) {
     ? "Доступные способы входа: Telegram Mini App."
     : "Клиентский вход: Telegram Mini App.";
   await requireDom(cdp, "enabled Telegram-only method", "document.body.innerText.includes(" + JSON.stringify(methodDescription) + ") && !document.body.innerText.includes('email и пароль')");
-  await requireDom(cdp, "Telegram Mini App login option", "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Войти через Telegram Mini App')");
-  await button(cdp, "Войти через Telegram Mini App");
+  await requireDom(cdp, "single Telegram login action", "[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Войти через Telegram').length===1");
+  await button(cdp, "Войти через Telegram");
 }
 
 async function loadAndEnterTelegram(cdp, origin, proof, previous, role) {
@@ -385,7 +385,8 @@ async function main() {
     await requireDom(cdp, "business signup role", "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я представляю бизнес')");
     await button(cdp, "Я представляю бизнес");
     await button(cdp, "Создать учётную запись");
-    await button(cdp, "Зарегистрироваться через Telegram Mini App");
+    await requireDom(cdp, "single Telegram registration action", "[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Зарегистрироваться через Telegram').length===1");
+    await button(cdp, "Зарегистрироваться через Telegram");
     await requireDom(cdp, "workspace form offers IANA zones and UTC offsets",
       "document.querySelector('#organization-name') && document.querySelector('#location-name') && document.querySelector('#identity-time-zone')?.tagName==='SELECT' && document.querySelector('#identity-time-zone')?.value===Intl.DateTimeFormat().resolvedOptions().timeZone && [...document.querySelectorAll('#identity-time-zone option')].some(o=>o.value==='Europe/Moscow'&&o.textContent.includes('UTC+03:00')) && document.body.innerText.includes('относительно UTC')");
     for (const [width, height] of [[320,568],[375,812],[1280,800]]) {
