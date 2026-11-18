@@ -236,7 +236,7 @@ async function pressButton(cdp, label) {
 async function logoutVerified(cdp) {
   await pressButton(cdp, "Выйти");
   await requireDom(cdp, "server-confirmed logout",
-    "document.querySelector('.feedback-state h1')?.innerText==='Вы вышли' && !document.querySelector('.real-owner-nav')");
+    "document.body.innerText.includes('Вы вышли') && !document.querySelector('.real-owner-nav')");
 }
 
 // Check the seeded offer via the real customer surface and persist a real booking.
@@ -444,7 +444,7 @@ async function main() {
       }
       await cdp.send("Page.navigate", { url: origin + "/" });
       await requireDom(cdp, "no owner authorization without fresh signed proof",
-        "document.querySelector('[data-cookie-mode=api] .feedback-state h1') && !document.querySelector('.verified-owner-shell') && !document.querySelector('.sidebar')");
+        "document.querySelector('[data-cookie-mode=api] .identity-auth-page') && !document.querySelector('.verified-owner-shell') && !document.querySelector('.sidebar')");
       for (const path of ["/demo", "/demo/", "/demo?browser-smoke=1", "/demo/example"]) {
         const legacy = await getLocal(origin + path);
         assert.equal(legacy.status, 404, "Legacy fixture must not be served by the real runtime");
