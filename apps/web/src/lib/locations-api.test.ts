@@ -4,6 +4,9 @@ import test from "node:test";
 import {
   LocationApiFailure,
   createRealLocation,
+  emptyLocationDraft,
+  locationCreateIsUncertain,
+  locationDraftFromForm,
   readRealLocations,
 } from "./locations-api";
 import type { VerifiedOwnerSession } from "./owner-auth";
@@ -153,4 +156,96 @@ test("expired owner session fails Locations API without network requests", async
       reason instanceof LocationApiFailure && reason.reason === "unauthorized",
   );
   assert.equal(calls.length, 0);
+});
+
+test("new location requires explicit valid IANA timezone", () => {
+  assert.deepEqual(emptyLocationDraft(), { displayName: "", timeZone: "" });
+  assert.equal(locationDraftFromForm("Center", ""), null);
+  assert.equal(locationDraftFromForm("Center", "Mars/Olympus"), null);
+  assert.equal(locationDraftFromForm("Center", "+03:00"), null);
+  assert.deepEqual(locationDraftFromForm(" Center ", " Asia/Yekaterinburg "), {
+    displayName: "Center",
+    timeZone: "Asia/Yekaterinburg",
+  });
+});
+
+test("location create rejects omitted timezone before issuing POST", async () => {
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  await assert.rejects(
+    createRealLocation(
+      session,
+      { displayName: "Center", timeZone: "" },
+      KEY,
+      mock(Response.json({ location: branch }), calls),
+    ),
+    (reason: unknown) =>
+      reason instanceof LocationApiFailure &&
+      reason.reason === "invalid-request",
+  );
+  assert.equal(calls.length, 0);
+});
+
+test("location create verifies receipt name and canonical timezone", async () => {
+  const draft = { displayName: branch.displayName, timeZone: branch.timeZone };
+  for (const location of [
+    { ...branch, displayName: "Other branch" },
+    { ...branch, timeZone: "Asia/Yekaterinburg" },
+    { ...branch, timeZone: "Mars/Olympus" },
+  ]) {
+    await assert.rejects(
+      createRealLocation(
+        session,
+        draft,
+        KEY,
+        mock(Response.json({ location }, { status: 201 }), []),
+      ),
+      (reason: unknown) =>
+        reason instanceof LocationApiFailure &&
+        reason.reason === "invalid-response",
+    );
+  }
+  const utc = { ...branch, timeZone: "UTC" };
+  assert.deepEqual(
+    await createRealLocation(
+      session,
+      { displayName: branch.displayName, timeZone: "Etc/UTC" },
+      KEY,
+      mock(Response.json({ location: utc }, { status: 200 }), []),
+    ),
+    utc,
+  );
+});
+
+test("uncertain location result remains frozen after later rejection", () => {
+  for (const reason of ["unavailable", "invalid-response"] as const) {
+    assert.equal(
+      locationCreateIsUncertain(false, new LocationApiFailure(reason)),
+      true,
+    );
+  }
+  for (const reason of [
+    "invalid-request",
+    "unauthorized",
+    "conflict",
+    "limit",
+  ] as const) {
+    const rejection = new LocationApiFailure(reason);
+    assert.equal(locationCreateIsUncertain(false, rejection), false);
+    assert.equal(locationCreateIsUncertain(true, rejection), true);
+  }
+  assert.equal(locationCreateIsUncertain(false, new Error("unknown")), true);
+});
+
+test("explicit server 400 rejects the draft without claiming a commit", async () => {
+  await assert.rejects(
+    createRealLocation(
+      session,
+      { displayName: branch.displayName, timeZone: branch.timeZone },
+      KEY,
+      mock(new Response(null, { status: 400 }), []),
+    ),
+    (reason: unknown) =>
+      reason instanceof LocationApiFailure &&
+      reason.reason === "invalid-request",
+  );
 });
