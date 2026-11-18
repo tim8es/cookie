@@ -74,15 +74,19 @@ export function registerBrowserIdentitySession(
   // The original token's DB expiry is authoritative; this is not a refresh.
   app.post("/v1/auth/browser-session", async (request, reply) => {
     privateResponse(reply);
-    if (!sameOriginBrowser(request))
+    if (!sameOriginBrowser(request)) {
       return reply.code(403).send({ error: "FORBIDDEN" });
+    }
     const token = /^Bearer (is_[A-Za-z0-9_-]{43})$/.exec(
       request.headers.authorization ?? "",
     )?.[1];
     if (!token) return reply.code(401).send({ error: "UNAUTHENTICATED" });
     try {
       const expires = await resolve(token);
-      const age = expires === null ? 0 : expires - Math.floor(Date.now() / 1000);
+      if (expires === null) {
+        return reply.code(401).send({ error: "UNAUTHENTICATED" });
+      }
+      const age = expires - Math.floor(Date.now() / 1000);
       if (age <= 0) return reply.code(401).send({ error: "UNAUTHENTICATED" });
       reply.header("Set-Cookie", cookieHeader(token, age));
       return reply.code(204).send();
@@ -94,14 +98,16 @@ export function registerBrowserIdentitySession(
   // Restore in the existing bearer-based UI; never use cookie claims as roles.
   app.get("/v1/auth/browser-session", async (request, reply) => {
     privateResponse(reply);
-    if (!sameOriginBrowser(request))
+    if (!sameOriginBrowser(request)) {
       return reply.code(403).send({ error: "FORBIDDEN" });
+    }
     const token = cookieToken(request.headers.cookie);
     if (!token) return reply.code(401).send({ error: "UNAUTHENTICATED" });
     try {
       const expires = await resolve(token);
-      if (expires === null)
+      if (expires === null) {
         return reply.code(401).send({ error: "UNAUTHENTICATED" });
+      }
       return reply.code(200).send({
         tokenType: "Bearer",
         accessToken: token,

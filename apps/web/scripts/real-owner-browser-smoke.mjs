@@ -420,6 +420,34 @@ async function main() {
     assert.equal(onboardingRows.rowCount,1);
     assert.equal(onboardingRows.rows[0].time_zone,"Europe/Moscow");
 
+    // Global identity remains authenticated across reload and explicit role
+    // switch. No fresh Telegram proof or client-side credential storage.
+    const beforeRestore = responses.length;
+    script = await load(cdp, origin, "", script);
+    await requireDom(cdp, "global identity restored after reload",
+      "document.body.innerText.includes('Настройте kuki') && document.body.innerText.includes('Привязанные методы')");
+    await poll("server-confirmed browser session restoration", () =>
+      responses.slice(beforeRestore).some(r=>r.path==="/v1/auth/browser-session"&&r.status===200));
+    await button(cdp, "Я представляю бизнес");
+    await requireDom(cdp, "restored organization appears",
+      "document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+    await evaluate(cdp, "[...document.querySelectorAll('.identity-organization-list button')].find(b=>b.textContent.includes("+JSON.stringify(onboardingOrganization)+")).click()");
+    await requireDom(cdp, "restored global owner workspace", "document.querySelector('.real-owner-nav')");
+    await button(cdp, "Сменить кабинет");
+    await requireDom(cdp, "returned to identity chooser without sign-in",
+      "document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");
+    await button(cdp, "Я представляю бизнес");
+    await requireDom(cdp, "organization still available after switching",
+      "document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+    assert.equal(responses.slice(beforeRestore).filter(r=>r.path==="/v1/auth/telegram/identity").length,0);
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
+    await button(cdp,"Выйти из учётной записи");
+    await requireDom(cdp,"global logout before separate-account test",
+      "document.body.innerText.includes('Вы вышли') && !document.querySelector('.real-owner-nav')");
+    const logoutMarker = responses.length;
+    script = await load(cdp, origin, "", script);
+    await poll("revoked global session no longer restores",()=>responses.slice(logoutMarker).some(r=>r.path==="/v1/auth/browser-session"&&r.status===401));
+    
     const browserAuthResponsesBefore = responses.length;
     script = await load(cdp, origin, "", script);
     await poll("regular browser auth methods response", () =>
