@@ -19,12 +19,12 @@
   let uncertain = false;
   let message = "";
   function selectCancellation(bookingId: string): void {
-    if (pending || cancellationBusy || cutoff === null) return;
+    if (pending || cancellationBusy || busy || cutoff === null) return;
     pending = { bookingId, key: globalThis.crypto.randomUUID() };
     uncertain = false; message = "";
   }
   async function confirmCancellation(): Promise<void> {
-    if (!pending || cancellationBusy) return;
+    if (!pending || cancellationBusy || busy) return;
     const attempt = pending;
     cancellationBusy = true;
     onHistory(null);
@@ -71,6 +71,13 @@
       if (!mounted || generation !== version) return;
       if (Date.now() / 1000 >= session.expiresAtUnixSeconds) { onUnauthorized(); return; }
       data = result;
+      // The current own-booking state can resolve the UI lock, but is not
+      // evidence of which cancellation command committed.
+      if (uncertain && pending && !cancellationBusy && result.bookings.some(row => row.bookingId === pending?.bookingId && row.status === "CancelledByClient")) {
+        pending = null;
+        uncertain = false;
+        message = "В списке сервера запись отменена клиентом.";
+      }
       onHistory(result);
       const policy = await readCancellationCutoff(session);
       if (mounted && generation === version) cutoff = policy;
@@ -105,7 +112,7 @@
     <Button type="button" variant="outline" disabled={busy || cancellationBusy} onclick={() => void refresh()}>Обновить записи</Button>
   </div>
   {#if message}<p role="status">{message}</p>{/if}
-  {#if uncertain && pending}<Button type="button" disabled={cancellationBusy} onclick={() => void confirmCancellation()}>Повторить запрос отмены</Button>{/if}
+  {#if uncertain && pending}<Button type="button" disabled={cancellationBusy || busy} onclick={() => void confirmCancellation()}>Повторить запрос отмены</Button>{/if}
   {#if busy}<p role="status">Загружаем ваши записи…</p>
   {:else if failed}<p role="alert" class="alert-error">Не удалось получить ваши записи. Обновите список или проверьте доступ.</p>
   {:else if data}
