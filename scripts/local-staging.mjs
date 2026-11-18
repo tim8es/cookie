@@ -173,6 +173,8 @@ async function signIn(cdp, origin, state, role = "owner") {
   try {
     const navigation = await cdp.send("Page.navigate", { url: origin + path });
     if (navigation.errorText) throw new Error("Browser navigation failed");
+    if (role !== "client") await pressButton(cdp, "Я представляю бизнес");
+    await pressButton(cdp, "Войти через Telegram Mini App");
     await requireDom(cdp, "verified " + role + " workspace", role === "client"
       ? "document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента подтверждён'"
       : "document.querySelector('.verified-owner-shell[data-cookie-mode=api] .sidebar')");
