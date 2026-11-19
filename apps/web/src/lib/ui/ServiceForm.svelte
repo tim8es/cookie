@@ -8,9 +8,11 @@
   export let serviceName: string;
   export let serviceDuration: number | undefined;
   export let servicePrice: number | undefined;
+  export let serviceBuffer: number | undefined = undefined;
   export let onNameChange: (value: string) => void;
   export let onDurationChange: (value: number) => void;
   export let onPriceChange: (value: number) => void;
+  export let onBufferChange: (value: number) => void = () => undefined;
   export let onSubmit: () => void;
   export let apiMode = false;
   export let busy = false;
@@ -43,6 +45,15 @@
             min={0} max={apiMode ? 9999999999.99 : 9999999999} step={apiMode ? 0.01 : 1} required disabled={busy || frozen} />
         </label>
       </div>
+      {#if apiMode}
+        <label class="field">
+          Буфер после услуги · мин
+          <Input type="number" name="post-service-buffer-minutes" value={serviceBuffer ?? ""}
+            oninput={(event) => onBufferChange(event.currentTarget.valueAsNumber)}
+            min={0} max={1440} step={1} required disabled={busy || frozen} placeholder="0 — без буфера" />
+        </label>
+        <p class="owner-form-note">Время на подготовку после посещения. Клиент видит длительность услуги без буфера.</p>
+      {/if}
     </div>
     <div class="owner-form-note">
       <Info size={16} aria-hidden="true" />
