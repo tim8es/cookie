@@ -5,7 +5,7 @@ import { evaluate, poll, requireDom, checkWidth } from "./browser-smoke.mjs";
 export async function verifyOwnerBookingDetail(
   cdp,
   responses,
-  { bookingId, duration, buffer, priceKopecks, status, tenantId, viewport },
+  { bookingId, duration, buffer, priceKopecks, status, tenantId, viewport, testLatePeriod = false },
 ) {
   const scope = ".owner-booking-detail[data-booking-id=" + JSON.stringify(bookingId) + "]";
   const root = "document.querySelector(" + JSON.stringify(scope) + ")";
@@ -45,5 +45,33 @@ export async function verifyOwnerBookingDetail(
   await load();
   await click(true);
   await requireDom(cdp, "reopened detail clears snapshot on close", "!(" + root + "?.querySelector('dl'))");
+  if (testLatePeriod) {
+    const dateInput = "document.querySelector('.owner-calendar input[type=date]')";
+    const initialDate = await evaluate(cdp, dateInput + "?.value");
+    const navigate = async (label) => {
+      const button = "document.querySelector('.owner-calendar button[aria-label=" + JSON.stringify(label) + "]')";
+      await requireDom(cdp, "calendar navigation available", button + "?.disabled===false");
+      await evaluate(cdp, button + ".click()");
+    };
+    // Delay the genuine response AFTER reading its body. Even if the old
+    // component aborts the request, release that exact response later.
+    await evaluate(cdp, "(()=>{const send=window.fetch;window.__detailDelay={ready:false,released:false,restore:()=>{window.fetch=send;}};window.fetch=async function(input,init){const reply=await send.call(window,input,init);if(String(input).split('?')[0]!==" + JSON.stringify(path) + ")return reply;if(reply.status!==200)return reply;const body=await reply.text();const held=window.__detailDelay;held.ready=true;await new Promise(done=>{held.release=done;});held.released=true;return new Response(body,{status:200,headers:{'content-type':'application/json'}});};})()");
+    try {
+      await click(false);
+      await requireDom(cdp, "real detail response retained for delay", "window.__detailDelay?.ready && !!window.__detailDelay.release");
+      await navigate("Следующий период");
+      await requireDom(cdp, "old period detail unmounted", "!(" + root + ") && " + dateInput + "?.value!==" + JSON.stringify(initialDate));
+      await evaluate(cdp, "window.__detailDelay.release()");
+      await requireDom(cdp, "late response released", "window.__detailDelay?.released===true");
+      await navigate("Предыдущий период");
+      await requireDom(cdp, "return to original period", dateInput + "?.value===" + JSON.stringify(initialDate) + " && " + root + "?.querySelector('button[aria-expanded=false]')?.disabled===false");
+      assert.equal(await evaluate(cdp, "Boolean(" + root + "?.querySelector('dl'))"), false, "Late response must not restore stale detail");
+    } finally {
+      await evaluate(cdp, "(()=>{const held=window.__detailDelay;held?.release?.();held?.restore();delete window.__detailDelay;})()");
+    }
+    await load();
+    await click(true);
+    console.log("PASS owner detail late response discarded after calendar period change.");
+  }
   console.log("PASS real owner booking detail: exact persisted snapshot, fresh GET on reopen, no overflow at 320/375/1280.");
 }

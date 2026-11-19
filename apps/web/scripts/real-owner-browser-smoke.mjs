@@ -594,7 +594,7 @@ async function main() {
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/owner-calendar")));
     await verifyOwnerBookingDetail(cdp, responses, {
       bookingId, duration: 50, buffer: 0, priceKopecks: "125050",
-      status: "Подтверждена", tenantId: owner.tenantId, viewport,
+      status: "Подтверждена", tenantId: owner.tenantId, viewport, testLatePeriod: true,
     });
     for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
       await viewport(cdp,width,height);

@@ -11,7 +11,12 @@ import { linkVerifiedTelegramOwner } from "../../../packages/platform-identity/s
 import { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/opaque-sessions.js";
 import { provisionOwnerWorkspace } from "../../../packages/platform-identity/src/provision-owner-workspace.js";
 import { createTelegramMiniAppProofVerifier } from "../../../packages/platform-identity/src/telegram-init-data.js";
-import { createPostgresVerifiedTelegramLinkResolver } from "../../../packages/platform-identity/src/telegram-links.js";
+import {
+  createPostgresVerifiedTelegramLinkResolver,
+  telegramUserFingerprint,
+} from "../../../packages/platform-identity/src/telegram-links.js";
+import { withTenantPermission } from "../src/protected-tenant-transaction.js";
+import { verifyTenantActor } from "../src/session-context.js";
 
 const BOT = "123456789:synthetic_calendar_detail_not_real_bot";
 const SECRET = randomBytes(32);
@@ -231,6 +236,78 @@ test(
       assert.equal(cancellation.statusCode, 200);
       assert.equal(cancellation.json().status, "CancelledByBusiness");
       assert.ok(Number.isFinite(Date.parse(cancellation.json().cancelledAt)));
+      // Model a same-tenant admin who actually has organization booking.read.
+      // The fixture provisions a verified link; normal exchange verifies proof.
+      const adminId = randomUUID();
+      const roleId = randomUUID();
+      const adminTelegramId = 19193040;
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [adminId],
+      );
+      await pool.query(
+        `INSERT INTO cookie_identity.memberships(tenant_id,identity_id)
+         VALUES($1::uuid,$2::uuid)`,
+        [tenant, adminId],
+      );
+      await pool.query(
+        `INSERT INTO cookie_identity.roles
+           (tenant_id,id,base_type,display_name,permissions)
+         VALUES($1::uuid,$2::uuid,'admin','Synthetic reader',ARRAY['booking.read'])`,
+        [tenant, roleId],
+      );
+      await pool.query(
+        `INSERT INTO cookie_identity.role_assignments
+           (tenant_id,id,identity_id,role_id)
+         VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid)`,
+        [tenant, randomUUID(), adminId, roleId],
+      );
+      await pool.query(
+        `INSERT INTO cookie_identity.telegram_identity_links
+           (tenant_id,id,identity_id,telegram_user_hmac_sha256,
+            proof_verified_at,consent_confirmed_at)
+         VALUES($1::uuid,$2::uuid,$3::uuid,$4::bytea,now(),now())`,
+        [
+          tenant,
+          randomUUID(),
+          adminId,
+          telegramUserFingerprint(SECRET, String(adminTelegramId)),
+        ],
+      );
+      const adminExchange = await app.inject({
+        method: "POST",
+        url: "/v1/auth/telegram/exchange",
+        payload: { initData: proof(adminTelegramId) },
+      });
+      assert.equal(adminExchange.statusCode, 201);
+      const adminHeaders = {
+        authorization: "Bearer " + adminExchange.json().accessToken,
+      };
+      const verified = await verifyTenantActor(
+        adminHeaders.authorization,
+        tenant,
+        sessions,
+      );
+      assert.ok(verified.actor);
+      assert.equal(verified.actor.identityId, adminId);
+      assert.equal(
+        await withTenantPermission(
+          pool,
+          verified.actor,
+          "booking.read",
+          async () => true,
+        ),
+        true,
+      );
+      const adminDenied = await app.inject({
+        method: "GET",
+        url: path,
+        headers: adminHeaders,
+      });
+      assert.equal(adminDenied.statusCode, 403);
+      assert.deepEqual(adminDenied.json(), { error: "forbidden" });
+      assert.equal(adminDenied.headers["cache-control"], "no-store");
+      assert.deepEqual((await read()).json(), response.json());
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'booking.read') WHERE tenant_id=$1::uuid",
         [tenant],
