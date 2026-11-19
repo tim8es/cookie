@@ -42,10 +42,10 @@ export class CandidateRefreshBrowser {
     if (!session) return null;
     try {
       const fence = this.fence();
-      if (
-        fence !== session.familyId &&
-        fence !== "pending:" + session.familyId
-      ) {
+      // An interrupted rotation may leave this durable pending fence behind.
+      // Hide authority until a confirmed same-family response clears it.
+      if (fence === "pending:" + session.familyId) return null;
+      if (fence !== session.familyId) {
         this.session = null;
         return null;
       }
