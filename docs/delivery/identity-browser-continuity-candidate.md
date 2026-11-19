@@ -74,3 +74,12 @@ test grant. It verifies owner and client assignments belong to the same identity
 client reload and returning to owner, and subsequent existing-client selection
 without a second enrollment or Telegram proof. Enrollment receipt is followed
 by live GET-context verification before entering the client UI.
+
+Additional regression: a real second Chromium target opens the shared browser
+session without proof, enters the owner workspace, and must clear its visible
+workspace after confirmed logout in the first target. Watchers check immediately
+on mount as well as on signals to cover the switch/unmount interval. Owner and
+identity chooser hide login controls while server logout is pending; destroyed
+customer workspaces cannot clear a newly mounted workspace through stale
+callbacks. Network-failed logout remains unconfirmed; the server TTL is still
+authoritative, and recovery on reload after network failure needs separate review.

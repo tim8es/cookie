@@ -794,6 +794,11 @@ export function watchBrowserIdentitySession(
     stopped = true;
     unsubscribe();
   }
+  // Reconcile even if an account change was broadcast while the previous
+  // workspace was unmounting. Run after the caller has installed cleanup.
+  queueMicrotask(() => {
+    void check();
+  });
   return stop;
 }
 

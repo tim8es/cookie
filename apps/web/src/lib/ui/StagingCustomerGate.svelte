@@ -21,6 +21,7 @@
     historyVersion++;
   }
   function expire(): void {
+    if (!mounted || phase !== "verified") return;
     session = null;
     phase = "error";
     stopExpiry?.(); stopExpiry = null;
@@ -42,13 +43,13 @@
   }
   async function logout(): Promise<void> {
     const current = session;
-    if (!current) return;
+    if (!current || !mounted || phase !== "verified") return;
     session = null;
     stopExpiry?.(); stopExpiry = null;
     phase = "signing-out";
     try { await revokeTelegramOwnerSession(current); phase = "signed-out"; }
     catch { phase = "logout-failed"; }
-    onSessionCleared(phase === "signed-out" ? "signed-out" : "logout-failed");
+    if (mounted) onSessionCleared(phase === "signed-out" ? "signed-out" : "logout-failed");
   }
   onMount(() => {
     if (initialSession) {

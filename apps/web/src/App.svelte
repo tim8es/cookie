@@ -185,6 +185,11 @@
         {#key ownerSession}
           <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} />
         {/key}
+      {:else if ownerAuthPhase === "signing-out"}
+        <section class="state-card feedback-state" aria-label="Завершение сеанса">
+          <h1>Завершаем сеанс</h1>
+          <p role="status">Ожидаем подтверждение выхода от сервера.</p>
+        </section>
       {:else}
         <IdentityAuthGate
           customerSurface={customerSurface}

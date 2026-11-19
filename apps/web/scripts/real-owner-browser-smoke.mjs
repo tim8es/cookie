@@ -491,9 +491,46 @@ async function main() {
     await requireDom(cdp,"identity chooser before logout","document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");
     assert.equal(responses.slice(beforeRestore).filter(r=>r.path==="/v1/auth/telegram/identity").length,0);
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
-    await button(cdp,"Выйти из учётной записи");
-    await requireDom(cdp,"global logout before separate-account test",
-      "document.body.innerText.includes('Вы вышли') && !document.querySelector('.real-owner-nav')");
+    // A second actual Chromium tab shares the browser cookie but not its JS
+    // memory or history hint. It must close the owner UI after the first logs out.
+    const {targetId:secondId}=await cdp.send("Target.createTarget",{url:"about:blank"});
+    const secondTarget=await poll("second browser tab",async()=>{
+      const response=await getLocal("http://127.0.0.1:"+started.handle.port+"/json/list");
+      return JSON.parse(response.text).find(page=>page.id===secondId&&page.webSocketDebuggerUrl);
+    });
+    const second=createClient(secondTarget.webSocketDebuggerUrl);
+    try {
+      await second.ready;
+      await second.send("Page.enable");
+      await second.send("Runtime.enable");
+      await second.send("Network.enable");
+      await second.send("Network.setBlockedURLs",{urls:["https://*"]});
+      const secondResponses=[];
+      second.onEvent("Runtime.exceptionThrown",()=>errors.push("uncaught second tab exception"));
+      second.onEvent("Network.responseReceived",({response})=>{
+        if(response.url.startsWith(origin)) secondResponses.push({path:new URL(response.url).pathname,status:response.status});
+      });
+      await viewport(second,375,812);
+      await load(second,origin,"",undefined);
+      await requireDom(second,"second tab restores shared identity","document.body.innerText.includes('Настройте kuki')");
+      await button(second,"Я представляю бизнес");
+      await requireDom(second,"second tab owner membership","document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+      await evaluate(second,"[...document.querySelectorAll('.identity-organization-list button')].find(b=>b.textContent.includes("+JSON.stringify(onboardingOrganization)+")&&!b.disabled).click()");
+      await requireDom(second,"second tab authenticated owner","document.querySelector('.real-owner-nav')");
+      assert.ok(secondResponses.some(r=>r.path==="/v1/auth/browser-session"&&r.status===200));
+      assert.ok(!secondResponses.some(r=>r.path==="/v1/auth/telegram/identity"));
+      await requireDom(cdp,"first tab ready to sign out","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Выйти из учётной записи'&&!b.disabled)");
+      await button(cdp,"Выйти из учётной записи");
+      await requireDom(cdp,"global logout before separate-account test",
+        "document.body.innerText.includes('Вы вышли') && !document.querySelector('.real-owner-nav')");
+      await requireDom(second,"second tab closes revoked owner UI",
+        "!document.querySelector('.real-owner-nav') && document.body.innerText.includes('Сессия в браузере изменилась или завершилась')");
+      assert.ok(secondResponses.some(r=>r.path==="/v1/auth/browser-session"&&r.status===401));
+      assert.equal(await evaluate(second,"localStorage.length + sessionStorage.length"),0);
+    } finally {
+      second.close();
+      await cdp.send("Target.closeTarget",{targetId:secondId});
+    }
     const logoutMarker = responses.length;
     script = await load(cdp, origin, "", script);
     await poll("revoked global session no longer restores",()=>responses.slice(logoutMarker).some(r=>r.path==="/v1/auth/browser-session"&&r.status===401));

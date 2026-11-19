@@ -73,6 +73,7 @@
   let accountLoading = false;
   let accountLoaded = false;
   let busy = false;
+  let signingOut = false;
   let email = "";
   let password = "";
   let newPassword = "";
@@ -595,8 +596,10 @@
   }
 
   async function signOutIdentity(): Promise<void> {
-    writeWorkspaceHint(window.history, null);
     const current = identitySession;
+    if (!current || busy || signingOut) return;
+    signingOut = true;
+    writeWorkspaceHint(window.history, null);
     stopBrowserWatch?.();
     stopIdentityExpiry?.();
     stopIdentityExpiry = null;
@@ -614,6 +617,8 @@
         notice = "Вы вышли. Серверная сессия отозвана.";
       } catch {
         notice = "Локальный вход закрыт, но сервер не подтвердил отзыв. Старая сессия может действовать до истечения срока.";
+      } finally {
+        signingOut = false;
       }
     }
   }
@@ -635,7 +640,10 @@
 <section class="identity-auth-page" aria-labelledby="identity-auth-title">
   <div class="identity-auth-card">
     <span class="identity-auth-overline">kuki / ПРОВЕРЕННЫЙ ВХОД</span>
-    {#if identitySession && emailLinkToken}
+    {#if signingOut}
+      <h1 id="identity-auth-title">Завершаем сеанс</h1>
+      <p role="status">Ожидаем подтверждение выхода от сервера.</p>
+    {:else if identitySession && emailLinkToken}
       <h1 id="identity-auth-title">Подключить email</h1>
       <p>Введите пароль для нового email. Подтверждение завершится только для этой же учётной записи.</p>
       <form class="identity-auth-fields" onsubmit={(event) => { event.preventDefault(); void completeEmailLink(); }}>
