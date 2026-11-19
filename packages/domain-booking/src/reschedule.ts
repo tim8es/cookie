@@ -4,8 +4,9 @@ import type { Pool, PoolClient, QueryResultRow } from "pg";
 
 import {
   evaluateAvailableStart,
+  lockActiveShiftWindows,
+  lockActiveBlockedWindows,
   type StaffOccupancy,
-  type UtcInterval,
 } from "../../domain-scheduling/src/index.js";
 import {
   enqueueOutbox,
@@ -87,13 +88,6 @@ interface ReceiptRow extends QueryResultRow {
   request_sha256: string;
   result: RescheduledBookingReceipt;
 }
-interface WindowRow extends QueryResultRow {
-  start_at: Date;
-  end_at: Date;
-}
-interface BlockedRow extends WindowRow {
-  kind: "break" | "exception";
-}
 interface OccupiedRow extends QueryResultRow {
   location_id: string;
   start_at: Date;
@@ -149,13 +143,6 @@ function localDateAt(utc: string, timeZone: string): string {
   return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
-function intervals(rows: readonly WindowRow[]): UtcInterval[] {
-  return rows.map((row) => ({
-    startAt: row.start_at.toISOString(),
-    endAt: row.end_at.toISOString(),
-  }));
-}
-
 async function readAvailableSlot(
   client: PoolClient,
   tenantId: string,
@@ -199,18 +186,13 @@ async function readAvailableSlot(
   const zone = reference.rows[0]?.time_zone;
   if (!zone) fail("RESCHEDULE_NOT_AVAILABLE");
 
-  const shifts = await client.query<WindowRow>(
-    `SELECT start_at, end_at FROM cookie_scheduling.shift_windows
-      WHERE tenant_id=$1::uuid AND staff_id=$2::uuid
-        AND location_id=$3::uuid AND active FOR SHARE`,
-    [tenantId, booking.staff_id, booking.location_id],
-  );
-  const blocked = await client.query<BlockedRow>(
-    `SELECT start_at, end_at, kind FROM cookie_scheduling.blocked_windows
-      WHERE tenant_id=$1::uuid AND staff_id=$2::uuid
-        AND location_id=$3::uuid AND active FOR SHARE`,
-    [tenantId, booking.staff_id, booking.location_id],
-  );
+  const scope = {
+    tenantId,
+    staffId: booking.staff_id,
+    locationId: booking.location_id,
+  };
+  const shifts = await lockActiveShiftWindows(client, scope);
+  const blocked = await lockActiveBlockedWindows(client, scope);
   const occupiedRows = await client.query<OccupiedRow>(
     `SELECT location_id::text, start_at, occupied_until
        FROM cookie_booking.bookings
@@ -235,11 +217,9 @@ async function readAvailableSlot(
       serviceDurationMinutes: booking.service_duration_minutes_snapshot,
       postServiceBufferMinutes: booking.post_service_buffer_minutes_snapshot,
       stepMinutes: 1,
-      shifts: intervals(shifts.rows),
-      breaks: intervals(blocked.rows.filter((row) => row.kind === "break")),
-      exceptions: intervals(
-        blocked.rows.filter((row) => row.kind === "exception"),
-      ),
+      shifts,
+      breaks: blocked.filter((row) => row.kind === "break"),
+      exceptions: blocked.filter((row) => row.kind === "exception"),
       occupied,
     },
     newStartAt,

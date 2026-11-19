@@ -272,3 +272,9 @@ export {
   type OwnerShiftPlanInput,
 } from "./draft-shift.js";
 export { listOwnerShiftPlans } from "./owner-shift-plans.js";
+
+/** Trusted Booking consistency reads; locks belong to the caller transaction. */
+export {
+  lockActiveShiftWindows,
+  lockActiveBlockedWindows,
+} from "./booking-windows.js";

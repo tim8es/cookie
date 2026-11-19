@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { ViewState } from "./lib/model";
-  import type { Screen } from "./lib/navigation";
+  import { defaultOwnerScreen, ownerRouteHref, ownerScreenFromPath, type Screen } from "./lib/navigation";
   import Sidebar from "./lib/ui/Sidebar.svelte";
   import Topbar from "./lib/ui/Topbar.svelte";
   import OnboardingHeader from "./lib/ui/OnboardingHeader.svelte";
@@ -20,7 +20,7 @@
 
   // Presentation selection is not a trusted tenant or role claim.
   const customerSurface = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "customer-staging";
-  let screen: Screen = "services";
+  let screen: Screen = typeof window === "undefined" ? defaultOwnerScreen : ownerScreenFromPath(window.location.pathname) ?? defaultOwnerScreen;
   let preview: ViewState = "normal";
   let ownerSession: VerifiedOwnerSession | null = null;
   let ownerAuthPhase: "unavailable" | "loading" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
@@ -29,10 +29,31 @@
 
   $: verifiedOwner = !customerSurface && ownerAuthPhase === "verified" && ownerSession !== null;
 
+  function syncOwnerLocation(canonicalize: boolean): void {
+    screen = ownerScreenFromPath(window.location.pathname) ?? defaultOwnerScreen;
+    if (!canonicalize || customerSurface) return;
+    const target = ownerRouteHref(screen, window.location);
+    if (target !== window.location.pathname + window.location.search + window.location.hash) {
+      window.history.replaceState(window.history.state, "", target);
+    }
+  }
+
+  function navigateOwner(next: Screen): void {
+    if (!verifiedOwner) return;
+    const target = ownerRouteHref(next, window.location);
+    if (target !== window.location.pathname + window.location.search + window.location.hash) {
+      window.history.pushState(null, "", target);
+    }
+    screen = next;
+  }
+
   onMount(() => {
     ownerMounted = true;
+    const onPopState = () => syncOwnerLocation(verifiedOwner);
+    window.addEventListener("popstate", onPopState);
     if (!customerSurface) void authenticateOwner();
     return () => {
+      window.removeEventListener("popstate", onPopState);
       ownerMounted = false;
       stopOwnerExpiry?.();
       ownerSession = null;
@@ -56,6 +77,7 @@
       stopOwnerExpiry?.();
       ownerSession = session;
       ownerAuthPhase = "verified";
+      syncOwnerLocation(true);
       stopOwnerExpiry = watchOwnerSessionExpiry(
         session.expiresAtUnixSeconds,
         () => {
@@ -98,11 +120,11 @@
 
 <div class="app-shell real-owner-shell" data-cookie-mode="api" class:verified-owner-shell={verifiedOwner}>
   {#if verifiedOwner}
-    <Sidebar {screen} stepCount={0} realOwner={true} onNavigate={(next) => screen = next} />
+    <Sidebar {screen} stepCount={0} realOwner={true} onNavigate={navigateOwner} />
   {/if}
   <div class="main-area">
     {#if verifiedOwner}
-      <Topbar {screen} bind:preview canCreateBooking={false} demoMode={false} onNavigate={(next) => screen = next} onLogout={() => void logoutOwner()} />
+      <Topbar {screen} bind:preview canCreateBooking={false} demoMode={false} onNavigate={navigateOwner} onLogout={() => void logoutOwner()} />
     {:else}
       <OnboardingHeader apiMode={true} />
     {/if}
@@ -110,7 +132,7 @@
       {#if customerSurface}
         <StagingCustomerGate />
       {:else if ownerAuthPhase === "verified" && ownerSession}
-        <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} />
+        <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={navigateOwner} />
       {:else}
         <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
       {/if}
