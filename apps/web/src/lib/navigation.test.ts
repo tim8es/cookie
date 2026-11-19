@@ -39,7 +39,7 @@ test("every owner screen has a unique reversible canonical URL", () => {
   assert.equal(ownerScreenFromPath("/"), defaultOwnerScreen);
 });
 
-test("unknown and reserved paths are never interpreted as owner screens", () => {
+test("unknown and reserved paths are not owner screens", () => {
   for (const path of [
     "/v1/services",
     "/assets/calendar",
@@ -55,7 +55,8 @@ test("unknown and reserved paths are never interpreted as owner screens", () => 
 
 test("owner links preserve launch context", () => {
   const context = { search: "?lang=ru", hash: "#context" };
-  assert.equal(ownerRouteHref("calendar", context), "/calendar?lang=ru#context");
+  const calendar = ownerRouteHref("calendar", context);
+  assert.equal(calendar, "/calendar?lang=ru#context");
   const empty = { search: "", hash: "" };
   assert.equal(ownerRouteHref("services", empty), "/services");
 });
