@@ -591,17 +591,32 @@ async function main() {
       "window.__cookieTelegramAuthRequests.length===1 && window.__cookieTelegramAuthRequests[0]==='/v1/auth/telegram/oidc/start' && document.body.innerText.includes('Сервер недоступен или не подтвердил действие. Попробуйте ещё раз.')");
 
     // Malformed proof must not show authenticated UI or a synthetic fallback.
-    script = await load(cdp, origin, "invalid-synthetic-proof", script);
+    script = await load(cdp, origin + "calendar", "invalid-synthetic-proof", script);
     await enterTelegram(cdp, "business");
     await requireDom(cdp, "forged proof rejected",
-      "document.body.innerText.includes('Не удалось подтвердить вход') && !document.querySelector('.real-owner-nav')");
+      "location.pathname==='/calendar' && document.body.innerText.includes('Не удалось подтвердить вход') && !document.querySelector('.real-owner-nav')");
     assert.ok(responses.some((r) => r.path === "/v1/auth/telegram/identity" && r.status === 401));
-    script = await loadAndEnterTelegram(cdp, origin, signedProof(botToken, userId), script, "business");
-    await requireDom(cdp, "authenticated real services",
-      "document.querySelector('.real-owner-nav') && document.body.innerText.includes('Услуги салона')");
+    script = await loadAndEnterTelegram(cdp, origin + "locations", signedProof(botToken, userId), script, "business");
+    await requireDom(cdp, "authenticated direct location link",
+      "location.pathname==='/locations' && document.querySelector('.real-owner-nav') && document.querySelector('.list-items')?.innerText.includes('Synthetic Central')");
+    await evaluate(cdp, "window.__kukiNavigationMarker=1");
+    await button(cdp, "Услуги");
+    await requireDom(cdp, "owner click updates path without reload",
+      "location.pathname==='/services' && window.__kukiNavigationMarker===1 && document.body.innerText.includes('Услуги салона')");
+    await evaluate(cdp, "history.back()");
+    await requireDom(cdp, "back restores locations",
+      "location.pathname==='/locations' && window.__kukiNavigationMarker===1 && document.querySelector('[data-screen=locations][aria-current=page]')");
+    await evaluate(cdp, "history.forward()");
+    await requireDom(cdp, "forward restores services",
+      "location.pathname==='/services' && window.__kukiNavigationMarker===1 && document.querySelector('[data-screen=services][aria-current=page]')");
     await requireDom(cdp, "shared owner shell without demo controls", "document.querySelector(\'.verified-owner-shell[data-cookie-mode=api] .sidebar\') && !document.querySelector(\'.demo-ribbon, .preview-control, .onboarding-header\')");
     await requireDom(cdp, "canonical runtime owner brand", "document.querySelector('.sidebar .brand strong')?.textContent.trim() === 'kuki.' && document.querySelector('.nav-links')?.getAttribute('aria-label') === 'Разделы kuki' && document.title === 'kuki — кабинет салона'");
+    const appearanceChunk = (response) => /^\/assets\/RealOwnerAppearancePage-[^/]+\.js$/.test(response.path);
+    assert.equal(responses.filter(appearanceChunk).length, 0, "Appearance module loaded before navigation");
     await button(cdp, "Оформление");
+    await poll("appearance module downloaded on demand", () =>
+      responses.some((response) => appearanceChunk(response) && response.status === 200),
+    );
     await requireDom(cdp, "real appearance draft loaded", "document.querySelector('.brand-editor') && document.body.innerText.includes('Только черновик') && document.querySelector('.brand-presets button')");
     await checkWidth(cdp, "real appearance 375px");
     await evaluate(cdp, "[...document.querySelectorAll('.brand-presets button')].find(b=>b.textContent.includes('Ботаника')).click()");
@@ -614,6 +629,7 @@ async function main() {
     await button(cdp, "Услуги");
     await button(cdp, "Оформление");
     await requireDom(cdp, "persisted appearance reloaded", "document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника') && [...document.querySelectorAll('.brand-actions button')].find(b=>b.textContent.trim()==='Опубликовать')?.disabled && [...document.querySelectorAll('.brand-assets input')].every(i=>i.matches(':disabled'))");
+    assert.equal(responses.filter(appearanceChunk).length, 1, "Appearance module requested again within the same document");
     await button(cdp, "Онлайн-запись");
     await requireDom(cdp, "owner booking unavailable without customer identity", "document.querySelector('h1')?.textContent==='Онлайн-запись' && document.body.innerText.includes('Клиентская запись — отдельный вход') && !document.querySelector('.booking-form')");
     await button(cdp, "Услуги");
@@ -1083,6 +1099,26 @@ async function main() {
     await requireDom(cdp, "client logout after cancellation reconciliation", "document.querySelector('[aria-label=\\\"Клиентский вход staging\\\"] h1')?.innerText==='Вы вышли'");
     console.log("PASS lost real cancellation response reconciled by own history without a repeat mutation.");
 
+    script = await loadAndEnterTelegram(cdp, origin + "services", signedProof(botToken, userId), script, "business");
+    await requireDom(cdp, "owner services warmed before revocation",
+      "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
+    await button(cdp, "Мастера");
+    await requireDom(cdp, "owner staff warmed before revocation",
+      "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
+    const revokedOwner = await pool.query(
+      "UPDATE cookie_identity.opaque_sessions SET revoked_at=clock_timestamp() WHERE tenant_id=$1::uuid AND revoked_at IS NULL",
+      [owner.tenantId],
+    );
+    assert.ok(revokedOwner.rowCount > 0, "Expected an active synthetic owner session");
+    const denialMarker = responses.length;
+    await button(cdp, "Услуги");
+    await poll("fresh owner request denied after revocation", () =>
+      responses.slice(denialMarker).some(r => r.path.endsWith("/services") && (r.status === 401 || r.status === 403)),
+    );
+    await requireDom(cdp, "owner denial clears the exact protected workspace",
+      "document.body.innerText.includes('Доступ к кабинету не подтверждён сервером') && !document.querySelector('.real-owner-nav') && !document.body.innerText.includes('Synthetic E2E Edited Service') && !document.body.innerText.includes('Synthetic E2E Staff')");
+    assert.deepEqual(errors, [], "Unexpected browser runtime errors after owner revocation");
+    assert.deepEqual(external, [], "Unexpected external requests after owner revocation");
 
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
@@ -1100,7 +1136,7 @@ async function main() {
       "location.pathname==='/demo' && document.readyState==='complete' && !document.querySelector('[data-cookie-mode]')");
     assert.deepEqual(demoApiRequests, [], "Retired demo route called real API");
     assert.deepEqual(external, [], "Retired demo route made external requests");
-    console.log("PASS integrated real owner/customer browser: main Overview + Location + Service create/edit + Staff + same ShiftPlan, staging activation/publication, server slot preview, real client catalog, default-off preview, opt-in actual Booking creation and own cancellation, seeded read-only owner Calendar, PostgreSQL restart persistence, owner/client local expiry and logout, 3 viewports.");
+    console.log("PASS integrated real owner/customer browser: direct owner routes and history navigation, fresh protected reads and fail-closed revocation, Overview + Location + Service create/edit + Staff + ShiftPlan, staging activation/publication, real client catalog and opt-in Booking, PostgreSQL restart persistence, logout and 3 viewports.");
   } finally {
     if (cdp) cdp.close();
     try {

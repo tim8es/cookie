@@ -3,6 +3,7 @@
   import { Button } from "../components/ui/button/index.js";
   import BrandingSettingsEditor from "./BrandingSettingsEditor.svelte";
   import type { VerifiedOwnerSession } from "../owner-auth";
+  import type { OwnerReads } from "../owner-reads";
   import type { BrandConfigV1 } from "../branding-config";
   import {
     AppearanceApiFailure,
@@ -26,6 +27,7 @@
   import { readRealWorkspaceOverview } from "../workspace-overview-api";
 
   export let session: VerifiedOwnerSession;
+  export let reads: OwnerReads;
 
   let stored: RealAppearanceDraft | null = null;
   let draft: BrandConfigV1 | null = null;
@@ -50,13 +52,13 @@
   $: canPublish = !!publication && !!stored && publication.canPublish
     && publication.draftRevision === stored.revision && stored.revision > 0
     && publication.publishedRevision !== stored.revision
-    && !dirty && !saving && !uploading && !publishing && !needsReload;
+    && !loading && !dirty && !saving && !uploading && !publishing && !needsReload;
 
   async function refreshPublication(request: AbortController): Promise<AppearancePublicationState | null> {
     publication = null;
     publicationError = "";
     try {
-      const current = await readAppearancePublicationState(session, globalThis.fetch, request.signal);
+      const current = await readAppearancePublicationState(session, reads.fetch, request.signal);
       if (active !== request || request.signal.aborted) return null;
       if (current && current.draftRevision !== stored?.revision) {
         publicationError = "Версия черновика изменилась. Загрузите актуальные данные.";
@@ -102,8 +104,8 @@
     if (!assetsAvailable) return;
     try {
       const [logo, background] = await Promise.all([
-        config.logoAssetId ? readAppearanceAssetPreview(session, "logo", config.logoAssetId, globalThis.fetch, request.signal) : null,
-        config.backgroundAssetId ? readAppearanceAssetPreview(session, "background", config.backgroundAssetId, globalThis.fetch, request.signal) : null,
+        config.logoAssetId ? readAppearanceAssetPreview(session, "logo", config.logoAssetId, reads.fetch, request.signal) : null,
+        config.backgroundAssetId ? readAppearanceAssetPreview(session, "background", config.backgroundAssetId, reads.fetch, request.signal) : null,
       ]);
       if (active !== request || request.signal.aborted) return;
       if (logo) setPreview("logo", logo);
@@ -121,8 +123,8 @@
     assetError = "";
     notice = "";
     try {
-      const receipt = await uploadAppearanceAsset(session, kind, file, globalThis.fetch, request.signal);
-      const preview = await readAppearanceAssetPreview(session, kind, receipt.id, globalThis.fetch, request.signal, receipt);
+      const receipt = await uploadAppearanceAsset(session, kind, file, reads.fetch, request.signal);
+      const preview = await readAppearanceAssetPreview(session, kind, receipt.id, reads.fetch, request.signal, receipt);
       if (active !== request || request.signal.aborted || !draft) return;
       setPreview(kind, preview);
       draft = { ...draft, [kind === "logo" ? "logoAssetId" : "backgroundAssetId"]: receipt.id };
@@ -167,22 +169,19 @@
     assetError = "";
     clearPreviews();
     try {
-      const [result, overview] = await Promise.all([
-        readRealAppearanceDraft(session, globalThis.fetch, request.signal),
-        readRealWorkspaceOverview(session, globalThis.fetch, request.signal),
+      const [result, overview, capability] = await Promise.all([
+        readRealAppearanceDraft(session, reads.fetch, request.signal),
+        readRealWorkspaceOverview(session, reads.fetch, request.signal),
+        readAppearanceAssetCapability(session, reads.fetch, request.signal).catch(() => null),
       ]);
       if (active !== request || request.signal.aborted) return;
       stored = result;
       draft = result.config;
       organizationName = overview.organization.displayName;
       needsReload = false;
-      try {
-        assetsAvailable = await readAppearanceAssetCapability(session, globalThis.fetch, request.signal);
-      } catch {
-        if (active === request) assetError = "Не удалось проверить доступность загрузки.";
-      }
-      if (active === request && !request.signal.aborted) await loadPreviews(result.config, request);
-      if (active === request && !request.signal.aborted) await refreshPublication(request);
+      assetsAvailable = capability ?? false;
+      if (capability === null) assetError = "Не удалось проверить доступность загрузки.";
+      await Promise.all([loadPreviews(result.config, request), refreshPublication(request)]);
     } catch (reason) {
       if (active === request) error = describe(reason);
     } finally {
@@ -207,14 +206,12 @@
     error = "";
     notice = "";
     try {
-      await saveRealAppearanceDraft(session, stored.revision, draft, globalThis.fetch, request.signal);
-      const current = await readRealAppearanceDraft(session, globalThis.fetch, request.signal);
+      await saveRealAppearanceDraft(session, stored.revision, draft, reads.fetch, request.signal);
+      const current = await readRealAppearanceDraft(session, reads.fetch, request.signal);
       if (active !== request || request.signal.aborted) return;
       stored = current;
       draft = current.config;
-      await loadPreviews(current.config, request);
-      if (active !== request || request.signal.aborted) return;
-      await refreshPublication(request);
+      await Promise.all([loadPreviews(current.config, request), refreshPublication(request)]);
       if (active !== request || request.signal.aborted) return;
       notice = "Черновик сохранён на сервере. Показана актуальная версия.";
     } catch (reason) {
@@ -241,14 +238,15 @@
     notice = "";
     error = "";
     try {
-      await publishAppearanceDraft(session, target, globalThis.fetch, request.signal);
-      const current = await readRealAppearanceDraft(session, globalThis.fetch, request.signal);
+      await publishAppearanceDraft(session, target, reads.fetch, request.signal);
+      const current = await readRealAppearanceDraft(session, reads.fetch, request.signal);
       if (active !== request || request.signal.aborted) return;
       stored = current;
       draft = current.config;
-      await loadPreviews(current.config, request);
-      if (active !== request || request.signal.aborted) return;
-      const confirmed = await refreshPublication(request);
+      const [, confirmed] = await Promise.all([
+        loadPreviews(current.config, request),
+        refreshPublication(request),
+      ]);
       if (active !== request || request.signal.aborted) return;
       if (confirmed && confirmed.publishedRevision === target.revision) {
         notice = "Сервер подтвердил публикацию оформления версии " + target.revision + ". Публичная ссылка ещё не подключена.";

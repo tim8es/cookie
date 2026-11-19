@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { screens } from "./navigation";
+import {
+  defaultOwnerScreen,
+  ownerRouteHref,
+  ownerScreenFromPath,
+  ownerScreenPath,
+  screens,
+} from "./navigation";
 
 test("demo navigation contains unique screen targets for the owner and public flow", () => {
   const ids = screens.map((item) => item.id);
@@ -13,4 +19,35 @@ test("demo navigation contains unique screen targets for the owner and public fl
   assert.ok(ids.includes("locations"));
   assert.ok(ids.includes("appearance"));
   assert.ok(ids.includes("booking"));
+});
+
+test("owner routes map only exact presentation paths", () => {
+  for (const { id } of screens) {
+    assert.equal(ownerScreenFromPath(ownerScreenPath(id)), id);
+    assert.equal(ownerScreenFromPath(ownerScreenPath(id) + "/"), id);
+  }
+  assert.equal(ownerScreenPath("home"), "/overview");
+  assert.equal(ownerScreenFromPath("/"), defaultOwnerScreen);
+  for (const path of [
+    "/v1/services",
+    "/assets/calendar",
+    "/demo",
+    "/unknown",
+    "//calendar",
+    "/%63alendar",
+    "/calendar/details",
+  ]) {
+    assert.equal(ownerScreenFromPath(path), null);
+  }
+});
+
+test("owner routes preserve launch context without auth data", () => {
+  assert.equal(
+    ownerRouteHref("calendar", { search: "?lang=ru", hash: "#context" }),
+    "/calendar?lang=ru#context",
+  );
+  assert.equal(
+    ownerRouteHref("services", { search: "", hash: "" }),
+    "/services",
+  );
 });

@@ -85,23 +85,6 @@
     saveError = "";
   }
 
-  async function refreshPublication(): Promise<void> {
-    publicationReady = false;
-    publicationError = "";
-    try {
-      const [capacity, result] = await Promise.all([
-        readStagingPublicationCapacity(session), readPublishedShifts(session),
-      ]);
-      publicationReady = capacity.state === "active";
-      published = result.published;
-      publishedHasMore = result.hasMore;
-    } catch {
-      published = [];
-      publishedHasMore = false;
-      publicationError = "Состояние публикации не подтверждено сервером.";
-    }
-  }
-
   function choosePublication(plan: ShiftPlan): void {
     if (!canPublish) return;
     selectedPublication = plan;
@@ -117,12 +100,12 @@
     notice = "";
     try {
       publicationKey ||= crypto.randomUUID();
-      await publishStagingShift(session, selected, publicationKey);
+      await publishStagingShift(session, selected, publicationKey, reads.fetch);
       selectedPublication = null;
       publicationKey = "";
       notice = "Смена опубликована в тестовом контуре. Публичная запись клиентов ещё недоступна.";
       reads.shifts.invalidate();
-      await refresh(true);
+      await refresh();
     } catch (reason) {
       reads.shifts.invalidate();
       const code = reason instanceof Error ? reason.message : "";
@@ -138,22 +121,18 @@
     }
   }
 
-  async function refresh(force = false): Promise<void> {
-    const cachedDirectory = reads.staff.peek();
-    const cachedLocations = reads.locations.peek();
-    const cachedShifts = reads.shifts.peek();
-    if (cachedDirectory && cachedLocations && cachedShifts) {
-      staff = cachedDirectory.staff;
-      locations = cachedLocations;
-      plans = cachedShifts.plans;
-      hasMore = cachedShifts.hasMore;
-      loaded = true;
-    }
+  async function refresh(): Promise<void> {
     loading = true;
     readError = "";
+    publicationReady = false;
+    publicationError = "";
+    const publicationRead = Promise.all([
+      readStagingPublicationCapacity(session, reads.fetch),
+      readPublishedShifts(session, reads.fetch),
+    ]).catch(() => null);
     try {
       const [directory, branches, result] = await Promise.all([
-        reads.staff.load(force), reads.locations.load(force), reads.shifts.load(force),
+        reads.staff.load(), reads.locations.load(), reads.shifts.load(),
       ]);
       staff = directory.staff;
       locations = branches;
@@ -167,7 +146,17 @@
         chooseStaff(staffId);
       }
       loaded = true;
-      await refreshPublication();
+      const publication = await publicationRead;
+      if (publication) {
+        const [capacity, result] = publication;
+        publicationReady = capacity.state === "active";
+        published = result.published;
+        publishedHasMore = result.hasMore;
+      } else {
+        published = [];
+        publishedHasMore = false;
+        publicationError = "Состояние публикации не подтверждено сервером.";
+      }
     } catch (reason) {
       loaded = false;
       readError = message(reason);
@@ -190,14 +179,14 @@
     notice = "";
     try {
       pendingKey ||= crypto.randomUUID();
-      const plan = await createShiftPlan(session, { staffId, locationId, startLocal, endLocal }, pendingKey);
+      const plan = await createShiftPlan(session, { staffId, locationId, startLocal, endLocal }, pendingKey, reads.fetch);
       plans = [...plans.filter((item) => item.shiftId !== plan.shiftId), plan];
       pendingKey = "";
       startLocal = "";
       endLocal = "";
       notice = "Черновик сохранён. Доступность для записи клиентов не изменилась.";
       reads.shifts.invalidate();
-      await refresh(true);
+      await refresh();
     } catch (reason) {
       reads.shifts.invalidate();
       saveError = message(reason);
@@ -229,7 +218,7 @@
 {#if readError}
   <div class="alert-error" role="alert">
     <p>{readError}</p>
-    <Button type="button" variant="outline" onclick={() => void refresh(true)} disabled={loading}>Повторить загрузку</Button>
+    <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading}>Повторить загрузку</Button>
   </div>
 {/if}
 {#if saveError}<div class="alert-error" role="alert"><p>{saveError}</p></div>{/if}
@@ -238,7 +227,7 @@
   <section class="card">
     <div class="card-title">
       <div><span class="eyebrow">РАСПИСАНИЕ</span><h2>Будущие черновики</h2></div>
-      <Button type="button" variant="outline" onclick={() => void refresh(true)} disabled={loading || saving || publishing}>Обновить</Button>
+      <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || saving || publishing}>Обновить</Button>
     </div>
     {#if loading && !loaded}
       <OwnerReadPlaceholder label="Загружаем смены…" />
@@ -330,5 +319,5 @@
   {/if}
 </div>
 {#if loaded && publicationReady}
-  <StagingAvailabilityPanel {session} {staff} {locations} disabled={loading || saving || publishing} />
+  <StagingAvailabilityPanel {session} fetcher={reads.fetch} {staff} {locations} disabled={loading || saving || publishing} />
 {/if}

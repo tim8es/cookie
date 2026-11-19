@@ -71,22 +71,14 @@
     writeError = "";
   }
 
-  async function refresh(force = false): Promise<void> {
+  async function refresh(): Promise<void> {
     if (pendingKey) return;
-    const cachedDirectory = reads.staff.peek();
-    const cachedCatalog = reads.services.peek();
-    if (cachedDirectory && cachedCatalog) {
-      staff = cachedDirectory.staff;
-      locations = cachedDirectory.locations;
-      services = cachedCatalog;
-      loaded = true;
-    }
     loading = true;
     readError = "";
     try {
       const [directory, catalog] = await Promise.all([
-        reads.staff.load(force),
-        reads.services.load(force),
+        reads.staff.load(),
+        reads.services.load(),
       ]);
       staff = directory.staff;
       locations = directory.locations;
@@ -136,6 +128,7 @@
           serviceId: staffService,
         },
         pendingKey,
+        reads.fetch,
       );
       staff = [...staff.filter((member) => member.id !== created.id), created];
       pendingKey = "";
@@ -245,7 +238,7 @@
 </div>
 
 {#if loaded}
-  <StagingPublicationPanel {session} {staff} {locations} {services}
+  <StagingPublicationPanel {session} {staff} {locations} {services} fetcher={reads.fetch}
     disabled={loading || saving || !!pendingKey} bind:pending={publicationPending}
     onPublished={async () => {
       reads.staff.invalidate();

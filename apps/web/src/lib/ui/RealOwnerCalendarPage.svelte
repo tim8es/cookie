@@ -58,17 +58,18 @@
     error = "Срок сеанса истёк. Войдите заново.";
   }
 
-  async function load(force = false, fromNavigation = false): Promise<void> {
+  async function load(fromNavigation = false): Promise<void> {
     if (!mounted || expired || Date.now() / 1000 >= session.expiresAtUnixSeconds) {
       if (mounted && !expired) expire();
       return;
     }
     const current = ++requestNumber;
+    data = null;
     loading = true;
     error = "";
     try {
       if (!branches.length) {
-        const loaded = reads.peekCalendarBranches() ?? await reads.calendarBranches();
+        const loaded = await reads.calendarBranches();
         if (requestNumber !== current) return;
         branches = loaded.filter((branch) => branch.timeZone !== null);
       }
@@ -78,13 +79,12 @@
       }
       if (!branchId) return;
       const calendar = reads.calendar(branchId, date, days);
-      data = calendar.peek() ?? null;
-      if (fromNavigation && !data) {
+      if (fromNavigation) {
         // Coalesce rapid date changes before sending a new database read.
         await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
         if (requestNumber !== current) return;
       }
-      const result = await calendar.load(force);
+      const result = await calendar.load();
       if (requestNumber === current) data = result;
     } catch (reason) {
       if (requestNumber === current) {
@@ -100,21 +100,21 @@
     branchId = value;
     const branch = branches.find((item) => item.id === value);
     if (branch?.timeZone) date = branchToday(branch.timeZone);
-    void load(false, true);
+    void load(true);
   }
 
   function move(delta: number): void {
     const next = new Date(Date.parse(date + "T00:00:00Z") + delta * days * 86400000);
     if (!Number.isFinite(next.getTime())) return;
     date = next.toISOString().slice(0, 10);
-    void load(false, true);
+    void load(true);
   }
 
   function today(): void {
     const branch = branches.find((item) => item.id === branchId);
     if (branch?.timeZone) {
       date = branchToday(branch.timeZone);
-      void load(false, true);
+      void load(true);
     }
   }
 
@@ -136,7 +136,7 @@
     <h1>Календарь записей</h1>
     <p>Сохранённые записи филиала. Просмотр не открывает новую запись.</p>
   </div>
-  <Button type="button" variant="outline" onclick={() => void load(true)} disabled={loading || expired}>Обновить</Button>
+  <Button type="button" variant="outline" onclick={() => void load()} disabled={loading || expired}>Обновить</Button>
 </div>
 
 <section class="card owner-calendar" aria-label="Календарь записей владельца">
@@ -148,11 +148,11 @@
         </select>
       </label>
       <label class="field">Начало периода
-        <Input type="date" value={date} min="2000-01-01" max="2099-12-24" onchange={(event) => { date = event.currentTarget.value; void load(false, true); }} disabled={expired} required />
+        <Input type="date" value={date} min="2000-01-01" max="2099-12-24" onchange={(event) => { date = event.currentTarget.value; void load(true); }} disabled={expired} required />
       </label>
       <div class="segmented" role="group" aria-label="Период календаря">
-        <Button type="button" variant={days === 1 ? "default" : "outline"} aria-pressed={days === 1} onclick={() => { days = 1; void load(false, true); }} disabled={expired}>День</Button>
-        <Button type="button" variant={days === 7 ? "default" : "outline"} aria-pressed={days === 7} onclick={() => { days = 7; void load(false, true); }} disabled={expired}>Неделя</Button>
+        <Button type="button" variant={days === 1 ? "default" : "outline"} aria-pressed={days === 1} onclick={() => { days = 1; void load(true); }} disabled={expired}>День</Button>
+        <Button type="button" variant={days === 7 ? "default" : "outline"} aria-pressed={days === 7} onclick={() => { days = 7; void load(true); }} disabled={expired}>Неделя</Button>
       </div>
       <div class="calendar-move" role="group" aria-label="Навигация по датам">
         <Button type="button" variant="outline" aria-label="Предыдущий период" onclick={() => move(-1)} disabled={expired}>Назад</Button>
@@ -183,7 +183,7 @@
               <span class="status-pill">{statusNames[item.status]}</span>
               {#key session}
                 {#key data.locationId + "/" + data.localDate + "/" + data.days}
-                  <OwnerBookingDetail {session} locationId={data.locationId} bookingId={item.id} disabled={loading || expired} />
+                  <OwnerBookingDetail {session} fetcher={reads.fetch} locationId={data.locationId} bookingId={item.id} disabled={loading || expired} />
                 {/key}
               {/key}
             </div>

@@ -5,6 +5,7 @@
   import { BookingDetailReadError, readOwnerBookingDetail, type OwnerBookingDetail, type CalendarStatus } from "../owner-calendar-api";
 
   export let session: VerifiedOwnerSession;
+  export let fetcher: typeof fetch;
   export let locationId: string;
   export let bookingId: string;
   export let disabled = false;
@@ -40,7 +41,7 @@
     const current = new AbortController();
     request = current;
     try {
-      const result = await readOwnerBookingDetail(session, locationId, bookingId, globalThis.fetch, current.signal);
+      const result = await readOwnerBookingDetail(session, locationId, bookingId, fetcher, current.signal);
       if (request === current && !current.signal.aborted && !disabled) detail = result;
     } catch (reason) {
       if (request !== current || current.signal.aborted) return;

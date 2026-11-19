@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { ViewState } from "./lib/model";
-  import type { Screen } from "./lib/navigation";
+  import { defaultOwnerScreen, ownerRouteHref, ownerScreenFromPath, type Screen } from "./lib/navigation";
   import Sidebar from "./lib/ui/Sidebar.svelte";
   import Topbar from "./lib/ui/Topbar.svelte";
   import OnboardingHeader from "./lib/ui/OnboardingHeader.svelte";
@@ -22,12 +22,14 @@
   // URL selects a customer presentation only; all access is checked by the API.
   let customerSurface = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "customer-staging";
   let customerTenantId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tenantId") ?? "" : "";
-  let screen: Screen = "services";
+  let screen: Screen = typeof window === "undefined"
+    ? defaultOwnerScreen
+    : ownerScreenFromPath(window.location.pathname) ?? defaultOwnerScreen;
   let preview: ViewState = "normal";
   let ownerSession: VerifiedOwnerSession | null = null;
   let customerSession: VerifiedCustomerSession | null = null;
   let customerAuthNotice = "";
-  let ownerAuthPhase: "unavailable" | "verified" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
+  let ownerAuthPhase: "unavailable" | "verified" | "signing-out" | "signed-out" | "logout-failed" | "expired" | "denied" = "unavailable";
   let stopOwnerExpiry: (() => void) | null = null;
   let stopBrowserWatch: (() => void) | null = null;
   let identityForSwitch: IdentityAuthSession | null = null;
@@ -41,13 +43,38 @@
       ? "Локальный вход закрыт, но сервер не подтвердил отзыв. Старая сессия может действовать до истечения срока."
       : ownerAuthPhase === "expired"
         ? "Срок действия сеанса истёк. Войдите снова."
-        : "";
+        : ownerAuthPhase === "denied"
+          ? "Доступ к кабинету не подтверждён сервером. Войдите снова или выберите другой кабинет."
+          : "";
 
-  onMount(() => () => {
-    stopOwnerExpiry?.();
-    stopBrowserWatch?.();
-    ownerSession = null;
-    customerSession = null;
+  function syncOwnerLocation(canonicalize: boolean): void {
+    screen = ownerScreenFromPath(window.location.pathname) ?? defaultOwnerScreen;
+    if (!canonicalize || customerSurface) return;
+    const target = ownerRouteHref(screen, window.location);
+    if (target !== window.location.pathname + window.location.search + window.location.hash) {
+      window.history.replaceState(window.history.state, "", target);
+    }
+  }
+
+  function navigateOwner(next: Screen): void {
+    if (!verifiedOwner) return;
+    const target = ownerRouteHref(next, window.location);
+    if (target !== window.location.pathname + window.location.search + window.location.hash) {
+      window.history.pushState(null, "", target);
+    }
+    screen = next;
+  }
+
+  onMount(() => {
+    const onPopState = () => syncOwnerLocation(verifiedOwner);
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      stopOwnerExpiry?.();
+      stopBrowserWatch?.();
+      ownerSession = null;
+      customerSession = null;
+    };
   });
 
   function watchWorkspace(session: VerifiedOwnerSession): void {
@@ -73,6 +100,7 @@
     stopOwnerExpiry?.();
     ownerSession = session;
     ownerAuthPhase = "verified";
+    syncOwnerLocation(true);
     writeWorkspaceHint(window.history, session.browserBound ? { role: "business", tenantId: session.tenantId } : null);
     watchWorkspace(session);
     stopOwnerExpiry = watchOwnerSessionExpiry(
@@ -88,6 +116,25 @@
       window,
       document,
     );
+  }
+
+  function denyOwnerSession(session: VerifiedOwnerSession): void {
+    if (ownerSession !== session) return;
+    stopBrowserWatch?.();
+    stopBrowserWatch = null;
+    stopOwnerExpiry?.();
+    stopOwnerExpiry = null;
+    identityForSwitch = session.accessToken.startsWith("is_")
+      ? {
+          accessToken: session.accessToken,
+          expiresAtUnixSeconds: session.expiresAtUnixSeconds,
+          browserBound: session.browserBound,
+        }
+      : null;
+    writeWorkspaceHint(window.history, null);
+    restoreAllowed = identityForSwitch !== null;
+    ownerSession = null;
+    ownerAuthPhase = "denied";
   }
 
   function acceptCustomerSession(session: VerifiedCustomerSession): void {
@@ -155,7 +202,11 @@
     const url = new URL(window.location.href);
     url.searchParams.delete("surface");
     url.searchParams.delete("tenantId");
-    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      ownerRouteHref("services", url),
+    );
   }
 
   async function logoutOwner(): Promise<void> {
@@ -187,11 +238,11 @@
 
 <div class="app-shell real-owner-shell" data-cookie-mode="api" class:verified-owner-shell={verifiedOwner}>
   {#if verifiedOwner}
-    <Sidebar {screen} stepCount={0} realOwner={true} onNavigate={(next) => screen = next} />
+    <Sidebar {screen} stepCount={0} realOwner={true} onNavigate={navigateOwner} />
   {/if}
   <div class="main-area">
     {#if verifiedOwner}
-      <Topbar {screen} bind:preview canCreateBooking={false} demoMode={false} onNavigate={(next) => screen = next} onLogout={() => void logoutOwner()} onSwitchAccount={ownerSession?.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
+      <Topbar {screen} bind:preview canCreateBooking={false} demoMode={false} onNavigate={navigateOwner} onLogout={() => void logoutOwner()} onSwitchAccount={ownerSession?.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
     {:else}
       <OnboardingHeader apiMode={true} label={customerMode ? "Клиентский staging" : "Вход и регистрация"} />
     {/if}
@@ -200,7 +251,7 @@
         <StagingCustomerGate initialSession={customerSession} onContextDenied={() => void leaveDeniedCustomerContext()} onSessionCleared={clearCustomerSession} onSwitchAccount={customerSession.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
       {:else if verifiedOwner && ownerSession}
         {#key ownerSession}
-          <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} />
+          <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={navigateOwner} onAccessDenied={denyOwnerSession} />
         {/key}
       {:else if ownerAuthPhase === "signing-out"}
         <section class="state-card feedback-state" aria-label="Завершение сеанса">
