@@ -7,6 +7,7 @@ import { provisionStagingCustomer } from "../../../packages/domain-customers/src
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { runSqlTransaction } from "../../../packages/platform-db/src/transaction.js";
 import { IdentitySessions } from "../../../packages/platform-identity/src/identity-sessions.js";
+import { assessLegacyTelegramMigration } from "../../../packages/platform-identity/src/legacy-telegram-migration-preflight.js";
 import { linkVerifiedTelegramOwner } from "../../../packages/platform-identity/src/link-telegram-owner.js";
 import { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/opaque-sessions.js";
 import { provisionOwnerWorkspace } from "../../../packages/platform-identity/src/provision-owner-workspace.js";
@@ -279,6 +280,34 @@ test(
         ttlSeconds: 900,
       });
 
+      // A preflight must not create a global account or consume this proof.
+      assert.equal(
+        await assessLegacyTelegramMigration(
+          transaction,
+          verifier,
+          secret,
+          rawLegacy,
+        ),
+        "candidate-for-review",
+      );
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT 1 FROM cookie_identity.global_telegram_identities WHERE telegram_user_hmac_sha256=$1",
+            [legacyFingerprint],
+          )
+        ).rowCount,
+        0,
+      );
+      assert.equal(
+        await assessLegacyTelegramMigration(
+          transaction,
+          verifier,
+          secret,
+          signedInitData(TEST_BOT, linkRaceUser),
+        ),
+        "no-legacy-link",
+      );
       const legacyLock = await pool.connect();
       await legacyLock.query("BEGIN");
       await lockTelegramUser(legacyLock, secret, String(legacyUser));
@@ -303,6 +332,27 @@ test(
       ]);
       assert.equal(globalResult, null);
       assert.ok(legacyResult);
+
+      // Deliberately revoke only the synthetic legacy link after its
+      // successful exchange. A revoked-only history is not a candidate.
+      assert.equal(
+        (
+          await pool.query(
+            "UPDATE cookie_identity.telegram_identity_links SET revoked_at=clock_timestamp() WHERE telegram_user_hmac_sha256=$1 AND revoked_at IS NULL",
+            [legacyFingerprint],
+          )
+        ).rowCount,
+        1,
+      );
+      assert.equal(
+        await assessLegacyTelegramMigration(
+          transaction,
+          verifier,
+          secret,
+          signedInitData(TEST_BOT, legacyUser),
+        ),
+        "inactive-or-unverified",
+      );
 
       const rawLinkRace = signedInitData(TEST_BOT, linkRaceUser);
       const linkLock = await pool.connect();
