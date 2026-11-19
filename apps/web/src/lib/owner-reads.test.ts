@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createOwnerRead } from "./owner-reads";
+import { createOwnerRead, createOwnerReads } from "./owner-reads";
 
 function deferredNumber() {
   let resolve!: (value: number) => void;
@@ -71,3 +71,52 @@ test("an API rejection clears the snapshot and closing the session discards in-f
   await assert.rejects(slot.load(), /session ended/);
   assert.equal(calls, 3);
 });
+
+for (const status of [401, 403]) {
+  test(`protected read ${status} closes only the exact workspace`, async () => {
+    const session = {
+      accessToken: "cs_" + "x".repeat(43),
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      expiresAtUnixSeconds: Math.floor(Date.now() / 1000) + 300,
+    };
+    let denied = 0;
+    let requests = 0;
+    let release!: (value: Response) => void;
+    const delayed = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    const fetcher: typeof fetch = async (input) => {
+      requests++;
+      const path = String(input);
+      if (path.endsWith("/services")) {
+        return Response.json({ services: [] });
+      }
+      if (path.endsWith("/locations")) return delayed;
+      return new Response(null, { status });
+    };
+    const reads = createOwnerReads(session, () => denied++, fetcher);
+    const other = createOwnerReads(
+      { ...session, tenantId: "00000000-0000-4000-8000-000000000002" },
+      () => assert.fail("another workspace must not be closed"),
+      fetcher,
+    );
+    await reads.services.load();
+    await other.services.load();
+    assert.deepEqual(reads.services.peek(), []);
+
+    const slow = reads.locations.load();
+    const rejected = assert.rejects(slow, /session ended/);
+    await assert.rejects(reads.staff.load(), /unauthorized/);
+    assert.equal(denied, 1);
+    assert.equal(reads.services.peek(), undefined);
+    assert.deepEqual(other.services.peek(), []);
+
+    release(Response.json({ locations: [] }));
+    await rejected;
+    assert.equal(reads.locations.peek(), undefined);
+    await assert.rejects(reads.services.load(), /session ended/);
+    assert.equal(requests, 4);
+    reads.close();
+    other.close();
+  });
+}
