@@ -4,10 +4,7 @@ import type { Pool } from "pg";
 import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
 import type { IdentitySessions } from "../../../packages/platform-identity/src/index.js";
 
-import {
-  clearMatchingBrowserSession,
-  registerBrowserIdentitySession,
-} from "./browser-identity-session.js";
+import { registerBrowserIdentitySession } from "./browser-identity-session.js";
 
 function noStore(reply: FastifyReply): void {
   reply.header("Cache-Control", "no-store");
@@ -32,9 +29,10 @@ export function registerIdentitySessionLogout(
       request.headers.authorization ?? "",
     )?.[1];
     if (!token) return reply.code(401).send({ error: "UNAUTHENTICATED" });
-    clearMatchingBrowserSession(request, reply, token);
     try {
       await Promise.all(providers.map((provider) => provider.revoke(token)));
+      // Never clear a browser cookie in a delayed logout response: a newer
+      // login may already have replaced it. The revoked bearer cannot restore.
       return reply.code(204).send();
     } catch {
       return reply.code(503).send({ error: "BACKEND_UNAVAILABLE" });
