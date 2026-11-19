@@ -60,7 +60,7 @@
     if (!verifiedOwner) return;
     const target = ownerRouteHref(next, window.location);
     if (target !== window.location.pathname + window.location.search + window.location.hash) {
-      window.history.pushState(null, "", target);
+      window.history.pushState(window.history.state, "", target);
     }
     screen = next;
   }
