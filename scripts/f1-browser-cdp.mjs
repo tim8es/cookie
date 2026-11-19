@@ -5,10 +5,10 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { startChromiumWithRetry } from "./f1-chromium-startup.mjs";
+import { probeChromiumPage, startChromiumWithRetry } from "./f1-chromium-startup.mjs";
 
 function browserBinary() {
   const choices = [
@@ -174,7 +174,7 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
           rmSync(dir, { recursive: true, force: true });
           throw error;
         }
-        const handle = { chrome: process, dir, logs: [], startupError: null };
+        const handle = { chrome: process, dir, logs: [], startupError: null, executable: basename(executable) };
         process.stderr.on("data", (chunk) => {
           handle.logs.push(String(chunk).slice(0, 500));
           if (handle.logs.length > 20) handle.logs.shift();
@@ -182,20 +182,18 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
         process.on("error", (error) => { handle.startupError = error.message; });
         return handle;
       },
-      probe: async ({ dir }) => {
-        // Chrome owns the ephemeral port and writes DevToolsActivePort;
-        // never reserve/release a guessed port in this test process.
-        const portFile = join(dir, "DevToolsActivePort");
-        if (!existsSync(portFile)) return null;
-        const firstLine = readFileSync(portFile, "utf8").split(/\r?\n/)[0];
-        const port = Number(firstLine);
-        if (!Number.isInteger(port) || port <= 0 || port >= 65536) return null;
-        const result = await getLocal("http://127.0.0.1:" + port + "/json/list");
-        if (result.code !== 200) return null;
-        return JSON.parse(result.body).find(
-          (x) => x.type === "page" && x.webSocketDebuggerUrl,
-        );
-      },
+      probe: (handle) => probeChromiumPage(handle, {
+        readPort(dir) {
+          // Chrome owns the ephemeral port; never guess/reserve/release one.
+          try {
+            return readFileSync(join(dir, "DevToolsActivePort"), "utf8");
+          } catch (error) {
+            if (error.code === "ENOENT") return null;
+            throw new Error("CDP port file read failed: " + (error.code ?? "unknown"));
+          }
+        },
+        getLocal,
+      }),
       disposeAttempt: async ({ chrome: child, dir }) => {
         try {
           await stopChrome(child);
@@ -204,6 +202,9 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
         }
       },
     });
+    if (started.failures.length) {
+      console.warn("F1 CHROMIUM RECOVERED STARTUP", started.failures.join(" | "));
+    }
     chrome = started.handle.chrome;
     chromeLogs = started.handle.logs;
     browserDataDir = started.handle.dir;
