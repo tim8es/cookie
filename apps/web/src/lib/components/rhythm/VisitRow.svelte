@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button/index.js";
+  import ActionButton from "./ActionButton.svelte";
   import type { VisitDisplay } from "./contracts.js";
 
   let {
@@ -20,11 +20,9 @@
   </div>
   {#if visit.amountLabel}<span class="rhythm-trailing">{visit.amountLabel}</span>{/if}
   {#if onOpen}
-    <Button
-      variant="outline"
-      class="rhythm-action"
-      aria-label={"Открыть запись: " + visit.title + ", " + visit.time}
+    <ActionButton
+      label={"Открыть запись: " + visit.title + ", " + visit.time}
       onclick={onOpen}
-    >Открыть</Button>
+    >Открыть</ActionButton>
   {/if}
 </div>
