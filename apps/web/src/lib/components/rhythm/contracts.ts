@@ -31,3 +31,43 @@ export interface TicketLine {
   label: string;
   value: string;
 }
+
+export interface ChoiceItem {
+  id: string;
+  title: string;
+  description?: string;
+  detail?: string;
+  initials?: string;
+  imageSrc?: string;
+  disabled?: boolean;
+}
+
+export interface AccountOption extends ChoiceItem {
+  initials: string;
+  subtitle?: string;
+}
+
+export interface BookingStep {
+  id: string;
+  label: string;
+  reachable: boolean;
+  complete?: boolean;
+}
+
+export interface DayOption extends SegmentOption {
+  weekday: string;
+  day: string;
+}
+
+export interface ResourceGroup {
+  id: string;
+  label: string;
+  shiftLabel?: string;
+  visits: readonly (VisitDisplay & { id: string })[];
+}
+
+export interface ScheduleDisplay {
+  label: string;
+  period: string;
+  status: string;
+}
