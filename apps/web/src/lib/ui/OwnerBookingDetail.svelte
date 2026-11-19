@@ -59,7 +59,7 @@
   }
 </script>
 
-<div class="owner-booking-detail">
+<div class="owner-booking-detail" data-booking-id={bookingId}>
   <Button type="button" variant="outline" aria-expanded={open} onclick={() => open ? close() : void load()} {disabled}>
     {open ? "Скрыть детали" : "Подробнее"}
   </Button>
