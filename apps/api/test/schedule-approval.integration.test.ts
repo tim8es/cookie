@@ -19,6 +19,8 @@ import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import {
   approvalSnapshot,
   expectApprovalCommitFailure,
+  recoverAppliedApprovalAfterLostAck,
+  recoverNewApprovalRequestAfterLostAck,
 } from "./approval-commit-fault.js";
 
 test(
@@ -336,11 +338,14 @@ test(
       );
       assert.deepEqual(await approvalSnapshot(pool, tenant), beforeReviewFault);
 
-      const [approved, approvedReplay] = await Promise.all([
-        reviewScheduleEditRequestInternal(pool, review, allow),
-        reviewScheduleEditRequestInternal(pool, review, allow),
-      ]);
-      assert.deepEqual(approvedReplay, approved);
+      const approved = await recoverAppliedApprovalAfterLostAck(
+        pool,
+        tenant,
+        "edit",
+        request.requestId,
+        (reviewPool) =>
+          reviewScheduleEditRequestInternal(reviewPool, review, allow),
+      );
       assert.equal(approved.status, "applied");
       const beforeReviewReplay = await approvalSnapshot(pool, tenant, false);
       await expectApprovalCommitFailure(pool, "lose-ack", (faultPool) =>
@@ -375,13 +380,19 @@ test(
 
       // A request with a shorter target than the booked occupied interval
       // is accepted into the queue but can NEVER be applied at review.
-      const unsafe = await requestPublishedShiftEditInternal(pool, {
-        ...requested,
-        startAt: "2027-05-10T10:45:00Z",
-        endAt: "2027-05-10T12:00:00Z",
-        expectedPublishedRevision: 1,
-        idempotencyKey: "unsafe-shorter-shift",
-      });
+      const unsafe = await recoverNewApprovalRequestAfterLostAck(
+        pool,
+        tenant,
+        "edit",
+        (requestPool) =>
+          requestPublishedShiftEditInternal(requestPool, {
+            ...requested,
+            startAt: "2027-05-10T10:45:00Z",
+            endAt: "2027-05-10T12:00:00Z",
+            expectedPublishedRevision: 1,
+            idempotencyKey: "unsafe-shorter-shift",
+          }),
+      );
       await assert.rejects(
         reviewScheduleEditRequestInternal(
           pool,
