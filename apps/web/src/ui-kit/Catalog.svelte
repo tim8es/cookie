@@ -9,6 +9,9 @@
     ImageAssetField,
     Notice,
     Modal,
+    MetricStrip,
+    PopoverMenu,
+    ModuleSettings,
     Navigation,
     BookingTicket,
     ChoiceRow,
@@ -39,6 +42,7 @@
     { id: "public", label: "Публичная запись" },
     { id: "calendar", label: "Календарь и смены" },
     { id: "account", label: "Меню аккаунта" },
+    { id: "system", label: "Показатели и модули" },
   ];
 
   let theme = $state<RhythmPreviewTheme>("workspace");
@@ -65,6 +69,17 @@
   let assignments = $state<string[]>(["haircut"]);
   let imageSrc = $state<string | undefined>();
   let imageError = $state<string | undefined>();
+  let branch = $state("all");
+  let modules = $state([
+    { id: "crm", label: "Клиенты", description: "История визитов", enabled: true },
+    { id: "promo", label: "Акции", description: "Предложения и промокоды", enabled: true },
+    { id: "reports", label: "Отчёты", description: "Статистика посещений", enabled: false },
+  ]);
+  const metrics = [
+    { id: "visits", value: "4", label: "Визитов" },
+    { id: "duration", value: "4 ч 45 мин", label: "Забронировано" },
+    { id: "staff", value: "3", label: "Мастеров" },
+  ];
 
   function removeImage() {
     if (imageSrc) URL.revokeObjectURL(imageSrc);
@@ -101,6 +116,8 @@
     assignments = ["haircut"];
     removeImage();
     imageError = undefined;
+    branch = "all";
+    modules = modules.map((module) => ({ ...module, enabled: module.id !== "reports" }));
   }
 </script>
 
@@ -217,6 +234,22 @@
           <h3>ImageAssetField</h3>
           <ImageAssetField id="catalog-image" label="Фотография мастера" {imageSrc} error={imageError} hint="Только локальный предпросмотр. Файл не покидает браузер." onFile={previewFile} onRemove={removeImage} />
         </div>
+      {:else if section === "system"}
+        <h2>Общие показатели и модули</h2>
+        <MetricStrip
+          items={metrics}
+          storageKey="kuki.rhythm.catalog.metricstrip"
+        />
+        <div class="rhythm-panel rhythm-stack">
+          <h3>PopoverMenu · филиал</h3>
+          <PopoverMenu label="Филиал" selected={branch}
+            items={[{ id: "all", label: "Все филиалы" }, { id: "center", label: "Центр" }, { id: "north", label: "Север" }]}
+            onSelect={(id) => (branch = id)} />
+        </div>
+        <ModuleSettings {modules} onToggle={(id, enabled) => {
+          modules = modules.map((module) => module.id === id ? { ...module, enabled } : module);
+        }} />
+        <p class="rhythm-muted">Демонстрация состояния элементов. Разрешения, модульные права и тариф определяет сервер.</p>
       {:else if section === "public" || section === "calendar" || section === "account"}
         {#key resetVersion}<CompositionStories {section} />{/key}
       {:else}
