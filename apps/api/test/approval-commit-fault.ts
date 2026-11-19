@@ -92,3 +92,70 @@ export async function approvalSnapshot(
   }
   return contents;
 }
+
+/** Exercise the FIRST successful request COMMIT, not a receipt-only replay. */
+export async function recoverNewApprovalRequestAfterLostAck<
+  T extends { readonly requestId: string; readonly status: string },
+>(
+  pool: Pool,
+  tenantId: string,
+  kind: "edit" | "publish",
+  work: (pool: Pool) => Promise<T>,
+): Promise<T> {
+  const table =
+    kind === "edit"
+      ? "cookie_scheduling.schedule_edit_requests"
+      : "cookie_scheduling.schedule_publish_requests";
+  const topic = `schedule.${kind}.requested`;
+  const requests = async () =>
+    (
+      await pool.query<{ id: string; status: string }>(
+        `SELECT id::text,status FROM ${table}
+          WHERE tenant_id=$1::uuid ORDER BY id`,
+        [tenantId],
+      )
+    ).rows;
+  const before = await requests();
+  const beforeState = await approvalSnapshot(pool, tenantId, false);
+  await expectApprovalCommitFailure(pool, "lose-ack", work);
+
+  // Independently observe the first actual COMMIT before any retry.
+  const committed = await requests();
+  assert.equal(committed.length, before.length + 1);
+  const added = committed.filter(
+    (row) => !before.some((old) => old.id === row.id),
+  );
+  assert.equal(added.length, 1);
+  assert.deepEqual(
+    committed.filter((row) => row.id !== added[0]!.id),
+    before,
+  );
+  assert.equal(added[0]!.status, "pending");
+  const requestId = added[0]!.id;
+  const events = await pool.query<{ dedupe_key: string }>(
+    `SELECT dedupe_key FROM cookie_jobs.outbox_events
+      WHERE tenant_id=$1::uuid AND topic=$2
+        AND payload->>'requestId'=$3`,
+    [tenantId, topic, requestId],
+  );
+  assert.deepEqual(events.rows, [{ dedupe_key: `${topic}:${requestId}` }]);
+
+  const committedState = await approvalSnapshot(pool, tenantId, false);
+  // Only the new request and its event can change, no shift/booking/review.
+  const changed = tables
+    .filter((name) => name !== "cookie_identity.authorization_audit")
+    .filter(
+      (_, index) =>
+        JSON.stringify(beforeState[index]) !==
+        JSON.stringify(committedState[index]),
+    );
+  assert.deepEqual(changed, [table, "cookie_jobs.outbox_events"]);
+  const recovered = await work(pool);
+  assert.equal(recovered.requestId, requestId);
+  assert.equal(recovered.status, "pending");
+  assert.deepEqual(
+    await approvalSnapshot(pool, tenantId, false),
+    committedState,
+  );
+  return recovered;
+}

@@ -19,6 +19,7 @@ import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import {
   approvalSnapshot,
   expectApprovalCommitFailure,
+  recoverNewApprovalRequestAfterLostAck,
 } from "./approval-commit-fault.js";
 
 test(
@@ -375,13 +376,19 @@ test(
 
       // A request with a shorter target than the booked occupied interval
       // is accepted into the queue but can NEVER be applied at review.
-      const unsafe = await requestPublishedShiftEditInternal(pool, {
-        ...requested,
-        startAt: "2027-05-10T10:45:00Z",
-        endAt: "2027-05-10T12:00:00Z",
-        expectedPublishedRevision: 1,
-        idempotencyKey: "unsafe-shorter-shift",
-      });
+      const unsafe = await recoverNewApprovalRequestAfterLostAck(
+        pool,
+        tenant,
+        "edit",
+        (requestPool) =>
+          requestPublishedShiftEditInternal(requestPool, {
+            ...requested,
+            startAt: "2027-05-10T10:45:00Z",
+            endAt: "2027-05-10T12:00:00Z",
+            expectedPublishedRevision: 1,
+            idempotencyKey: "unsafe-shorter-shift",
+          }),
+      );
       await assert.rejects(
         reviewScheduleEditRequestInternal(
           pool,

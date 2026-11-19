@@ -21,6 +21,7 @@ import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import {
   approvalSnapshot,
   expectApprovalCommitFailure,
+  recoverNewApprovalRequestAfterLostAck,
 } from "./approval-commit-fault.js";
 
 test(
@@ -367,12 +368,18 @@ test(
         "2027-06-15T11:30:00Z",
         "2027-06-15T13:00:00Z",
       );
-      const conflictRequest = await requestPublishShiftInternal(pool, {
-        actor: ownerActor,
-        shiftId: overlapB,
-        expectedDraftRevision: 0,
-        idempotencyKey: "request-cross-branch",
-      });
+      const conflictRequest = await recoverNewApprovalRequestAfterLostAck(
+        pool,
+        tenant,
+        "publish",
+        (requestPool) =>
+          requestPublishShiftInternal(requestPool, {
+            actor: ownerActor,
+            shiftId: overlapB,
+            expectedDraftRevision: 0,
+            idempotencyKey: "request-cross-branch",
+          }),
+      );
       await assert.rejects(
         reviewPublishShiftInternal(
           pool,
