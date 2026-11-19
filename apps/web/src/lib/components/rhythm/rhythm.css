@@ -84,7 +84,7 @@
   --rhythm-radius: 22px;
 }
 
-.rhythm-scope [data-slot="button"].rhythm-action {
+.rhythm-scope .rhythm-action {
   min-height: var(--rhythm-control-height);
   height: auto;
   padding: 9px 14px;
@@ -98,25 +98,25 @@
   background: transparent;
   transition: background-color 140ms ease, color 140ms ease;
 }
-.rhythm-scope [data-slot="button"].rhythm-action--primary {
+.rhythm-scope .rhythm-action--primary {
   color: var(--rhythm-on-brand);
   background: var(--rhythm-brand);
   border-color: var(--rhythm-brand);
 }
-.rhythm-scope [data-slot="button"].rhythm-action--danger {
+.rhythm-scope .rhythm-action--danger {
   color: var(--rhythm-danger);
 }
-.rhythm-scope [data-slot="button"].rhythm-action:not(:disabled):hover {
+.rhythm-scope .rhythm-action:not(:disabled):hover {
   background: var(--rhythm-selected);
   color: var(--rhythm-on-selected);
 }
-.rhythm-scope [data-slot="button"].rhythm-action--primary:not(:disabled):hover {
+.rhythm-scope .rhythm-action--primary:not(:disabled):hover {
   background: var(--rhythm-brand);
   color: var(--rhythm-on-brand);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.rhythm-scope [data-slot="button"].rhythm-action:disabled {
+.rhythm-scope .rhythm-action:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -306,7 +306,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .rhythm-scope [data-slot="button"].rhythm-action {
+  .rhythm-scope .rhythm-action {
     transition: none;
   }
 }
@@ -379,4 +379,75 @@
   color: var(--rhythm-ink);
   margin-right: 8px;
   font: inherit;
+}
+
+/* One dialog primitive with layout variants; preserve the closest theme host. */
+.rhythm-scope [data-slot="dialog-content"].rhythm-modal {
+  background: var(--rhythm-canvas);
+  color: var(--rhythm-ink);
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-panel-radius);
+  padding: 20px;
+  width: min(560px, calc(100% - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  box-shadow: 0 18px 64px #17141a24;
+}
+.rhythm-scope [data-slot="dialog-content"].rhythm-modal--sheet {
+  top: auto;
+  left: auto;
+  right: 0;
+  bottom: 0;
+  height: 100dvh;
+  max-height: none;
+  width: min(460px, 100%);
+  transform: none;
+  translate: none;
+  border-radius: var(--rhythm-panel-radius) 0 0 var(--rhythm-panel-radius);
+  align-content: start;
+}
+.rhythm-scope [data-slot="dialog-content"].rhythm-modal--drawer {
+  top: auto;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  max-height: 86dvh;
+  transform: none;
+  translate: none;
+  border-radius: var(--rhythm-panel-radius) var(--rhythm-panel-radius) 0 0;
+}
+.rhythm-scope .rhythm-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rhythm-scope .rhythm-navigation[data-layout="bar"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.rhythm-scope .rhythm-nav-item {
+  min-height: var(--rhythm-control-height);
+  height: auto;
+  justify-content: flex-start;
+  padding: 10px 12px;
+  white-space: normal;
+  border-radius: var(--rhythm-radius);
+  background: transparent;
+  color: var(--rhythm-ink);
+  text-align: left;
+}
+.rhythm-scope .rhythm-nav-item:not(:disabled):hover {
+  background: var(--rhythm-selected);
+  color: var(--rhythm-on-selected);
+}
+.rhythm-scope .rhythm-nav-item[aria-current="page"] {
+  background: var(--rhythm-selected);
+  color: var(--rhythm-on-selected);
+  font-weight: 650;
+}
+@media (max-width: 440px) {
+  .rhythm-scope [data-slot="dialog-content"].rhythm-modal {
+    padding: 16px;
+  }
 }
