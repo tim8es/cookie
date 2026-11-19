@@ -5,14 +5,14 @@ import {
   CreateBookingFailure,
   createBookingInternal,
   type AssertBookingEntitlement,
-} from "../../../packages/domain-booking/src/create.js";
+} from "../../../packages/domain-booking/src/index.js";
 import { readBookingAvailability } from "../../../packages/booking-read-adapter/src/index.js";
 import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
 import {
   AuthorizationDeniedError,
+  requireTenantPermission,
   type TrustedActor,
-} from "../../../packages/platform-identity/src/authorization.js";
-import { requireTenantPermission } from "../../../packages/platform-identity/src/postgres.js";
+} from "../../../packages/platform-identity/src/index.js";
 import {
   type BearerSessionVerifier,
   verifyTenantActor,

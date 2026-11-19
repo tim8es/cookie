@@ -8,3 +8,6 @@ export { enqueueOutbox } from "./outbox.js";
 export { runSqlTransaction } from "./transaction.js";
 
 export { createMigrationReadiness } from "./schema-readiness.js";
+
+/** Trusted standalone synthetic process; never an HTTP or provider capability. */
+export { runSyntheticPostgresOutboxWorker } from "./synthetic-worker.js";

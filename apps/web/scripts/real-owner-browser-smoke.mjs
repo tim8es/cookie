@@ -14,6 +14,7 @@ import {
   requireDom, fill, submitValidForm, checkWidth, checkLabeledControls,
 } from "./browser-smoke.mjs";
 import { startChromiumWithRetry } from "../../../scripts/f1-chromium-startup.mjs";
+import { verifyOwnerBookingDetail } from "./owner-booking-detail-smoke.mjs";
 
 import { issueStagingGrant } from "../../../dist/packages/domain-entitlement/src/staging.js";
 import { provisionStagingCustomer } from "../../../dist/packages/domain-customers/src/staging-customer.js";
@@ -148,6 +149,68 @@ async function load(cdp, origin, proof, previous) {
   });
   await cdp.send("Page.navigate", { url: origin });
   return identifier;
+}
+
+// Read-only navigation measurements on this isolated synthetic CI workspace.
+// Measure browser time, not CDP/polling latency. Report no URLs, IDs or payloads.
+async function benchmarkOwnerNavigation(cdp) {
+  await viewport(cdp, 1280, 800);
+  const screens = [
+    ["services", "/services", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service') && !document.querySelector('.owner-form button[type=submit]')?.disabled"],
+    ["calendar", "/calendar", "document.querySelector('.empty-mini')?.innerText.includes('За выбранный период записей нет') && document.querySelector('.owner-calendar input[type=date]')?.disabled===false"],
+    ["schedule", "/schedule", "document.querySelector('.schedule-summary')?.innerText.includes('Synthetic E2E Staff') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Обновить'&&!b.disabled)"],
+    ["appearance", "/appearance", "document.querySelector('.brand-editor') && document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника')"],
+  ];
+  const samples = new Map(screens.map(([key]) => [key, []]));
+  // Warm each route once; then measure 20 round trips through all four screens.
+  for (let round = 0; round <= 20; round++) {
+    for (const [key, path, condition] of screens) {
+      const selector = ".real-owner-nav button[data-screen=" + key + "]";
+      const sample = await evaluate(cdp, `(async()=> {
+        const button = [...document.querySelectorAll(${JSON.stringify(selector)})]
+          .find(b=>b.getClientRects().length&&!b.disabled);
+        if(!button || location.pathname===${JSON.stringify(path)}) throw new Error("benchmark navigation precondition");
+        performance.clearResourceTimings();
+        const begin = performance.now();
+        let routeMs;
+        button.click();
+        while(performance.now()-begin<10000){
+          if(routeMs===undefined && location.pathname===${JSON.stringify(path)} &&
+            document.querySelector(${JSON.stringify(selector+"[aria-current=page]")})) routeMs=performance.now()-begin;
+          if(routeMs!==undefined && (${condition})){
+            const dataMs=performance.now()-begin;
+            const requests=performance.getEntriesByType("resource")
+              .filter(r=>r.startTime>=begin && r.responseEnd>0 && new URL(r.name).origin===location.origin && new URL(r.name).pathname.startsWith("/v1/"))
+              .map(r=>({ms:r.duration,ttfb:r.responseStart-r.startTime}));
+            return {routeMs,dataMs,requests};
+          }
+          await new Promise(resolve=>requestAnimationFrame(resolve));
+        }
+        return {timeout:true,routeReady:routeMs!==undefined};
+      })()`);
+      assert.ok(!sample.timeout, "Benchmark section did not settle: " + key + ", routeReady=" + sample.routeReady);
+      assert.ok(Number.isFinite(sample.dataMs) && sample.requests.length > 0, "Missing navigation timing: " + key);
+      if (round > 0) samples.get(key).push(sample);
+    }
+  }
+  function stats(values) {
+    assert.ok(values.length > 0);
+    const sorted = [...values].sort((a,b)=>a-b);
+    const percentile = p => Math.round(sorted[Math.ceil(p*sorted.length)-1]*10)/10;
+    return {n:sorted.length,p50:percentile(0.5),p95:percentile(0.95)};
+  }
+  for (const [screen, rows] of samples) {
+    const requests = rows.flatMap(r=>r.requests);
+    console.log("PERF_OWNER_CI " + JSON.stringify({
+      profile:"loopback-pg-ci-1280x800-warm",screen,
+      routeMs:stats(rows.map(r=>r.routeMs)),
+      dataMs:stats(rows.map(r=>r.dataMs)),
+      apiMs:stats(requests.map(r=>r.ms)),
+      apiTtfbMs:stats(requests.map(r=>r.ttfb)),
+      apiCount:stats(rows.map(r=>r.requests.length)),
+    }));
+  }
+  await viewport(cdp, 375, 812);
 }
 
 async function waitForm(cdp, name) {
@@ -346,16 +409,29 @@ async function main() {
     await viewport(cdp, 375, 812);
 
     // Malformed proof must not show authenticated UI or a synthetic fallback.
-    let script = await load(cdp, origin, "invalid-synthetic-proof", undefined);
+    let script = await load(cdp, origin + "calendar", "invalid-synthetic-proof", undefined);
     await requireDom(cdp, "forged proof rejected",
-      "document.body.innerText.includes('Вход не подтверждён') && !document.querySelector('.real-owner-nav')");
+      "location.pathname==='/calendar' && document.body.innerText.includes('Вход не подтверждён') && !document.querySelector('.real-owner-nav')");
     assert.ok(responses.some((r) => r.path === "/v1/auth/telegram/exchange" && r.status === 401));
-    script = await load(cdp, origin, signedProof(botToken, userId), script);
-    await requireDom(cdp, "authenticated real services",
-      "document.querySelector('.real-owner-nav') && document.body.innerText.includes('Услуги салона')");
+    script = await load(cdp, origin + "locations", signedProof(botToken, userId), script);
+    await requireDom(cdp, "authenticated direct location link",
+      "location.pathname==='/locations' && document.querySelector('.real-owner-nav') && document.querySelector('.list-items')?.innerText.includes('Synthetic Central')");
+    await evaluate(cdp, "window.__kukiNavigationMarker=1");
+    await button(cdp, "Услуги");
+    await requireDom(cdp, "owner click updates path without reload",
+      "location.pathname==='/services' && window.__kukiNavigationMarker===1 && document.body.innerText.includes('Услуги салона')");
+    await evaluate(cdp, "history.back()");
+    await requireDom(cdp, "back restores locations",
+      "location.pathname==='/locations' && window.__kukiNavigationMarker===1 && document.querySelector('[data-screen=locations][aria-current=page]')");
+    await evaluate(cdp, "history.forward()");
+    await requireDom(cdp, "forward restores services",
+      "location.pathname==='/services' && window.__kukiNavigationMarker===1 && document.querySelector('[data-screen=services][aria-current=page]')");
     await requireDom(cdp, "shared owner shell without demo controls", "document.querySelector(\'.verified-owner-shell[data-cookie-mode=api] .sidebar\') && !document.querySelector(\'.demo-ribbon, .preview-control, .onboarding-header\')");
     await requireDom(cdp, "canonical runtime owner brand", "document.querySelector('.sidebar .brand strong')?.textContent.trim() === 'kuki.' && document.querySelector('.nav-links')?.getAttribute('aria-label') === 'Разделы kuki' && document.title === 'kuki — кабинет салона'");
+    const appearanceChunk = r => /^\/assets\/RealOwnerAppearancePage-[^/]+\.js$/.test(r.path);
+    assert.equal(responses.filter(appearanceChunk).length, 0, "Appearance module loaded before navigation");
     await button(cdp, "Оформление");
+    await poll("appearance module downloaded on demand", () => responses.some(r => appearanceChunk(r) && r.status === 200));
     await requireDom(cdp, "real appearance draft loaded", "document.querySelector('.brand-editor') && document.body.innerText.includes('Только черновик') && document.querySelector('.brand-presets button')");
     await checkWidth(cdp, "real appearance 375px");
     await evaluate(cdp, "[...document.querySelectorAll('.brand-presets button')].find(b=>b.textContent.includes('Ботаника')).click()");
@@ -368,6 +444,7 @@ async function main() {
     await button(cdp, "Услуги");
     await button(cdp, "Оформление");
     await requireDom(cdp, "persisted appearance reloaded", "document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника') && [...document.querySelectorAll('.brand-actions button')].find(b=>b.textContent.trim()==='Опубликовать')?.disabled && [...document.querySelectorAll('.brand-assets input')].every(i=>i.matches(':disabled'))");
+    assert.equal(responses.filter(appearanceChunk).length, 1, "Appearance module requested again within the same document");
     await button(cdp, "Онлайн-запись");
     await requireDom(cdp, "owner booking unavailable without customer identity", "document.querySelector('h1')?.textContent==='Онлайн-запись' && document.body.innerText.includes('Клиентская запись — отдельный вход') && !document.querySelector('.booking-form')");
     await button(cdp, "Услуги");
@@ -435,6 +512,7 @@ async function main() {
       "document.querySelector('.schedule-summary')?.innerText.includes('Черновик') && " +
       "document.querySelector('.alert-ok')?.innerText.includes('Черновик сохранён') && !document.querySelector('.owner-form button[type=submit]')?.disabled");
     const shiftId = await assertPlan(pool, owner, beforeRestart.staffId, locationId, date);
+    await benchmarkOwnerNavigation(cdp);
     assert.equal(responses.filter((r) => r.status === 201 && r.path.endsWith("/locations")).length, 1);
     assert.equal(responses.filter((r) => r.status === 201 && r.path.endsWith("/shift-plans")).length, 1);
     assert.ok(responses.some((r) => r.status === 200 && r.path.endsWith("/workspace-overview")));
@@ -591,6 +669,10 @@ async function main() {
     await button(cdp,"Неделя");
     await requireDom(cdp,"week reads persisted Booking","document.querySelector('[aria-label=\"Записи за выбранный период\"]')?.innerText.includes('Synthetic E2E Staff')");
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/owner-calendar")));
+    await verifyOwnerBookingDetail(cdp, responses, {
+      bookingId, duration: 50, buffer: 0, priceKopecks: "125050",
+      status: "Подтверждена", tenantId: owner.tenantId, viewport, testLatePeriod: true,
+    });
     for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
       await viewport(cdp,width,height);
       await checkWidth(cdp,"real owner calendar "+width+"px");
@@ -761,6 +843,13 @@ async function main() {
     await poll("fresh owner calendar HTTP 200 after Booking restart", () => responses.slice(calendarResponseStart).some(r=>r.status===200&&r.path.endsWith("/owner-calendar")));
     await requireDom(cdp, "actual persisted Booking visible in owner's calendar after restart",
       "(()=>{const rows=[...document.querySelectorAll('[aria-label=\\\"Записи за выбранный период\\\"] .schedule-summary')];const fmt=value=>new Intl.DateTimeFormat('ru-RU',{timeZone:"+JSON.stringify(BRANCH_ZONE)+",dateStyle:'short',timeStyle:'short'}).format(new Date(value));const interval=fmt("+JSON.stringify(restartStart)+")+' — '+fmt("+JSON.stringify(restartEnd)+");const price=new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(1250.5);return rows.length===3&&rows.filter(row=>row.innerText.includes(interval)&&row.innerText.includes(price)&&row.innerText.includes('Synthetic E2E Edited Service')&&row.innerText.includes('Synthetic E2E Staff')&&row.querySelector('.status-pill')?.innerText==='Подтверждена').length===1;})()");
+    await verifyOwnerBookingDetail(cdp, responses, {
+      bookingId: restartBookingId,
+      duration: beforeBookingRestart.booking.service_duration_minutes_snapshot,
+      buffer: beforeBookingRestart.booking.post_service_buffer_minutes_snapshot,
+      priceKopecks: originalReceipt.priceKopecks,
+      status: "Подтверждена", tenantId: owner.tenantId, viewport,
+    });
     assert.deepEqual(await durableBooking(), beforeBookingRestart, "Fresh authenticated reads changed durable Booking/receipt/outbox");
     assert.deepEqual((await recoveryProjection()).rows, beforeProjection.rows);
     assert.equal(customerCreateRequests, writesBeforeRestart, "Restart recovery must not issue any Create POST");

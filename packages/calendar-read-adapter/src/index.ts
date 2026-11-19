@@ -126,3 +126,68 @@ export async function readOwnerCalendar(
     })),
   };
 }
+
+export interface OwnerBookingDetail extends CalendarEntry {
+  readonly locationId: string;
+  readonly timeZone: string;
+  readonly durationMinutes: number;
+  readonly bufferMinutes: number;
+  readonly occupiedUntil: string;
+  readonly cancelledAt: string | null;
+}
+
+interface DetailRow extends CalendarRow {
+  location_id: string;
+  time_zone: string;
+  duration_minutes: number;
+  buffer_minutes: number;
+  occupied_until: Date;
+  cancelled_at: Date | null;
+}
+
+/** Exact tenant and branch lookup under the caller's current owner policy.
+ * Return only the persisted Booking snapshot and current display labels.
+ */
+export async function readOwnerBookingDetail(
+  client: PoolClient,
+  tenantId: string,
+  locationId: string,
+  bookingId: string,
+): Promise<OwnerBookingDetail | null> {
+  const result = await client.query<DetailRow>(
+    `SELECT b.id::text,b.status,b.start_at,b.end_at,b.occupied_until,
+            b.cancelled_at,b.location_id::text,l.time_zone,
+            b.service_duration_minutes_snapshot AS duration_minutes,
+            b.post_service_buffer_minutes_snapshot AS buffer_minutes,
+            p.display_name AS staff_name,s.display_name AS service_name,
+            b.price_kopecks_snapshot::text AS price
+       FROM cookie_booking.bookings b
+       JOIN cookie_tenancy.locations l
+         ON l.tenant_id=b.tenant_id AND l.id=b.location_id
+       JOIN cookie_staff.staff_profiles p
+         ON p.tenant_id=b.tenant_id AND p.id=b.staff_id
+       JOIN cookie_catalog.services s
+         ON s.tenant_id=b.tenant_id AND s.id=b.service_id
+      WHERE b.tenant_id=$1::uuid AND b.location_id=$2::uuid AND b.id=$3::uuid
+        AND l.time_zone IS NOT NULL
+      FOR SHARE OF l`,
+    [tenantId, locationId, bookingId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    locationId: row.location_id,
+    timeZone: row.time_zone,
+    status: row.status,
+    startAt: row.start_at.toISOString(),
+    endAt: row.end_at.toISOString(),
+    occupiedUntil: row.occupied_until.toISOString(),
+    cancelledAt: row.cancelled_at?.toISOString() ?? null,
+    durationMinutes: row.duration_minutes,
+    bufferMinutes: row.buffer_minutes,
+    staffName: row.staff_name,
+    serviceName: row.service_name,
+    priceKopecks: row.price,
+  };
+}
