@@ -5,13 +5,11 @@ import {
   cancelBookingInternal,
   CancelBookingFailure,
   type AssertBookingMayCancel,
-} from "../../../packages/domain-booking/src/cancel.js";
-import {
   rescheduleBookingInternal,
   RescheduleBookingFailure,
   type AssertBookingMayReschedule,
-} from "../../../packages/domain-booking/src/reschedule.js";
-import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/authorization.js";
+} from "../../../packages/domain-booking/src/index.js";
+import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
 import {
   type BearerSessionVerifier,
   verifyTenantActor,
