@@ -5,7 +5,9 @@
 
 <span class="rhythm-avatar" aria-hidden="true">
   {#if imageSrc && failedSrc !== imageSrc}
-    <img src={imageSrc} alt="" onerror={() => (failedSrc = imageSrc)} />
+    {#key imageSrc}
+      <img src={imageSrc} alt="" onerror={(event) => (failedSrc = event.currentTarget.getAttribute("src") ?? undefined)} />
+    {/key}
   {:else}
     {initials}
   {/if}
