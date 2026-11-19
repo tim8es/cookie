@@ -1110,9 +1110,12 @@ async function main() {
       "(()=>{const rows=[...document.querySelectorAll('[aria-label=\\\"Мои записи\\\"] .customer-history li')];const row=rows.find(r=>r.querySelector('.history-id')?.textContent.includes("+JSON.stringify(restartBookingId)+"));return rows.length===2&&row?.querySelector('.history-heading span')?.textContent==='Подтверждена'&&row.querySelectorAll('time')[0]?.dateTime==="+JSON.stringify(restartStart)+"&&row.querySelectorAll('time')[1]?.dateTime==="+JSON.stringify(restartEnd)+"&&row.innerText.replace(/\\s/g,'').includes('1250,50')&&rows.some(r=>r.querySelector('.history-id')?.textContent.includes("+JSON.stringify(realBooking.rows[0].id)+")&&r.querySelector('.history-heading span')?.textContent==='Отменена клиентом');})()");
     assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0);
     assert.deepEqual(await durableBooking(), beforeBookingRestart);
+    const beforeFreshOwnerLogout = responses.length;
     await button(cdp, "Выйти");
-    await requireDom(cdp, "customer logout before fresh owner calendar",
-      "document.querySelector('[aria-label=\\\"Клиентский вход staging\\\"] h1')?.innerText==='Вы вышли'");
+    await poll("customer logout before fresh owner calendar: acknowledged", () => responses.slice(beforeFreshOwnerLogout).some(r =>
+      ["/v1/auth/identity/logout", "/v1/auth/logout"].includes(r.path) && r.status===204));
+    await requireDom(cdp, "customer logout before fresh owner calendar: protected data closed",
+      "document.body.innerText.includes('Вы вышли') && !document.querySelector('[aria-label=\"Мои записи\"]') && !document.querySelector('[aria-label=\"Клиентская витрина staging\"]') && !document.body.innerText.includes('Вход клиента подтверждён')");
     script = await loadAndEnterTelegram(cdp, origin, signedProof(botToken, userId), script, "business");
     await requireDom(cdp, "fresh owner after Booking restart", "document.querySelector('.real-owner-nav')");
     await button(cdp, "Календарь");
@@ -1171,8 +1174,12 @@ async function main() {
     assert.deepEqual(await durableBooking(), cancelledProjection);
     assert.equal(cancellationRequests, 1, "History reconciliation must not repeat cancellation POST");
     assert.equal(customerCreateRequests, writesBeforeRestart);
+    const beforeCancellationReconciledLogout = responses.length;
     await button(cdp, "Выйти");
-    await requireDom(cdp, "client logout after cancellation reconciliation", "document.querySelector('[aria-label=\\\"Клиентский вход staging\\\"] h1')?.innerText==='Вы вышли'");
+    await poll("client logout after cancellation reconciliation: acknowledged", () => responses.slice(beforeCancellationReconciledLogout).some(r =>
+      ["/v1/auth/identity/logout", "/v1/auth/logout"].includes(r.path) && r.status===204));
+    await requireDom(cdp, "client logout after cancellation reconciliation: protected data closed",
+      "document.body.innerText.includes('Вы вышли') && !document.querySelector('[aria-label=\"Мои записи\"]') && !document.querySelector('[aria-label=\"Клиентская витрина staging\"]') && !document.body.innerText.includes('Вход клиента подтверждён')");
     console.log("PASS lost real cancellation response reconciled by own history without a repeat mutation.");
 
     script = await loadAndEnterTelegram(cdp, origin + "services", signedProof(botToken, userId), script, "business");
