@@ -15,7 +15,7 @@
     type VerifiedOwnerSession,
   } from "./lib/owner-auth";
   import { watchBrowserIdentitySession, type IdentityAuthSession } from "./lib/identity-auth";
-  import { writeWorkspaceHint } from "./lib/workspace-hint";
+  import { writeLogoutPending, writeWorkspaceHint } from "./lib/workspace-hint";
   import "./styles.css";
   import "./visual-system.css";
 
@@ -146,7 +146,8 @@
   async function logoutOwner(): Promise<void> {
     const session = ownerSession;
     if (!session || ownerAuthPhase !== "verified") return;
-    writeWorkspaceHint(window.history, null);
+    if (session.accessToken.startsWith("is_")) writeLogoutPending(window.history, true);
+    else writeWorkspaceHint(window.history, null);
     stopBrowserWatch?.();
     stopOwnerExpiry?.();
     stopOwnerExpiry = null;
@@ -156,6 +157,7 @@
     ownerAuthPhase = "signing-out";
     try {
       await revokeTelegramOwnerSession(session);
+      if (session.accessToken.startsWith("is_")) writeLogoutPending(window.history, false);
       ownerAuthPhase = "signed-out";
     } catch {
       ownerAuthPhase = "logout-failed";

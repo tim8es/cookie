@@ -491,6 +491,31 @@ async function main() {
     await requireDom(cdp,"identity chooser before logout","document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");
     assert.equal(responses.slice(beforeRestore).filter(r=>r.path==="/v1/auth/telegram/identity").length,0);
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
+    // Simulate a transport failure before the logout request reaches the API.
+    // The HttpOnly cookie is therefore still live; reload must not restore it.
+    await requireDom(cdp,"ready for failed logout","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Выйти из учётной записи'&&!b.disabled)");
+    await evaluate(cdp,"(()=>{const original=window.fetch.bind(window);window.fetch=(input,init)=>new URL(String(input),location.href).pathname==='/v1/auth/identity/logout'?Promise.reject(new TypeError('synthetic offline')):original(input,init);})()");
+    await button(cdp,"Выйти из учётной записи");
+    await requireDom(cdp,"failed logout local access closed","document.body.innerText.includes('сервер не подтвердил отзыв') && !document.querySelector('.real-owner-nav')");
+    assert.equal(await evaluate(cdp,"history.state?.kukiLogoutPending"),true);
+    const beforeFailedLogoutReload=responses.length;
+    // Re-open the existing Telegram identity explicitly using a fresh proof
+    // after checking that normal reload did not silently restore its cookie.
+    await cdp.send("Page.removeScriptToEvaluateOnNewDocument",{identifier:script});
+    const freshProof=signedProof(botToken,onboardingUserId);
+    ({identifier:script}=await cdp.send("Page.addScriptToEvaluateOnNewDocument",{
+      source:"window.Telegram={WebApp:{initData:"+JSON.stringify(freshProof)+"}};window.__cookieTestClockMs=0;const realNow=Date.now.bind(Date);Date.now=()=>realNow()+window.__cookieTestClockMs;",
+    }));
+    await cdp.send("Page.reload",{ignoreCache:true});
+    await requireDom(cdp,"pending logout blocks automatic restore","document.body.innerText.includes('Автоматическое восстановление отключено') && !document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");
+    await poll("methods after failed logout reload",()=>responses.slice(beforeFailedLogoutReload).some(r=>r.path==="/v1/auth/methods"&&r.status===200));
+    assert.ok(!responses.slice(beforeFailedLogoutReload).some(r=>r.path==="/v1/auth/browser-session"));
+    await button(cdp,"Я представляю бизнес");
+    await requireDom(cdp,"explicit Telegram reauthentication ready","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Войти через Telegram'&&!b.disabled)");
+    await button(cdp,"Войти через Telegram");
+    await requireDom(cdp,"fresh identity after failed logout","document.body.innerText.includes('Настройте kuki') && document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+    assert.equal(await evaluate(cdp,"history.state?.kukiLogoutPending===true"),false);
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
     // A second actual Chromium tab shares the browser cookie but not its JS
     // memory or history hint. It must close the owner UI after the first logs out.
     const {targetId:secondId}=await cdp.send("Target.createTarget",{url:"about:blank"});

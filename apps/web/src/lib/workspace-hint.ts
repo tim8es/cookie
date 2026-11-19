@@ -5,6 +5,7 @@ export interface WorkspaceHint {
 }
 
 const KEY = "kukiWorkspace";
+const LOGOUT_PENDING = "kukiLogoutPending";
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -44,5 +45,35 @@ export function writeWorkspaceHint(
     history.replaceState(state, "");
   } catch {
     // Continuity is optional. The current verified workspace remains usable.
+  }
+}
+
+/**
+ * A noncredential, tab/history-entry-local guard. If logout fails before
+ * the server can clear its HttpOnly cookie, never silently restore that
+ * cookie on reload of this history entry. It is not a revocation receipt.
+ */
+export function isLogoutPending(history: History): boolean {
+  try {
+    return history.state?.[LOGOUT_PENDING] === true;
+  } catch {
+    return false;
+  }
+}
+
+export function writeLogoutPending(history: History, pending: boolean): void {
+  try {
+    const previous: unknown = history.state;
+    const state =
+      previous && typeof previous === "object" && !Array.isArray(previous)
+        ? { ...previous }
+        : {};
+    if (pending) {
+      Object.assign(state, { [LOGOUT_PENDING]: true });
+      Reflect.deleteProperty(state, KEY);
+    } else Reflect.deleteProperty(state, LOGOUT_PENDING);
+    history.replaceState(state, "");
+  } catch {
+    // Browser history can be unavailable. Never claim server revocation.
   }
 }

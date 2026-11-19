@@ -18,7 +18,13 @@ import {
   verifyStagingCustomerSession,
   type IdentityAuthSession,
 } from "./identity-auth.js";
-import { parseWorkspaceHint } from "./workspace-hint.js";
+import {
+  isLogoutPending,
+  parseWorkspaceHint,
+  readWorkspaceHint,
+  writeLogoutPending,
+  writeWorkspaceHint,
+} from "./workspace-hint.js";
 
 const session: IdentityAuthSession = {
   accessToken: "is_" + "A".repeat(43),
@@ -414,4 +420,27 @@ test("candidate renewal requires a live browser-bound session and the same beare
         error.reason === "invalid-response",
     );
   }
+});
+
+test("pending logout removes the workspace hint but preserves unrelated history", () => {
+  let state: unknown = { unrelated: "kept" };
+  const history = {
+    get state() {
+      return state;
+    },
+    replaceState(next: unknown) {
+      state = next;
+    },
+  } as History;
+  writeWorkspaceHint(history, { role: "business", tenantId });
+  assert.ok(readWorkspaceHint(history));
+  writeLogoutPending(history, true);
+  assert.equal(isLogoutPending(history), true);
+  assert.equal(readWorkspaceHint(history), null);
+  writeWorkspaceHint(history, null);
+  assert.equal(isLogoutPending(history), true);
+  assert.deepEqual(state, { unrelated: "kept", kukiLogoutPending: true });
+  writeLogoutPending(history, false);
+  assert.equal(isLogoutPending(history), false);
+  assert.deepEqual(state, { unrelated: "kept" });
 });

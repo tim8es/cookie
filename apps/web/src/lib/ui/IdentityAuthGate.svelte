@@ -41,7 +41,7 @@
     type VerifiedOwnerSession,
   } from "../owner-auth.js";
 
-  import { readWorkspaceHint, writeWorkspaceHint } from "../workspace-hint";
+  import { isLogoutPending, readWorkspaceHint, writeLogoutPending, writeWorkspaceHint } from "../workspace-hint";
 
   export let customerSurface = false;
   export let customerTenantId = "";
@@ -205,6 +205,7 @@
     try {
       await persistBrowserIdentitySession(session);
       persisted = true;
+      writeLogoutPending(window.history, false);
     } catch {
       // Authentication remains valid in this tab, but persistence is not proven.
     }
@@ -213,6 +214,10 @@
   }
 
   async function restoreIdentity(resume = false): Promise<void> {
+    if (!initialIdentitySession && isLogoutPending(window.history)) {
+      notice = "Выход не подтверждён сервером. Автоматическое восстановление отключено. Войдите снова.";
+      return;
+    }
     busy = true;
     // Consume the tab's hint once. Only a verified workspace writes it again.
     const hint = resume && !initialIdentitySession ? readWorkspaceHint(window.history) : null;
@@ -599,7 +604,7 @@
     const current = identitySession;
     if (!current || busy || signingOut) return;
     signingOut = true;
-    writeWorkspaceHint(window.history, null);
+    writeLogoutPending(window.history, true);
     stopBrowserWatch?.();
     stopIdentityExpiry?.();
     stopIdentityExpiry = null;
@@ -614,6 +619,7 @@
     if (current) {
       try {
         await logoutIdentitySession(current);
+        writeLogoutPending(window.history, false);
         notice = "Вы вышли. Серверная сессия отозвана.";
       } catch {
         notice = "Локальный вход закрыт, но сервер не подтвердил отзыв. Старая сессия может действовать до истечения срока.";

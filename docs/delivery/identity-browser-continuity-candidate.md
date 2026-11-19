@@ -83,3 +83,13 @@ identity chooser hide login controls while server logout is pending; destroyed
 customer workspaces cannot clear a newly mounted workspace through stale
 callbacks. Network-failed logout remains unconfirmed; the server TTL is still
 authoritative, and recovery on reload after network failure needs separate review.
+
+If an explicit global logout fails or the document reloads while it is pending,
+a strict boolean history-entry guard suppresses silent cookie restoration for
+that entry. The guard contains no session token or identity identifier and is
+written before the network request, then cleared on confirmed logout or
+verified fresh cookie binding. It is not a claim of server revocation, does not
+revoke a potentially different account's cookie, and cannot protect a new tab
+or a different history entry while the server remains unreachable. The
+synthetic browser regression simulates a lost logout request, reloads, and
+checks explicit fresh Telegram login before the cross-tab logout scenario.

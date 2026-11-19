@@ -6,6 +6,7 @@
   import { Button } from "../components/ui/button/index.js";
   import * as Card from "../components/ui/card/index.js";
   import { authenticateTelegramCustomer, loadTelegramInitData, revokeTelegramOwnerSession, watchOwnerSessionExpiry, type VerifiedCustomerSession } from "../owner-auth";
+  import { writeLogoutPending } from "../workspace-hint";
   type SessionClearReason = "expired" | "signed-out" | "logout-failed";
   export let initialSession: VerifiedCustomerSession | null = null;
   export let onSwitchAccount: (() => void) | undefined = undefined;
@@ -44,10 +45,15 @@
   async function logout(): Promise<void> {
     const current = session;
     if (!current || !mounted || phase !== "verified") return;
+    if (current.accessToken.startsWith("is_")) writeLogoutPending(window.history, true);
     session = null;
     stopExpiry?.(); stopExpiry = null;
     phase = "signing-out";
-    try { await revokeTelegramOwnerSession(current); phase = "signed-out"; }
+    try {
+      await revokeTelegramOwnerSession(current);
+      if (mounted && current.accessToken.startsWith("is_")) writeLogoutPending(window.history, false);
+      phase = "signed-out";
+    }
     catch { phase = "logout-failed"; }
     if (mounted) onSessionCleared(phase === "signed-out" ? "signed-out" : "logout-failed");
   }
