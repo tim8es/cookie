@@ -123,3 +123,7 @@ that policy and server-side cleanup remain separate.
 ## Combined integration candidate
 
 Migration ordinals 0056–0058 follow the isolated legacy-migration port (0054/0055). Original SQL contents are unchanged; staging applied migration history has not been verified. No runtime entrypoint, approved lifetime policy or deployment is implied by this port.
+
+### Access selector retention
+
+An expired access hash is not authentication authority. It may still select the exact refresh family for logout alongside its cookie and family handle. The bounded identity-session cleanup therefore retains expired family-linked hashes until irreversible family revocation or absolute expiry. Sliding idle expiry alone is not a safe deletion boundary because a concurrent rotation may already be renewing it. Ordinary standalone expired sessions remain eligible for cleanup. This does not define full family/proof/audit retention or enable the runtime. Synthetic HTTP regression expires an older access, runs cleanup, confirms successful exact-family logout, then checks that the revoked family's expired selector can be purged.
