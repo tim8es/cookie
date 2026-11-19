@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Snippet } from "svelte";
+  import { setContext, type Snippet } from "svelte";
   import type { RhythmPreviewTheme } from "./contracts.js";
   import "./rhythm.css";
 
@@ -10,8 +10,10 @@
     theme?: RhythmPreviewTheme;
     children: Snippet;
   } = $props();
+  let host = $state<HTMLDivElement>();
+  setContext("rhythm-theme-host", () => host);
 </script>
 
-<div class="rhythm-scope" data-rhythm-theme={theme}>
+<div bind:this={host} class="rhythm-scope" data-rhythm-theme={theme}>
   {@render children()}
 </div>
