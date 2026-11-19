@@ -215,7 +215,7 @@ export function registerIdentityProviders(
              EXISTS(SELECT 1 FROM cookie_identity.email_credentials
                     WHERE identity_id=$1::uuid) AS email,
              EXISTS(SELECT 1 FROM cookie_identity.global_telegram_identities
-                    WHERE identity_id=$1::uuid) AS telegram`,
+                    WHERE identity_id=$1::uuid AND legacy_revoked_at IS NULL) AS telegram`,
           [identityId],
         );
         return result.rows[0] ?? null;
