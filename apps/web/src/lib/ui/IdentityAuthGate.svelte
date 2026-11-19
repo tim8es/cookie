@@ -43,6 +43,7 @@
   } from "../owner-auth.js";
 
   import { isLogoutPending, readWorkspaceHint, writeLogoutPending, writeWorkspaceHint } from "../workspace-hint";
+  import { withBrowserLogin } from "../browser-login-order.js";
 
   export let customerSurface = false;
   export let customerTenantId = "";
@@ -200,23 +201,26 @@
     return refreshAccount();
   }
 
-  async function acceptNewIdentity(session: IdentityAuthSession): Promise<void> {
-    writeWorkspaceHint(window.history, null);
+  async function acceptNewIdentity(session: IdentityAuthSession, canPersist: boolean): Promise<void> {
+    // Block restoration of an older cookie unless this exact bind is confirmed.
+    writeLogoutPending(window.history, true);
     let persisted = false;
-    try {
-      await persistBrowserIdentitySession(session);
-      persisted = true;
-      writeLogoutPending(window.history, false);
-    } catch {
-      // Authentication remains valid in this tab, but persistence is not proven.
+    if (canPersist) {
+      try {
+        await persistBrowserIdentitySession(session);
+        persisted = true;
+        writeLogoutPending(window.history, false);
+      } catch {
+        // Authentication remains valid in this tab, but persistence is not proven.
+      }
     }
     void acceptIdentity({ ...session, browserBound: persisted });
-    if (!persisted) notice = "Вход подтверждён, но браузер не сохранил сессию. При обновлении может потребоваться повторный вход.";
+    if (!persisted) notice = "Вход подтверждён только для этой вкладки. При обновлении войдите снова.";
   }
 
   async function restoreIdentity(resume = false): Promise<void> {
     if (!initialIdentitySession && isLogoutPending(window.history)) {
-      notice = "Выход не подтверждён сервером. Автоматическое восстановление отключено. Войдите снова.";
+      notice = "Предыдущая сессия не подтверждена. Автоматическое восстановление отключено. Войдите снова.";
       return;
     }
     busy = true;
@@ -227,7 +231,8 @@
       if (initialIdentitySession) {
         await acceptIdentity(initialIdentitySession);
       } else {
-        const restored = await restoreBrowserIdentitySession();
+        const restored = await withBrowserLogin(window, (canPersist) =>
+          canPersist ? restoreBrowserIdentitySession() : Promise.resolve(null));
         if (!restored) return;
         const current = { ...restored, browserBound: true };
         await acceptIdentity(current);
@@ -255,7 +260,8 @@
     error = "";
     clearUrlSecret();
     try {
-      await acceptNewIdentity(await completeTelegramOidc(code, state));
+      await withBrowserLogin(window, async (canPersist) =>
+        acceptNewIdentity(await completeTelegramOidc(code, state), canPersist));
     } catch (reason) {
       if (reason instanceof IdentityAuthFailure && reason.reason === "unavailable") {
         error = "kuki не смог завершить вход через Telegram. Начните вход заново.";
@@ -324,7 +330,8 @@
     busy = true;
     error = "";
     try {
-      await acceptNewIdentity(await loginEmailPassword(email, password));
+      await withBrowserLogin(window, async (canPersist) =>
+        acceptNewIdentity(await loginEmailPassword(email, password), canPersist));
       password = "";
     } catch (reason) {
       error = errorMessage(reason);
@@ -407,17 +414,20 @@
     error = "";
     try {
       if (!telegramInitData) throw new IdentityAuthFailure("unauthorized");
-      const result = await loginTelegramMiniApp(telegramInitData, intent);
-      if ("tenantId" in result) {
-        if (role === "customer") {
-          const customer = await verifyStagingCustomerSession(result);
-          onCustomerSession(customer);
+      const proof = telegramInitData;
+      await withBrowserLogin(window, async (canPersist) => {
+        const result = await loginTelegramMiniApp(proof, intent);
+        if ("tenantId" in result) {
+          if (role === "customer") {
+            const customer = await verifyStagingCustomerSession(result);
+            onCustomerSession(customer);
+          } else {
+            onOwnerSession(await verifyOwnerWorkspaceSession(result));
+          }
         } else {
-          onOwnerSession(await verifyOwnerWorkspaceSession(result));
+          await acceptNewIdentity(result, canPersist);
         }
-      } else {
-        await acceptNewIdentity(result);
-      }
+      });
     } catch (reason) {
       error = errorMessage(reason);
     } finally {

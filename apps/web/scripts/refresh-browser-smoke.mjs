@@ -18,6 +18,7 @@ import { createTelegramMiniAppProofVerifier } from "../../../dist/packages/platf
 import { exchangeSelfServiceTelegram } from "../../../dist/packages/platform-identity/src/telegram-self-registration.js";
 import { SyntheticTelegramRefresh } from "../../../dist/packages/platform-identity/src/synthetic-telegram-refresh.js";
 import { registerSyntheticRefreshHttp } from "../../../dist/apps/api/src/synthetic-refresh-http.js";
+import { registerBrowserIdentitySession } from "../../../dist/apps/api/src/browser-identity-session.js";
 
 const require = createRequire(new URL("../../api/package.json", import.meta.url));
 const Fastify = require("fastify");
@@ -75,6 +76,7 @@ function bounded(promise) {
 const html = `<!doctype html><meta charset="utf-8"><title>Synthetic refresh CI</title>
 <script type="module">
 import { createCandidateRefreshBrowser } from "/candidate.js";
+import { withBrowserLogin } from "/browser-login-order.js";
 const send = window.fetch.bind(window);
 window.fetch = async (input, init) => {
   const response = await send(input, init);
@@ -86,6 +88,22 @@ window.fetch = async (input, init) => {
   }
   return response;
 };
+window.liveRestore = async () => {
+  const response = await fetch("/v1/auth/browser-session", {
+    headers: {"x-kuki-session":"1"}, credentials:"same-origin", cache:"no-store",
+  });
+  return response.status === 200 ? (await response.json()).accessToken : null;
+};
+window.liveBind = (token) => withBrowserLogin(window, async (canPersist) => {
+  if (!canPersist) throw new Error("Web Locks unavailable");
+  const response = await fetch("/v1/auth/browser-session", {
+    method:"POST", headers:{authorization:"Bearer "+token,"x-kuki-session":"1"},
+    credentials:"same-origin", cache:"no-store",
+  });
+  if (response.status !== 204 || await window.liveRestore() !== token)
+    throw new Error("Bind not confirmed");
+  return true;
+});
 window.controller = createCandidateRefreshBrowser(window);
 window.controllerReady = Boolean(window.controller);
 </script>`;
@@ -97,6 +115,7 @@ async function main() {
   const testIds = [];
   const clients = [];
   let handle;
+  let releaseBind;
   try {
     await runMigrations(pool, resolve("db/migrations"));
     const token = "123456789:" + randomBytes(24).toString("base64url");
@@ -114,6 +133,19 @@ async function main() {
       testIds.push(identity);
       await identitySessions.revoke(registered.token);
     }
+    let holdBind = false, bindHeld = false, binds = 0;
+    app.addHook("onSend", async (request, _reply, payload) => {
+      if (request.method === "POST" && request.url === "/v1/auth/browser-session") {
+        binds++;
+        if (holdBind) {
+          holdBind = false;
+          bindHeld = true;
+          await new Promise(resolve => { releaseBind = resolve; });
+        }
+      }
+      return payload;
+    });
+    registerBrowserIdentitySession(app, [identitySessions]);
     const service = new SyntheticTelegramRefresh(transaction, verifier, secret, {
       idleSeconds: 120, absoluteSeconds: 300, accessSeconds: 60,
     });
@@ -138,6 +170,12 @@ async function main() {
     app.get("/", async (_request, reply) => reply.type("text/html").send(html));
     app.get("/candidate.js", async (_request, reply) =>
       reply.type("application/javascript").send(js));
+    const liveLoginJs = ts.transpileModule(
+      readFileSync(new URL("../src/lib/browser-login-order.ts", import.meta.url), "utf8"),
+      { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } },
+    ).outputText;
+    app.get("/browser-login-order.js", async (_request, reply) =>
+      reply.type("application/javascript").send(liveLoginJs));
     const origin = await app.listen({ host: "127.0.0.1", port: 0 });
     phase = "chromium-startup";
     const started = await startChromiumWithRetry({
@@ -251,7 +289,30 @@ async function main() {
     assert.equal(await run(b,
       "localStorage.length===1 && localStorage.getItem('kuki-refresh-candidate-fence-v1')==='blocked' && sessionStorage.length===0 && !document.cookie.includes('__Host-kuki-refresh-candidate')"), true);
     console.log("PASS isolated real Chromium refresh: shared cookie/Web Locks, concurrent rotation, pending/response loss, reload fence, explicit account switch and exact family logout.");
+
+    // Hold the actual first Set-Cookie response BEFORE headers reach Chromium.
+    // The second account must queue, bind only after readback, and win reload.
+    phase = "live-browser-bind-order";
+    const firstLive = await identitySessions.issueForVerifiedIdentity(testIds[0]);
+    const secondLive = await identitySessions.issueForVerifiedIdentity(testIds[1]);
+    holdBind = true;
+    const firstBind = run(a, "window.liveBind(" + JSON.stringify(firstLive.token) + ")");
+    await poll("first live bind headers held", () => bindHeld);
+    const secondBind = run(b, "window.liveBind(" + JSON.stringify(secondLive.token) + ")");
+    await poll("second live bind queued", () => run(a,
+      "navigator.locks.query().then(s=>s.pending.some(l=>l.name===\"kuki-browser-login-v1\"))"));
+    assert.equal(binds, 1);
+    releaseBind();
+    assert.deepEqual(await Promise.all([firstBind, secondBind]), [true, true]);
+    assert.equal(binds, 2);
+    await b.send("Page.reload");
+    await ready(b);
+    assert.equal(await run(b, "window.liveRestore().then(t=>t===" + JSON.stringify(secondLive.token) + ")"), true);
+    assert.equal(await run(a, "window.liveRestore().then(t=>t===" + JSON.stringify(secondLive.token) + ")"), true);
+    assert.equal(await run(b, "document.cookie.includes(\"__Host-kuki-session\")"), false);
+    console.log("PASS live browser bind ordering: held Set-Cookie, two accounts and reload via actual session endpoint.");
   } finally {
+    releaseBind?.();
     for (const cdp of clients) cdp.close();
     try {
       if (handle) await disposeBrowser(handle);
