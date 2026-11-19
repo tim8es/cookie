@@ -49,7 +49,8 @@
   </section>
   {#if unavailable}<Notice tone="error" title="Новые записи временно недоступны" />{/if}
   <div class="rhythm-salon-catalog" data-staff-first={staffFirst}>
-    <section class="rhythm-stack" aria-label="Услуги">
+    {#snippet serviceSection()}
+      <section class="rhythm-stack" aria-label="Услуги">
       <h3 class="rhythm-subhead">Услуги</h3>
       {#each services as item (item.id)}
         <RecordRow record={{ title: item.title, subtitle: item.description, detail: item.detail }}>
@@ -59,11 +60,19 @@
         </RecordRow>
       {:else}<EmptyState title="Нет опубликованных услуг" />{/each}
     </section>
-    {#if showStaff}
+    {/snippet}
+    {#snippet staffSection()}
       <section class="rhythm-stack" aria-label="Мастера">
         <h3 class="rhythm-subhead">Мастера</h3>
         {#each staff as member}<RecordRow record={member} />{:else}<EmptyState title="Нет опубликованных мастеров" />{/each}
       </section>
+    {/snippet}
+    {#if staffFirst && showStaff}
+      {@render staffSection()}
+      {@render serviceSection()}
+    {:else}
+      {@render serviceSection()}
+      {#if showStaff}{@render staffSection()}{/if}
     {/if}
   </div>
 </div>
