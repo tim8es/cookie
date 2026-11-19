@@ -151,6 +151,68 @@ async function load(cdp, origin, proof, previous) {
   return identifier;
 }
 
+// Read-only navigation measurements on this isolated synthetic CI workspace.
+// Measure browser time, not CDP/polling latency. Report no URLs, IDs or payloads.
+async function benchmarkOwnerNavigation(cdp) {
+  await viewport(cdp, 1280, 800);
+  const screens = [
+    ["services", "/services", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service') && !document.querySelector('.owner-form button[type=submit]')?.disabled"],
+    ["calendar", "/calendar", "document.querySelector('.empty-mini')?.innerText.includes('За выбранный период записей нет') && document.querySelector('.owner-calendar input[type=date]')?.disabled===false"],
+    ["schedule", "/schedule", "document.querySelector('.schedule-summary')?.innerText.includes('Synthetic E2E Staff') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Обновить'&&!b.disabled)"],
+    ["appearance", "/appearance", "document.querySelector('.brand-editor') && document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника')"],
+  ];
+  const samples = new Map(screens.map(([key]) => [key, []]));
+  // Warm each route once; then measure 20 round trips through all four screens.
+  for (let round = 0; round <= 20; round++) {
+    for (const [key, path, condition] of screens) {
+      const selector = ".real-owner-nav button[data-screen=" + key + "]";
+      const sample = await evaluate(cdp, `(async()=> {
+        const button = [...document.querySelectorAll(${JSON.stringify(selector)})]
+          .find(b=>b.getClientRects().length&&!b.disabled);
+        if(!button || location.pathname===${JSON.stringify(path)}) throw new Error("benchmark navigation precondition");
+        performance.clearResourceTimings();
+        const begin = performance.now();
+        let routeMs;
+        button.click();
+        while(performance.now()-begin<10000){
+          if(routeMs===undefined && location.pathname===${JSON.stringify(path)} &&
+            document.querySelector(${JSON.stringify(selector+"[aria-current=page]")})) routeMs=performance.now()-begin;
+          if(routeMs!==undefined && (${condition})){
+            const dataMs=performance.now()-begin;
+            const requests=performance.getEntriesByType("resource")
+              .filter(r=>r.startTime>=begin && r.responseEnd>0 && new URL(r.name).origin===location.origin && new URL(r.name).pathname.startsWith("/v1/"))
+              .map(r=>({ms:r.duration,ttfb:r.responseStart-r.startTime}));
+            return {routeMs,dataMs,requests};
+          }
+          await new Promise(resolve=>requestAnimationFrame(resolve));
+        }
+        return {timeout:true,routeReady:routeMs!==undefined};
+      })()`);
+      assert.ok(!sample.timeout, "Benchmark section did not settle: " + key + ", routeReady=" + sample.routeReady);
+      assert.ok(Number.isFinite(sample.dataMs) && sample.requests.length > 0, "Missing navigation timing: " + key);
+      if (round > 0) samples.get(key).push(sample);
+    }
+  }
+  function stats(values) {
+    assert.ok(values.length > 0);
+    const sorted = [...values].sort((a,b)=>a-b);
+    const percentile = p => Math.round(sorted[Math.ceil(p*sorted.length)-1]*10)/10;
+    return {n:sorted.length,p50:percentile(0.5),p95:percentile(0.95)};
+  }
+  for (const [screen, rows] of samples) {
+    const requests = rows.flatMap(r=>r.requests);
+    console.log("PERF_OWNER_CI " + JSON.stringify({
+      profile:"loopback-pg-ci-1280x800-warm",screen,
+      routeMs:stats(rows.map(r=>r.routeMs)),
+      dataMs:stats(rows.map(r=>r.dataMs)),
+      apiMs:stats(requests.map(r=>r.ms)),
+      apiTtfbMs:stats(requests.map(r=>r.ttfb)),
+      apiCount:stats(rows.map(r=>r.requests.length)),
+    }));
+  }
+  await viewport(cdp, 375, 812);
+}
+
 async function waitForm(cdp, name) {
   await requireDom(cdp, name, "document.querySelector('.owner-form input') && document.querySelector('h1')");
 }
@@ -450,6 +512,7 @@ async function main() {
       "document.querySelector('.schedule-summary')?.innerText.includes('Черновик') && " +
       "document.querySelector('.alert-ok')?.innerText.includes('Черновик сохранён') && !document.querySelector('.owner-form button[type=submit]')?.disabled");
     const shiftId = await assertPlan(pool, owner, beforeRestart.staffId, locationId, date);
+    await benchmarkOwnerNavigation(cdp);
     assert.equal(responses.filter((r) => r.status === 201 && r.path.endsWith("/locations")).length, 1);
     assert.equal(responses.filter((r) => r.status === 201 && r.path.endsWith("/shift-plans")).length, 1);
     assert.ok(responses.some((r) => r.status === 200 && r.path.endsWith("/workspace-overview")));
