@@ -13,33 +13,23 @@ import { readRealWorkspaceOverview } from "./workspace-overview-api";
 export function createOwnerRead<T>(
   read: () => Promise<T>,
   active: () => boolean,
-  now = Date.now,
 ) {
-  let snapshot: { value: T; timestamp: number } | undefined;
+  // Coalesce only requests that are still in flight. Never reuse a
+  // completed protected read instead of a new server authorization check.
   let pending: Promise<T> | undefined;
 
   function invalidate(): void {
-    snapshot = undefined;
     pending = undefined;
   }
 
-  function peek(): T | undefined {
-    return active() && snapshot && now() - snapshot.timestamp < 30_000
-      ? snapshot.value
-      : undefined;
-  }
-
-  async function load(force = false): Promise<T> {
+  async function load(): Promise<T> {
     if (!active()) throw new Error("Workspace session ended");
     if (pending) return pending;
-    if (!force && snapshot && now() - snapshot.timestamp < 5_000)
-      return snapshot.value;
 
     const request = read().then(
       (value) => {
         if (!active()) throw new Error("Workspace session ended");
         if (pending !== request) return load();
-        snapshot = { value, timestamp: now() };
         pending = undefined;
         return value;
       },
@@ -52,7 +42,7 @@ export function createOwnerRead<T>(
     return request;
   }
 
-  return { peek, load, invalidate };
+  return { load, invalidate };
 }
 
 type CalendarBranch = Pick<RealLocation, "id" | "displayName" | "timeZone">;
@@ -68,18 +58,48 @@ export function branchToday(zone: string): string {
   return part("year") + "-" + part("month") + "-" + part("day");
 }
 
-export function createOwnerReads(session: VerifiedOwnerSession) {
+export function createOwnerReads(
+  session: VerifiedOwnerSession,
+  onAccessDenied: () => void,
+  fetcher: typeof fetch = globalThis.fetch,
+) {
   let closed = false;
   const active = () =>
     !closed && Date.now() < session.expiresAtUnixSeconds * 1000;
+
+  // Observe every shared protected read, including late responses from a
+  // different slot. A known denial closes this exact workspace, not the
+  // global Identity session. No other pending read may survive that denial.
+  const guardedFetch: typeof fetch = async (input, init) => {
+    if (!active()) throw new Error("Workspace session ended");
+    const response = await fetcher(input, init);
+    if (active() && (response.status === 401 || response.status === 403)) {
+      close();
+      onAccessDenied();
+    }
+    return response;
+  };
+
   const overview = createOwnerRead(
-    () => readRealWorkspaceOverview(session),
+    () => readRealWorkspaceOverview(session, guardedFetch),
     active,
   );
-  const locations = createOwnerRead(() => readRealLocations(session), active);
-  const services = createOwnerRead(() => readRealServices(session), active);
-  const staff = createOwnerRead(() => readRealStaff(session), active);
-  const shifts = createOwnerRead(() => readShiftPlans(session), active);
+  const locations = createOwnerRead(
+    () => readRealLocations(session, guardedFetch),
+    active,
+  );
+  const services = createOwnerRead(
+    () => readRealServices(session, guardedFetch),
+    active,
+  );
+  const staff = createOwnerRead(
+    () => readRealStaff(session, guardedFetch),
+    active,
+  );
+  const shifts = createOwnerRead(
+    () => readShiftPlans(session, guardedFetch),
+    active,
+  );
   const calendars = new Map<
     string,
     ReturnType<typeof createOwnerRead<OwnerCalendar>>
@@ -98,32 +118,28 @@ export function createOwnerReads(session: VerifiedOwnerSession) {
       if (oldest !== undefined) calendars.delete(oldest);
     }
     const slot = createOwnerRead(
-      () => readOwnerCalendar(session, locationId, date, days),
+      () => readOwnerCalendar(session, locationId, date, days, guardedFetch),
       active,
     );
     calendars.set(key, slot);
     return slot;
   }
 
-  function peekCalendarBranches(): CalendarBranch[] | undefined {
-    return (
-      locations.peek() ??
-      overview
-        .peek()
-        ?.locations.map(({ locationId, displayName, timeZone }) => ({
-          id: locationId,
-          displayName,
-          timeZone,
-        }))
-    );
-  }
-
   async function calendarBranches(): Promise<CalendarBranch[]> {
-    return peekCalendarBranches() ?? locations.load();
+    return locations.load();
   }
 
   function invalidateCalendars(): void {
     for (const slot of calendars.values()) slot.invalidate();
+  }
+
+  function close(): void {
+    if (closed) return;
+    closed = true;
+    for (const slot of [overview, locations, services, staff, shifts])
+      slot.invalidate();
+    invalidateCalendars();
+    calendars.clear();
   }
 
   return {
@@ -133,15 +149,9 @@ export function createOwnerReads(session: VerifiedOwnerSession) {
     staff,
     shifts,
     calendar,
-    peekCalendarBranches,
     calendarBranches,
     invalidateCalendars,
-    close() {
-      closed = true;
-      for (const slot of [overview, locations, services, staff, shifts])
-        slot.invalidate();
-      calendars.clear();
-    },
+    close,
   };
 }
 

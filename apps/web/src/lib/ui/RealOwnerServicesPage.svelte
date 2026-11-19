@@ -95,16 +95,11 @@
     saveError = "";
   }
 
-  async function refresh(force = false): Promise<void> {
-    const cached = reads.services.peek();
-    if (cached) {
-      services = cached;
-      loaded = true;
-    }
+  async function refresh(): Promise<void> {
     loading = true;
     readError = "";
     try {
-      services = await reads.services.load(force);
+      services = await reads.services.load();
       loaded = true;
     } catch (reason) {
       loaded = false;
@@ -141,7 +136,7 @@
       reads.staff.invalidate();
       reads.invalidateCalendars();
       reads.shifts.invalidate();
-      await refresh(true);
+      await refresh();
     } catch (reason) {
       reads.services.invalidate();
       reads.staff.invalidate();
@@ -173,7 +168,7 @@
 {#if readError}
   <div class="alert-error" role="alert">
     <p>{readError}</p>
-    <Button type="button" variant="outline" onclick={() => void refresh(true)} disabled={loading}>Повторить загрузку</Button>
+    <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading}>Повторить загрузку</Button>
   </div>
 {/if}
 {#if saveError}
@@ -187,7 +182,7 @@
   <section class="card">
     <div class="card-title">
       <div><span class="eyebrow">КАТАЛОГ</span><h2>Сохранённые услуги</h2></div>
-      <Button type="button" variant="outline" onclick={() => void refresh(true)} disabled={loading || saving}>Обновить</Button>
+      <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || saving}>Обновить</Button>
     </div>
     {#if loading && !loaded}
       <OwnerReadPlaceholder label="Загружаем услуги с сервера…" />
