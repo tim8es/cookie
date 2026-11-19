@@ -128,3 +128,28 @@ test("late cookie from old family cannot be adopted on reload", async () => {
   assert.equal(f.calls.at(-1)?.family, A);
   assert.deepEqual([...f.stored.values()], ["blocked"]);
 });
+
+test("crashed rotation leaves all tabs fenced until a confirmed response", async () => {
+  const f = fixture();
+  const first = f.create();
+  const second = f.create();
+  await first.login("signed proof");
+  await second.restore();
+  assert.equal(second.current()?.familyId, A);
+
+  // Simulate crash after the durable write, before a response is accepted.
+  const key = [...f.stored.keys()][0]!;
+  f.stored.set(key, "pending:" + A);
+  const before = f.calls.length;
+  assert.equal(first.current(), null);
+  assert.equal(second.current(), null);
+  assert.equal(await f.create().restore(), null);
+  assert.equal(await first.renewIfNeeded(10), null);
+  assert.equal(f.calls.length, before);
+  assert.deepEqual([...f.stored.values()], ["pending:" + A]);
+
+  // Only an explicit fresh login may clear a stranded pending fence.
+  f.setFamily(B);
+  assert.equal((await second.login("fresh signed proof"))?.familyId, B);
+  assert.equal(first.current(), null);
+});
