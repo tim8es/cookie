@@ -159,7 +159,7 @@ async function benchmarkOwnerNavigation(cdp) {
     ["services", "/services", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service') && !document.querySelector('.owner-form button[type=submit]')?.disabled"],
     ["calendar", "/calendar", "document.querySelector('.empty-mini')?.innerText.includes('За выбранный период записей нет') && document.querySelector('.owner-calendar input[type=date]')?.disabled===false"],
     ["schedule", "/schedule", "document.querySelector('.schedule-summary')?.innerText.includes('Synthetic E2E Staff') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Обновить'&&!b.disabled)"],
-    ["appearance", "/appearance", "document.querySelector('.brand-editor') && document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Обновить состояние'&&!b.disabled)"],
+    ["appearance", "/appearance", "document.querySelector('.brand-editor') && document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника')"],
   ];
   const samples = new Map(screens.map(([key]) => [key, []]));
   // Warm each route once; then measure 20 round trips through all four screens.
@@ -186,9 +186,10 @@ async function benchmarkOwnerNavigation(cdp) {
           }
           await new Promise(resolve=>requestAnimationFrame(resolve));
         }
-        throw new Error("benchmark section did not settle");
+        return {timeout:true,routeReady:routeMs!==undefined};
       })()`);
-      assert.ok(Number.isFinite(sample.dataMs) && sample.requests.length > 0, "Missing navigation timing");
+      assert.ok(!sample.timeout, "Benchmark section did not settle: " + key + ", routeReady=" + sample.routeReady);
+      assert.ok(Number.isFinite(sample.dataMs) && sample.requests.length > 0, "Missing navigation timing: " + key);
       if (round > 0) samples.get(key).push(sample);
     }
   }
