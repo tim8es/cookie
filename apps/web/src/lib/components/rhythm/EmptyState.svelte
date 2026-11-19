@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button/index.js";
+  import ActionButton from "./ActionButton.svelte";
 
   let {
     title,
@@ -18,6 +18,6 @@
   <strong>{title}</strong>
   {#if description}<p class="rhythm-muted">{description}</p>{/if}
   {#if actionLabel && onAction}
-    <Button variant="outline" class="rhythm-action" onclick={onAction}>{actionLabel}</Button>
+    <ActionButton onclick={onAction}>{actionLabel}</ActionButton>
   {/if}
 </div>
