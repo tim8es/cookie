@@ -1,5 +1,6 @@
 <script lang="ts">
   import ActionButton from "./ActionButton.svelte";
+  import RowContent from "./RowContent.svelte";
   import type { VisitDisplay } from "./contracts.js";
 
   let {
@@ -12,13 +13,9 @@
 </script>
 
 <div class="rhythm-record" data-component="VisitRow">
-  <span class="rhythm-trailing">{visit.time}</span>
-  <div class="rhythm-copy">
-    <strong>{visit.title}</strong>
-    {#if visit.subtitle}<small class="rhythm-muted">{visit.subtitle}</small>{/if}
-    <small>{visit.status}</small>
-  </div>
-  {#if visit.amountLabel}<span class="rhythm-trailing">{visit.amountLabel}</span>{/if}
+  <RowContent title={visit.title} description={visit.subtitle} status={visit.status} detail={visit.amountLabel}>
+    {#snippet leading()}<span class="rhythm-trailing">{visit.time}</span>{/snippet}
+  </RowContent>
   {#if onOpen}
     <ActionButton
       label={"Открыть запись: " + visit.title + ", " + visit.time}
