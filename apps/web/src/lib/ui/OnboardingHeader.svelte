@@ -1,5 +1,6 @@
 <script lang="ts">
   export let apiMode = false;
+  export let label = "";
 </script>
 
 <header class="onboarding-header">
@@ -9,6 +10,6 @@
   </div>
   <div class="onboarding-header-meta">
     <span class="onboarding-header-pulse" aria-hidden="true"></span>
-    {apiMode ? "Вход через Telegram" : "Демо без регистрации"}
+    {label || (apiMode ? "Вход и регистрация" : "Демо без регистрации")}
   </div>
 </header>

@@ -44,6 +44,19 @@ export function telegramUserFingerprint(
     .digest();
 }
 
+/** Serialize every account-link and proof-consumption path for the same Telegram user. */
+export async function lockTelegramUser(
+  client: PoolClient,
+  userHashSecret: Buffer,
+  telegramUserId: string,
+): Promise<Buffer> {
+  const fingerprint = telegramUserFingerprint(userHashSecret, telegramUserId);
+  await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [
+    fingerprint.readBigInt64BE(0).toString(),
+  ]);
+  return fingerprint;
+}
+
 export function createPostgresVerifiedTelegramLinkResolver(
   config: TrustedTelegramLinkResolverConfig,
 ): ResolveVerifiedTelegramLink {

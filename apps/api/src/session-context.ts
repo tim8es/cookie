@@ -16,7 +16,8 @@ import { runProtectedTransaction } from "./protected-tenant-transaction.js";
  * This is a trusted AuthN port, NOT a bearer token parser/verifier. A provider
  * must cryptographically authenticate its token (signed claims or a server-
  * stored unpredictable opaque bearer), validate issuer/audience, expiry and
- * revocation and bind the selected tenant server-side before returning claims.
+ * revocation. A global Identity session receives the requested tenant only as
+ * a selection hint; membership and permissions are rechecked in the DB.
  */
 export interface VerifiedSession {
   readonly identityId: string;
@@ -26,7 +27,10 @@ export interface VerifiedSession {
 }
 
 export interface BearerSessionVerifier {
-  verifyBearerToken(token: string): Promise<VerifiedSession | null>;
+  verifyBearerToken(
+    token: string,
+    tenantId?: string,
+  ): Promise<VerifiedSession | null>;
 }
 
 export interface TenantPolicyGuard {
@@ -47,6 +51,7 @@ const UUID_RE =
 // Cookie's high-entropy PostgreSQL bearer format. Other opt-in verifier
 // formats still require their own reviewed transactional revocation contract.
 const OPAQUE_COOKIE_BEARER = /^cs_[A-Za-z0-9_-]{43}$/;
+const IDENTITY_SESSION_BEARER = /^is_[A-Za-z0-9_-]{43}$/;
 const SESSION_LABEL = /^[a-zA-Z0-9._:/-]{1,128}$/;
 const SESSION_HASH = /^[0-9a-f]{64}$/;
 
@@ -78,7 +83,7 @@ export async function verifyTenantActor(
 
   let session: VerifiedSession | null;
   try {
-    session = await verifier.verifyBearerToken(token);
+    session = await verifier.verifyBearerToken(token, pathTenantId);
   } catch {
     return { status: 401, error: "unauthorized" };
   }
@@ -94,13 +99,21 @@ export async function verifyTenantActor(
   const authority = session.opaqueSessionAuthority;
   // A Cookie-format bearer MUST carry authenticated issuer/audience from
   // the actual PostgreSQL provider; a token-shaped string alone is not proof.
-  if (OPAQUE_COOKIE_BEARER.test(token) && authority === undefined) {
+  const opaqueTenantSession = OPAQUE_COOKIE_BEARER.test(token);
+  const identitySession = IDENTITY_SESSION_BEARER.test(token);
+  if (
+    (opaqueTenantSession && authority === undefined) ||
+    (identitySession &&
+      (authority === undefined || authority.kind !== "identity"))
+  ) {
     return { status: 401, error: "unauthorized" };
   }
   if (
     authority !== undefined &&
     (!authority ||
-      !OPAQUE_COOKIE_BEARER.test(token) ||
+      (!opaqueTenantSession && !identitySession) ||
+      (opaqueTenantSession && authority.kind !== undefined) ||
+      (identitySession && authority.kind !== "identity") ||
       typeof authority.tokenSha256 !== "string" ||
       typeof authority.issuer !== "string" ||
       typeof authority.audience !== "string" ||

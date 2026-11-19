@@ -92,6 +92,7 @@ test(
 
       const sessions = new PostgresOpaqueTelegramSessions({
         pool,
+        fingerprintSecret: SECRET,
         telegramProofVerifier: createTelegramMiniAppProofVerifier({
           botToken: BOT,
           maxAgeSeconds: 600,

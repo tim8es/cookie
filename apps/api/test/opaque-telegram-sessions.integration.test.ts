@@ -67,6 +67,7 @@ test(
     };
     const sessions = new PostgresOpaqueTelegramSessions({
       pool,
+      fingerprintSecret: Buffer.alloc(32, 3),
       telegramProofVerifier: proofVerifier,
       resolveVerifiedTelegramLink,
       issuer: "cookie-f1-test",
@@ -75,6 +76,7 @@ test(
     });
     const wrongAudience = new PostgresOpaqueTelegramSessions({
       pool,
+      fingerprintSecret: Buffer.alloc(32, 3),
       telegramProofVerifier: proofVerifier,
       resolveVerifiedTelegramLink,
       issuer: "cookie-f1-test",
@@ -83,6 +85,7 @@ test(
     });
     const wrongIssuer = new PostgresOpaqueTelegramSessions({
       pool,
+      fingerprintSecret: Buffer.alloc(32, 3),
       telegramProofVerifier: proofVerifier,
       resolveVerifiedTelegramLink,
       issuer: "untrusted-issuer",
@@ -324,6 +327,7 @@ test("opaque session provider configuration refuses broad implicit issuance", ()
         new PostgresOpaqueTelegramSessions({
           pool: {} as Pool,
           telegramProofVerifier: { verify: () => null },
+          fingerprintSecret: Buffer.alloc(32),
           resolveVerifiedTelegramLink: async () => null,
           ...item,
         }),

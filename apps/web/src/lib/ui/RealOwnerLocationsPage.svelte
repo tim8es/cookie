@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import type { OwnerReads } from "../owner-reads";
+  import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import { Button } from "../components/ui/button/index.js";
   import { Input } from "../components/ui/input/index.js";
   import type { VerifiedOwnerSession } from "../owner-auth";
@@ -9,11 +11,11 @@
     emptyLocationDraft,
     locationCreateIsUncertain,
     locationDraftFromForm,
-    readRealLocations,
     type RealLocation,
   } from "../locations-api";
 
   export let session: VerifiedOwnerSession;
+  export let reads: OwnerReads;
 
   let locations: RealLocation[] = [];
   let loading = true;
@@ -42,11 +44,16 @@
     return "Нет подтверждения от сервера. Повторите запрос.";
   }
 
-  async function refresh(): Promise<void> {
+  async function refresh(force = false): Promise<void> {
+    const cached = reads.locations.peek();
+    if (cached) {
+      locations = cached;
+      loaded = true;
+    }
     loading = true;
     readError = "";
     try {
-      locations = await readRealLocations(session);
+      locations = await reads.locations.load(force);
       loaded = true;
     } catch (reason) {
       loaded = false;
@@ -96,8 +103,16 @@
       uncertain = false;
       ({ displayName, timeZone } = emptyLocationDraft());
       notice = "Филиал сохранён в PostgreSQL. Графики и запись клиентов пока не опубликованы.";
-      await refresh();
+      reads.locations.invalidate();
+      reads.staff.invalidate();
+      reads.invalidateCalendars();
+      reads.overview.invalidate();
+      await refresh(true);
     } catch (reason) {
+      reads.locations.invalidate();
+      reads.overview.invalidate();
+      reads.staff.invalidate();
+      reads.invalidateCalendars();
       // An unknown COMMIT may have succeeded; do not allow a changed payload/key.
       uncertain = locationCreateIsUncertain(uncertain, reason);
       saveError = description(reason);
@@ -122,7 +137,7 @@
 {#if readError}
   <div class="alert-error" role="alert">
     <p>{readError}</p>
-    <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading}>
+    <Button type="button" variant="outline" onclick={() => void refresh(true)} disabled={loading}>
       Повторить загрузку
     </Button>
   </div>
@@ -141,12 +156,12 @@
         <span class="eyebrow">ОРГАНИЗАЦИЯ</span>
         <h2>Сохранённые филиалы</h2>
       </div>
-      <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || saving}>
+      <Button type="button" variant="outline" onclick={() => void refresh(true)} disabled={loading || saving}>
         Обновить
       </Button>
     </div>
-    {#if loading}
-      <p role="status">Загружаем филиалы с сервера…</p>
+    {#if loading && !loaded}
+      <OwnerReadPlaceholder label="Загружаем филиалы с сервера…" />
     {:else if loaded && locations.length === 0}
       <div class="empty-mini">
         <strong>Филиалов пока нет</strong>

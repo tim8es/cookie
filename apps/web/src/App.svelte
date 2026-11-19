@@ -5,85 +5,174 @@
   import Sidebar from "./lib/ui/Sidebar.svelte";
   import Topbar from "./lib/ui/Topbar.svelte";
   import OnboardingHeader from "./lib/ui/OnboardingHeader.svelte";
-  import OwnerAuthGate from "./lib/ui/OwnerAuthGate.svelte";
+  import IdentityAuthGate from "./lib/ui/IdentityAuthGate.svelte";
   import StagingCustomerGate from "./lib/ui/StagingCustomerGate.svelte";
   import RealOwnerWorkspace from "./lib/ui/RealOwnerWorkspace.svelte";
   import {
-    authenticateTelegramOwner,
-    loadTelegramInitData,
     revokeTelegramOwnerSession,
     watchOwnerSessionExpiry,
+    type VerifiedCustomerSession,
     type VerifiedOwnerSession,
   } from "./lib/owner-auth";
+  import { canRetainGlobalIdentity, watchBrowserIdentitySession, type IdentityAuthSession } from "./lib/identity-auth";
+  import { writeLogoutPending, writeWorkspaceHint } from "./lib/workspace-hint";
   import "./styles.css";
   import "./visual-system.css";
 
-  // Presentation selection is not a trusted tenant or role claim.
-  const customerSurface = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "customer-staging";
+  // URL selects a customer presentation only; all access is checked by the API.
+  let customerSurface = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "customer-staging";
+  let customerTenantId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tenantId") ?? "" : "";
   let screen: Screen = "services";
   let preview: ViewState = "normal";
   let ownerSession: VerifiedOwnerSession | null = null;
-  let ownerAuthPhase: "unavailable" | "loading" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
+  let customerSession: VerifiedCustomerSession | null = null;
+  let customerAuthNotice = "";
+  let ownerAuthPhase: "unavailable" | "verified" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
   let stopOwnerExpiry: (() => void) | null = null;
-  let ownerMounted = false;
+  let stopBrowserWatch: (() => void) | null = null;
+  let identityForSwitch: IdentityAuthSession | null = null;
+  let restoreAllowed = true;
 
-  $: verifiedOwner = !customerSurface && ownerAuthPhase === "verified" && ownerSession !== null;
+  $: customerMode = customerSurface || customerSession !== null;
+  $: verifiedOwner = !customerMode && ownerAuthPhase === "verified" && ownerSession !== null;
+  $: ownerAuthNotice = ownerAuthPhase === "signed-out"
+    ? "Вы вышли. Серверная сессия отозвана."
+    : ownerAuthPhase === "logout-failed"
+      ? "Локальный вход закрыт, но сервер не подтвердил отзыв. Старая сессия может действовать до истечения срока."
+      : ownerAuthPhase === "expired"
+        ? "Срок действия сеанса истёк. Войдите снова."
+        : "";
 
-  onMount(() => {
-    ownerMounted = true;
-    if (!customerSurface) void authenticateOwner();
-    return () => {
-      ownerMounted = false;
-      stopOwnerExpiry?.();
-      ownerSession = null;
-    };
+  onMount(() => () => {
+    stopOwnerExpiry?.();
+    stopBrowserWatch?.();
+    ownerSession = null;
+    customerSession = null;
   });
 
-  async function authenticateOwner(): Promise<void> {
-    ownerAuthPhase = "loading";
-    try {
-      const initData = await loadTelegramInitData(window, document);
-      if (!ownerMounted) return;
-      if (!initData) {
-        ownerAuthPhase = "unavailable";
-        return;
-      }
-      const session = await authenticateTelegramOwner(initData);
-      if (!ownerMounted) {
-        await revokeTelegramOwnerSession(session).catch(() => undefined);
-        return;
-      }
+  function watchWorkspace(session: VerifiedOwnerSession): void {
+    stopBrowserWatch?.();
+    stopBrowserWatch = watchBrowserIdentitySession(session, () => {
+      if (ownerSession !== session && customerSession !== session) return;
       stopOwnerExpiry?.();
-      ownerSession = session;
-      ownerAuthPhase = "verified";
-      stopOwnerExpiry = watchOwnerSessionExpiry(
-        session.expiresAtUnixSeconds,
-        () => {
-          if (ownerSession !== session) return;
-          ownerSession = null;
-          ownerAuthPhase = "expired";
-        },
-        window,
-        document,
-      );
-    } catch {
-      if (!ownerMounted) return;
+      stopOwnerExpiry = null;
+      identityForSwitch = null;
+      writeWorkspaceHint(window.history, null);
+      restoreAllowed = false;
       ownerSession = null;
-      ownerAuthPhase = "error";
+      customerSession = null;
+      ownerAuthPhase = "unavailable";
+      customerAuthNotice = "Сессия в браузере изменилась или завершилась. Войдите снова.";
+    }, window, document);
+  }
+
+  function acceptOwnerSession(session: VerifiedOwnerSession): void {
+    identityForSwitch = null;
+    customerSession = null;
+    customerAuthNotice = "";
+    stopOwnerExpiry?.();
+    ownerSession = session;
+    ownerAuthPhase = "verified";
+    writeWorkspaceHint(window.history, session.browserBound ? { role: "business", tenantId: session.tenantId } : null);
+    watchWorkspace(session);
+    stopOwnerExpiry = watchOwnerSessionExpiry(
+      session.expiresAtUnixSeconds,
+      () => {
+        if (ownerSession !== session) return;
+        ownerSession = null;
+        writeWorkspaceHint(window.history, null);
+        stopBrowserWatch?.();
+        restoreAllowed = false;
+        ownerAuthPhase = "expired";
+      },
+      window,
+      document,
+    );
+  }
+
+  function acceptCustomerSession(session: VerifiedCustomerSession): void {
+    identityForSwitch = null;
+    stopOwnerExpiry?.();
+    stopOwnerExpiry = null;
+    ownerSession = null;
+    ownerAuthPhase = "unavailable";
+    customerAuthNotice = "";
+    customerSession = session;
+    writeWorkspaceHint(window.history, session.browserBound ? { role: "customer", tenantId: session.tenantId } : null);
+    watchWorkspace(session);
+  }
+
+  async function leaveDeniedCustomerContext(): Promise<void> {
+    const current = customerSession;
+    if (!current) return;
+    // The child has already hidden all customer data. Only re-enter the
+    // chooser if this exact account is still authenticated independently.
+    const retain = await canRetainGlobalIdentity(current);
+    if (customerSession !== current) return;
+    if (retain && current.expiresAtUnixSeconds > Math.floor(Date.now() / 1000)) {
+      switchAccountContext();
+      customerAuthNotice = "Доступ к клиентскому кабинету не подтверждён. Выберите доступный кабинет.";
+      return;
     }
+    clearCustomerSession("expired");
+  }
+
+  function clearCustomerSession(reason: "expired" | "signed-out" | "logout-failed"): void {
+    stopBrowserWatch?.();
+    writeWorkspaceHint(window.history, null);
+    restoreAllowed = false;
+    identityForSwitch = null;
+    customerSession = null;
+    customerAuthNotice = reason === "signed-out"
+      ? "Вы вышли. Серверная сессия отозвана."
+      : reason === "logout-failed"
+        ? "Локальный клиентский вход закрыт, но сервер не подтвердил отзыв. Не используйте эту сессию."
+        : "Клиентская сессия завершена или отозвана. Войдите снова.";
+  }
+
+  function switchAccountContext(): void {
+    const current = customerSession ?? ownerSession;
+    if (!current?.accessToken.startsWith("is_")) return;
+    if (current.expiresAtUnixSeconds <= Math.floor(Date.now() / 1000)) return;
+    identityForSwitch = {
+      accessToken: current.accessToken,
+      expiresAtUnixSeconds: current.expiresAtUnixSeconds,
+      browserBound: current.browserBound,
+    };
+    writeWorkspaceHint(window.history, null);
+    restoreAllowed = true;
+    stopBrowserWatch?.();
+    stopOwnerExpiry?.();
+    stopOwnerExpiry = null;
+    ownerSession = null;
+    customerSession = null;
+    ownerAuthPhase = "unavailable";
+    customerAuthNotice = "";
+    screen = "services";
+    // Explicitly leave the customer-only presentation, not its permissions.
+    customerSurface = false;
+    customerTenantId = "";
+    const url = new URL(window.location.href);
+    url.searchParams.delete("surface");
+    url.searchParams.delete("tenantId");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
   }
 
   async function logoutOwner(): Promise<void> {
     const session = ownerSession;
     if (!session || ownerAuthPhase !== "verified") return;
-    // Discard the bearer immediately; even failed remote revocation cannot
-    // restore any owner permissions in the current browser session.
+    if (session.accessToken.startsWith("is_")) writeLogoutPending(window.history, true);
+    else writeWorkspaceHint(window.history, null);
+    stopBrowserWatch?.();
     stopOwnerExpiry?.();
     stopOwnerExpiry = null;
+    restoreAllowed = false;
+    identityForSwitch = null;
     ownerSession = null;
     ownerAuthPhase = "signing-out";
     try {
       await revokeTelegramOwnerSession(session);
+      if (session.accessToken.startsWith("is_")) writeLogoutPending(window.history, false);
       ownerAuthPhase = "signed-out";
     } catch {
       ownerAuthPhase = "logout-failed";
@@ -92,7 +181,7 @@
 </script>
 
 <svelte:head>
-  <title>{customerSurface ? "kuki — вход клиента (staging)" : "kuki — кабинет салона"}</title>
+  <title>{customerMode ? "kuki — вход клиента (staging)" : verifiedOwner ? "kuki — кабинет салона" : "kuki — вход и регистрация"}</title>
   <meta name="description" content="kuki: защищённый кабинет услуг и мастеров." />
 </svelte:head>
 
@@ -102,17 +191,32 @@
   {/if}
   <div class="main-area">
     {#if verifiedOwner}
-      <Topbar {screen} bind:preview canCreateBooking={false} demoMode={false} onNavigate={(next) => screen = next} onLogout={() => void logoutOwner()} />
+      <Topbar {screen} bind:preview canCreateBooking={false} demoMode={false} onNavigate={(next) => screen = next} onLogout={() => void logoutOwner()} onSwitchAccount={ownerSession?.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
     {:else}
-      <OnboardingHeader apiMode={true} />
+      <OnboardingHeader apiMode={true} label={customerMode ? "Клиентский staging" : "Вход и регистрация"} />
     {/if}
     <main class="content">
-      {#if customerSurface}
-        <StagingCustomerGate />
-      {:else if ownerAuthPhase === "verified" && ownerSession}
-        <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} />
+      {#if customerSession}
+        <StagingCustomerGate initialSession={customerSession} onContextDenied={() => void leaveDeniedCustomerContext()} onSessionCleared={clearCustomerSession} onSwitchAccount={customerSession.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
+      {:else if verifiedOwner && ownerSession}
+        {#key ownerSession}
+          <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} />
+        {/key}
+      {:else if ownerAuthPhase === "signing-out"}
+        <section class="state-card feedback-state" aria-label="Завершение сеанса">
+          <h1>Завершаем сеанс</h1>
+          <p role="status">Ожидаем подтверждение выхода от сервера.</p>
+        </section>
       {:else}
-        <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
+        <IdentityAuthGate
+          customerSurface={customerSurface}
+          {customerTenantId}
+          authNotice={customerAuthNotice || ownerAuthNotice}
+          initialIdentitySession={identityForSwitch}
+          {restoreAllowed}
+          onOwnerSession={acceptOwnerSession}
+          onCustomerSession={acceptCustomerSession}
+        />
       {/if}
     </main>
   </div>

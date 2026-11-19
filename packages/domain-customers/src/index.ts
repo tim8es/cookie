@@ -1,5 +1,8 @@
 /** Verified synthetic client read capabilities. Operator enrollment stays internal. */
-export { readStagingCustomerContext } from "./staging-customer.js";
+export {
+  enrollStagingCustomerInTransaction,
+  readStagingCustomerContext,
+} from "./staging-customer.js";
 export {
   listStagingCustomerOffers,
   listStagingCustomerSlots,

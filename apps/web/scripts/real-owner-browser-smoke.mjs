@@ -126,6 +126,12 @@ async function button(cdp, label) {
     }
     return;
   }
+  // Authentication may be restoring on mount. Await the enabled control,
+  // not merely its presence, before attempting the user's next action.
+  if (label === "Я представляю бизнес" || label === "Войти через Telegram") {
+    await requireDom(cdp, "auth control ready: " + label,
+      "[...document.querySelectorAll('button')].some(el=>el.getClientRects().length&&!el.disabled&&el.textContent.trim()===" + JSON.stringify(label) + ")");
+  }
   // Actual rendered button + native click, no direct function invocation.
   const clicked = await evaluate(cdp,
     "(() => {const b=[...document.querySelectorAll('button')].find(el=>el.getClientRects().length&&!el.disabled&&el.textContent.trim()===" +
@@ -148,6 +154,21 @@ async function load(cdp, origin, proof, previous) {
   });
   await cdp.send("Page.navigate", { url: origin });
   return identifier;
+}
+
+async function enterTelegram(cdp, role) {
+  if (role === "business") {
+    await requireDom(cdp, "business role choice", "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я представляю бизнес')");
+    await button(cdp, "Я представляю бизнес");
+  }
+  await requireDom(cdp, "single Telegram-only login action", "!document.body.innerText.includes('email и пароль') && [...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Войти через Telegram').length===1");
+  await button(cdp, "Войти через Telegram");
+}
+
+async function loadAndEnterTelegram(cdp, origin, proof, previous, role) {
+  const script = await load(cdp, origin, proof, previous);
+  await enterTelegram(cdp, role);
+  return script;
 }
 
 async function waitForm(cdp, name) {
@@ -256,6 +277,8 @@ async function requireOverview(cdp) {
     "document.querySelector('.list-items')?.innerText.includes('Synthetic Central') && " +
     "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(BRANCH_NAME) + ") && " +
     "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(BRANCH_ZONE) + ")");
+  await requireDom(cdp, "private customer staging link is scoped to this organization",
+    "(() => {const a=[...document.querySelectorAll('a[data-slot=button]')].find(x=>x.textContent.includes('Открыть клиентский staging'));if(!a)return false;const u=new URL(a.href);return u.searchParams.get('surface')==='customer-staging'&&Boolean(u.searchParams.get('tenantId'));})()");
 }
 
 async function requireShift(cdp) {
@@ -273,6 +296,7 @@ async function main() {
   const botToken = "123456789:" + randomBytes(24).toString("base64url");
   const userHashSecret = randomBytes(32);
   const userId = randomInt(100000000, 999999999);
+  const onboardingUserId = userId + 2_000_000_000;
   let browserData;
   let api, chrome, cdp;
   const errors = [], external = [], responses = [];
@@ -286,6 +310,12 @@ async function main() {
       DATABASE_URL: databaseUrl, HOST: "127.0.0.1", PORT: String(port),
       COOKIE_WEB_DIST: resolve("apps/web/dist"),
       COOKIE_TELEGRAM_AUTH_MODE: "enabled",
+      COOKIE_TELEGRAM_SELF_REGISTRATION_MODE: "enabled",
+      COOKIE_TELEGRAM_OIDC_MODE: "enabled",
+      COOKIE_TELEGRAM_OIDC_CLIENT_ID: "123456789",
+      COOKIE_TELEGRAM_OIDC_CLIENT_SECRET: randomBytes(32).toString("base64url"),
+      COOKIE_TELEGRAM_OIDC_REDIRECT_URI: "https://cookie-e2e.invalid/auth/telegram/callback",
+      COOKIE_TELEGRAM_OIDC_COOKIE_KEY: randomBytes(32).toString("hex"),
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
       COOKIE_TELEGRAM_USER_HMAC_SECRET: userHashSecret.toString("hex"),
       COOKIE_TELEGRAM_BOT_TOKEN: botToken,
@@ -345,12 +375,227 @@ async function main() {
     });
     await viewport(cdp, 375, 812);
 
+    let script = await load(cdp, origin, "", undefined);
+    await requireDom(cdp, "self-service role selection before authentication",
+      "document.body.innerText.includes('Вход и регистрация') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я представляю бизнес') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я клиент')");
+    await poll("auth methods response", () => responses.some((r) => r.path === "/v1/auth/methods" && r.status === 200));
+    for (const [width, height] of [[320,568],[375,812],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"self-service role selection "+width+"px");
+      await checkLabeledControls(cdp,"self-service role selection "+width+"px");
+    }
+    await viewport(cdp,375,812);
+
+    const onboardingOrganization = "Synthetic onboarding salon";
+    const onboardingLocation = "Synthetic onboarding branch";
+    script = await load(cdp, origin, signedProof(botToken, onboardingUserId), script);
+    await requireDom(cdp, "business signup role", "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я представляю бизнес')");
+    await button(cdp, "Я представляю бизнес");
+    await button(cdp, "Создать учётную запись");
+    await requireDom(cdp, "single Telegram registration action", "[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Зарегистрироваться через Telegram').length===1");
+    await evaluate(cdp, "window.__cookieOrganizationLookupCount=0;const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const path=new URL(String(input),window.location.href).pathname;if(path==='/v1/auth/identity/organizations'&&window.__cookieOrganizationLookupCount++===0)return Promise.resolve(new Response(null,{status:503}));return nativeFetch(input,init);};");
+    await button(cdp, "Зарегистрироваться через Telegram");
+    await requireDom(cdp, "organization lookup failure keeps workspace creation closed",
+      "window.__cookieOrganizationLookupCount===1 && document.body.innerText.includes('Вход подтверждён, но данные учётной записи не загрузились. Повторите загрузку.') && !document.querySelector('#organization-name')");
+    await button(cdp, "Повторить загрузку");
+    await requireDom(cdp, "workspace form offers IANA zones and UTC offsets",
+      "window.__cookieOrganizationLookupCount===2 && document.querySelector('#organization-name') && document.querySelector('#location-name') && document.querySelector('#identity-time-zone')?.tagName==='SELECT' && document.querySelector('#identity-time-zone')?.value===Intl.DateTimeFormat().resolvedOptions().timeZone && [...document.querySelectorAll('#identity-time-zone option')].some(o=>o.value==='Europe/Moscow'&&o.textContent.includes('UTC+03:00')) && document.body.innerText.includes('относительно UTC')");
+    for (const [width, height] of [[320,568],[375,812],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"owner workspace signup "+width+"px");
+      await checkLabeledControls(cdp,"owner workspace signup "+width+"px");
+    }
+    await viewport(cdp,375,812);
+    await fill(cdp,"#organization-name",onboardingOrganization);
+    await fill(cdp,"#location-name",onboardingLocation);
+    await evaluate(cdp,"(()=>{const s=document.querySelector('#identity-time-zone');s.value='Europe/Moscow';s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await submitValidForm(cdp,".identity-auth-fields");
+    const workspaceResponse=await poll("owner workspace API response",()=>responses.find(r=>r.path==="/v1/auth/owner/workspace"));
+    assert.equal(workspaceResponse.status,201,"Owner workspace response should create a workspace; UI: "+(await evaluate(cdp,"document.body.innerText")).slice(-500));
+    await requireDom(cdp,"new owner navigation after signup","document.querySelector('.real-owner-nav')");
+    await button(cdp,"Обзор");
+    await requireDom(cdp,"new owner workspace appears after signup",
+      "document.querySelector('h1')?.textContent.trim()==="+JSON.stringify(onboardingOrganization)+" && document.querySelector('.list-items')?.innerText.includes("+JSON.stringify(onboardingLocation)+")");
+    const onboardingRows=await pool.query(
+      `SELECT o.id::text AS tenant_id,l.id::text AS location_id,l.time_zone
+         FROM cookie_tenancy.organizations o
+         JOIN cookie_tenancy.locations l ON l.tenant_id=o.id
+        WHERE o.display_name=$1 AND l.display_name=$2`,
+      [onboardingOrganization,onboardingLocation],
+    );
+    assert.equal(onboardingRows.rowCount,1);
+    assert.equal(onboardingRows.rows[0].time_zone,"Europe/Moscow");
+
+    // Global identity remains authenticated across reload and explicit role
+    // switch. No fresh Telegram proof or client-side credential storage.
+    const beforeRestore = responses.length;
+    await cdp.send("Page.reload", { ignoreCache: true });
+    await poll("server-confirmed browser session restoration", () =>
+      responses.slice(beforeRestore).some(r=>r.path==="/v1/auth/browser-session"&&r.status===200));
+    await requireDom(cdp, "last global owner workspace restored after reload",
+      "document.querySelector('.real-owner-nav')");
+    await button(cdp,"Обзор");
+    await requireDom(cdp,"same verified organization restored",
+      "document.querySelector('h1')?.textContent.trim()==="+JSON.stringify(onboardingOrganization));
+    assert.ok(responses.slice(beforeRestore).some(r=>r.path.endsWith("/session-context")&&r.status===200));
+    await button(cdp, "Сменить кабинет");
+    await requireDom(cdp, "returned to identity chooser without sign-in",
+      "document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");
+    await button(cdp, "Я представляю бизнес");
+    await requireDom(cdp, "organization still available after switching",
+      "document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+    // Give only the new synthetic organization's identity a private test grant.
+    // The original seeded salon retains its later no-grant acceptance test.
+    const dualTenant = onboardingRows.rows[0].tenant_id;
+    await issueStagingGrant(pool, dualTenant, 1, new Date(Date.now()+3600000).toISOString());
+    await button(cdp,"Сменить сценарий");
+    await requireDom(cdp,"dual role client choice available",
+      "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я клиент'&&!b.disabled)");
+    await button(cdp,"Я клиент");
+    await requireDom(cdp,"explicit first client enrollment","document.querySelector('#customer-tenant-id') && !document.querySelector('#customer-tenant-id').disabled");
+    await fill(cdp,"#customer-tenant-id",dualTenant);
+    await evaluate(cdp,"document.querySelector('.identity-consent input').click()");
+    await requireDom(cdp,"consented client enrollment ready","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Продолжить как клиент'&&!b.disabled)");
+    await button(cdp,"Продолжить как клиент");
+    const clientGate = "document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.textContent.trim()==='Вход клиента подтверждён' && !document.querySelector('.real-owner-nav')";
+    await requireDom(cdp,"same identity enters client workspace",clientGate);
+    const enrolled = await pool.query(
+      "SELECT c.customer_id::text,c.identity_id::text FROM cookie_customers.staging_customer_identities c WHERE c.tenant_id=$1::uuid",
+      [dualTenant],
+    );
+    assert.equal(enrolled.rowCount,1);
+    const roles = await pool.query(
+      "SELECT DISTINCT r.base_type FROM cookie_identity.roles r JOIN cookie_identity.role_assignments a ON a.tenant_id=r.tenant_id AND a.role_id=r.id WHERE r.tenant_id=$1::uuid AND a.identity_id=$2::uuid AND a.active AND r.active ORDER BY r.base_type",
+      [dualTenant,enrolled.rows[0].identity_id],
+    );
+    assert.deepEqual(roles.rows.map(r=>r.base_type),["client","owner"]);
+    const beforeClientReload=responses.length;
+    await cdp.send("Page.reload",{ignoreCache:true});
+    await poll("client cookie restored",()=>responses.slice(beforeClientReload).some(r=>r.path==="/v1/auth/browser-session"&&r.status===200));
+    await requireDom(cdp,"client workspace restored after reload",clientGate);
+    await button(cdp,"Сменить кабинет");
+    await requireDom(cdp,"identity chooser after client workspace","document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");
+    await button(cdp,"Я представляю бизнес");
+    await requireDom(cdp,"dual role owner membership","document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+    await evaluate(cdp,"[...document.querySelectorAll('.identity-organization-list button')].find(b=>b.textContent.includes("+JSON.stringify(onboardingOrganization)+")&&!b.disabled).click()");
+    await requireDom(cdp,"owner workspace reentered without authentication","document.querySelector('.real-owner-nav')");
+    await button(cdp,"Сменить кабинет");
+    await requireDom(cdp,"client choice after returning from owner","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я клиент'&&!b.disabled)");
+    await button(cdp,"Я клиент");
+    await requireDom(cdp,"existing customer visible without new enrollment","document.querySelector('[aria-label=\"Клиентские организации\"]')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+    await evaluate(cdp,"document.querySelector('[aria-label=\"Клиентские организации\"] button').click()");
+    await requireDom(cdp,"existing customer reentered",clientGate);
+    assert.equal(responses.slice(beforeRestore).filter(r=>r.path.endsWith("/staging-customer/enroll")).length,1,"Existing client selection must not enroll again");
+    assert.deepEqual((await pool.query("SELECT c.customer_id::text,c.identity_id::text FROM cookie_customers.staging_customer_identities c WHERE c.tenant_id=$1::uuid",[dualTenant])).rows,enrolled.rows);
+    // Actual committed role revocation (not a mocked 403) must close only
+    // the client workspace and preserve the independently valid identity.
+    await requireDom(cdp,"customer catalog ready before role revocation","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Обновить каталог'&&!b.disabled)");
+    const revokedClient=await pool.query(
+      "UPDATE cookie_identity.role_assignments a SET active=false FROM cookie_identity.roles r WHERE a.tenant_id=$1::uuid AND a.identity_id=$2::uuid AND a.tenant_id=r.tenant_id AND a.role_id=r.id AND r.base_type='client' AND a.active",
+      [dualTenant,enrolled.rows[0].identity_id],
+    );
+    assert.equal(revokedClient.rowCount,1);
+    const beforeDenied=responses.length;
+    await button(cdp,"Обновить каталог");
+    await requireDom(cdp,"revoked client returns to authenticated chooser","document.body.innerText.includes('Настройте kuki') && document.body.innerText.includes('Доступ к клиентскому кабинету не подтверждён') && !document.querySelector('.real-owner-nav')");
+    assert.ok(responses.slice(beforeDenied).some(r=>r.path.endsWith("/staging-customer-offers")&&r.status===403));
+    await button(cdp,"Я представляю бизнес");
+    await requireDom(cdp,"owner role survives client revocation","document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+    await evaluate(cdp,"[...document.querySelectorAll('.identity-organization-list button')].find(b=>b.textContent.includes("+JSON.stringify(onboardingOrganization)+")&&!b.disabled).click()");
+    await requireDom(cdp,"owner workspace still accessible","document.querySelector('.real-owner-nav')");
+    await button(cdp,"Сменить кабинет");
+    await requireDom(cdp,"identity chooser before logout","document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");
+    assert.equal(responses.slice(beforeRestore).filter(r=>r.path==="/v1/auth/telegram/identity").length,0);
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
+    // Simulate a transport failure before the logout request reaches the API.
+    // The HttpOnly cookie is therefore still live; reload must not restore it.
+    await requireDom(cdp,"ready for failed logout","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Выйти из учётной записи'&&!b.disabled)");
+    await evaluate(cdp,"(()=>{const original=window.fetch.bind(window);window.fetch=(input,init)=>new URL(String(input),location.href).pathname==='/v1/auth/identity/logout'?Promise.reject(new TypeError('synthetic offline')):original(input,init);})()");
+    await button(cdp,"Выйти из учётной записи");
+    await requireDom(cdp,"failed logout local access closed","document.body.innerText.includes('сервер не подтвердил отзыв') && !document.querySelector('.real-owner-nav')");
+    assert.equal(await evaluate(cdp,"history.state?.kukiLogoutPending"),true);
+    const beforeFailedLogoutReload=responses.length;
+    // Re-open the existing Telegram identity explicitly using a fresh proof
+    // after checking that normal reload did not silently restore its cookie.
+    await cdp.send("Page.removeScriptToEvaluateOnNewDocument",{identifier:script});
+    const freshProof=signedProof(botToken,onboardingUserId);
+    ({identifier:script}=await cdp.send("Page.addScriptToEvaluateOnNewDocument",{
+      source:"window.Telegram={WebApp:{initData:"+JSON.stringify(freshProof)+"}};window.__cookieTestClockMs=0;const realNow=Date.now.bind(Date);Date.now=()=>realNow()+window.__cookieTestClockMs;",
+    }));
+    await cdp.send("Page.reload",{ignoreCache:true});
+    await requireDom(cdp,"pending logout blocks automatic restore","document.body.innerText.includes('Автоматическое восстановление отключено') && !document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");
+    await poll("methods after failed logout reload",()=>responses.slice(beforeFailedLogoutReload).some(r=>r.path==="/v1/auth/methods"&&r.status===200));
+    assert.ok(!responses.slice(beforeFailedLogoutReload).some(r=>r.path==="/v1/auth/browser-session"));
+    await button(cdp,"Я представляю бизнес");
+    await requireDom(cdp,"explicit Telegram reauthentication ready","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Войти через Telegram'&&!b.disabled)");
+    await button(cdp,"Войти через Telegram");
+    await requireDom(cdp,"fresh identity after failed logout","document.body.innerText.includes('Настройте kuki') && document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+    assert.equal(await evaluate(cdp,"history.state?.kukiLogoutPending===true"),false);
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
+    // A second actual Chromium tab shares the browser cookie but not its JS
+    // memory or history hint. It must close the owner UI after the first logs out.
+    const {targetId:secondId}=await cdp.send("Target.createTarget",{url:"about:blank"});
+    const secondTarget=await poll("second browser tab",async()=>{
+      const response=await getLocal("http://127.0.0.1:"+started.handle.port+"/json/list");
+      return JSON.parse(response.text).find(page=>page.id===secondId&&page.webSocketDebuggerUrl);
+    });
+    const second=createClient(secondTarget.webSocketDebuggerUrl);
+    try {
+      await second.ready;
+      await second.send("Page.enable");
+      await second.send("Runtime.enable");
+      await second.send("Network.enable");
+      await second.send("Network.setBlockedURLs",{urls:["https://*"]});
+      const secondResponses=[];
+      second.onEvent("Runtime.exceptionThrown",()=>errors.push("uncaught second tab exception"));
+      second.onEvent("Network.responseReceived",({response})=>{
+        if(response.url.startsWith(origin)) secondResponses.push({path:new URL(response.url).pathname,status:response.status});
+      });
+      await viewport(second,375,812);
+      await load(second,origin,"",undefined);
+      await requireDom(second,"second tab restores shared identity","document.body.innerText.includes('Настройте kuki')");
+      await button(second,"Я представляю бизнес");
+      await requireDom(second,"second tab owner membership","document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+      await evaluate(second,"[...document.querySelectorAll('.identity-organization-list button')].find(b=>b.textContent.includes("+JSON.stringify(onboardingOrganization)+")&&!b.disabled).click()");
+      await requireDom(second,"second tab authenticated owner","document.querySelector('.real-owner-nav')");
+      assert.ok(secondResponses.some(r=>r.path==="/v1/auth/browser-session"&&r.status===200));
+      assert.ok(!secondResponses.some(r=>r.path==="/v1/auth/telegram/identity"));
+      await requireDom(cdp,"first tab ready to sign out","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Выйти из учётной записи'&&!b.disabled)");
+      await button(cdp,"Выйти из учётной записи");
+      await requireDom(cdp,"global logout before separate-account test",
+        "document.body.innerText.includes('Вы вышли') && !document.querySelector('.real-owner-nav')");
+      await requireDom(second,"second tab closes revoked owner UI",
+        "!document.querySelector('.real-owner-nav') && document.body.innerText.includes('Сессия в браузере изменилась или завершилась')");
+      assert.ok(secondResponses.some(r=>r.path==="/v1/auth/browser-session"&&r.status===401));
+      assert.equal(await evaluate(second,"localStorage.length + sessionStorage.length"),0);
+    } finally {
+      second.close();
+      await cdp.send("Target.closeTarget",{targetId:secondId});
+    }
+    const logoutMarker = responses.length;
+    script = await load(cdp, origin, "", script);
+    await poll("revoked global session no longer restores",()=>responses.slice(logoutMarker).some(r=>r.path==="/v1/auth/browser-session"&&r.status===401));
+
+    const browserAuthResponsesBefore = responses.length;
+    script = await load(cdp, origin, "", script);
+    await poll("regular browser auth methods response", () =>
+      responses.slice(browserAuthResponsesBefore).some((r) => r.path === "/v1/auth/methods" && r.status === 200),
+    );
+    await button(cdp, "Я представляю бизнес");
+    await requireDom(cdp, "single regular-browser Telegram action",
+      "!document.body.innerText.includes('email и пароль') && [...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Войти через Telegram').length===1");
+    await evaluate(cdp, "window.Telegram.WebApp.initData='synthetic-browser-only';window.__cookieTelegramAuthRequests=[];const nativeFetch=window.fetch.bind(window);window.fetch=(input,init)=>{const path=new URL(String(input),window.location.href).pathname;if(path==='/v1/auth/telegram/oidc/start'){window.__cookieTelegramAuthRequests.push(path);return Promise.resolve(new Response(null,{status:503}));}return nativeFetch(input,init);};");
+    await button(cdp, "Войти через Telegram");
+    await requireDom(cdp, "regular browser starts Telegram Web authorization",
+      "window.__cookieTelegramAuthRequests.length===1 && window.__cookieTelegramAuthRequests[0]==='/v1/auth/telegram/oidc/start' && document.body.innerText.includes('Сервер недоступен или не подтвердил действие. Попробуйте ещё раз.')");
+
     // Malformed proof must not show authenticated UI or a synthetic fallback.
-    let script = await load(cdp, origin, "invalid-synthetic-proof", undefined);
+    script = await load(cdp, origin, "invalid-synthetic-proof", script);
+    await enterTelegram(cdp, "business");
     await requireDom(cdp, "forged proof rejected",
-      "document.body.innerText.includes('Вход не подтверждён') && !document.querySelector('.real-owner-nav')");
-    assert.ok(responses.some((r) => r.path === "/v1/auth/telegram/exchange" && r.status === 401));
-    script = await load(cdp, origin, signedProof(botToken, userId), script);
+      "document.body.innerText.includes('Не удалось подтвердить вход') && !document.querySelector('.real-owner-nav')");
+    assert.ok(responses.some((r) => r.path === "/v1/auth/telegram/identity" && r.status === 401));
+    script = await loadAndEnterTelegram(cdp, origin, signedProof(botToken, userId), script, "business");
     await requireDom(cdp, "authenticated real services",
       "document.querySelector('.real-owner-nav') && document.body.innerText.includes('Услуги салона')");
     await requireDom(cdp, "shared owner shell without demo controls", "document.querySelector(\'.verified-owner-shell[data-cookie-mode=api] .sidebar\') && !document.querySelector(\'.demo-ribbon, .preview-control, .onboarding-header\')");
@@ -452,7 +697,7 @@ async function main() {
 
     await stopServer(api);
     api = await startServer(env, origin);
-    script = await load(cdp, origin, signedProof(botToken, userId), script);
+    script = await loadAndEnterTelegram(cdp, origin, signedProof(botToken, userId), script, "business");
     await requireDom(cdp, "service persisted after process restart",
       "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
     await button(cdp, "Мастера");
@@ -523,7 +768,7 @@ async function main() {
     await requireDom(cdp, "logout before shift persistence check", "document.body.innerText.includes('Вы вышли')");
     await stopServer(api);
     api = await startServer(env, origin);
-    script = await load(cdp, origin, signedProof(botToken, userId), script);
+    script = await loadAndEnterTelegram(cdp, origin, signedProof(botToken, userId), script, "business");
     await requireDom(cdp, "authenticated after schedule restart", "document.querySelector('.real-owner-nav')");
     await button(cdp,"Расписание");
     await requireDom(cdp,"published shift persisted after restart","document.querySelector('.schedule-summary')?.innerText.includes('Опубликована в тестовом контуре')");
@@ -536,7 +781,12 @@ async function main() {
     await provisionStagingCustomer(pool,createTelegramMiniAppProofVerifier({botToken,maxAgeSeconds:300}),userHashSecret,{
       tenantId:owner.tenantId,rawInitData:signedProof(botToken,customerUserId),consentConfirmed:true,
     });
-    script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script);
+    const beforeWrongRole=responses.length;
+    script=await loadAndEnterTelegram(cdp,origin,signedProof(botToken,customerUserId),script,"business");
+    await requireDom(cdp,"legacy client rejected from business workspace",
+      "document.body.innerText.includes('Не удалось подтвердить вход') && !document.querySelector('.real-owner-nav')");
+    assert.ok(responses.slice(beforeWrongRole).some(r=>r.status===403&&r.path.endsWith("/session-context")));
+    script=await loadAndEnterTelegram(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script,"customer");
     await requireDom(cdp,"verified client context","document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента подтверждён' && !document.querySelector('.real-owner-nav')");
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-context")));
     await checkWidth(cdp,"real client context");
@@ -559,18 +809,18 @@ async function main() {
     await checkLabeledControls(cdp,"real customer offers");
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
     await button(cdp,"Выйти");
-    await requireDom(cdp,"customer logout","document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вы вышли'");
-    script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,userId),script);
-    await requireDom(cdp,"owner rejected on client surface","document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента не подтверждён'");
+    await requireDom(cdp,"customer logout","document.body.innerText.includes('Вход клиента') && !document.querySelector('section[aria-label=\"Клиентская витрина staging\"]')");
+    script=await loadAndEnterTelegram(cdp,origin+"?surface=customer-staging",signedProof(botToken,userId),script,"customer");
+    await requireDom(cdp,"owner rejected on client surface","document.body.innerText.includes('Не удалось подтвердить вход') && !document.querySelector('section[aria-label=\"Клиентская витрина staging\"]')");
     assert.ok(!(await evaluate(cdp,"Boolean(document.querySelector('.real-owner-nav'))")));
     assert.deepEqual(external, [], "Unexpected real-mode external network requests");
     assert.deepEqual(errors, [], "Unexpected browser runtime errors");
     // Main's suspended-tab expiry contract also applies to the client surface.
-    script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script);
+    script=await loadAndEnterTelegram(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script,"customer");
     await requireDom(cdp,"client catalog before local expiry","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
     await evaluate(cdp,"window.__cookieTestClockMs=3600001;document.dispatchEvent(new Event('visibilitychange'));");
-    await requireDom(cdp,"client fails closed on local expiry","!document.querySelector("+JSON.stringify(panel)+") && document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента не подтверждён'");
-    script=await load(cdp,origin,signedProof(botToken,userId),script);
+    await requireDom(cdp,"client fails closed on local expiry","!document.querySelector("+JSON.stringify(panel)+") && document.body.innerText.includes('Вход клиента') && !document.querySelector('.real-owner-nav')");
+    script=await loadAndEnterTelegram(cdp,origin,signedProof(botToken,userId),script,"business");
     await requireDom(cdp,"owner for calendar","document.querySelector('.real-owner-nav')");
     // The production write API remains absent. Seed exactly one synthetic
     // persisted Booking in this isolated CI database to test read-only Calendar.
@@ -601,7 +851,7 @@ async function main() {
     await button(cdp, "Выйти");
     await requireDom(cdp, "calendar owner logout", "document.body.innerText.includes('Вы вышли')");
     // Launch a fresh verified session, then simulate tab resume after local expiry.
-    script = await load(cdp, origin, signedProof(botToken, userId), script);
+    script = await loadAndEnterTelegram(cdp, origin, signedProof(botToken, userId), script, "business");
     await requireDom(cdp, "fresh session for expiry", "document.querySelector('.real-owner-nav') && document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
     await button(cdp, "Мастера");
     await requireDom(cdp, "protected staff before expiry", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
@@ -614,7 +864,7 @@ async function main() {
     // write switch only in this isolated synthetic CI process.
     await stopServer(api);
     api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60" }, origin);
-    script = await load(cdp, origin+"?surface=customer-staging", signedProof(botToken,customerUserId), script);
+    script = await loadAndEnterTelegram(cdp, origin+"?surface=customer-staging", signedProof(botToken,customerUserId), script, "customer");
     await requireDom(cdp,"write-enabled customer catalog","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
     for(let i=0;i<3;i++){
       await requireDom(cdp,"booking selection "+i,"document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.options.length===2 && !document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.disabled");
@@ -685,7 +935,7 @@ async function main() {
       [owner.tenantId],
     );
     const beforeProjection = await recoveryProjection();
-    script=await load(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script);
+    script=await loadAndEnterTelegram(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script,"customer");
     await requireDom(cdp,"reload retains unresolved marker","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Статус предыдущей попытки неизвестен')");
     await button(cdp,"Найти подтверждение записи");
     await requireDom(cdp,"receipt recovered by same key","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Восстановлено по исходной операции')&&document.querySelector("+JSON.stringify(panel)+")?.innerText.includes("+JSON.stringify(beforeRecovery.rows[0].id)+")");

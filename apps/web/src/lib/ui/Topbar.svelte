@@ -9,6 +9,7 @@
   export let canCreateBooking: boolean;
   export let demoMode = true;
   export let onLogout: (() => void) | undefined = undefined;
+  export let onSwitchAccount: (() => void) | undefined = undefined;
   export let onNavigate: (next: Screen) => void;
 
   $: displayTitle = screens.find((item) => item.id === screen)?.label ?? "kuki";
@@ -44,6 +45,9 @@
       <span>Новая запись</span>
     </Button>
     {:else}
+      {#if onSwitchAccount}
+        <Button type="button" variant="outline" onclick={onSwitchAccount}>Сменить кабинет</Button>
+      {/if}
       <Button type="button" variant="outline" onclick={onLogout}>Выйти</Button>
     {/if}
   </div>
