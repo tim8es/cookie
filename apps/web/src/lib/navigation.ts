@@ -36,7 +36,8 @@ export function ownerScreenPath(screen: Screen): string {
 export function ownerScreenFromPath(path: string): Screen | null {
   if (path === "/") return defaultOwnerScreen;
   const normalized = path.endsWith("/") ? path.slice(0, -1) : path;
-  return screens.find(({ id }) => ownerScreenPath(id) === normalized)?.id ?? null;
+  const match = screens.find(({ id }) => ownerScreenPath(id) === normalized);
+  return match?.id ?? null;
 }
 
 /** Retain existing launch context; never add any session or tenant claims. */
