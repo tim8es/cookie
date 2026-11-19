@@ -220,7 +220,8 @@ test(
       const wrongBranch = await read(detailUrl(other));
       assert.equal(wrongBranch.statusCode, 404);
       assert.deepEqual(wrongBranch.json(), missing.json());
-      assert.equal((await read(detailUrl(other, otherBranch))).statusCode, 200);
+      const inOtherBranch = await read(detailUrl(other, otherBranch));
+      assert.equal(inOtherBranch.statusCode, 200);
       const foreign = await read(path.replace(tenant, randomUUID()));
       assert.equal(foreign.statusCode, 403);
       const injected = await read(path + "&customerId=" + customerId);

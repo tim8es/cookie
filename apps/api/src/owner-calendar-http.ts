@@ -133,7 +133,8 @@ export function registerOwnerCalendar(
             );
           },
         );
-        if (!detail) return reply.code(404).send({ error: "booking-not-found" });
+        if (!detail)
+          return reply.code(404).send({ error: "booking-not-found" });
         return reply.send(detail);
       } catch (error) {
         if (error instanceof AuthorizationDeniedError)

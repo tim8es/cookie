@@ -233,6 +233,9 @@ export async function readOwnerBookingDetail(
     const cancelled = ["CancelledByClient", "CancelledByBusiness"].includes(
       detail.status,
     );
+    const validCancellation = cancelled
+      ? instant(detail.cancelledAt)
+      : detail.cancelledAt === null;
     if (
       Object.keys(detail).length !== 13 ||
       detail.id !== bookingId ||
@@ -245,7 +248,7 @@ export async function readOwnerBookingDetail(
       buffer < 0 ||
       buffer > 1440 ||
       !instant(detail.occupiedUntil) ||
-      (cancelled ? !instant(detail.cancelledAt) : detail.cancelledAt !== null) ||
+      !validCancellation ||
       Date.parse(detail.endAt) - Date.parse(detail.startAt) !==
         duration * 60000 ||
       Date.parse(detail.occupiedUntil) - Date.parse(detail.endAt) !==
