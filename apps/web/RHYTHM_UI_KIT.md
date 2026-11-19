@@ -1,4 +1,4 @@
-# kuki — Rhythm UI Kit, D6 candidate 0.3
+# kuki — Rhythm UI Kit, D6 candidate 1.0 RC
 
 Status: PROPOSED, not Design Freeze. Refs #338 and #223. Visual reference:
 RC7.1 interactive concept (owner review), RC6 component contracts, RC7.1 catalog
@@ -30,6 +30,15 @@ owns opt-in styling; its CSS is separate from the legacy cascade.
 | ImageAssetField | Local input and parent-provided preview/error/busy; caller handles validation, URL lifetime and asset upload. |
 | Modal | Existing Bits UI Dialog with dialog/sheet/drawer layout, labelled trigger, content/actions snippets and bindable open. Portal into nearest ThemeScope (no transformed/clipped scope ancestors); Escape/focus owned by Bits UI. |
 | Navigation | Controlled current page and caller-filtered items; rail/bar variants, same active state. Does not implement routing or authorize access. |
+| AccountMenu | A single account chooser, composed from Modal, ChoiceRow, Avatar and ActionButton; caller owns authenticated membership, switching and logout. |
+| ChoiceList | Repeated ChoiceRow and EmptyState; caller supplies already filtered and eligible options. |
+| PublicHeader | Salon identity and caller-provided actions. |
+| SalonPage | Shared hero, compact/split/cover layout, real document order of staff/services, RecordRow and explicit actions. |
+| BookingLayout | Shared presentation shell, step navigation, summary and next action for web/embed/telegram/manual. Caller supplies current step and allowed transitions. |
+| SlotGrid | Server-projected options; no availability calculation. |
+| DateStrip | Supplied day labels and enabled options; horizontal region on narrow screens. |
+| ResourceDay | Grouped resource/day visit list, reuses VisitRow. Not a time-grid or availability engine. |
+| ScheduleRow | Display-only shift row based on RecordRow and ActionButton. |
 
 Component catalog is a small local-only Svelte app with synthetic data,
 not Storybook yet. Uses actual components, no HTML-prototype runtime, no
@@ -50,7 +59,7 @@ Catalog artifacts go to apps/web/.tmp/rhythm-ui-kit-dist, not runtime dist.
 Do not deploy the catalog. The existing F1 web gate now builds the isolated catalog as well as the application; no second CI workflow. Existing F1 checks remain required. Run catalog
 build and manual browser review at 320, 375, 768 and 1280 px; inspect all
 five palette scopes, keyboard navigation, pointer states and form labels.
-The token tests are automatic via the existing web test command. The compiled catalog has a separate Chromium smoke using the existing CDP harness: 5 scopes × 4 widths × 5 sections, selection, save/busy, file preview/remove, errors, basic keyboard navigation, canvas inheritance, shared navigation selection, three modal layouts, theme portal and focus restoration, no external requests. It runs in the existing browser gate; evidence is uploaded separately. Run after building: node apps/web/scripts/rhythm-catalog-smoke.mjs. They
+The token tests are automatic via the existing web test command. The compiled catalog has a separate Chromium smoke using the existing CDP harness: 5 scopes × 4 widths × 8 sections, selection, save/busy, file preview/remove, errors, basic keyboard navigation, canvas inheritance, shared navigation selection, three modal layouts, theme portal and focus restoration, a complete synthetic four-step booking composition, shared channel shells, account switch callback, day selection, no external requests. It runs in the existing browser gate; evidence is uploaded separately. Run after building: node apps/web/scripts/rhythm-catalog-smoke.mjs. They
 verify declared palette pairs and catalog canvas inheritance, not pixel
 contrast, screen readers, or visual regression.
 
@@ -64,7 +73,84 @@ contrast, screen readers, or visual regression.
 - ThemeScope must wrap the entire public canvas. Modal portals into its closest ThemeScope. Keep that scope free of transforms and clipping; test focus, colors and clipping in host layouts before adopting.
 - Refactor actual screens by bounded vertical slices after review.
   Do not insert old prototype CSS or rewrite runtime authentication.
-- Additional variants, account menu, shared salon/booking shell, schedule and calendar patterns, Storybook and visual regression baselines remain open. The dialog/sheet/drawer candidates and navigation must pass compiled catalog smoke.
+- The full time-grid calendar, tenant appearance adapter, Storybook, screenshot baseline comparison and production screen adoption remain open. The candidate must pass compiled catalog smoke and visual review.
 
 CI, real build, visual browser screenshots and owner acceptance are distinct
 gates. Do not mark this library fully ready until verified and integrated.
+
+## One public import and composition recipes
+
+Application code adopting Rhythm imports from `$lib/components/rhythm/index.js`.
+Internal components such as RowContent are deliberately not part of the
+public API. Do not import internal files from feature screens.
+
+```svelte
+<script lang="ts">
+  import {
+    ThemeScope,
+    EntityEditor,
+    TextField,
+    type ChoiceItem,
+    ChoiceList,
+  } from "$lib/components/rhythm/index.js";
+
+  let title = $state("");
+  let selected = $state<string>();
+  const options: ChoiceItem[] = [{ id: "example", title: "Example" }];
+  function submit() {
+    // Parent/controller validates and calls the authorized real API.
+  }
+</script>
+
+<ThemeScope>
+  <EntityEditor title="Service" onSubmit={submit} disabled={!title.trim()}>
+    <TextField id="service-name" label="Name" bind:value={title} required />
+    <ChoiceList title="Options" items={options} {selected}
+      onSelect={(id) => (selected = id)} />
+  </EntityEditor>
+</ThemeScope>
+```
+
+In an existing application shell, mount the scope once around the entire
+surface; do not nest a separate theme around each row or control. Only a
+public tenant surface may receive its validated published appearance.
+Use a parent-generated unique DOM ID per field. The example uses an
+isolated fixture ID; no real data or persistence.
+
+### Select the right abstraction
+
+| Need | Use |
+| --- | --- |
+| Primary, secondary or destructive action | ActionButton, not raw class combinations |
+| Editable field, errors, label and hint | TextField or ImageAssetField |
+| Mutually exclusive filter | Segment |
+| Multi-select assignments | CheckGroup |
+| Service/staff/location choice | ChoiceList / ChoiceRow |
+| Person or catalogue record | RecordRow, internal RowContent |
+| Any visit list or day feed | VisitRow / ResourceDay |
+| Detail overlay | Modal, with layout variant; not three implementations |
+| Account selection | AccountMenu once per shell |
+| Public identity and page | PublicHeader / SalonPage |
+| Booking across channels | BookingLayout / ChoiceList / DateStrip / SlotGrid / BookingTicket |
+
+Each feature owns data fetching, authorization, validation and mutation
+results. Components own visual semantics, keyboard interaction and
+presentation. For a new visual state, extend the existing component's
+typed variant contract, add a catalog story and tests. Do not introduce
+feature-specific copies, raw hex colors, inline styles or arbitrary CSS
+overrides. Do not introduce new primitive libraries. An exception requires
+a documented reason and a review of the shared component first.
+
+### Change checklist
+
+1. Locate the component in the table above and reproduce the issue in its
+   actual Svelte catalog story.
+2. Change the shared source and owning token/rule, not the catalog markup
+   or a calling feature alone.
+3. Run existing project checks plus isolated catalog smoke, and inspect
+   the desktop/mobile evidence for every affected palette/state.
+4. Keep screenshots tied to the exact tested commit. Do not substitute
+   source-level palette checks or HTML-concept screenshots for actual
+   Svelte render evidence.
+5. Obtain visual review and verify the real API/runtime slice separately
+   before migrating it. No production activation in this PR.
