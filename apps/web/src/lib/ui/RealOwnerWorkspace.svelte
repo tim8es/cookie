@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
-  import { branchToday, createOwnerReads } from "../owner-reads";
+  import { onDestroy } from "svelte";
+  import { createOwnerReads } from "../owner-reads";
   import type { VerifiedOwnerSession } from "../owner-auth";
   import type { Screen } from "../navigation";
   import RealOwnerServicesPage from "./RealOwnerServicesPage.svelte";
@@ -15,22 +15,12 @@
   export let session: VerifiedOwnerSession;
   export let screen: Screen;
   export let onNavigate: (next: Screen) => void;
+  export let onAccessDenied: (session: VerifiedOwnerSession) => void;
 
-  const reads = createOwnerReads(session);
-
-  async function prepareCalendar(): Promise<void> {
-    // Let the first screen finish its main read before starting background work.
-    if (screen === "services") await reads.services.load();
-    else if (screen === "home") await reads.overview.load();
-    else return;
-    if (screen !== "services" && screen !== "home") return;
-    const branch = (await reads.calendarBranches()).find((item) => item.timeZone);
-    if (branch?.timeZone) await reads.calendar(branch.id, branchToday(branch.timeZone), 1).load();
-  }
-
-  onMount(() => {
-    void prepareCalendar().catch(() => undefined);
-  });
+  // Capture the keyed session. Do not trigger a hidden calendar permission
+  // check while the owner is working in an unrelated section.
+  const current = session;
+  const reads = createOwnerReads(current, () => onAccessDenied(current));
   onDestroy(reads.close);
 </script>
 
