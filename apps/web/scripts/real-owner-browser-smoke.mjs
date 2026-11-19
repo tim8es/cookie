@@ -366,7 +366,10 @@ async function main() {
       "location.pathname==='/services' && window.__kukiNavigationMarker===1 && document.querySelector('[data-screen=services][aria-current=page]')");
     await requireDom(cdp, "shared owner shell without demo controls", "document.querySelector(\'.verified-owner-shell[data-cookie-mode=api] .sidebar\') && !document.querySelector(\'.demo-ribbon, .preview-control, .onboarding-header\')");
     await requireDom(cdp, "canonical runtime owner brand", "document.querySelector('.sidebar .brand strong')?.textContent.trim() === 'kuki.' && document.querySelector('.nav-links')?.getAttribute('aria-label') === 'Разделы kuki' && document.title === 'kuki — кабинет салона'");
+    const appearanceChunk = r => /^\/assets\/RealOwnerAppearancePage-[^/]+\.js$/.test(r.path);
+    assert.equal(responses.filter(appearanceChunk).length, 0, "Appearance module loaded before navigation");
     await button(cdp, "Оформление");
+    await poll("appearance module downloaded on demand", () => responses.some(r => appearanceChunk(r) && r.status === 200));
     await requireDom(cdp, "real appearance draft loaded", "document.querySelector('.brand-editor') && document.body.innerText.includes('Только черновик') && document.querySelector('.brand-presets button')");
     await checkWidth(cdp, "real appearance 375px");
     await evaluate(cdp, "[...document.querySelectorAll('.brand-presets button')].find(b=>b.textContent.includes('Ботаника')).click()");
@@ -379,6 +382,7 @@ async function main() {
     await button(cdp, "Услуги");
     await button(cdp, "Оформление");
     await requireDom(cdp, "persisted appearance reloaded", "document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника') && [...document.querySelectorAll('.brand-actions button')].find(b=>b.textContent.trim()==='Опубликовать')?.disabled && [...document.querySelectorAll('.brand-assets input')].every(i=>i.matches(':disabled'))");
+    assert.equal(responses.filter(appearanceChunk).length, 1, "Appearance module requested again within the same document");
     await button(cdp, "Онлайн-запись");
     await requireDom(cdp, "owner booking unavailable without customer identity", "document.querySelector('h1')?.textContent==='Онлайн-запись' && document.body.innerText.includes('Клиентская запись — отдельный вход') && !document.querySelector('.booking-form')");
     await button(cdp, "Услуги");
