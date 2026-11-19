@@ -15,7 +15,6 @@
   } = $props();
 
   let expanded = $state(initiallyExpanded);
-  let loaded = $state(false);
   const targetId = $props.id();
 
   onMount(() => {
@@ -26,7 +25,6 @@
     } catch {
       // Private browsing or blocked storage: the control still works.
     }
-    loaded = true;
   });
 
   function toggle() {
