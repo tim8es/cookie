@@ -568,7 +568,7 @@
 
   async function enrollAsCustomer(): Promise<void> {
     const current = identitySession;
-    if (!current) return;
+    if (!current || busy || !accountLoaded) return;
     if (!methods?.stagingCustomerEnrollment) {
       error = "Самостоятельное клиентское зачисление включается только в контролируемом staging.";
       return;
@@ -580,7 +580,10 @@
     busy = true;
     error = "";
     try {
-      const session = await enrollCustomer(current, tenantId);
+      const enrolled = await enrollCustomer(current, tenantId);
+      if (identitySession !== current) return;
+      // Enrollment receipt alone is not current context authorization.
+      const session = await verifyStagingCustomerSession(enrolled);
       if (identitySession === current) onCustomerSession(session);
     } catch (reason) {
       error = reason instanceof IdentityAuthFailure && reason.reason === "unavailable"

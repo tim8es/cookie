@@ -444,6 +444,51 @@ async function main() {
     await button(cdp, "Я представляю бизнес");
     await requireDom(cdp, "organization still available after switching",
       "document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+    // Give only the new synthetic organization's identity a private test grant.
+    // The original seeded salon retains its later no-grant acceptance test.
+    const dualTenant = onboardingRows.rows[0].tenant_id;
+    await issueStagingGrant(pool, dualTenant, 1, new Date(Date.now()+3600000).toISOString());
+    await button(cdp,"Сменить сценарий");
+    await requireDom(cdp,"dual role client choice available",
+      "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я клиент'&&!b.disabled)");
+    await button(cdp,"Я клиент");
+    await requireDom(cdp,"explicit first client enrollment","document.querySelector('#customer-tenant-id') && !document.querySelector('#customer-tenant-id').disabled");
+    await fill(cdp,"#customer-tenant-id",dualTenant);
+    await evaluate(cdp,"document.querySelector('.identity-consent input').click()");
+    await requireDom(cdp,"consented client enrollment ready","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Продолжить как клиент'&&!b.disabled)");
+    await button(cdp,"Продолжить как клиент");
+    const clientGate = "document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.textContent.trim()==='Вход клиента подтверждён' && !document.querySelector('.real-owner-nav')";
+    await requireDom(cdp,"same identity enters client workspace",clientGate);
+    const enrolled = await pool.query(
+      "SELECT c.customer_id::text,c.identity_id::text FROM cookie_customers.staging_customer_identities c WHERE c.tenant_id=$1::uuid",
+      [dualTenant],
+    );
+    assert.equal(enrolled.rowCount,1);
+    const roles = await pool.query(
+      "SELECT DISTINCT r.base_type FROM cookie_identity.roles r JOIN cookie_identity.role_assignments a ON a.tenant_id=r.tenant_id AND a.role_id=r.id WHERE r.tenant_id=$1::uuid AND a.identity_id=$2::uuid AND a.active AND r.active ORDER BY r.base_type",
+      [dualTenant,enrolled.rows[0].identity_id],
+    );
+    assert.deepEqual(roles.rows.map(r=>r.base_type),["client","owner"]);
+    const beforeClientReload=responses.length;
+    await cdp.send("Page.reload",{ignoreCache:true});
+    await poll("client cookie restored",()=>responses.slice(beforeClientReload).some(r=>r.path==="/v1/auth/browser-session"&&r.status===200));
+    await requireDom(cdp,"client workspace restored after reload",clientGate);
+    await button(cdp,"Сменить кабинет");
+    await requireDom(cdp,"identity chooser after client workspace","document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");
+    await button(cdp,"Я представляю бизнес");
+    await requireDom(cdp,"dual role owner membership","document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+    await evaluate(cdp,"[...document.querySelectorAll('.identity-organization-list button')].find(b=>b.textContent.includes("+JSON.stringify(onboardingOrganization)+")&&!b.disabled).click()");
+    await requireDom(cdp,"owner workspace reentered without authentication","document.querySelector('.real-owner-nav')");
+    await button(cdp,"Сменить кабинет");
+    await requireDom(cdp,"client choice after returning from owner","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я клиент'&&!b.disabled)");
+    await button(cdp,"Я клиент");
+    await requireDom(cdp,"existing customer visible without new enrollment","document.querySelector('[aria-label=\"Клиентские организации\"]')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+    await evaluate(cdp,"document.querySelector('[aria-label=\"Клиентские организации\"] button').click()");
+    await requireDom(cdp,"existing customer reentered",clientGate);
+    assert.equal(responses.slice(beforeRestore).filter(r=>r.path.endsWith("/staging-customer/enroll")).length,1,"Existing client selection must not enroll again");
+    assert.deepEqual((await pool.query("SELECT c.customer_id::text,c.identity_id::text FROM cookie_customers.staging_customer_identities c WHERE c.tenant_id=$1::uuid",[dualTenant])).rows,enrolled.rows);
+    await button(cdp,"Сменить кабинет");
+    await requireDom(cdp,"identity chooser before logout","document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");
     assert.equal(responses.slice(beforeRestore).filter(r=>r.path==="/v1/auth/telegram/identity").length,0);
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
     await button(cdp,"Выйти из учётной записи");

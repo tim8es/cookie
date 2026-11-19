@@ -68,3 +68,9 @@ requires consent, an available membership list, and the private staging flag.
 The optional renewal client transport is tested but not called automatically:
 it rejects memory-only/expired credentials, different bearers, regressed
 expiry, and revocation; a disabled route does not grant any renewed session.
+
+The dual-role browser regression uses a fresh synthetic identity and a separate
+test grant. It verifies owner and client assignments belong to the same identity,
+client reload and returning to owner, and subsequent existing-client selection
+without a second enrollment or Telegram proof. Enrollment receipt is followed
+by live GET-context verification before entering the client UI.
