@@ -14,6 +14,7 @@ import {
   requireDom, fill, submitValidForm, checkWidth, checkLabeledControls,
 } from "./browser-smoke.mjs";
 import { startChromiumWithRetry } from "../../../scripts/f1-chromium-startup.mjs";
+import { verifyOwnerBookingDetail } from "./owner-booking-detail-smoke.mjs";
 
 import { issueStagingGrant } from "../../../dist/packages/domain-entitlement/src/staging.js";
 import { provisionStagingCustomer } from "../../../dist/packages/domain-customers/src/staging-customer.js";
@@ -346,13 +347,23 @@ async function main() {
     await viewport(cdp, 375, 812);
 
     // Malformed proof must not show authenticated UI or a synthetic fallback.
-    let script = await load(cdp, origin, "invalid-synthetic-proof", undefined);
+    let script = await load(cdp, origin + "calendar", "invalid-synthetic-proof", undefined);
     await requireDom(cdp, "forged proof rejected",
-      "document.body.innerText.includes('Вход не подтверждён') && !document.querySelector('.real-owner-nav')");
+      "location.pathname==='/calendar' && document.body.innerText.includes('Вход не подтверждён') && !document.querySelector('.real-owner-nav')");
     assert.ok(responses.some((r) => r.path === "/v1/auth/telegram/exchange" && r.status === 401));
-    script = await load(cdp, origin, signedProof(botToken, userId), script);
-    await requireDom(cdp, "authenticated real services",
-      "document.querySelector('.real-owner-nav') && document.body.innerText.includes('Услуги салона')");
+    script = await load(cdp, origin + "locations", signedProof(botToken, userId), script);
+    await requireDom(cdp, "authenticated direct location link",
+      "location.pathname==='/locations' && document.querySelector('.real-owner-nav') && document.querySelector('.list-items')?.innerText.includes('Synthetic Central')");
+    await evaluate(cdp, "window.__kukiNavigationMarker=1");
+    await button(cdp, "Услуги");
+    await requireDom(cdp, "owner click updates path without reload",
+      "location.pathname==='/services' && window.__kukiNavigationMarker===1 && document.body.innerText.includes('Услуги салона')");
+    await evaluate(cdp, "history.back()");
+    await requireDom(cdp, "back restores locations",
+      "location.pathname==='/locations' && window.__kukiNavigationMarker===1 && document.querySelector('[data-screen=locations][aria-current=page]')");
+    await evaluate(cdp, "history.forward()");
+    await requireDom(cdp, "forward restores services",
+      "location.pathname==='/services' && window.__kukiNavigationMarker===1 && document.querySelector('[data-screen=services][aria-current=page]')");
     await requireDom(cdp, "shared owner shell without demo controls", "document.querySelector(\'.verified-owner-shell[data-cookie-mode=api] .sidebar\') && !document.querySelector(\'.demo-ribbon, .preview-control, .onboarding-header\')");
     await requireDom(cdp, "canonical runtime owner brand", "document.querySelector('.sidebar .brand strong')?.textContent.trim() === 'kuki.' && document.querySelector('.nav-links')?.getAttribute('aria-label') === 'Разделы kuki' && document.title === 'kuki — кабинет салона'");
     await button(cdp, "Оформление");
@@ -591,6 +602,10 @@ async function main() {
     await button(cdp,"Неделя");
     await requireDom(cdp,"week reads persisted Booking","document.querySelector('[aria-label=\"Записи за выбранный период\"]')?.innerText.includes('Synthetic E2E Staff')");
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/owner-calendar")));
+    await verifyOwnerBookingDetail(cdp, responses, {
+      bookingId, duration: 50, buffer: 0, priceKopecks: "125050",
+      status: "Подтверждена", tenantId: owner.tenantId, viewport, testLatePeriod: true,
+    });
     for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
       await viewport(cdp,width,height);
       await checkWidth(cdp,"real owner calendar "+width+"px");
@@ -761,6 +776,13 @@ async function main() {
     await poll("fresh owner calendar HTTP 200 after Booking restart", () => responses.slice(calendarResponseStart).some(r=>r.status===200&&r.path.endsWith("/owner-calendar")));
     await requireDom(cdp, "actual persisted Booking visible in owner's calendar after restart",
       "(()=>{const rows=[...document.querySelectorAll('[aria-label=\\\"Записи за выбранный период\\\"] .schedule-summary')];const fmt=value=>new Intl.DateTimeFormat('ru-RU',{timeZone:"+JSON.stringify(BRANCH_ZONE)+",dateStyle:'short',timeStyle:'short'}).format(new Date(value));const interval=fmt("+JSON.stringify(restartStart)+")+' — '+fmt("+JSON.stringify(restartEnd)+");const price=new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(1250.5);return rows.length===3&&rows.filter(row=>row.innerText.includes(interval)&&row.innerText.includes(price)&&row.innerText.includes('Synthetic E2E Edited Service')&&row.innerText.includes('Synthetic E2E Staff')&&row.querySelector('.status-pill')?.innerText==='Подтверждена').length===1;})()");
+    await verifyOwnerBookingDetail(cdp, responses, {
+      bookingId: restartBookingId,
+      duration: beforeBookingRestart.booking.service_duration_minutes_snapshot,
+      buffer: beforeBookingRestart.booking.post_service_buffer_minutes_snapshot,
+      priceKopecks: originalReceipt.priceKopecks,
+      status: "Подтверждена", tenantId: owner.tenantId, viewport,
+    });
     assert.deepEqual(await durableBooking(), beforeBookingRestart, "Fresh authenticated reads changed durable Booking/receipt/outbox");
     assert.deepEqual((await recoveryProjection()).rows, beforeProjection.rows);
     assert.equal(customerCreateRequests, writesBeforeRestart, "Restart recovery must not issue any Create POST");
