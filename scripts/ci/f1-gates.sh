@@ -21,6 +21,8 @@ worker() { bash scripts/ci-compiled-synthetic-worker-smoke.sh; }
 web() {
   pnpm --filter @cookie/web check
   pnpm --filter @cookie/web build
+  pnpm --filter @cookie/web exec vite build --config vite.ui-kit.config.mts
+  test -f apps/web/.tmp/rhythm-ui-kit-dist/ui-kit/index.html
 }
 browser() {
   pnpm --filter @cookie/web build:fixture
