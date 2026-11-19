@@ -7,6 +7,8 @@
     CheckGroup,
     ImageAssetField,
     Notice,
+    Modal,
+    Navigation,
     BookingTicket,
     ChoiceRow,
     EmptyState,
@@ -46,6 +48,15 @@
   let busy = $state(false);
   let message = $state("");
   let showDetails = $state(false);
+  let activeNav = $state("calendar");
+  let dialogOpen = $state(false);
+  let sheetOpen = $state(false);
+  let drawerOpen = $state(false);
+  const navOptions = [
+    { id: "calendar", label: "Календарь" },
+    { id: "visits", label: "Записи" },
+    { id: "account", label: "Профиль" },
+  ];
   let assignments = $state<string[]>(["haircut"]);
   let imageSrc = $state<string | undefined>();
   let imageError = $state<string | undefined>();
@@ -77,6 +88,10 @@
     busy = false;
     message = "";
     showDetails = false;
+    activeNav = "calendar";
+    dialogOpen = false;
+    sheetOpen = false;
+    drawerOpen = false;
     assignments = ["haircut"];
     removeImage();
     imageError = undefined;
@@ -137,6 +152,11 @@
           <Segment label="Состояние записей" options={[{ id: "upcoming", label: "Предстоящие" }, { id: "past", label: "Прошедшие" }, { id: "archive", label: "Архив", disabled: true }]} selected={filter} onSelect={(id) => (filter = id)} />
           <p class="rhythm-muted">Текущий фильтр: {filter === "upcoming" ? "Предстоящие" : "Прошедшие"}</p>
         </div>
+        <div class="rhythm-panel rhythm-stack">
+          <h3>Navigation · общие пункты меню</h3>
+          <Navigation label="Боковое меню" items={navOptions} current={activeNav} onNavigate={(id) => (activeNav = id)} />
+          <Navigation label="Компактное меню" layout="bar" items={navOptions} current={activeNav} onNavigate={(id) => (activeNav = id)} />
+        </div>
       {:else if section === "catalog"}
         <h2>Выбор услуги и мастера</h2>
         <div class="rhythm-stack">
@@ -193,6 +213,23 @@
         </div>
       {:else}
         <h2>Обратная связь</h2>
+        <div class="rhythm-panel rhythm-stack">
+          <h3>Modal · единый компонент</h3>
+          <div class="catalog-actions">
+            <Modal bind:open={dialogOpen} title="Подтверждение" description="Пример действия без обращения к серверу." triggerLabel="Открыть диалог">
+              <p>Проверьте сведения перед продолжением.</p>
+              {#snippet actions()}
+                <ActionButton tone="primary" onclick={() => { dialogOpen = false; message = "Подтверждено в учебном примере"; }}>Подтвердить</ActionButton>
+              {/snippet}
+            </Modal>
+            <Modal bind:open={sheetOpen} layout="sheet" title="Детали записи" description="Боковая панель." triggerLabel="Открыть панель">
+              <BookingTicket lines={[{ label: "Услуга", value: "Стрижка" }, { label: "Время", value: "12:00" }]} />
+            </Modal>
+            <Modal bind:open={drawerOpen} layout="drawer" title="Выбор времени" description="Нижняя панель." triggerLabel="Открыть нижнюю панель">
+              <ChoiceRow title="12:00" description="60 минут" selected onSelect={() => (drawerOpen = false)} />
+            </Modal>
+          </div>
+        </div>
         <Notice title="Загрузка данных" description="Учебный пример ожидания." tone="loading" />
         <Notice title="Изменения сохранены" description="Учебное состояние." tone="success" />
         <Notice title="Не удалось загрузить данные" description="Повторите попытку." tone="error">
