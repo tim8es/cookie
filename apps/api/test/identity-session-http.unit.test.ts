@@ -121,3 +121,75 @@ test("browser continuity verifies a global bearer and resumes without replay", a
   });
   assert.equal(after.statusCode, 401);
 });
+
+test("renewal is opt-in, cookie-bound and does not accept a lifetime from the browser", async (t) => {
+  const token = "is_" + "A".repeat(43);
+  const expires = Math.floor(Date.now() / 1000) + 120;
+  const calls: { token: string; lifetime: number }[] = [];
+  const provider = {
+    async resolveWithExpiry(value: string) {
+      return value === token
+        ? {
+            identityId: "11111111-1111-4111-8111-111111111111",
+            expiresAtUnixSeconds: expires,
+          }
+        : null;
+    },
+    async renewWithinAbsoluteLifetime(value: string, lifetime: number) {
+      calls.push({ token: value, lifetime });
+      return expires;
+    },
+  } as unknown as IdentitySessions;
+  const database = { query: async () => ({ rows: [] }) };
+  const disabled = createApp(database, {
+    identitySessionProviders: [provider],
+  });
+  t.after(() => disabled.close());
+  const app = createApp(database, {
+    identitySessionProviders: [provider],
+    browserSessionRenewalAbsoluteLifetimeSeconds: 3600,
+  });
+  t.after(() => app.close());
+  const path = "/v1/auth/browser-session/renew";
+  const headers = {
+    "sec-fetch-site": "same-origin",
+    "x-kuki-session": "1",
+    authorization: "Bearer " + token,
+    cookie: "__Host-kuki-session=" + token,
+  };
+  const off = await disabled.inject({ method: "POST", url: path, headers });
+  assert.equal(off.statusCode, 404);
+  const noCookie = await app.inject({
+    method: "POST",
+    url: path,
+    headers: { ...headers, cookie: "" },
+  });
+  assert.equal(noCookie.statusCode, 401);
+  const otherAccount = await app.inject({
+    method: "POST",
+    url: path,
+    headers: { ...headers, authorization: "Bearer is_" + "B".repeat(43) },
+  });
+  assert.equal(otherAccount.statusCode, 401);
+  const crossSite = await app.inject({
+    method: "POST",
+    url: path,
+    headers: { ...headers, "sec-fetch-site": "cross-site" },
+  });
+  assert.equal(crossSite.statusCode, 403);
+  const override = await app.inject({
+    method: "POST",
+    url: path + "?lifetime=9999",
+    headers,
+  });
+  assert.equal(override.statusCode, 400);
+  assert.deepEqual(calls, []);
+  const allowed = await app.inject({ method: "POST", url: path, headers });
+  assert.equal(allowed.statusCode, 200);
+  assert.deepEqual(calls, [{ token, lifetime: 3600 }]);
+  assert.equal(allowed.json().expiresAtUnixSeconds, expires);
+  assert.match(
+    String(allowed.headers["set-cookie"]),
+    /HttpOnly; Secure; SameSite=Strict/,
+  );
+});

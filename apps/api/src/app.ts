@@ -121,6 +121,8 @@ export function createApp(
     };
     readonly identitySessionProviders?: readonly import("../../../packages/platform-identity/src/index.js").IdentitySessions[];
     readonly identitySessionPool?: import("pg").Pool;
+    /** Test/engineering candidate; runtime bootstrap deliberately omits this. */
+    readonly browserSessionRenewalAbsoluteLifetimeSeconds?: number;
     readonly syntheticBookingRoutes?: SyntheticBookingHttpDependencies;
     readonly syntheticBookingMutations?: SyntheticBookingMutationDependencies;
     readonly syntheticWorkspaceReads?: SyntheticWorkspaceReadDependencies;
@@ -207,7 +209,11 @@ export function createApp(
   if (options.ownerWorkspaceEnrollment)
     registerOwnerWorkspaceEnrollment(app, options.ownerWorkspaceEnrollment);
   if (identitySessionProviders.length > 0)
-    registerIdentitySessionLogout(app, identitySessionProviders);
+    registerIdentitySessionLogout(
+      app,
+      identitySessionProviders,
+      options.browserSessionRenewalAbsoluteLifetimeSeconds,
+    );
   if (options.identitySessionPool && identitySessionProviders.length > 0)
     registerIdentityProviders(
       app,

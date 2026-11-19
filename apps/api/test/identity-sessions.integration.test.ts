@@ -76,3 +76,98 @@ test(
     }
   },
 );
+
+test(
+  "bounded renewal is scoped and cannot revive expired or revoked sessions",
+  { skip: !process.env.TEST_DATABASE_URL },
+  async () => {
+    const pool = new Pool({
+      connectionString: process.env.TEST_DATABASE_URL,
+      max: 2,
+    });
+    const identityId = randomUUID();
+    try {
+      await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [identityId],
+      );
+      const sessions = new IdentitySessions(
+        pool,
+        "renew-test-issuer",
+        "renew-test-web",
+        60,
+      );
+      const other = new IdentitySessions(
+        pool,
+        "renew-test-issuer",
+        "other-web",
+        60,
+      );
+      const initial = await sessions.issueForVerifiedIdentity(identityId);
+      const hash = createHash("sha256").update(initial.token).digest();
+      // Move the issuance clock back without sleeping; absolute cap remains.
+      await pool.query(
+        `UPDATE cookie_identity.identity_sessions
+         SET issued_at=clock_timestamp()-interval '100 seconds',
+             expires_at=clock_timestamp()+interval '5 seconds'
+         WHERE token_sha256=$1`,
+        [hash],
+      );
+      assert.equal(
+        await other.renewWithinAbsoluteLifetime(initial.token, 120),
+        null,
+      );
+      await assert.rejects(
+        sessions.renewWithinAbsoluteLifetime(initial.token, 3601),
+      );
+      const renewed = await sessions.renewWithinAbsoluteLifetime(
+        initial.token,
+        120,
+      );
+      const bound = await pool.query<{ capped: boolean; extended: boolean }>(
+        `SELECT expires_at<=issued_at+interval '120 seconds' AS capped,
+                expires_at>clock_timestamp()+interval '10 seconds' AS extended
+         FROM cookie_identity.identity_sessions WHERE token_sha256=$1`,
+        [hash],
+      );
+      assert.ok(renewed);
+      assert.deepEqual(bound.rows[0], { capped: true, extended: true });
+      assert.equal(
+        (await sessions.resolveWithExpiry(initial.token))?.expiresAtUnixSeconds,
+        renewed,
+      );
+      await Promise.all([
+        sessions.revoke(initial.token),
+        sessions.renewWithinAbsoluteLifetime(initial.token, 120),
+      ]);
+      assert.equal(await sessions.resolve(initial.token), null);
+      assert.equal(
+        await sessions.renewWithinAbsoluteLifetime(initial.token, 120),
+        null,
+      );
+      const expired = await sessions.issueForVerifiedIdentity(identityId);
+      await pool.query(
+        `UPDATE cookie_identity.identity_sessions
+         SET issued_at=clock_timestamp()-interval '100 seconds',
+             expires_at=clock_timestamp()-interval '1 second'
+         WHERE token_sha256=$1`,
+        [createHash("sha256").update(expired.token).digest()],
+      );
+      assert.equal(
+        await sessions.renewWithinAbsoluteLifetime(expired.token, 120),
+        null,
+      );
+    } finally {
+      await pool.query(
+        "DELETE FROM cookie_identity.identity_sessions WHERE identity_id=$1::uuid",
+        [identityId],
+      );
+      await pool.query(
+        "DELETE FROM cookie_identity.identities WHERE id=$1::uuid",
+        [identityId],
+      );
+      await pool.end();
+    }
+  },
+);

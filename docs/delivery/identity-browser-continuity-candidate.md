@@ -40,3 +40,22 @@ do not use this cookie watcher. Protected API calls retain their server checks.
 A denied customer-context selection does not revoke a global Identity bearer.
 This is best-effort browser convergence, not a distributed lock for simultaneous
 HTTP login/logout operations or a new refresh policy.
+
+## Bounded renewal server candidate
+
+An explicitly configured createApp-only option enables a POST renewal route
+in engineering tests. Normal runtime bootstrap does not pass the option.
+The route requires the existing matching global bearer and the host-only cookie
+plus same-origin request metadata; accepts no lifetime from the client. The
+provider conditionally updates the already-live session using DB time, with a
+sliding configured provider TTL and a non-increasing absolute cap from original
+issued_at (at most 3600 seconds). Revocation and renewal serialize on the same
+row; an expired/revoked credential cannot be revived. The existing bearer
+does not rotate. No new refresh credential, longer login policy or migration.
+
+This is NOT a production-ready refresh-token design. A bearer holder may bind
+the bearer to a browser, and overlapping cross-tab login/renew HTTP responses
+could overwrite the cookie. Do not enable the route in runtime or add automatic
+client retries until the refresh credential/family, logout race, audit and
+idle/absolute policy have been independently reviewed. The current UI keeps
+its original expiry semantics. Integration and HTTP negative tests are included.

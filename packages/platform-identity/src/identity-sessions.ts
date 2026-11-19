@@ -177,6 +177,47 @@ export class IdentitySessions {
     return result.rows[0]?.identity_id ?? null;
   }
 
+  /**
+   * Candidate for bounded sliding expiry on the same credential.
+   * A single conditional UPDATE serializes with existing revocation;
+   * neither an expired nor revoked row can become live again.
+   * Absolute lifetime is supplied by a reviewed installation policy.
+   */
+  async renewWithinAbsoluteLifetime(
+    token: unknown,
+    absoluteLifetimeSeconds: number,
+  ): Promise<number | null> {
+    if (
+      !Number.isSafeInteger(absoluteLifetimeSeconds) ||
+      absoluteLifetimeSeconds < this.ttlSeconds ||
+      absoluteLifetimeSeconds > 3600
+    ) {
+      throw new Error("Invalid identity renewal lifetime");
+    }
+    if (typeof token !== "string" || !TOKEN.test(token)) return null;
+    const result = await this.pool.query<{ expires_at: Date }>(
+      `UPDATE cookie_identity.identity_sessions
+       SET expires_at=GREATEST(expires_at,LEAST(
+         issued_at+$5::integer*interval '1 second',
+         clock_timestamp()+$4::integer*interval '1 second'))
+       WHERE token_sha256=$1 AND issuer=$2 AND audience=$3
+         AND revoked_at IS NULL AND expires_at>clock_timestamp()
+         AND issued_at+$5::integer*interval '1 second'>clock_timestamp()
+       RETURNING expires_at`,
+      [
+        digest(token),
+        this.issuer,
+        this.audience,
+        this.ttlSeconds,
+        absoluteLifetimeSeconds,
+      ],
+    );
+    const expiry = result.rows[0]?.expires_at;
+    if (!(expiry instanceof Date) || !Number.isFinite(expiry.getTime()))
+      return null;
+    return Math.floor(expiry.getTime() / 1000);
+  }
+
   async revoke(token: unknown): Promise<void> {
     if (typeof token !== "string" || !TOKEN.test(token)) return;
     await this.pool.query(

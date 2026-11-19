@@ -50,7 +50,17 @@ export function clearMatchingBrowserSession(
 export function registerBrowserIdentitySession(
   app: FastifyInstance,
   providers: readonly IdentitySessions[],
+  renewalAbsoluteLifetimeSeconds?: number,
 ): void {
+  if (
+    renewalAbsoluteLifetimeSeconds !== undefined &&
+    (!Number.isSafeInteger(renewalAbsoluteLifetimeSeconds) ||
+      renewalAbsoluteLifetimeSeconds < 60 ||
+      renewalAbsoluteLifetimeSeconds > 3600)
+  ) {
+    throw new Error("Invalid browser renewal policy");
+  }
+
   async function resolve(token: string): Promise<number | null> {
     for (const provider of providers) {
       const session = await provider.resolveWithExpiry(token);
@@ -94,6 +104,51 @@ export function registerBrowserIdentitySession(
       return reply.code(503).send({ error: "BACKEND_UNAVAILABLE" });
     }
   });
+
+  // This candidate is deliberately not enabled by runtime bootstrap.
+  // It requires an approved absolute lifetime and separate browser review.
+  if (renewalAbsoluteLifetimeSeconds !== undefined) {
+    const absoluteLifetime = renewalAbsoluteLifetimeSeconds;
+    app.post("/v1/auth/browser-session/renew", async (request, reply) => {
+      privateResponse(reply);
+      if (!sameOriginBrowser(request))
+        return reply.code(403).send({ error: "FORBIDDEN" });
+      const token = cookieToken(request.headers.cookie);
+      if (!token || request.headers.authorization !== "Bearer " + token)
+        return reply.code(401).send({ error: "UNAUTHENTICATED" });
+      if (
+        Object.keys(request.query as object).length !== 0 ||
+        request.body !== undefined
+      ) {
+        return reply.code(400).send({ error: "INVALID_REQUEST" });
+      }
+      try {
+        for (const provider of providers) {
+          const current = await provider.resolveWithExpiry(token);
+          if (!current) continue;
+          const expires = await provider.renewWithinAbsoluteLifetime(
+            token,
+            absoluteLifetime,
+          );
+          if (expires === null)
+            return reply.code(401).send({ error: "UNAUTHENTICATED" });
+          const age = expires - Math.floor(Date.now() / 1000);
+          if (!Number.isSafeInteger(expires) || age <= 0 || age > 3600)
+            return reply.code(401).send({ error: "UNAUTHENTICATED" });
+          reply.header("Set-Cookie", cookieHeader(token, age));
+          return reply.code(200).send({
+            tokenType: "Bearer",
+            accessToken: token,
+            scope: "identity",
+            expiresAtUnixSeconds: expires,
+          });
+        }
+        return reply.code(401).send({ error: "UNAUTHENTICATED" });
+      } catch {
+        return reply.code(503).send({ error: "BACKEND_UNAVAILABLE" });
+      }
+    });
+  }
 
   // Restore in the existing bearer-based UI; never use cookie claims as roles.
   app.get("/v1/auth/browser-session", async (request, reply) => {
