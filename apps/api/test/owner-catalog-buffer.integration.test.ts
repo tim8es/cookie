@@ -6,6 +6,7 @@ import test from "node:test";
 import { Pool } from "pg";
 
 import { createApp } from "../src/app.js";
+import { createBookingInternal } from "../../../packages/domain-booking/src/index.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { linkVerifiedTelegramOwner } from "../../../packages/platform-identity/src/link-telegram-owner.js";
 import { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/opaque-sessions.js";
@@ -94,6 +95,7 @@ test(
         assert.equal(exchanged.statusCode, 201);
         return {
           tenantId: owner.tenantId,
+          locationId: owner.locationId,
           ownerId,
           url: "/v1/organizations/" + owner.tenantId + "/services",
           headers: { authorization: "Bearer " + exchanged.json().accessToken },
@@ -294,6 +296,107 @@ test(
         ).statusCode,
         409,
       );
+
+      // Trusted internal fixture activation does not change the saved buffer.
+      // Use the real API-created service from the second tenant; do not
+      // seed a separate service or overwrite its duration/buffer.
+      const staff = randomUUID();
+      const customer = randomUUID();
+      const tenant = b.tenantId;
+      const location = b.locationId;
+      await pool.query(
+        "UPDATE cookie_catalog.services SET active=true WHERE tenant_id=$1 AND id=$2",
+        [tenant, other.id],
+      );
+      await pool.query(
+        `INSERT INTO cookie_customers.customers(tenant_id,id)
+          VALUES($1,$2)`,
+        [tenant, customer],
+      );
+      await pool.query(
+        `INSERT INTO cookie_staff.staff_profiles
+          (tenant_id,id,display_name,active,bookable)
+          VALUES($1,$2,'Synthetic buffer staff',true,true)`,
+        [tenant, staff],
+      );
+      await pool.query(
+        `INSERT INTO cookie_staff.location_assignments
+          (tenant_id,staff_id,location_id,active) VALUES($1,$2,$3,true)`,
+        [tenant, staff, location],
+      );
+      await pool.query(
+        `INSERT INTO cookie_staff.service_assignments
+          (tenant_id,staff_id,location_id,service_id,active)
+          VALUES($1,$2,$3,$4,true)`,
+        [tenant, staff, location, other.id],
+      );
+      await pool.query(
+        `INSERT INTO cookie_scheduling.shift_windows
+          (tenant_id,id,staff_id,location_id,start_at,end_at,active)
+          VALUES($1,$2,$3,$4,'2028-04-12T09:00:00Z',
+                 '2028-04-12T18:00:00Z',true)`,
+        [tenant, randomUUID(), staff, location],
+      );
+      const command = {
+        actor: {
+          identityId: b.ownerId,
+          tenantId: tenant,
+          correlationId: "synthetic-catalog-buffer-booking",
+        },
+        customerId: customer,
+        staffId: staff,
+        serviceId: other.id,
+        locationId: location,
+        startAt: "2028-04-12T10:00:00Z",
+        idempotencyKey: randomUUID(),
+      };
+      const allowSynthetic = async () => undefined;
+      const booking = await createBookingInternal(
+        pool,
+        command,
+        allowSynthetic,
+      );
+      assert.equal(booking.endAt, "2028-04-12T10:45:00.000Z");
+      assert.equal(booking.occupiedUntil, "2028-04-12T11:30:00.000Z");
+      assert.deepEqual(
+        await createBookingInternal(pool, command, allowSynthetic),
+        booking,
+      );
+      await assert.rejects(
+        createBookingInternal(
+          pool,
+          {
+            ...command,
+            startAt: "2028-04-12T10:45:00Z",
+            idempotencyKey: randomUUID(),
+          },
+          allowSynthetic,
+        ),
+        { code: "BOOKING_NOT_AVAILABLE" },
+      );
+      const boundary = await createBookingInternal(
+        pool,
+        {
+          ...command,
+          startAt: "2028-04-12T11:30:00Z",
+          idempotencyKey: randomUUID(),
+        },
+        allowSynthetic,
+      );
+      assert.equal(boundary.endAt, "2028-04-12T12:15:00.000Z");
+      assert.equal(boundary.occupiedUntil, "2028-04-12T13:00:00.000Z");
+      const snapshots = await pool.query(
+        `SELECT service_duration_minutes_snapshot,
+                post_service_buffer_minutes_snapshot
+           FROM cookie_booking.bookings WHERE tenant_id=$1
+           ORDER BY start_at`,
+        [tenant],
+      );
+      const expectedSnapshot = {
+        service_duration_minutes_snapshot: 45,
+        post_service_buffer_minutes_snapshot: 45,
+      };
+      assert.deepEqual(snapshots.rows, [expectedSnapshot, expectedSnapshot]);
     } finally {
       await app.close();
       await pool.end();
