@@ -216,7 +216,8 @@ test(
           await client.query("SET LOCAL lock_timeout='500ms'");
           return client.query(
             `UPDATE cookie_identity.email_registration_challenges
-           SET expires_at=clock_timestamp()-interval '1 second'
+           SET created_at=clock_timestamp()-interval '2 seconds',
+               expires_at=clock_timestamp()-interval '1 second'
            WHERE token_sha256=$1 RETURNING token_sha256`,
             [createHash("sha256").update(locked.token).digest()],
           );
