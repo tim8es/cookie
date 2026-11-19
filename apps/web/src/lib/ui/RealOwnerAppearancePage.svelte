@@ -50,7 +50,7 @@
   $: canPublish = !!publication && !!stored && publication.canPublish
     && publication.draftRevision === stored.revision && stored.revision > 0
     && publication.publishedRevision !== stored.revision
-    && !dirty && !saving && !uploading && !publishing && !needsReload;
+    && !loading && !dirty && !saving && !uploading && !publishing && !needsReload;
 
   async function refreshPublication(request: AbortController): Promise<AppearancePublicationState | null> {
     publication = null;
@@ -167,22 +167,20 @@
     assetError = "";
     clearPreviews();
     try {
-      const [result, overview] = await Promise.all([
+      const [result, overview, capability] = await Promise.all([
         readRealAppearanceDraft(session, globalThis.fetch, request.signal),
         readRealWorkspaceOverview(session, globalThis.fetch, request.signal),
+        readAppearanceAssetCapability(session, globalThis.fetch, request.signal).catch(() => null),
       ]);
       if (active !== request || request.signal.aborted) return;
       stored = result;
       draft = result.config;
       organizationName = overview.organization.displayName;
       needsReload = false;
-      try {
-        assetsAvailable = await readAppearanceAssetCapability(session, globalThis.fetch, request.signal);
-      } catch {
-        if (active === request) assetError = "Не удалось проверить доступность загрузки.";
-      }
-      if (active === request && !request.signal.aborted) await loadPreviews(result.config, request);
-      if (active === request && !request.signal.aborted) await refreshPublication(request);
+      assetsAvailable = capability ?? false;
+      if (capability === null) assetError = "Не удалось проверить доступность загрузки.";
+      // Both depend on the loaded revision, but neither depends on the other.
+      await Promise.all([loadPreviews(result.config, request), refreshPublication(request)]);
     } catch (reason) {
       if (active === request) error = describe(reason);
     } finally {
@@ -212,9 +210,7 @@
       if (active !== request || request.signal.aborted) return;
       stored = current;
       draft = current.config;
-      await loadPreviews(current.config, request);
-      if (active !== request || request.signal.aborted) return;
-      await refreshPublication(request);
+      await Promise.all([loadPreviews(current.config, request), refreshPublication(request)]);
       if (active !== request || request.signal.aborted) return;
       notice = "Черновик сохранён на сервере. Показана актуальная версия.";
     } catch (reason) {
@@ -246,9 +242,9 @@
       if (active !== request || request.signal.aborted) return;
       stored = current;
       draft = current.config;
-      await loadPreviews(current.config, request);
-      if (active !== request || request.signal.aborted) return;
-      const confirmed = await refreshPublication(request);
+      const [, confirmed] = await Promise.all([
+        loadPreviews(current.config, request), refreshPublication(request),
+      ]);
       if (active !== request || request.signal.aborted) return;
       if (confirmed && confirmed.publishedRevision === target.revision) {
         notice = "Сервер подтвердил публикацию оформления версии " + target.revision + ". Публичная ссылка ещё не подключена.";
