@@ -100,7 +100,7 @@
 {#snippet publicHeader()}
   <PublicHeader title="Студия S." subtitle="Санкт-Петербург" initials="S">
     {#snippet actions()}
-      <ActionButton onclick={() => { surface = "salon"; status = ""; }}>Страница салона</ActionButton>
+      {#if surface === "booking"}<ActionButton onclick={() => { surface = "salon"; status = ""; }}>Страница салона</ActionButton>{/if}
       <AccountMenu label="Аккаунт" accounts={accounts} current={account} onSelect={(id) => (account = id)} />
     {/snippet}
   </PublicHeader>
