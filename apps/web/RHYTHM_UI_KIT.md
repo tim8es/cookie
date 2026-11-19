@@ -41,7 +41,7 @@ pnpm --filter @cookie/web exec vite build --config vite.ui-kit.config.mts
 ```
 
 Catalog artifacts go to apps/web/.tmp/rhythm-ui-kit-dist, not runtime dist.
-Do not deploy the catalog. Existing F1 checks remain required. Run catalog
+Do not deploy the catalog. The existing F1 web gate now builds the isolated catalog as well as the application; no second CI workflow. Existing F1 checks remain required. Run catalog
 build and manual browser review at 320, 375, 768 and 1280 px; inspect all
 five palette scopes, keyboard navigation, pointer states and form labels.
 The token tests are automatic via the existing web test command. They
