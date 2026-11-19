@@ -986,7 +986,8 @@ async function main() {
     await button(cdp, "Выйти");
     await poll("customer logout is acknowledged before Booking restart", () =>
       responses.slice(customerLogoutResponseStart).some((r) =>
-        r.path === "/v1/auth/identity/logout" && r.status === 204,
+        ["/v1/auth/identity/logout", "/v1/auth/logout"].includes(r.path) &&
+          r.status === 204,
       ),
     );
     await requireDom(
