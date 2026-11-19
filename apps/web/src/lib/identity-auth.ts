@@ -220,6 +220,38 @@ export async function loginTelegramMiniApp(
   throw new IdentityAuthFailure("invalid-response");
 }
 
+/** A legacy Telegram exchange receipt authenticates a tenant, not an owner. */
+export async function verifyOwnerWorkspaceSession(
+  session: VerifiedOwnerSession,
+  fetcher: typeof fetch = globalThis.fetch,
+): Promise<VerifiedOwnerSession> {
+  try {
+    const response = await request(
+      `/v1/organizations/${session.tenantId}/session-context`,
+      {
+        method: "GET",
+        headers: { authorization: "Bearer " + session.accessToken },
+      },
+      fetcher,
+    );
+    if ([401, 403, 404].includes(response.status))
+      throw new IdentityAuthFailure("unauthorized");
+    if (response.status !== 200) throw new IdentityAuthFailure("unavailable");
+    const value: unknown = await response.json();
+    if (!object(value) || value.tenantId !== session.tenantId)
+      throw new IdentityAuthFailure("invalid-response");
+    return session;
+  } catch (reason) {
+    // Never revoke an independently authenticated global identity due to a
+    // denied tenant selection. A newly issued legacy bearer is different.
+    if (TENANT_BEARER.test(session.accessToken)) {
+      await revokeTelegramOwnerSession(session, fetcher).catch(() => undefined);
+    }
+    if (reason instanceof IdentityAuthFailure) throw reason;
+    throw new IdentityAuthFailure("invalid-response");
+  }
+}
+
 export async function verifyStagingCustomerSession(
   session: VerifiedOwnerSession,
   fetcher: typeof fetch = globalThis.fetch,
@@ -859,24 +891,8 @@ export async function restoreWorkspaceContext(
       !organization.roleTypes.includes("admin"))
   )
     throw new IdentityAuthFailure("unauthorized");
-  const response = await request(
-    `/v1/organizations/${hint.tenantId}/session-context`,
-    {
-      method: "GET",
-      headers: { authorization: "Bearer " + identity.accessToken },
-    },
-    fetcher,
-  );
-  if ([401, 403, 404].includes(response.status))
-    throw new IdentityAuthFailure("unauthorized");
-  if (response.status !== 200) throw new IdentityAuthFailure("unavailable");
-  let value: unknown;
-  try {
-    value = await response.json();
-  } catch {
-    throw new IdentityAuthFailure("invalid-response");
-  }
-  if (!object(value) || value.tenantId !== hint.tenantId)
-    throw new IdentityAuthFailure("invalid-response");
-  return { role: "business", session };
+  return {
+    role: "business",
+    session: await verifyOwnerWorkspaceSession(session, fetcher),
+  };
 }

@@ -781,6 +781,11 @@ async function main() {
     await provisionStagingCustomer(pool,createTelegramMiniAppProofVerifier({botToken,maxAgeSeconds:300}),userHashSecret,{
       tenantId:owner.tenantId,rawInitData:signedProof(botToken,customerUserId),consentConfirmed:true,
     });
+    const beforeWrongRole=responses.length;
+    script=await loadAndEnterTelegram(cdp,origin,signedProof(botToken,customerUserId),script,"business");
+    await requireDom(cdp,"legacy client rejected from business workspace",
+      "document.body.innerText.includes('Не удалось подтвердить вход') && !document.querySelector('.real-owner-nav')");
+    assert.ok(responses.slice(beforeWrongRole).some(r=>r.status===403&&r.path.endsWith("/session-context")));
     script=await loadAndEnterTelegram(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script,"customer");
     await requireDom(cdp,"verified client context","document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента подтверждён' && !document.querySelector('.real-owner-nav')");
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-context")));

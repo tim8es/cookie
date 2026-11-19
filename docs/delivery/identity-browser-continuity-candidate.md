@@ -102,3 +102,10 @@ legacy/expired/unconfirmed sessions retain fail-closed behavior. Browser
 regression revokes the actual client role assignment in PostgreSQL and checks
 HTTP 403, removal of the customer workspace, and continued owner access
 without new Telegram login. This does not give either role new permissions.
+
+The legacy tenant-bound Telegram response is also verified against current
+business context before entering the owner shell. A customer-only credential
+must not open business UI; a denied newly issued legacy bearer is revoked
+best-effort. Global identity credentials are not revoked by tenant selection.
+The browser regression exercises legacy client proof on the business surface
+and then a fresh proof on the correct client surface; no legacy migration.

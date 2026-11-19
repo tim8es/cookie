@@ -27,6 +27,7 @@
     requestEmailRegistration,
     selectTelegramTransport,
     startTelegramOidc,
+    verifyOwnerWorkspaceSession,
     verifyStagingCustomerSession,
     type AuthMethods,
     type IdentityAuthSession,
@@ -412,7 +413,7 @@
           const customer = await verifyStagingCustomerSession(result);
           onCustomerSession(customer);
         } else {
-          onOwnerSession(result);
+          onOwnerSession(await verifyOwnerWorkspaceSession(result));
         }
       } else {
         await acceptNewIdentity(result);

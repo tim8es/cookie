@@ -16,6 +16,7 @@ import {
   restoreBrowserIdentitySession,
   restoreWorkspaceContext,
   type IdentityOrganization,
+  verifyOwnerWorkspaceSession,
   verifyStagingCustomerSession,
   type IdentityAuthSession,
 } from "./identity-auth.js";
@@ -495,4 +496,42 @@ test("tenant denial retains only the independently live global identity", async 
     await canRetainGlobalIdentity(bound, different, () => 1000),
     false,
   );
+});
+
+test("legacy Telegram owner entry requires current matching business context", async () => {
+  const legacy = { ...session, accessToken: "cs_" + "C".repeat(43), tenantId };
+  const paths: string[] = [];
+  const allowed: typeof fetch = async (input, init) => {
+    paths.push(String(input));
+    assert.equal(init?.method, "GET");
+    assert.equal(
+      new Headers(init?.headers).get("authorization"),
+      "Bearer " + legacy.accessToken,
+    );
+    return Response.json({ tenantId });
+  };
+  assert.deepEqual(await verifyOwnerWorkspaceSession(legacy, allowed), legacy);
+  assert.deepEqual(paths, [`/v1/organizations/${tenantId}/session-context`]);
+  for (const status of [401, 403, 404, 503]) {
+    paths.length = 0;
+    const denied: typeof fetch = async (input, init) => {
+      paths.push(String(input));
+      return init?.method === "POST"
+        ? new Response(null, { status: 204 })
+        : new Response(null, { status });
+    };
+    await assert.rejects(verifyOwnerWorkspaceSession(legacy, denied));
+    assert.deepEqual(paths, [
+      `/v1/organizations/${tenantId}/session-context`,
+      "/v1/auth/logout",
+    ]);
+  }
+  paths.length = 0;
+  await assert.rejects(
+    verifyOwnerWorkspaceSession({ ...session, tenantId }, async (input) => {
+      paths.push(String(input));
+      return new Response(null, { status: 403 });
+    }),
+  );
+  assert.deepEqual(paths, [`/v1/organizations/${tenantId}/session-context`]);
 });
