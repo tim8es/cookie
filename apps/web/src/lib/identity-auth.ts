@@ -7,6 +7,7 @@ import {
   notifyBrowserSessionChanged,
   subscribeBrowserSessionChanges,
 } from "./browser-session-events";
+import type { WorkspaceHint } from "./workspace-hint";
 
 const IDENTITY_BEARER = /^is_[A-Za-z0-9_-]{43}$/;
 const TENANT_BEARER = /^cs_[A-Za-z0-9_-]{43}$/;
@@ -748,4 +749,56 @@ export function watchBrowserIdentitySession(
     unsubscribe();
   }
   return stop;
+}
+
+/** Resume only current server-confirmed memberships; never enroll on reload. */
+export async function restoreWorkspaceContext(
+  identity: IdentityAuthSession,
+  hint: WorkspaceHint,
+  organizations: readonly IdentityOrganization[],
+  fetcher: typeof fetch = globalThis.fetch,
+): Promise<
+  | { role: "business"; session: VerifiedOwnerSession }
+  | { role: "customer"; session: VerifiedCustomerSession }
+> {
+  if (!IDENTITY_BEARER.test(identity.accessToken) || !UUID.test(hint.tenantId))
+    throw new IdentityAuthFailure("unauthorized");
+  const organization = organizations.find(
+    (entry) => entry.tenantId === hint.tenantId,
+  );
+  const session = { ...identity, tenantId: hint.tenantId };
+  if (hint.role === "customer") {
+    if (!organization?.roleTypes.includes("client"))
+      throw new IdentityAuthFailure("unauthorized");
+    return {
+      role: "customer",
+      session: await verifyStagingCustomerSession(session, fetcher),
+    };
+  }
+  if (
+    !organization ||
+    (!organization.roleTypes.includes("owner") &&
+      !organization.roleTypes.includes("admin"))
+  )
+    throw new IdentityAuthFailure("unauthorized");
+  const response = await request(
+    `/v1/organizations/${hint.tenantId}/session-context`,
+    {
+      method: "GET",
+      headers: { authorization: "Bearer " + identity.accessToken },
+    },
+    fetcher,
+  );
+  if ([401, 403, 404].includes(response.status))
+    throw new IdentityAuthFailure("unauthorized");
+  if (response.status !== 200) throw new IdentityAuthFailure("unavailable");
+  let value: unknown;
+  try {
+    value = await response.json();
+  } catch {
+    throw new IdentityAuthFailure("invalid-response");
+  }
+  if (!object(value) || value.tenantId !== hint.tenantId)
+    throw new IdentityAuthFailure("invalid-response");
+  return { role: "business", session };
 }

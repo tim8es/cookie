@@ -12,9 +12,12 @@ import {
   loginTelegramMiniApp,
   selectTelegramTransport,
   restoreBrowserIdentitySession,
+  restoreWorkspaceContext,
+  type IdentityOrganization,
   verifyStagingCustomerSession,
   type IdentityAuthSession,
 } from "./identity-auth.js";
+import { parseWorkspaceHint } from "./workspace-hint.js";
 
 const session: IdentityAuthSession = {
   accessToken: "is_" + "A".repeat(43),
@@ -290,5 +293,72 @@ test("cross-tab session checks distinguish change from outage", async () => {
   assert.equal(
     await checkBrowserIdentitySession(session, offline, now),
     "unavailable",
+  );
+});
+
+test("workspace resume accepts only a noncredential role and tenant hint", () => {
+  const hint = { role: "business", tenantId };
+  assert.deepEqual(parseWorkspaceHint(hint), hint);
+  assert.equal(parseWorkspaceHint({ ...hint, token: "secret" }), null);
+  assert.equal(parseWorkspaceHint({ ...hint, role: "admin" }), null);
+  assert.equal(parseWorkspaceHint({ ...hint, tenantId: "not-a-uuid" }), null);
+});
+
+test("workspace resume checks current role and context without enrolling", async () => {
+  const org: IdentityOrganization = {
+    tenantId,
+    organizationName: "Synthetic organization",
+    roleTypes: ["owner", "client"],
+  };
+  const requests: string[] = [];
+  const customerId = "22222222-2222-4222-8222-222222222222";
+  const fetcher: typeof fetch = async (input, init) => {
+    const path = String(input);
+    requests.push(path);
+    assert.equal(init?.method, "GET");
+    return Response.json(
+      path.endsWith("/staging-customer-context")
+        ? { tenantId, customerId }
+        : { tenantId },
+    );
+  };
+  assert.deepEqual(
+    await restoreWorkspaceContext(
+      session,
+      { role: "business", tenantId },
+      [org],
+      fetcher,
+    ),
+    { role: "business", session: { ...session, tenantId } },
+  );
+  assert.deepEqual(
+    await restoreWorkspaceContext(
+      session,
+      { role: "customer", tenantId },
+      [org],
+      fetcher,
+    ),
+    { role: "customer", session: { ...session, tenantId, customerId } },
+  );
+  await assert.rejects(
+    restoreWorkspaceContext(
+      session,
+      { role: "business", tenantId },
+      [{ ...org, roleTypes: ["client"] }],
+      fetcher,
+    ),
+  );
+  assert.deepEqual(requests, [
+    `/v1/organizations/${tenantId}/session-context`,
+    `/v1/organizations/${tenantId}/staging-customer-context`,
+  ]);
+  const denied = async () => new Response(null, { status: 403 });
+  await assert.rejects(
+    restoreWorkspaceContext(
+      session,
+      { role: "business", tenantId },
+      [org],
+      denied,
+    ),
   );
 });

@@ -423,16 +423,15 @@ async function main() {
     // Global identity remains authenticated across reload and explicit role
     // switch. No fresh Telegram proof or client-side credential storage.
     const beforeRestore = responses.length;
-    script = await load(cdp, origin, "", script);
-    await requireDom(cdp, "global identity restored after reload",
-      "document.body.innerText.includes('Настройте kuki') && document.body.innerText.includes('Привязанные методы')");
+    await cdp.send("Page.reload", { ignoreCache: true });
     await poll("server-confirmed browser session restoration", () =>
       responses.slice(beforeRestore).some(r=>r.path==="/v1/auth/browser-session"&&r.status===200));
-    await button(cdp, "Я представляю бизнес");
-    await requireDom(cdp, "restored organization appears",
-      "document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
-    await evaluate(cdp, "[...document.querySelectorAll('.identity-organization-list button')].find(b=>b.textContent.includes("+JSON.stringify(onboardingOrganization)+")).click()");
-    await requireDom(cdp, "restored global owner workspace", "document.querySelector('.real-owner-nav')");
+    await requireDom(cdp, "last global owner workspace restored after reload",
+      "document.querySelector('.real-owner-nav')");
+    await button(cdp,"Обзор");
+    await requireDom(cdp,"same verified organization restored",
+      "document.querySelector('h1')?.textContent.trim()==="+JSON.stringify(onboardingOrganization));
+    assert.ok(responses.slice(beforeRestore).some(r=>r.path.endsWith("/session-context")&&r.status===200));
     await button(cdp, "Сменить кабинет");
     await requireDom(cdp, "returned to identity chooser without sign-in",
       "document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");

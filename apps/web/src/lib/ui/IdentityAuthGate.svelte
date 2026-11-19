@@ -21,6 +21,7 @@
     persistBrowserIdentitySession,
     restoreBrowserIdentitySession,
     watchBrowserIdentitySession,
+    restoreWorkspaceContext,
     requestEmailCredentialLink,
     requestEmailPasswordRecovery,
     requestEmailRegistration,
@@ -39,6 +40,8 @@
     type VerifiedCustomerSession,
     type VerifiedOwnerSession,
   } from "../owner-auth.js";
+
+  import { readWorkspaceHint, writeWorkspaceHint } from "../workspace-hint";
 
   export let customerSurface = false;
   export let customerTenantId = "";
@@ -159,6 +162,7 @@
     stopIdentityExpiry?.();
     stopBrowserWatch?.();
     identitySession = null;
+    writeWorkspaceHint(window.history, null);
     accountLoading = false;
     accountLoaded = false;
     providers = null;
@@ -169,7 +173,7 @@
     notice = message;
   }
 
-  function acceptIdentity(session: IdentityAuthSession): void {
+  function acceptIdentity(session: IdentityAuthSession): Promise<void> {
     stopIdentityExpiry?.();
     stopBrowserWatch?.();
     identitySession = session;
@@ -178,7 +182,6 @@
     providers = null;
     organizations = [];
     notice = "Вход подтверждён. Выберите, как пользоваться kuki.";
-    void refreshAccount();
     stopBrowserWatch = watchBrowserIdentitySession(session, () => invalidateIdentity(session, "Сессия в браузере изменилась или завершилась. Войдите снова."), window, document);
     stopIdentityExpiry = watchOwnerSessionExpiry(
       session.expiresAtUnixSeconds,
@@ -186,9 +189,11 @@
       window,
       document,
     );
+    return refreshAccount();
   }
 
   async function acceptNewIdentity(session: IdentityAuthSession): Promise<void> {
+    writeWorkspaceHint(window.history, null);
     let persisted = false;
     try {
       await persistBrowserIdentitySession(session);
@@ -196,18 +201,34 @@
     } catch {
       // Authentication remains valid in this tab, but persistence is not proven.
     }
-    acceptIdentity({ ...session, browserBound: persisted });
+    void acceptIdentity({ ...session, browserBound: persisted });
     if (!persisted) notice = "Вход подтверждён, но браузер не сохранил сессию. При обновлении может потребоваться повторный вход.";
   }
 
-  async function restoreIdentity(): Promise<void> {
+  async function restoreIdentity(resume = false): Promise<void> {
     busy = true;
+    // Consume the tab's hint once. Only a verified workspace writes it again.
+    const hint = resume && !initialIdentitySession ? readWorkspaceHint(window.history) : null;
+    writeWorkspaceHint(window.history, null);
     try {
       if (initialIdentitySession) {
-        acceptIdentity(initialIdentitySession);
+        await acceptIdentity(initialIdentitySession);
       } else {
         const restored = await restoreBrowserIdentitySession();
-        if (restored) acceptIdentity({ ...restored, browserBound: true });
+        if (!restored) return;
+        const current = { ...restored, browserBound: true };
+        await acceptIdentity(current);
+        if (!hint || identitySession !== current || !accountLoaded) return;
+        // Explicit customer links take precedence over this tab's previous role.
+        if (customerSurface && (hint.role !== "customer" || (customerTenantId && hint.tenantId !== customerTenantId))) return;
+        try {
+          const context = await restoreWorkspaceContext(current, hint, organizations);
+          if (identitySession !== current) return;
+          if (context.role === "business") onOwnerSession(context.session);
+          else onCustomerSession(context.session);
+        } catch {
+          if (identitySession === current) notice = "Предыдущий кабинет недоступен. Выберите доступную организацию.";
+        }
       }
     } catch (reason) {
       error = errorMessage(reason);
@@ -276,7 +297,7 @@
       emailLinkToken = proof;
       if (restoreAllowed) void restoreIdentity();
     } else if (restoreAllowed) {
-      void restoreIdentity();
+      void restoreIdentity(true);
     }
 
     return () => {
@@ -509,7 +530,17 @@
       error = "Для кабинета бизнеса нужны права владельца или администратора.";
       return;
     }
-    onOwnerSession({ ...identitySession, tenantId: organization.tenantId });
+    const current = identitySession;
+    busy = true;
+    error = "";
+    try {
+      const context = await restoreWorkspaceContext(current, { role: "business", tenantId: organization.tenantId }, organizations);
+      if (identitySession === current && context.role === "business") onOwnerSession(context.session);
+    } catch (reason) {
+      if (identitySession === current) error = errorMessage(reason);
+    } finally {
+      busy = false;
+    }
   }
 
   async function enrollAsCustomer(): Promise<void> {
@@ -538,6 +569,7 @@
   }
 
   async function signOutIdentity(): Promise<void> {
+    writeWorkspaceHint(window.history, null);
     const current = identitySession;
     stopBrowserWatch?.();
     stopIdentityExpiry?.();
@@ -684,8 +716,8 @@
       <h1 id="identity-auth-title">Кто вы?</h1>
       <p>Выберите сценарий. Доступные способы входа задаются настройками сервера; после входа можно привязать другой включённый способ.</p>
       <div class="identity-role-options" aria-label="Тип учётной записи">
-        <Button variant="outline" onclick={() => { role = "business"; page = "login"; }}>Я представляю бизнес</Button>
-        <Button variant="outline" disabled={!methods?.stagingCustomerEnrollment} onclick={() => { role = "customer"; page = "login"; }}>Я клиент</Button>
+        <Button variant="outline" disabled={busy} onclick={() => { role = "business"; page = "login"; }}>Я представляю бизнес</Button>
+        <Button variant="outline" disabled={busy || !methods?.stagingCustomerEnrollment} onclick={() => { role = "customer"; page = "login"; }}>Я клиент</Button>
       </div>
       {#if !methodsLoading && !methods?.stagingCustomerEnrollment}<p>Клиентская регистрация доступна на приватной тестовой странице опубликованной организации.</p>{/if}
     {:else if page === "registration-complete"}

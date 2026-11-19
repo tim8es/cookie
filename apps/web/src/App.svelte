@@ -15,6 +15,7 @@
     type VerifiedOwnerSession,
   } from "./lib/owner-auth";
   import { watchBrowserIdentitySession, type IdentityAuthSession } from "./lib/identity-auth";
+  import { writeWorkspaceHint } from "./lib/workspace-hint";
   import "./styles.css";
   import "./visual-system.css";
 
@@ -56,6 +57,7 @@
       stopOwnerExpiry?.();
       stopOwnerExpiry = null;
       identityForSwitch = null;
+      writeWorkspaceHint(window.history, null);
       restoreAllowed = false;
       ownerSession = null;
       customerSession = null;
@@ -71,12 +73,14 @@
     stopOwnerExpiry?.();
     ownerSession = session;
     ownerAuthPhase = "verified";
+    writeWorkspaceHint(window.history, session.browserBound ? { role: "business", tenantId: session.tenantId } : null);
     watchWorkspace(session);
     stopOwnerExpiry = watchOwnerSessionExpiry(
       session.expiresAtUnixSeconds,
       () => {
         if (ownerSession !== session) return;
         ownerSession = null;
+        writeWorkspaceHint(window.history, null);
         stopBrowserWatch?.();
         restoreAllowed = false;
         ownerAuthPhase = "expired";
@@ -94,11 +98,13 @@
     ownerAuthPhase = "unavailable";
     customerAuthNotice = "";
     customerSession = session;
+    writeWorkspaceHint(window.history, session.browserBound ? { role: "customer", tenantId: session.tenantId } : null);
     watchWorkspace(session);
   }
 
   function clearCustomerSession(reason: "expired" | "signed-out" | "logout-failed"): void {
     stopBrowserWatch?.();
+    writeWorkspaceHint(window.history, null);
     restoreAllowed = false;
     identityForSwitch = null;
     customerSession = null;
@@ -118,6 +124,7 @@
       expiresAtUnixSeconds: current.expiresAtUnixSeconds,
       browserBound: current.browserBound,
     };
+    writeWorkspaceHint(window.history, null);
     restoreAllowed = true;
     stopBrowserWatch?.();
     stopOwnerExpiry?.();
@@ -139,6 +146,7 @@
   async function logoutOwner(): Promise<void> {
     const session = ownerSession;
     if (!session || ownerAuthPhase !== "verified") return;
+    writeWorkspaceHint(window.history, null);
     stopBrowserWatch?.();
     stopOwnerExpiry?.();
     stopOwnerExpiry = null;

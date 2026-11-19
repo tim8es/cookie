@@ -15,14 +15,18 @@ not exceed the already approved session expiry. Logout revokes the exact
 bearer and clears a matching cookie; a stale tab cannot erase a different
 cookie. Failed network logout is not confirmed.
 
-On reload, return to the account chooser (or explicit customer route); no
-automatic enrollment or role grant. Switching from a global account's owner
+On reload of the current history entry, restore the last global workspace only
+after cookie restoration, current membership and exact context verification.
+A tab-local history hint contains only a role and tenant ID, and is consumed
+once and rewritten on verified entry. Explicit customer links take precedence;
+missing/denied contexts fall back to the chooser. No automatic enrollment or
+role grant. Switching from a global account's owner
 or customer workspace clears the previous presentation, retains only identity
 credentials, and reloads provider/organization context. Legacy sessions do not
 show the new switch action.
 
 Not included: refresh-token rotation/long-lived login policy, migration of
-legacy Telegram tenant identities, automatic last-workspace resume,
+legacy Telegram tenant identities, cross-device/new-tab workspace preferences,
 full physical-device/WebView and Altare acceptance.
 Those remain open #309. The new transport must be exercised in HTTPS staging
 with real browser Fetch Metadata and synthetic accounts before merge. No
