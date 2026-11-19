@@ -8,7 +8,7 @@
   import RealOwnerCalendarPage from "./RealOwnerCalendarPage.svelte";
   import RealOwnerOverviewPage from "./RealOwnerOverviewPage.svelte";
   import RealOwnerUnavailablePage from "./RealOwnerUnavailablePage.svelte";
-  import RealOwnerAppearancePage from "./RealOwnerAppearancePage.svelte";
+  import { Button } from "../components/ui/button/index.js";
 
   export let session: VerifiedOwnerSession;
   export let screen: Screen;
@@ -34,7 +34,18 @@
   <RealOwnerSchedulePage {session} onOpenStaff={() => onNavigate("staff")} />
 {:else if screen === "appearance"}
   {#key session.accessToken}
-    <RealOwnerAppearancePage {session} />
+    {#await import("./RealOwnerAppearancePage.svelte")}
+      <div class="section-head"><h1>Оформление</h1></div>
+      <section class="card" role="status">Загружаем редактор оформления…</section>
+    {:then module}
+      <svelte:component this={module.default} {session} />
+    {:catch}
+      <div class="section-head"><h1>Оформление</h1></div>
+      <section class="card">
+        <p role="alert">Не удалось загрузить редактор оформления. Проверьте соединение и перезагрузите страницу.</p>
+        <Button type="button" variant="outline" onclick={() => window.location.reload()}>Перезагрузить страницу</Button>
+      </section>
+    {/await}
   {/key}
 {:else if screen === "booking"}
   <RealOwnerUnavailablePage {screen} onReturn={() => onNavigate("home")} />
