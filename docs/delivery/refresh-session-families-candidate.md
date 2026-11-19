@@ -52,3 +52,21 @@ An access-only revoke is not family logout. Provider-aware issuance and
 recovery/revocation lock order, access-cookie semantics and browser protocol
 remain required before using a real issuer or mounting endpoints. Existing
 production-shaped provider sessions still have their original behavior.
+
+## Telegram provider continuation (0057)
+
+Separate synthetic candidate accepts only fresh verified Mini App login for an
+existing global Telegram identity, shares proof-consumption and migration
+checks with the normal login path, and atomically binds a refresh family to
+the exact provider fingerprint and Identity. No bearer-only conversion or
+additional registration. Access still uses the isolated synthetic issuer.
+The database constraint explicitly forbids the live runtime issuer for this
+source. Provider locks precede family locks; NOWAIT contention fails closed.
+Original migrated-source revocation disables the exact family and all access
+generations through existing transactional triggers. The test exercises a
+real migrated synthetic customer, proof replay, rotation, runtime issuer
+denial, source revocation and retention of unrelated email-origin access.
+
+Runtime fresh OIDC continuation, real issuer, provider lifecycle/retention,
+family logout routed from HTTP, browser rotation serialization and approved
+lifetime/replay policy remain open. No operator, API or deployment activation.

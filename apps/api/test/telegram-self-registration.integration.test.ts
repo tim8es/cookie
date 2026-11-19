@@ -7,6 +7,7 @@ import { provisionStagingCustomer } from "../../../packages/domain-customers/src
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { runSqlTransaction } from "../../../packages/platform-db/src/transaction.js";
 import { IdentitySessions } from "../../../packages/platform-identity/src/identity-sessions.js";
+import { SyntheticTelegramRefresh } from "../../../packages/platform-identity/src/synthetic-telegram-refresh.js";
 import { assessLegacyTelegramMigration } from "../../../packages/platform-identity/src/legacy-telegram-migration-preflight.js";
 import { prepareLegacyTelegramMigration } from "../../../packages/platform-identity/src/legacy-telegram-migration-preparation.js";
 import { activateLegacyTelegramMigration } from "../../../packages/platform-identity/src/legacy-telegram-migration-activation.js";
@@ -557,6 +558,37 @@ test(
         await migratedSessions.resolve(migrated.token),
         preparation.identityId,
       );
+      const refresh = new SyntheticTelegramRefresh(
+        transaction,
+        verifier,
+        secret,
+        { idleSeconds: 120, absoluteSeconds: 300, accessSeconds: 60 },
+      );
+      const candidateSessions = new IdentitySessions(
+        pool,
+        "cookie-refresh-candidate",
+        "synthetic-test",
+        60,
+      );
+      const refreshProof = signedInitData(TEST_BOT, legacyUser);
+      assert.equal(await refresh.login(migrated.token), null);
+      const refreshLogin = await refresh.login(refreshProof);
+      assert.ok(refreshLogin);
+      assert.equal(await refresh.login(refreshProof), null);
+      assert.equal(
+        await candidateSessions.resolve(refreshLogin.accessToken),
+        preparation.identityId,
+      );
+      assert.equal(
+        await migratedSessions.resolve(refreshLogin.accessToken),
+        null,
+      );
+      const rotatedRefresh = await refresh.rotate(refreshLogin.refreshToken);
+      assert.ok(rotatedRefresh.status === "rotated");
+      assert.equal(
+        await candidateSessions.resolve(rotatedRefresh.accessToken),
+        preparation.identityId,
+      );
       const webProof = randomBytes(32);
       const webSession = await exchangeTrustedTelegramUser(
         transaction,
@@ -664,6 +696,21 @@ test(
 
       assert.equal(await migratedSessions.resolve(migrated.token), null);
       assert.equal(await migratedSessions.resolve(webSession.token), null);
+      assert.equal(
+        await candidateSessions.resolve(refreshLogin.accessToken),
+        null,
+      );
+      assert.equal(
+        await candidateSessions.resolve(rotatedRefresh.accessToken),
+        null,
+      );
+      assert.deepEqual(await refresh.rotate(rotatedRefresh.refreshToken), {
+        status: "denied",
+      });
+      assert.equal(
+        await refresh.login(signedInitData(TEST_BOT, legacyUser)),
+        null,
+      );
       assert.equal(
         await emailSessions.resolve(unrelated.token),
         preparation.identityId,
@@ -790,6 +837,16 @@ test(
           );
           await pool.query(
             "DELETE FROM cookie_identity.identity_sessions WHERE identity_id=$1::uuid",
+            [customerIdentityId],
+          );
+          await pool.query(
+            `DELETE FROM cookie_identity.refresh_session_credentials
+             WHERE family_id IN (SELECT id FROM cookie_identity.refresh_session_families
+                                 WHERE identity_id=$1::uuid)`,
+            [customerIdentityId],
+          );
+          await pool.query(
+            "DELETE FROM cookie_identity.refresh_session_families WHERE identity_id=$1::uuid",
             [customerIdentityId],
           );
           await pool.query(
