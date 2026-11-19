@@ -91,6 +91,7 @@ window.controllerReady = Boolean(window.controller);
 async function main() {
   const pool = new Pool({ connectionString: isolatedDatabase(), max: 4 });
   const app = Fastify({ logger: false });
+  const transaction = (work) => runSqlTransaction(pool, work);
   const testIds = [];
   const clients = [];
   let handle;
@@ -100,7 +101,6 @@ async function main() {
     const secret = randomBytes(32);
     const users = [randomInt(100000000, 999999999), randomInt(1000000000, 1999999999)];
     const verifier = createTelegramMiniAppProofVerifier({ botToken: token, maxAgeSeconds: 300 });
-    const transaction = (work) => runSqlTransaction(pool, work);
     const identitySessions = new IdentitySessions(pool, "cookie-telegram", "cookie-web", 900);
     for (const user of users) {
       const registered = await exchangeSelfServiceTelegram(
@@ -206,6 +206,7 @@ async function main() {
     assert.equal(await lost, true);
     assert.equal(rotates, beforeLost + 1);
     assert.equal(await run(b, "controller.current()===null"), true);
+    await run(b, "window.controllerReady=false; true");
     await b.send("Page.reload");
     await ready(b);
     assert.equal(await run(b, "controller.restore().then(s=>s===null)"), true);
@@ -217,6 +218,7 @@ async function main() {
     assert.ok(familyB && familyB !== familyA);
     assert.equal(await run(b, "controller.logout()"), false);
     assert.equal(await run(b, "controller.restore().then(s=>s===null)"), true);
+    await run(b, "window.controllerReady=false; true");
     await b.send("Page.reload");
     await ready(b);
     assert.equal(await run(b, "controller.restore().then(s=>s?.familyId)"), familyB);
@@ -230,6 +232,7 @@ async function main() {
       [familyB],
     );
     assert.deepEqual(revoked.rows, [{ revoked: true, access_revoked: true }]);
+    await run(b, "window.controllerReady=false; true");
     await b.send("Page.reload");
     await ready(b);
     assert.equal(await run(b, "controller.restore().then(s=>s===null)"), true);
