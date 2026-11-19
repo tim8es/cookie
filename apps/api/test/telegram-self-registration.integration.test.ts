@@ -9,6 +9,7 @@ import { runSqlTransaction } from "../../../packages/platform-db/src/transaction
 import { IdentitySessions } from "../../../packages/platform-identity/src/identity-sessions.js";
 import { assessLegacyTelegramMigration } from "../../../packages/platform-identity/src/legacy-telegram-migration-preflight.js";
 import { prepareLegacyTelegramMigration } from "../../../packages/platform-identity/src/legacy-telegram-migration-preparation.js";
+import { activateLegacyTelegramMigration } from "../../../packages/platform-identity/src/legacy-telegram-migration-activation.js";
 import { linkVerifiedTelegramOwner } from "../../../packages/platform-identity/src/link-telegram-owner.js";
 import { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/opaque-sessions.js";
 import { provisionOwnerWorkspace } from "../../../packages/platform-identity/src/provision-owner-workspace.js";
@@ -462,8 +463,70 @@ test(
         "consumed-proof",
       );
 
-      // Deliberately revoke only the synthetic legacy link after its
-      // successful exchange. A revoked-only history is not a candidate.
+      const activation = {
+        requestId: preparation.requestId,
+        rawInitData: signedInitData(TEST_BOT, legacyUser),
+        consentConfirmed: true as const,
+      };
+      const activate = (input = activation) =>
+        activateLegacyTelegramMigration(transaction, verifier, secret, input);
+      assert.equal(
+        await activate({
+          ...activation,
+          rawInitData: signedInitData(TEST_BOT, linkRaceUser),
+        }),
+        "target-mismatch",
+      );
+      assert.equal(await activate(), "activated");
+      assert.equal(await activate(), "already-activated");
+      assert.equal(
+        await legacySessions.verifyBearerToken(legacyResult.bearerToken),
+        null,
+      );
+      assert.equal(
+        await legacySessions.exchangeTelegramInitData(
+          signedInitData(TEST_BOT, legacyUser),
+        ),
+        null,
+      );
+      assert.equal(
+        await exchangeSelfServiceTelegram(
+          transaction,
+          verifier,
+          secret,
+          activation.rawInitData,
+          false,
+          900,
+        ),
+        null,
+      );
+      const migrated = await exchangeSelfServiceTelegram(
+        transaction,
+        verifier,
+        secret,
+        signedInitData(TEST_BOT, legacyUser),
+        false,
+        900,
+      );
+      assert.ok(migrated);
+      const migratedSessions = new IdentitySessions(
+        pool,
+        "cookie-telegram",
+        "cookie-web",
+        900,
+      );
+      assert.equal(
+        await migratedSessions.resolve(migrated.token),
+        preparation.identityId,
+      );
+      const customerAfter = await pool.query<{ identity_id: string }>(
+        "SELECT identity_id::text FROM cookie_customers.staging_customer_identities WHERE tenant_id=$1::uuid",
+        [tenantId],
+      );
+      assert.equal(customerAfter.rows[0]!.identity_id, preparation.identityId);
+
+      // Deliberately revoke the original legacy link after migration. Both
+      // legacy and migrated Telegram authority must then remain closed.
       assert.equal(
         (
           await pool.query(
@@ -483,6 +546,18 @@ test(
         "inactive-or-unverified",
       );
 
+      assert.equal(await migratedSessions.resolve(migrated.token), null);
+      assert.equal(
+        await exchangeSelfServiceTelegram(
+          transaction,
+          verifier,
+          secret,
+          signedInitData(TEST_BOT, legacyUser),
+          false,
+          900,
+        ),
+        null,
+      );
       assert.equal(
         await prepare({
           ...preparation,
@@ -548,6 +623,20 @@ test(
           [tenantId],
         );
         customerIdentityId = customers.rows[0]?.identity_id;
+        if (customerIdentityId) {
+          await pool.query(
+            "DELETE FROM cookie_identity.global_telegram_exchanges WHERE identity_id=$1::uuid",
+            [customerIdentityId],
+          );
+          await pool.query(
+            "DELETE FROM cookie_identity.identity_sessions WHERE identity_id=$1::uuid",
+            [customerIdentityId],
+          );
+          await pool.query(
+            "DELETE FROM cookie_identity.global_telegram_identities WHERE identity_id=$1::uuid",
+            [customerIdentityId],
+          );
+        }
         await pool.query(
           "DELETE FROM cookie_identity.legacy_telegram_migration_preparations WHERE tenant_id=$1::uuid",
           [tenantId],

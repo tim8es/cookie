@@ -68,3 +68,25 @@ revocation provenance, activation locking/atomicity and the shared Mini App/OIDC
 flow require further review. Reconcile migration numbering before stacked merge.
 Synthetic PG tests check exact identity/link, same-request retry, conflict,
 rollback, post-revocation refusal and existing legacy login after preparation.
+
+## Proposed internal activation candidate
+
+Migration 0054 adds explicit source provenance to the global Telegram link.
+The internal activation function requires a prepared request, independently
+approved consent and a distinct fresh signed proof. NOWAIT locks fence the
+exact original Identity, organization, membership, link and current roles,
+then preflight is repeated. Activation consumes the distinct proof, creates
+only a global provider mapping for the SAME identity, revokes old tenant
+bearers and records an audit event atomically. No session is issued until a
+separate fresh global login. Existing customer/booking IDs are not changed.
+An existing migrated mapping can acknowledge an exact retry without issuing
+any credential; a revoked source cannot be reactivated by login.
+
+Only the exact live migrated source bypasses the legacy login guard. Legacy
+exchange rejects a global mapping or previously consumed global proof.
+Source link mutation/revocation or original membership disable permanently
+disables the migrated mapping and revokes its Telegram identity sessions in
+the same transaction; other providers' sessions are not revoked by this
+trigger. No automatic conversion, API or operator CLI is registered. Full
+revocation concurrency, OIDC, browser and operator authorization/retention
+acceptance remain required before release; this is a policy proposal.

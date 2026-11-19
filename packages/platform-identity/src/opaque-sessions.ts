@@ -124,7 +124,7 @@ export class PostgresOpaqueTelegramSessions {
     try {
       await client.query("BEGIN");
       active = true;
-      await lockTelegramUser(
+      const fingerprint = await lockTelegramUser(
         client,
         this.fingerprintSecret,
         proof.telegramUserId,
@@ -136,6 +136,21 @@ export class PostgresOpaqueTelegramSessions {
         currentProof.telegramUserId !== proof.telegramUserId ||
         currentProof.authDateUnixSeconds !== proof.authDateUnixSeconds
       ) {
+        await client.query("ROLLBACK");
+        active = false;
+        return null;
+      }
+      // A migrated account must not fall back to a tenant bearer, and a
+      // consumed global proof cannot mint a second credential.
+      const globalAuthority = await client.query(
+        `SELECT 1 FROM cookie_identity.global_telegram_identities
+         WHERE telegram_user_hmac_sha256=$1::bytea
+         UNION ALL
+         SELECT 1 FROM cookie_identity.global_telegram_exchanges
+         WHERE proof_sha256=$2::bytea LIMIT 1`,
+        [fingerprint, exchangeDigest],
+      );
+      if (globalAuthority.rowCount) {
         await client.query("ROLLBACK");
         active = false;
         return null;
