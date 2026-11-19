@@ -231,22 +231,27 @@
       if (initialIdentitySession) {
         await acceptIdentity(initialIdentitySession);
       } else {
-        const restored = await withBrowserLogin(window, (canPersist) =>
-          canPersist ? restoreBrowserIdentitySession() : Promise.resolve(null));
-        if (!restored) return;
-        const current = { ...restored, browserBound: true };
-        await acceptIdentity(current);
-        if (!hint || identitySession !== current || !accountLoaded) return;
-        // Explicit customer links take precedence over this tab's previous role.
-        if (customerSurface && (hint.role !== "customer" || (customerTenantId && hint.tenantId !== customerTenantId))) return;
-        try {
-          const context = await restoreWorkspaceContext(current, hint, organizations);
-          if (identitySession !== current) return;
-          if (context.role === "business") onOwnerSession(context.session);
-          else onCustomerSession(context.session);
-        } catch {
-          if (identitySession === current) notice = "Предыдущий кабинет недоступен. Выберите доступную организацию.";
-        }
+        // Hold the same origin-wide lock through account and hinted-workspace
+        // acceptance, not only the cookie GET. A newer explicit login must not
+        // bind a different cookie between restoration and using this identity.
+        await withBrowserLogin(window, async (canPersist) => {
+          if (!canPersist) return;
+          const restored = await restoreBrowserIdentitySession();
+          if (!restored) return;
+          const current = { ...restored, browserBound: true };
+          await acceptIdentity(current);
+          if (!hint || identitySession !== current || !accountLoaded) return;
+          // Explicit customer links take precedence over this tab's previous role.
+          if (customerSurface && (hint.role !== "customer" || (customerTenantId && hint.tenantId !== customerTenantId))) return;
+          try {
+            const context = await restoreWorkspaceContext(current, hint, organizations);
+            if (identitySession !== current) return;
+            if (context.role === "business") onOwnerSession(context.session);
+            else onCustomerSession(context.session);
+          } catch {
+            if (identitySession === current) notice = "Предыдущий кабинет недоступен. Выберите доступную организацию.";
+          }
+        });
       }
     } catch (reason) {
       error = errorMessage(reason);
