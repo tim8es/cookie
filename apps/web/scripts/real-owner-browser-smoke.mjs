@@ -1086,6 +1086,24 @@ async function main() {
 
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
+    // A new read of a previously visited section must actually recheck
+    // server permissions, including in the browser identity integration.
+    script = await loadAndEnterTelegram(cdp, origin, signedProof(botToken, userId), script, "business");
+    await requireDom(cdp, "owner services before role revocation", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
+    await button(cdp, "Мастера");
+    await requireDom(cdp, "owner staff before role revocation", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
+    const revokedOwner = await pool.query(
+      "UPDATE cookie_identity.role_assignments SET active=false WHERE tenant_id=$1::uuid AND identity_id=$2::uuid AND active",
+      [owner.tenantId, owner.identityId],
+    );
+    assert.ok(revokedOwner.rowCount > 0, "Expected active synthetic owner role");
+    const denialMarker = responses.length;
+    await button(cdp, "Услуги");
+    await poll("fresh protected owner request denied", () => responses.slice(denialMarker).some(r=>r.path.endsWith("/services")&&(r.status===401||r.status===403)));
+    await requireDom(cdp, "denied owner workspace closes without auto-restore",
+      "document.body.innerText.includes('Доступ к кабинету не подтверждён сервером') && !document.querySelector('.real-owner-nav') && !document.body.innerText.includes('Synthetic E2E Edited Service') && !document.body.innerText.includes('Synthetic E2E Staff')");
+    assert.deepEqual(errors, [], "Unexpected browser runtime errors after owner denial");
+    assert.deepEqual(external, [], "Unexpected external requests after owner denial");
     const demoApiRequests = [];
     cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
       if (request.url.startsWith(origin + "v1/")) demoApiRequests.push(new URL(request.url).pathname);

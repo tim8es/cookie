@@ -48,17 +48,17 @@
     error = "Срок действия сеанса истёк. Войдите заново.";
   }
 
-  async function refresh(force = false): Promise<void> {
+  async function refresh(): Promise<void> {
     if (expired || Date.now() / 1000 >= session.expiresAtUnixSeconds) {
       expire();
       return;
     }
     const request = ++requestNumber;
-    overview ??= reads.overview.peek() ?? null;
+    overview = null;
     loading = true;
     error = "";
     try {
-      const result = await reads.overview.load(force);
+      const result = await reads.overview.load();
       if (requestNumber === request) {
         overview = result;
       }
@@ -91,7 +91,7 @@
     <h1>{overview?.organization.displayName ?? "Обзор салона"}</h1>
     <p>Сведения об организации и филиалах из защищённого кабинета.</p>
   </div>
-  <Button type="button" variant="outline" onclick={() => void refresh(true)} disabled={loading || expired}>
+  <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || expired}>
     Обновить
   </Button>
 </div>

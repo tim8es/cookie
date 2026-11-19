@@ -27,7 +27,7 @@
   let ownerSession: VerifiedOwnerSession | null = null;
   let customerSession: VerifiedCustomerSession | null = null;
   let customerAuthNotice = "";
-  let ownerAuthPhase: "unavailable" | "verified" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
+  let ownerAuthPhase: "unavailable" | "verified" | "signing-out" | "signed-out" | "logout-failed" | "expired" | "denied" = "unavailable";
   let stopOwnerExpiry: (() => void) | null = null;
   let stopBrowserWatch: (() => void) | null = null;
   let identityForSwitch: IdentityAuthSession | null = null;
@@ -41,7 +41,9 @@
       ? "Локальный вход закрыт, но сервер не подтвердил отзыв. Старая сессия может действовать до истечения срока."
       : ownerAuthPhase === "expired"
         ? "Срок действия сеанса истёк. Войдите снова."
-        : "";
+        : ownerAuthPhase === "denied"
+          ? "Доступ к кабинету не подтверждён сервером. Войдите снова."
+          : "";
 
   onMount(() => () => {
     stopOwnerExpiry?.();
@@ -88,6 +90,21 @@
       window,
       document,
     );
+  }
+
+  function denyOwnerSession(session: VerifiedOwnerSession): void {
+    if (ownerSession !== session) return;
+    // Close the exact workspace synchronously; do not restore an old hint
+    // or globally revoke an independently valid browser identity.
+    stopOwnerExpiry?.();
+    stopOwnerExpiry = null;
+    stopBrowserWatch?.();
+    stopBrowserWatch = null;
+    identityForSwitch = null;
+    writeWorkspaceHint(window.history, null);
+    restoreAllowed = false;
+    ownerSession = null;
+    ownerAuthPhase = "denied";
   }
 
   function acceptCustomerSession(session: VerifiedCustomerSession): void {
@@ -200,7 +217,7 @@
         <StagingCustomerGate initialSession={customerSession} onContextDenied={() => void leaveDeniedCustomerContext()} onSessionCleared={clearCustomerSession} onSwitchAccount={customerSession.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
       {:else if verifiedOwner && ownerSession}
         {#key ownerSession}
-          <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} />
+          <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} onAccessDenied={denyOwnerSession} />
         {/key}
       {:else if ownerAuthPhase === "signing-out"}
         <section class="state-card feedback-state" aria-label="Завершение сеанса">
