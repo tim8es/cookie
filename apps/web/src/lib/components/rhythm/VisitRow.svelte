@@ -12,7 +12,7 @@
 </script>
 
 <div class="rhythm-record" data-component="VisitRow">
-  <time class="rhythm-trailing">{visit.time}</time>
+  <span class="rhythm-trailing">{visit.time}</span>
   <div class="rhythm-copy">
     <strong>{visit.title}</strong>
     {#if visit.subtitle}<small class="rhythm-muted">{visit.subtitle}</small>{/if}
