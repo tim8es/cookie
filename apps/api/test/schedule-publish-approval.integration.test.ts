@@ -18,6 +18,11 @@ import {
 } from "../../../packages/domain-scheduling/src/draft-shift.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 
+import {
+  approvalSnapshot,
+  expectApprovalCommitFailure,
+} from "./approval-commit-fault.js";
+
 test(
   "owner-approved draft publication is atomic and honors current policy and schedule",
   { skip: !process.env.TEST_DATABASE_URL },
@@ -198,6 +203,15 @@ test(
         expectedDraftRevision: 0,
         idempotencyKey: "request-publish-a",
       };
+      const beforeRequestFault = await approvalSnapshot(pool, tenant);
+      await expectApprovalCommitFailure(pool, "abort", (faultPool) =>
+        requestPublishShiftInternal(faultPool, requestInput),
+      );
+      assert.deepEqual(
+        await approvalSnapshot(pool, tenant),
+        beforeRequestFault,
+      );
+
       const [request, sameRequest] = await Promise.all([
         requestPublishShiftInternal(pool, requestInput),
         requestPublishShiftInternal(pool, requestInput),
@@ -205,6 +219,18 @@ test(
       assert.deepEqual(request, sameRequest);
       assert.equal(request.status, "pending");
       assert.equal(request.policyRevision, 0);
+      const beforeRequestReplay = await approvalSnapshot(pool, tenant, false);
+      await expectApprovalCommitFailure(pool, "lose-ack", (faultPool) =>
+        requestPublishShiftInternal(faultPool, requestInput),
+      );
+      assert.deepEqual(
+        await requestPublishShiftInternal(pool, requestInput),
+        request,
+      );
+      assert.deepEqual(
+        await approvalSnapshot(pool, tenant, false),
+        beforeRequestReplay,
+      );
       await assert.rejects(
         requestPublishShiftInternal(pool, {
           ...requestInput,
@@ -283,12 +309,30 @@ test(
         [tenant, poisonId],
       );
 
+      const beforeReviewFault = await approvalSnapshot(pool, tenant);
+      await expectApprovalCommitFailure(pool, "abort", (faultPool) =>
+        reviewPublishShiftInternal(faultPool, review, allow),
+      );
+      assert.deepEqual(await approvalSnapshot(pool, tenant), beforeReviewFault);
+
       const [applied, replay] = await Promise.all([
         reviewPublishShiftInternal(pool, review, allow),
         reviewPublishShiftInternal(pool, review, allow),
       ]);
       assert.deepEqual(replay, applied);
       assert.equal(applied.status, "applied");
+      const beforeReviewReplay = await approvalSnapshot(pool, tenant, false);
+      await expectApprovalCommitFailure(pool, "lose-ack", (faultPool) =>
+        reviewPublishShiftInternal(faultPool, review, allow),
+      );
+      assert.deepEqual(
+        await reviewPublishShiftInternal(pool, review, allow),
+        applied,
+      );
+      assert.deepEqual(
+        await approvalSnapshot(pool, tenant, false),
+        beforeReviewReplay,
+      );
       if (applied.status === "applied") {
         assert.equal(applied.publishedShift.shiftId, shiftA);
         assert.equal(applied.publishedShift.active, true);
@@ -434,15 +478,26 @@ test(
         allow,
       );
       assert.equal(directPublished.active, true);
-      const rejected = await reviewPublishShiftInternal(
-        pool,
-        {
-          actor: ownerActor,
-          requestId: stale.requestId,
-          action: "reject",
-          idempotencyKey: "reject-old-publish-request",
-        },
-        allow,
+      const rejection = {
+        actor: ownerActor,
+        requestId: stale.requestId,
+        action: "reject" as const,
+        idempotencyKey: "reject-old-publish-request",
+      };
+      const beforeRejection = await approvalSnapshot(pool, tenant);
+      await expectApprovalCommitFailure(pool, "abort", (faultPool) =>
+        reviewPublishShiftInternal(faultPool, rejection, allow),
+      );
+      assert.deepEqual(await approvalSnapshot(pool, tenant), beforeRejection);
+      await expectApprovalCommitFailure(pool, "lose-ack", (faultPool) =>
+        reviewPublishShiftInternal(faultPool, rejection, allow),
+      );
+      const afterRejection = await approvalSnapshot(pool, tenant, false);
+      const rejected = await reviewPublishShiftInternal(pool, rejection, allow);
+      assert.equal(rejected.status, "rejected");
+      assert.deepEqual(
+        await approvalSnapshot(pool, tenant, false),
+        afterRejection,
       );
       assert.deepEqual(
         await reviewPublishShiftInternal(
