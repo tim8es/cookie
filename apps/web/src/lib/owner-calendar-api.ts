@@ -170,3 +170,93 @@ export async function readOwnerCalendar(
     throw new CalendarReadError("invalid-response");
   }
 }
+
+export interface OwnerBookingDetail extends OwnerCalendarEntry {
+  readonly locationId: string;
+  readonly timeZone: string;
+  readonly durationMinutes: number;
+  readonly bufferMinutes: number;
+  readonly occupiedUntil: string;
+  readonly cancelledAt: string | null;
+}
+
+export class BookingDetailReadError extends Error {
+  constructor(
+    readonly reason:
+      | "unauthorized"
+      | "not-found"
+      | "invalid-response"
+      | "unavailable",
+  ) {
+    super(reason);
+  }
+}
+
+/** Never derive details from stale calendar entries or cache the response. */
+export async function readOwnerBookingDetail(
+  session: VerifiedOwnerSession,
+  locationId: string,
+  bookingId: string,
+  fetcher: typeof fetch = globalThis.fetch,
+  signal?: AbortSignal,
+): Promise<OwnerBookingDetail> {
+  if (Date.now() / 1000 >= session.expiresAtUnixSeconds)
+    throw new BookingDetailReadError("unauthorized");
+  if (![session.tenantId, locationId, bookingId].every((id) => UUID.test(id)))
+    throw new BookingDetailReadError("invalid-response");
+  let response: Response;
+  try {
+    const root = "/v1/organizations/" + session.tenantId + "/owner-calendar/";
+    const query = new URLSearchParams({ locationId });
+    response = await fetcher(root + bookingId + "?" + query, {
+      method: "GET",
+      credentials: "omit",
+      cache: "no-store",
+      redirect: "error",
+      referrerPolicy: "no-referrer",
+      headers: { authorization: "Bearer " + session.accessToken },
+      signal,
+    });
+  } catch {
+    throw new BookingDetailReadError("unavailable");
+  }
+  if (response.status === 401 || response.status === 403)
+    throw new BookingDetailReadError("unauthorized");
+  if (response.status === 404) throw new BookingDetailReadError("not-found");
+  if (response.status !== 200) throw new BookingDetailReadError("unavailable");
+  try {
+    const value: unknown = await response.json();
+    if (!entry(value)) throw new Error("invalid");
+    const detail = value as OwnerBookingDetail;
+    const duration = detail.durationMinutes;
+    const buffer = detail.bufferMinutes;
+    const cancelled = ["CancelledByClient", "CancelledByBusiness"].includes(
+      detail.status,
+    );
+    if (
+      Object.keys(detail).length !== 13 ||
+      detail.id !== bookingId ||
+      detail.locationId !== locationId ||
+      !zone(detail.timeZone) ||
+      !Number.isInteger(duration) ||
+      duration < 1 ||
+      duration > 1440 ||
+      !Number.isInteger(buffer) ||
+      buffer < 0 ||
+      buffer > 1440 ||
+      !instant(detail.occupiedUntil) ||
+      (cancelled ? !instant(detail.cancelledAt) : detail.cancelledAt !== null) ||
+      Date.parse(detail.endAt) - Date.parse(detail.startAt) !==
+        duration * 60000 ||
+      Date.parse(detail.occupiedUntil) - Date.parse(detail.endAt) !==
+        buffer * 60000
+    )
+      throw new Error("invalid");
+    if (Date.now() / 1000 >= session.expiresAtUnixSeconds)
+      throw new BookingDetailReadError("unauthorized");
+    return detail;
+  } catch (error) {
+    if (error instanceof BookingDetailReadError) throw error;
+    throw new BookingDetailReadError("invalid-response");
+  }
+}

@@ -7,6 +7,7 @@ import {
   CalendarRangeError,
   isCalendarDate,
   readOwnerCalendar,
+  readOwnerBookingDetail,
 } from "../../../packages/calendar-read-adapter/src/index.js";
 import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
 import { withTenantPermission } from "./protected-tenant-transaction.js";
@@ -85,4 +86,60 @@ export function registerOwnerCalendar(
       return reply.code(503).send({ error: "unavailable" });
     }
   });
+
+  app.get<{
+    Params: { tenantId: string; bookingId: string };
+    Querystring: { locationId?: unknown };
+  }>(
+    "/v1/organizations/:tenantId/owner-calendar/:bookingId",
+    async (request, reply) => {
+      reply.header("Cache-Control", "no-store");
+      reply.header("Pragma", "no-cache");
+      reply.header("Vary", "Authorization");
+      const verified = await verifyTenantActor(
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
+      );
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
+      const actor = verified.actor;
+      const { locationId } = request.query;
+      const { bookingId } = request.params;
+      if (
+        Object.keys(request.query).length !== 1 ||
+        typeof locationId !== "string" ||
+        !UUID.test(locationId) ||
+        !UUID.test(bookingId)
+      )
+        return reply.code(400).send({ error: "invalid-request" });
+      try {
+        const detail = await withTenantPermission(
+          pool,
+          actor,
+          "booking.read",
+          async (client) => {
+            const owner = await client.query(
+              `SELECT 1 FROM cookie_tenancy.organizations
+                WHERE id=$1::uuid AND owner_identity_id=$2::uuid FOR SHARE`,
+              [actor.tenantId, actor.identityId],
+            );
+            if (owner.rowCount !== 1) throw new AuthorizationDeniedError();
+            return readOwnerBookingDetail(
+              client,
+              actor.tenantId,
+              locationId,
+              bookingId,
+            );
+          },
+        );
+        if (!detail) return reply.code(404).send({ error: "booking-not-found" });
+        return reply.send(detail);
+      } catch (error) {
+        if (error instanceof AuthorizationDeniedError)
+          return reply.code(403).send({ error: "forbidden" });
+        return reply.code(503).send({ error: "unavailable" });
+      }
+    },
+  );
 }
