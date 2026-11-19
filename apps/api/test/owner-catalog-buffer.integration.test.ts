@@ -129,10 +129,11 @@ test(
       assert.equal(other.postServiceBufferMinutes, 45);
       assert.deepEqual((await list(a)).json().services, [service]);
       assert.deepEqual((await list(b)).json().services, [other]);
-      assert.equal(
-        (await submit(a, { ...base, postServiceBufferMinutes: 0 })).statusCode,
-        409,
-      );
+      const changedCreate = await submit(a, {
+        ...base,
+        postServiceBufferMinutes: 0,
+      });
+      assert.equal(changedCreate.statusCode, 409);
       assert.equal((await submit(a, base)).statusCode, 409);
       const replay = await submit(a, { ...base, postServiceBufferMinutes: 15 });
       assert.equal(replay.statusCode, 200);
@@ -151,37 +152,25 @@ test(
           payload,
         });
       for (const value of [-1, 1441, 0.5, null, "15"]) {
-        assert.equal(
-          (
-            await submit(
-              a,
-              { ...base, postServiceBufferMinutes: value },
-              randomUUID(),
-            )
-          ).statusCode,
-          400,
+        const invalidCreate = await submit(
+          a,
+          { ...base, postServiceBufferMinutes: value },
+          randomUUID(),
         );
-        assert.equal(
-          (
-            await edit({
-              ...base,
-              expectedRevision: 0,
-              postServiceBufferMinutes: value,
-            })
-          ).statusCode,
-          400,
-        );
+        assert.equal(invalidCreate.statusCode, 400);
+        const invalidEdit = await edit({
+          ...base,
+          expectedRevision: 0,
+          postServiceBufferMinutes: value,
+        });
+        assert.equal(invalidEdit.statusCode, 400);
       }
-      assert.equal(
-        (
-          await edit(
-            { ...base, expectedRevision: 0, postServiceBufferMinutes: 0 },
-            randomUUID(),
-            b,
-          )
-        ).statusCode,
-        404,
+      const foreignEdit = await edit(
+        { ...base, expectedRevision: 0, postServiceBufferMinutes: 0 },
+        randomUUID(),
+        b,
       );
+      assert.equal(foreignEdit.statusCode, 404);
       // Old clients cannot accidentally erase a configured buffer.
       const legacyEdit = { ...base, expectedRevision: 0 };
       const legacyEditKey = randomUUID();
@@ -225,12 +214,11 @@ test(
       assert.equal(cleared.json().service.postServiceBufferMinutes, 0);
       assert.equal(cleared.json().service.revision, 2);
       assert.equal((await edit(explicit)).statusCode, 409);
-      assert.equal(
-        (
-          await edit({ ...explicit, postServiceBufferMinutes: 1 }, explicitKey)
-        ).statusCode,
-        409,
+      const changedEdit = await edit(
+        { ...explicit, postServiceBufferMinutes: 1 },
+        explicitKey,
       );
+      assert.equal(changedEdit.statusCode, 409);
       const editedReplay = await edit(explicit, explicitKey);
       assert.deepEqual(editedReplay.json(), cleared.json());
       const legacy = await edit(legacyEdit, legacyEditKey);
@@ -285,12 +273,12 @@ test(
         Object.hasOwn(oldReplay.json().service, "postServiceBufferMinutes"),
         false,
       );
-      assert.equal(
-        (
-          await submit(a, { ...base, postServiceBufferMinutes: 0 }, oldKey)
-        ).statusCode,
-        409,
+      const changedLegacyCreate = await submit(
+        a,
+        { ...base, postServiceBufferMinutes: 0 },
+        oldKey,
       );
+      assert.equal(changedLegacyCreate.statusCode, 409);
 
       // Trusted internal fixture activation does not change the saved buffer.
       // Use the real API-created service from the second tenant; do not
