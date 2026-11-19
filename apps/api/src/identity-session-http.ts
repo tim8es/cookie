@@ -21,7 +21,11 @@ export function registerIdentitySessionLogout(
   renewalAbsoluteLifetimeSeconds?: number,
 ): void {
   if (providers.length === 0) throw new Error("Identity providers required");
-  registerBrowserIdentitySession(app, providers, renewalAbsoluteLifetimeSeconds);
+  registerBrowserIdentitySession(
+    app,
+    providers,
+    renewalAbsoluteLifetimeSeconds,
+  );
   app.post("/v1/auth/identity/logout", async (request, reply) => {
     noStore(reply);
     const token = /^Bearer (is_[A-Za-z0-9_-]{43})$/.exec(
