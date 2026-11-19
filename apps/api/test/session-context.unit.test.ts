@@ -237,3 +237,40 @@ test("Cookie-format verifier must bind server-owned digest and issuer/audience",
     assert.equal(rejected.status, 401);
   }
 });
+
+test("global Identity bearer keeps its authority type while tenant membership stays protected", async () => {
+  const token = "is_" + "B".repeat(43);
+  const digest = createHash("sha256").update(token).digest("hex");
+  let requestedTenant = "";
+  const verified = await verifyTenantActor("Bearer " + token, TENANT_A, {
+    verifyBearerToken: async (value, tenantId) => {
+      assert.equal(value, token);
+      requestedTenant = tenantId ?? "";
+      return {
+        ...validSession(),
+        tenantId: tenantId ?? "",
+        opaqueSessionAuthority: {
+          tokenSha256: digest,
+          issuer: "cookie-email",
+          audience: "cookie-web",
+          kind: "identity",
+        },
+      };
+    },
+  });
+  assert.equal(requestedTenant, TENANT_A);
+  assert.equal(verified.actor?.tenantId, TENANT_A);
+  assert.equal(verified.actor?.opaqueSessionAuthority?.kind, "identity");
+
+  const forgedType = await verifyTenantActor("Bearer " + token, TENANT_A, {
+    verifyBearerToken: async () => ({
+      ...validSession(),
+      opaqueSessionAuthority: {
+        tokenSha256: digest,
+        issuer: "cookie-email",
+        audience: "cookie-web",
+      },
+    }),
+  });
+  assert.equal(forgedType.status, 401);
+});

@@ -1,18 +1,21 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import type { OwnerReads } from "../owner-reads";
+  import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import { Button } from "../components/ui/button/index.js";
   import { Input } from "../components/ui/input/index.js";
   import * as Card from "../components/ui/card/index.js";
   import type { VerifiedOwnerSession } from "../owner-auth";
-  import { readRealStaff, type RealStaff } from "../staff-api";
-  import { readRealLocations, type RealLocation } from "../locations-api";
-  import { createShiftPlan, readShiftPlans, ShiftPlanError, type ShiftPlan } from "../shift-plans-api";
+  import { StaffApiFailure, type RealStaff } from "../staff-api";
+  import { LocationApiFailure, type RealLocation } from "../locations-api";
+  import { createShiftPlan, ShiftPlanError, type ShiftPlan } from "../shift-plans-api";
   import OwnerFormHeader from "./OwnerFormHeader.svelte";
   import StagingAvailabilityPanel from "./StagingAvailabilityPanel.svelte";
   import { readStagingPublicationCapacity } from "../staging-publication-api";
   import { publishStagingShift, readPublishedShifts, type PublishedShift } from "../staging-shift-publication-api";
 
   export let session: VerifiedOwnerSession;
+  export let reads: OwnerReads;
   export let onOpenStaff: () => void;
 
   let staff: readonly RealStaff[] = [];
@@ -46,6 +49,9 @@
   $: selectedLocation = assignedBranches.find((location) => location.id === locationId);
 
   function message(reason: unknown): string {
+    if ((reason instanceof StaffApiFailure || reason instanceof LocationApiFailure) && reason.reason === "unauthorized") {
+      return "Сеанс или права изменились. Войдите заново.";
+    }
     if (reason instanceof ShiftPlanError) {
       if (reason.reason === "unauthorized") return "Сеанс или права изменились. Войдите заново.";
       if (reason.reason === "invalid-time") return "Проверьте дату и время. Смена должна быть в будущем, не более 48 часов; неоднозначное местное время не принимается.";
@@ -94,12 +100,14 @@
     notice = "";
     try {
       publicationKey ||= crypto.randomUUID();
-      await publishStagingShift(session, selected, publicationKey);
+      await publishStagingShift(session, selected, publicationKey, reads.fetch);
       selectedPublication = null;
       publicationKey = "";
       notice = "Смена опубликована в тестовом контуре. Публичная запись клиентов ещё недоступна.";
+      reads.shifts.invalidate();
       await refresh();
     } catch (reason) {
+      reads.shifts.invalidate();
       const code = reason instanceof Error ? reason.message : "";
       publicationError =
         code === "SHIFT_CROSS_LOCATION_CONFLICT" ? "Смена пересекается со сменой в другом филиале." :
@@ -118,13 +126,13 @@
     readError = "";
     publicationReady = false;
     publicationError = "";
-    // Independent, always-fresh publication checks; handle early rejection.
     const publicationRead = Promise.all([
-      readStagingPublicationCapacity(session), readPublishedShifts(session),
+      readStagingPublicationCapacity(session, reads.fetch),
+      readPublishedShifts(session, reads.fetch),
     ]).catch(() => null);
     try {
       const [directory, branches, result] = await Promise.all([
-        readRealStaff(session), readRealLocations(session), readShiftPlans(session),
+        reads.staff.load(), reads.locations.load(), reads.shifts.load(),
       ]);
       staff = directory.staff;
       locations = branches;
@@ -171,14 +179,16 @@
     notice = "";
     try {
       pendingKey ||= crypto.randomUUID();
-      const plan = await createShiftPlan(session, { staffId, locationId, startLocal, endLocal }, pendingKey);
+      const plan = await createShiftPlan(session, { staffId, locationId, startLocal, endLocal }, pendingKey, reads.fetch);
       plans = [...plans.filter((item) => item.shiftId !== plan.shiftId), plan];
       pendingKey = "";
       startLocal = "";
       endLocal = "";
       notice = "Черновик сохранён. Доступность для записи клиентов не изменилась.";
+      reads.shifts.invalidate();
       await refresh();
     } catch (reason) {
+      reads.shifts.invalidate();
       saveError = message(reason);
     } finally {
       saving = false;
@@ -219,8 +229,8 @@
       <div><span class="eyebrow">РАСПИСАНИЕ</span><h2>Будущие черновики</h2></div>
       <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || saving || publishing}>Обновить</Button>
     </div>
-    {#if loading}
-      <p role="status">Загружаем смены…</p>
+    {#if loading && !loaded}
+      <OwnerReadPlaceholder label="Загружаем смены…" />
     {:else if loaded && plans.length === 0}
       <div class="empty-mini"><strong>Смен пока нет</strong><p>Запланируйте первую смену.</p></div>
     {:else if loaded}
@@ -309,5 +319,5 @@
   {/if}
 </div>
 {#if loaded && publicationReady}
-  <StagingAvailabilityPanel {session} {staff} {locations} disabled={loading || saving || publishing} />
+  <StagingAvailabilityPanel {session} fetcher={reads.fetch} {staff} {locations} disabled={loading || saving || publishing} />
 {/if}

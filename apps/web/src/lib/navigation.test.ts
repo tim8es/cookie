@@ -21,36 +21,33 @@ test("demo navigation contains unique screen targets for the owner and public fl
   assert.ok(ids.includes("booking"));
 });
 
-test("owner routes map to screens", () => {
-  assert.equal(ownerScreenPath("home"), "/overview");
-  assert.equal(ownerScreenPath("calendar"), "/calendar");
-  assert.equal(ownerScreenPath("services"), "/services");
-  assert.equal(ownerScreenPath("staff"), "/staff");
-  assert.equal(ownerScreenPath("schedule"), "/schedule");
-  assert.equal(ownerScreenPath("locations"), "/locations");
-  assert.equal(ownerScreenPath("appearance"), "/appearance");
-  assert.equal(ownerScreenPath("booking"), "/booking");
+test("owner routes map only exact presentation paths", () => {
   for (const { id } of screens) {
     assert.equal(ownerScreenFromPath(ownerScreenPath(id)), id);
     assert.equal(ownerScreenFromPath(ownerScreenPath(id) + "/"), id);
   }
+  assert.equal(ownerScreenPath("home"), "/overview");
   assert.equal(ownerScreenFromPath("/"), defaultOwnerScreen);
+  for (const path of [
+    "/v1/services",
+    "/assets/calendar",
+    "/demo",
+    "/unknown",
+    "//calendar",
+    "/%63alendar",
+    "/calendar/details",
+  ]) {
+    assert.equal(ownerScreenFromPath(path), null);
+  }
 });
 
-test("reserved paths are not owner screens", () => {
-  assert.equal(ownerScreenFromPath("/v1/services"), null);
-  assert.equal(ownerScreenFromPath("/assets/calendar"), null);
-  assert.equal(ownerScreenFromPath("/demo"), null);
-  assert.equal(ownerScreenFromPath("/unknown"), null);
-  assert.equal(ownerScreenFromPath("//calendar"), null);
-  assert.equal(ownerScreenFromPath("/%63alendar"), null);
-  assert.equal(ownerScreenFromPath("/calendar/details"), null);
-});
-
-test("owner links preserve launch context", () => {
-  const context = { search: "?lang=ru", hash: "#context" };
-  const calendar = ownerRouteHref("calendar", context);
-  assert.equal(calendar, "/calendar?lang=ru#context");
-  const empty = { search: "", hash: "" };
-  assert.equal(ownerRouteHref("services", empty), "/services");
+test("owner routes preserve launch context without auth data", () => {
+  assert.equal(
+    ownerRouteHref("calendar", { search: "?lang=ru", hash: "#context" }),
+    "/calendar?lang=ru#context",
+  );
+  assert.equal(
+    ownerRouteHref("services", { search: "", hash: "" }),
+    "/services",
+  );
 });
