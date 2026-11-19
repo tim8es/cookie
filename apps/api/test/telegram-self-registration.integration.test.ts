@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { createHmac, randomBytes, randomInt, randomUUID } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  randomInt,
+  randomUUID,
+} from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 import { Pool } from "pg";
@@ -706,6 +712,27 @@ test(
           await candidateSessions.resolve(nextAccess),
           preparation.identityId,
         );
+        // An older access hash selects the family for logout even after
+        // access expiry. The regular cleanup worker must not erase it
+        // while refresh can still rotate the same family.
+        const expiredAccess = await pool.query(
+          `UPDATE cookie_identity.identity_sessions
+           SET issued_at=clock_timestamp()-interval '120 seconds',
+               expires_at=clock_timestamp()-interval '1 second'
+           WHERE refresh_family_id=$1::uuid
+             AND token_sha256<>$2::bytea`,
+          [familyId, createHash("sha256").update(nextAccess).digest()],
+        );
+        assert.equal(expiredAccess.rowCount, 1);
+        assert.equal(await candidateSessions.resolve(firstAccess), null);
+        await candidateSessions.purgeExpired(1000);
+        const selectorHash = createHash("sha256").update(firstAccess).digest();
+        const retainedSelector = () =>
+          pool.query(
+            "SELECT 1 FROM cookie_identity.identity_sessions WHERE token_sha256=$1",
+            [selectorHash],
+          );
+        assert.equal((await retainedSelector()).rowCount, 1);
         const logout = await refreshHttp.inject({
           method: "POST",
           url: path + "/logout",
@@ -719,6 +746,8 @@ test(
         assert.equal(logout.headers["set-cookie"], undefined);
         assert.equal(await candidateSessions.resolve(firstAccess), null);
         assert.equal(await candidateSessions.resolve(nextAccess), null);
+        await candidateSessions.purgeExpired(1000);
+        assert.equal((await retainedSelector()).rowCount, 0);
         assert.equal(
           await candidateSessions.resolve(rotatedRefresh.accessToken),
           preparation.identityId,
