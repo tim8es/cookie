@@ -10,7 +10,10 @@ import { IdentitySessions } from "../../../packages/platform-identity/src/index.
 import { createApp } from "../src/app.js";
 import { createTenantSessionVerifier } from "../src/tenant-session-verifier.js";
 
-for (const mode of ["role", "assignment", "location", "membership"] as const) {
+const modes = ["role", "assignment", "location", "membership"] as const;
+type WorkspaceBody = { locations: { locationId: string }[] };
+
+for (const mode of modes) {
   test(
     `global workspace read serializes with ${mode} revocation`,
     { skip: !process.env.TEST_DATABASE_URL },
@@ -161,24 +164,18 @@ for (const mode of ["role", "assignment", "location", "membership"] as const) {
         }
         const before = await read;
         assert.equal(before.statusCode, 200, before.body);
-        assert.deepEqual(
-          before.json().locations.map(
-            (item: { locationId: string }) => item.locationId,
-          ),
-          [first],
-        );
+        const beforeLocations = before.json<WorkspaceBody>().locations;
+        const beforeIds = beforeLocations.map((item) => item.locationId);
+        assert.deepEqual(beforeIds, [first]);
 
         // Revoke-first: another read must use committed policy, not old scope.
         assert.equal((await revoke(pool)).rowCount, 1);
         const after = await send();
         if (mode === "location") {
           assert.equal(after.statusCode, 200, after.body);
-          assert.deepEqual(
-            after.json().locations.map(
-              (item: { locationId: string }) => item.locationId,
-            ),
-            [second],
-          );
+          const afterLocations = after.json<WorkspaceBody>().locations;
+          const afterIds = afterLocations.map((item) => item.locationId);
+          assert.deepEqual(afterIds, [second]);
         } else {
           assert.equal(after.statusCode, 403, after.body);
           assert.ok(!after.body.includes("QA own organization"));
@@ -207,10 +204,8 @@ for (const mode of ["role", "assignment", "location", "membership"] as const) {
             "cookie_identity.memberships",
             "cookie_tenancy.locations",
           ]) {
-            await pool.query(`DELETE FROM ${table} WHERE tenant_id IN ($1,$2)`, [
-              tenant,
-              foreign,
-            ]);
+            const sql = `DELETE FROM ${table} WHERE tenant_id IN ($1,$2)`;
+            await pool.query(sql, [tenant, foreign]);
           }
           await pool.query(
             "DELETE FROM cookie_tenancy.organizations WHERE id IN ($1,$2)",
