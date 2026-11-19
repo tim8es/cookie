@@ -982,9 +982,18 @@ async function main() {
     const restartStart = new Date(originalReceipt.startAt).toISOString();
     const restartEnd = new Date(originalReceipt.endAt).toISOString();
     const writesBeforeRestart = customerCreateRequests;
+    const customerLogoutResponseStart = responses.length;
     await button(cdp, "Выйти");
-    await requireDom(cdp, "customer logout before Booking restart",
-      "document.querySelector('[aria-label=\\\"Клиентский вход staging\\\"] h1')?.innerText==='Вы вышли' && !document.querySelector('[aria-label=\\\"Мои записи\\\"]')");
+    await poll("customer logout is acknowledged before Booking restart", () =>
+      responses.slice(customerLogoutResponseStart).some((r) =>
+        r.path === "/v1/auth/identity/logout" && r.status === 204,
+      ),
+    );
+    await requireDom(
+      cdp,
+      "customer logout closes private data before Booking restart",
+      "!document.querySelector('[aria-label=\\\"Мои записи\\\"]') && !document.querySelector('[aria-label=\\\"Клиентская витрина staging\\\"]') && !document.body.innerText.includes('Вход клиента подтверждён')",
+    );
     await stopServer(api);
     api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60" }, origin);
 
