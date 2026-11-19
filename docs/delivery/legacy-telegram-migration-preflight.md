@@ -45,3 +45,26 @@ inserts conflict fixtures under savepoints and rolls them back, including
 email credentials, global link collisions, historical duplicates and removed
 roles. This does not modify the production migration contract or consume any
 credential.
+
+## Proposed preparation transaction (not activation)
+
+Candidate migration 0053 introduces an internal review-only table with a
+restrictive composite FK to the exact legacy tenant/Identity/link. An
+operator-authorized caller must supply those expected IDs, separate consent
+confirmation and a fresh signed proof. The function remains unexported from
+the package entrypoint and has no runtime caller. It locks the fingerprint,
+checks the exact live link and membership with NOWAIT SHARE locks, repeats
+preflight and proof verification, then records only request ID, link/identity
+references, proof digest and time. Same exact eligible request can replay;
+conflicting request/proof IDs cannot create a second receipt. Any transaction
+failure rolls back the receipt. It does not reserve or consume login proof,
+change roles, create a global mapping or grant authentication. No activation
+may trust an old receipt, including one whose link has since been revoked.
+
+This intentionally adds no policy for automatic migration. The receipt is
+point-in-time review evidence, not a lock on future provider/role changes.
+Authorization of human operators, lifecycle/retention and FK cleanup,
+revocation provenance, activation locking/atomicity and the shared Mini App/OIDC
+flow require further review. Reconcile migration numbering before stacked merge.
+Synthetic PG tests check exact identity/link, same-request retry, conflict,
+rollback, post-revocation refusal and existing legacy login after preparation.

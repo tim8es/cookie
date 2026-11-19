@@ -8,6 +8,7 @@ import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { runSqlTransaction } from "../../../packages/platform-db/src/transaction.js";
 import { IdentitySessions } from "../../../packages/platform-identity/src/identity-sessions.js";
 import { assessLegacyTelegramMigration } from "../../../packages/platform-identity/src/legacy-telegram-migration-preflight.js";
+import { prepareLegacyTelegramMigration } from "../../../packages/platform-identity/src/legacy-telegram-migration-preparation.js";
 import { linkVerifiedTelegramOwner } from "../../../packages/platform-identity/src/link-telegram-owner.js";
 import { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/opaque-sessions.js";
 import { provisionOwnerWorkspace } from "../../../packages/platform-identity/src/provision-owner-workspace.js";
@@ -362,6 +363,71 @@ test(
         await isolated.query("ROLLBACK");
         isolated.release();
       }
+      // Persist only exact-link preparation evidence, not a global account.
+      const source = await pool.query<{ identity_id: string; id: string }>(
+        "SELECT identity_id::text,id::text FROM cookie_identity.telegram_identity_links WHERE telegram_user_hmac_sha256=$1 AND revoked_at IS NULL",
+        [legacyFingerprint],
+      );
+      const preparation = {
+        requestId: randomUUID(),
+        tenantId,
+        identityId: source.rows[0]!.identity_id,
+        legacyLinkId: source.rows[0]!.id,
+        rawInitData: rawLegacy,
+        consentConfirmed: true as const,
+      };
+      const prepare = (input = preparation) =>
+        prepareLegacyTelegramMigration(transaction, verifier, secret, input);
+      assert.equal(
+        await prepare({ ...preparation, identityId: ownerIdentityId }),
+        "target-mismatch",
+      );
+      assert.equal(await prepare(), "prepared");
+      assert.equal(await prepare(), "replayed");
+      assert.equal(
+        await prepare({ ...preparation, requestId: randomUUID() }),
+        "request-conflict",
+      );
+      const rollbackRequest = {
+        ...preparation,
+        requestId: randomUUID(),
+        rawInitData: signedInitData(TEST_BOT, legacyUser),
+      };
+      await assert.rejects(
+        transaction(async (client) => {
+          assert.equal(
+            await prepareLegacyTelegramMigration(
+              async (work) => work(client),
+              verifier,
+              secret,
+              rollbackRequest,
+            ),
+            "prepared",
+          );
+          throw new Error("synthetic preparation rollback");
+        }),
+        /synthetic preparation rollback/,
+      );
+      const prepared = await pool.query(
+        "SELECT request_id::text,identity_id::text,legacy_link_id::text FROM cookie_identity.legacy_telegram_migration_preparations WHERE tenant_id=$1::uuid",
+        [tenantId],
+      );
+      assert.deepEqual(prepared.rows, [
+        {
+          request_id: preparation.requestId,
+          identity_id: preparation.identityId,
+          legacy_link_id: preparation.legacyLinkId,
+        },
+      ]);
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT 1 FROM cookie_identity.global_telegram_identities WHERE telegram_user_hmac_sha256=$1",
+            [legacyFingerprint],
+          )
+        ).rowCount,
+        0,
+      );
       const legacyLock = await pool.connect();
       await legacyLock.query("BEGIN");
       await lockTelegramUser(legacyLock, secret, String(legacyUser));
@@ -415,6 +481,15 @@ test(
           signedInitData(TEST_BOT, legacyUser),
         ),
         "inactive-or-unverified",
+      );
+
+      assert.equal(
+        await prepare({
+          ...preparation,
+          requestId: randomUUID(),
+          rawInitData: signedInitData(TEST_BOT, legacyUser),
+        }),
+        "target-mismatch",
       );
 
       const rawLinkRace = signedInitData(TEST_BOT, linkRaceUser);
@@ -473,6 +548,10 @@ test(
           [tenantId],
         );
         customerIdentityId = customers.rows[0]?.identity_id;
+        await pool.query(
+          "DELETE FROM cookie_identity.legacy_telegram_migration_preparations WHERE tenant_id=$1::uuid",
+          [tenantId],
+        );
         await pool.query(
           "DELETE FROM cookie_identity.opaque_sessions WHERE tenant_id=$1::uuid",
           [tenantId],
