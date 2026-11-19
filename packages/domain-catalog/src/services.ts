@@ -10,6 +10,8 @@ export interface CreateDraftServiceInput {
   readonly displayName: string;
   readonly durationMinutes: number;
   readonly basePriceKopecks: number;
+  /** Legacy clients omit this field; new forms supply an explicit value. */
+  readonly postServiceBufferMinutes?: number;
 }
 
 export interface ServiceRecord {
@@ -17,10 +19,17 @@ export interface ServiceRecord {
   readonly displayName: string;
   readonly durationMinutes: number;
   readonly basePriceKopecks: number;
+  readonly postServiceBufferMinutes: number;
   readonly active: boolean;
   readonly createdAt: string;
   readonly revision: number;
 }
+
+// Pre-buffer receipts are immutable: never invent a historical value from
+// the latest service row. New writes and all list reads include the field.
+export type ServiceReceipt = Omit<ServiceRecord, "postServiceBufferMinutes"> & {
+  readonly postServiceBufferMinutes?: number;
+};
 
 export class CatalogInputError extends Error {}
 export class CatalogReplayConflict extends Error {}
@@ -32,6 +41,7 @@ interface ServiceRow extends QueryResultRow {
   id: string;
   display_name: string;
   duration_minutes: number;
+  post_service_buffer_minutes: number;
   base_price_kopecks: string;
   active: boolean;
   created_at: Date;
@@ -41,7 +51,7 @@ interface ServiceRow extends QueryResultRow {
 interface ReceiptRow extends QueryResultRow {
   request_sha256: string;
   service_id: string;
-  result_service: ServiceRecord;
+  result_service: ServiceReceipt;
 }
 
 const KEY = /^[A-Za-z0-9._:-]{16,128}$/;
@@ -53,8 +63,9 @@ export function validateDraftService(input: unknown): CreateDraftServiceInput {
     throw new CatalogInputError("invalid input");
   }
   const values = input as Record<string, unknown>;
+  const hasBuffer = Object.hasOwn(values, "postServiceBufferMinutes");
   if (
-    Object.keys(values).length !== 3 ||
+    Object.keys(values).length !== (hasBuffer ? 4 : 3) ||
     !Object.hasOwn(values, "displayName") ||
     !Object.hasOwn(values, "durationMinutes") ||
     !Object.hasOwn(values, "basePriceKopecks") ||
@@ -72,7 +83,11 @@ export function validateDraftService(input: unknown): CreateDraftServiceInput {
     (values.durationMinutes as number) > 1440 ||
     !Number.isSafeInteger(values.basePriceKopecks) ||
     (values.basePriceKopecks as number) < 0 ||
-    (values.basePriceKopecks as number) > MAX_PRICE_KOPECKS
+    (values.basePriceKopecks as number) > MAX_PRICE_KOPECKS ||
+    (hasBuffer &&
+      (!Number.isInteger(values.postServiceBufferMinutes) ||
+        (values.postServiceBufferMinutes as number) < 0 ||
+        (values.postServiceBufferMinutes as number) > 1440))
   ) {
     throw new CatalogInputError("invalid values");
   }
@@ -80,6 +95,9 @@ export function validateDraftService(input: unknown): CreateDraftServiceInput {
     displayName: name,
     durationMinutes: values.durationMinutes as number,
     basePriceKopecks: values.basePriceKopecks as number,
+    ...(hasBuffer
+      ? { postServiceBufferMinutes: values.postServiceBufferMinutes as number }
+      : {}),
   };
 }
 
@@ -93,6 +111,7 @@ function mapService(row: ServiceRow): ServiceRecord {
     displayName: row.display_name,
     durationMinutes: row.duration_minutes,
     basePriceKopecks: amount,
+    postServiceBufferMinutes: row.post_service_buffer_minutes,
     active: row.active,
     createdAt: row.created_at.toISOString(),
     revision: row.draft_revision,
@@ -100,7 +119,8 @@ function mapService(row: ServiceRow): ServiceRecord {
 }
 
 const SELECT_FIELDS = `id::text, display_name, duration_minutes,
-  base_price_kopecks::text, active, created_at, draft_revision, first_published_at`;
+  base_price_kopecks::text, post_service_buffer_minutes, active, created_at,
+  draft_revision, first_published_at`;
 
 /** Stable, bounded tenant list; never silently return a truncated catalog. */
 export async function listTenantServices(
@@ -129,15 +149,18 @@ export async function createTenantDraftService(
   actorIdentityId: string,
   key: string,
   input: CreateDraftServiceInput,
-): Promise<{ service: ServiceRecord; replayed: boolean }> {
+): Promise<{ service: ServiceReceipt; replayed: boolean }> {
   if (!KEY.test(key)) throw new CatalogInputError("invalid idempotency key");
   const hash = createHash("sha256")
     .update(
       JSON.stringify([
-        1,
+        input.postServiceBufferMinutes === undefined ? 1 : 2,
         input.displayName,
         input.durationMinutes,
         input.basePriceKopecks,
+        ...(input.postServiceBufferMinutes === undefined
+          ? []
+          : [input.postServiceBufferMinutes]),
       ]),
     )
     .digest("hex");
@@ -169,10 +192,13 @@ export async function createTenantDraftService(
   );
   if (full.rows.length) throw new CatalogCapacityReached();
   const serviceId = randomUUID();
+  // Omitting the column preserves the legacy create contract and storage
+  // default. Explicit values (including zero) are always stored verbatim.
+  const hasBuffer = input.postServiceBufferMinutes !== undefined;
   const inserted = await client.query<ServiceRow>(
     `INSERT INTO cookie_catalog.services
-       (tenant_id,id,display_name,duration_minutes,base_price_kopecks,active)
-       VALUES($1::uuid,$2::uuid,$3,$4,$5::bigint,false)
+       (tenant_id,id,display_name,duration_minutes,base_price_kopecks,active${hasBuffer ? ",post_service_buffer_minutes" : ""})
+       VALUES($1::uuid,$2::uuid,$3,$4,$5::bigint,false${hasBuffer ? ",$6::integer" : ""})
        RETURNING ${SELECT_FIELDS}`,
     [
       tenantId,
@@ -180,6 +206,7 @@ export async function createTenantDraftService(
       input.displayName,
       input.durationMinutes,
       input.basePriceKopecks,
+      ...(hasBuffer ? [input.postServiceBufferMinutes] : []),
     ],
   );
   if (!inserted.rows[0]) throw new Error("Stored service not found");
@@ -228,17 +255,20 @@ export async function editTenantDraftService(
   serviceId: string,
   key: string,
   input: EditDraftServiceInput,
-): Promise<ServiceRecord> {
+): Promise<ServiceReceipt> {
   if (!KEY.test(key)) throw new CatalogInputError("invalid key");
   const hash = createHash("sha256")
     .update(
       JSON.stringify([
-        1,
+        input.postServiceBufferMinutes === undefined ? 1 : 2,
         serviceId,
         input.expectedRevision,
         input.displayName,
         input.durationMinutes,
         input.basePriceKopecks,
+        ...(input.postServiceBufferMinutes === undefined
+          ? []
+          : [input.postServiceBufferMinutes]),
       ]),
     )
     .digest("hex");
@@ -287,6 +317,7 @@ export async function editTenantDraftService(
   const saved = await client.query<ServiceRow>(
     `UPDATE cookie_catalog.services
         SET display_name=$3,duration_minutes=$4,base_price_kopecks=$5::bigint,
+            post_service_buffer_minutes=COALESCE($7::integer,post_service_buffer_minutes),
             draft_revision=draft_revision+1
       WHERE tenant_id=$1::uuid AND id=$2::uuid AND NOT active
         AND draft_revision=$6
@@ -298,6 +329,7 @@ export async function editTenantDraftService(
       input.durationMinutes,
       input.basePriceKopecks,
       input.expectedRevision,
+      input.postServiceBufferMinutes ?? null,
     ],
   );
   if (!saved.rows[0]) throw new CatalogRevisionConflict();

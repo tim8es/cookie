@@ -70,6 +70,13 @@
     saveError = "";
   }
 
+  function editBuffer(value: number): void {
+    if (saving || uncertain || stale) return;
+    form.serviceBuffer = Number.isNaN(value) ? undefined : value;
+    pendingKey = "";
+    saveError = "";
+  }
+
   function startEdit(service: RealService): void {
     if (saving || loading || uncertain || service.active) return;
     editing = service;
@@ -77,6 +84,7 @@
       serviceName: service.displayName,
       serviceDuration: service.durationMinutes,
       servicePrice: service.basePriceKopecks / 100,
+      serviceBuffer: service.postServiceBufferMinutes,
     };
     pendingKey = "";
     stale = false;
@@ -112,7 +120,7 @@
     if (saving || loading || !loaded || stale) return;
     const draft = realServiceDraftFromForm(form);
     if (!draft) {
-      saveError = "Укажите название, длительность и цену с точностью до копеек. Для бесплатной услуги явно введите 0.";
+      saveError = "Укажите название, длительность, цену и буфер. Введите 0, если услуга бесплатная или не требует буфера.";
       return;
     }
 
@@ -186,6 +194,7 @@
             <div class="entity-text">
               <strong>{service.displayName}</strong>
               <small>{service.durationMinutes} мин · {service.active ? "Активна" : "Черновик"}</small>
+              <small>Буфер: {service.postServiceBufferMinutes} мин</small>
             </div>
             <strong class="price-label">{catalogPrice(service.basePriceKopecks)}</strong>
             {#if !service.active}
@@ -201,9 +210,11 @@
       serviceName={form.serviceName}
       serviceDuration={form.serviceDuration}
       servicePrice={form.servicePrice}
+      serviceBuffer={form.serviceBuffer}
       onNameChange={editName}
       onDurationChange={editDuration}
       onPriceChange={editPrice}
+      onBufferChange={editBuffer}
       onSubmit={() => void save()}
       apiMode={true}
       busy={saving || loading || stale}
