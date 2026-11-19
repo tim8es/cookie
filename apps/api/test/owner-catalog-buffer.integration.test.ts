@@ -242,9 +242,8 @@ test(
         Object.hasOwn(legacy.json().service, "postServiceBufferMinutes"),
         false,
       );
-      assert.deepEqual((await list(a)).json().services, [
-        cleared.json().service,
-      ]);
+      const current = await list(a);
+      assert.deepEqual(current.json().services, [cleared.json().service]);
       assert.deepEqual((await list(b)).json().services, [other]);
       const stored = await pool.query(
         `SELECT post_service_buffer_minutes,draft_revision
@@ -274,9 +273,8 @@ test(
           WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid AND idempotency_key=$3`,
         [a.tenantId, a.ownerId, oldKey],
       );
-      assert.deepEqual(oldCreateRow.rows, [
-        { request_sha256: legacyCreateHash },
-      ]);
+      const legacyCreateRecord = { request_sha256: legacyCreateHash };
+      assert.deepEqual(oldCreateRow.rows, [legacyCreateRecord]);
       await pool.query(
         `UPDATE cookie_catalog.service_create_receipts
           SET result_service=result_service-'postServiceBufferMinutes'
@@ -291,8 +289,9 @@ test(
         false,
       );
       assert.equal(
-        (await submit(a, { ...base, postServiceBufferMinutes: 0 }, oldKey))
-          .statusCode,
+        (
+          await submit(a, { ...base, postServiceBufferMinutes: 0 }, oldKey)
+        ).statusCode,
         409,
       );
     } finally {
