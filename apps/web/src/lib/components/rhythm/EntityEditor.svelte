@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import ActionButton from "./ActionButton.svelte";
 
   let {
     title,
@@ -40,14 +40,10 @@
   {@render children()}
   <div class="rhythm-actions">
     {#if onCancel}
-      <Button variant="outline" class="rhythm-action" disabled={busy} onclick={onCancel}>
+      <ActionButton disabled={busy} onclick={onCancel}>
         Отмена
-      </Button>
+      </ActionButton>
     {/if}
-    <Button
-      type="submit"
-      class="rhythm-action rhythm-action--primary"
-      disabled={busy || disabled}
-    >{busy ? "Сохранение…" : submitLabel}</Button>
+    <ActionButton type="submit" tone="primary" {busy} {disabled} busyLabel="Сохранение…">{submitLabel}</ActionButton>
   </div>
 </form>
