@@ -199,9 +199,9 @@ async function main() {
           }
           if (section === "Показатели и модули") {
             await requireDom(cdp, "shared metric", "document.querySelector('[data-component=MetricStrip] .rhythm-metrics-grid')?.children.length === 3");
-            await button(cdp, "Скрыть показатели⌃");
+            await click(cdp, "[data-component=MetricStrip] .rhythm-metrics-toggle");
             await requireDom(cdp, "metrics hidden", "document.querySelector('[data-component=MetricStrip]')?.dataset.expanded === 'false'");
-            await button(cdp, "Показать показатели⌄");
+            await click(cdp, "[data-component=MetricStrip] .rhythm-metrics-toggle");
             await requireDom(cdp, "metrics restored", "document.querySelector('[data-component=MetricStrip]')?.dataset.expanded === 'true'");
             await click(cdp, '[data-component=PopoverMenu] summary');
             await requireDom(cdp, "popover open", "document.querySelector('[data-component=PopoverMenu]')?.open === true");
