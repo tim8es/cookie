@@ -1,0 +1,270 @@
+import assert from "node:assert/strict";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { resolve } from "node:path";
+import test from "node:test";
+
+import { Pool } from "pg";
+
+import { createApp } from "../src/app.js";
+import { provisionStagingCustomer } from "../../../packages/domain-customers/src/staging-customer.js";
+import { issueStagingGrant } from "../../../packages/domain-entitlement/src/staging.js";
+import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
+import { linkVerifiedTelegramOwner } from "../../../packages/platform-identity/src/link-telegram-owner.js";
+import { PostgresOpaqueTelegramSessions } from "../../../packages/platform-identity/src/opaque-sessions.js";
+import { provisionOwnerWorkspace } from "../../../packages/platform-identity/src/provision-owner-workspace.js";
+import { createTelegramMiniAppProofVerifier } from "../../../packages/platform-identity/src/telegram-init-data.js";
+import { createPostgresVerifiedTelegramLinkResolver } from "../../../packages/platform-identity/src/telegram-links.js";
+import { assertStagingBookingResponse } from "./staging-booking-contract.js";
+
+const BOT = "123456789:synthetic_booking_contract_not_real";
+
+function proof(userId: number): string {
+  const fields = {
+    auth_date: String(Math.floor(Date.now() / 1000)),
+    query_id: randomUUID(),
+    user: JSON.stringify({ id: userId, first_name: "Synthetic" }),
+  };
+  const check = Object.entries(fields)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, value]) => name + "=" + value)
+    .join("\n");
+  const secret = createHmac("sha256", "WebAppData").update(BOT).digest();
+  const hash = createHmac("sha256", secret).update(check).digest("hex");
+  return new URLSearchParams({ ...fields, hash }).toString();
+}
+
+test(
+  "all eight staging customer success responses match the OpenAPI contract",
+  { skip: !process.env.TEST_DATABASE_URL, timeout: 60000 },
+  async () => {
+    const pool = new Pool({
+      connectionString: process.env.TEST_DATABASE_URL,
+      application_name: "cookie-staging-booking-contract",
+      max: 6,
+    });
+    const secret = randomBytes(32);
+    const verifier = createTelegramMiniAppProofVerifier({
+      botToken: BOT,
+      maxAgeSeconds: 300,
+    });
+    const sessions = new PostgresOpaqueTelegramSessions({
+      pool,
+      telegramProofVerifier: verifier,
+      resolveVerifiedTelegramLink: createPostgresVerifiedTelegramLinkResolver({
+        userHashSecret: secret,
+      }),
+      issuer: "cookie-telegram",
+      audience: "cookie-web",
+      ttlSeconds: 900,
+    });
+    const app = createApp(pool, {
+      telegramAuthRoutes: { sessions },
+      catalogRoutes: { pool, verifier: sessions },
+      staffRoutes: { pool, verifier: sessions },
+      shiftPlanRoutes: { pool, verifier: sessions },
+      stagingPublicationRoutes: { pool, verifier: sessions, enabled: true },
+      stagingCustomerBookingRoutes: { pool, verifier: sessions, enabled: true },
+      stagingCustomerCancellationRoutes: {
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 60,
+      },
+    });
+    let tenantId: string | undefined;
+    try {
+      await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
+      const ownerIdentityId = randomUUID();
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [ownerIdentityId],
+      );
+      const owner = await provisionOwnerWorkspace(pool, {
+        ownerIdentityId,
+        organizationName: "Synthetic contract studio",
+        locationName: "Synthetic UTC branch",
+        timeZone: "UTC",
+        idempotencyKey: randomUUID(),
+      });
+      tenantId = owner.tenantId;
+      const tenant = owner.tenantId;
+      const prefix = "/v1/organizations/" + tenant;
+      const signed = proof(19192001);
+      await linkVerifiedTelegramOwner(pool, verifier, secret, {
+        tenantId: tenant,
+        ownerIdentityId,
+        rawInitData: signed,
+        consentConfirmed: true,
+      });
+      async function login(initData: string): Promise<string> {
+        const response = await app.inject({
+          method: "POST",
+          url: "/v1/auth/telegram/exchange",
+          payload: { initData },
+        });
+        assert.equal(response.statusCode, 201);
+        assert.equal(typeof response.json().accessToken, "string");
+        return response.json().accessToken as string;
+      }
+      const ownerToken = await login(signed);
+      const post = (
+        url: string,
+        token: string,
+        payload: object,
+        key: string = randomUUID(),
+      ) =>
+        app.inject({
+          method: "POST",
+          url: prefix + url,
+          headers: {
+            authorization: "Bearer " + token,
+            "idempotency-key": key,
+          },
+          payload,
+        });
+      const service = await post("/services", ownerToken, {
+        displayName: "Synthetic contract service",
+        durationMinutes: 60,
+        basePriceKopecks: 100000,
+      });
+      assert.equal(service.statusCode, 201);
+      const serviceId: string = service.json().service.id;
+      const staff = await post("/staff", ownerToken, {
+        displayName: "Synthetic contract staff",
+        positionTitle: "Stylist",
+        locationId: owner.locationId,
+        serviceId,
+      });
+      assert.equal(staff.statusCode, 201);
+      const staffId: string = staff.json().staff.id;
+      const date = new Date(Date.now() + 3 * 86400000)
+        .toISOString()
+        .slice(0, 10);
+      const draft = await post("/shift-plans", ownerToken, {
+        staffId,
+        locationId: owner.locationId,
+        startLocal: date + "T09:00",
+        endLocal: date + "T18:00",
+      });
+      assert.equal(draft.statusCode, 201);
+      await issueStagingGrant(
+        pool,
+        tenant,
+        1,
+        new Date(Date.now() + 3600000).toISOString(),
+      );
+      assert.equal(
+        (
+          await post("/staging-publication", ownerToken, {
+            staffId,
+            locationId: owner.locationId,
+            serviceId,
+            expectedServiceRevision: 0,
+          })
+        ).statusCode,
+        201,
+      );
+      assert.equal(
+        (
+          await post("/staging-shift-publication", ownerToken, {
+            shiftId: draft.json().plan.shiftId,
+            expectedRevision: draft.json().plan.revision,
+          })
+        ).statusCode,
+        200,
+      );
+
+      const rawInitData = proof(19192002);
+      await provisionStagingCustomer(pool, verifier, secret, {
+        tenantId: tenant,
+        rawInitData,
+        consentConfirmed: true,
+      });
+      const token = await login(rawInitData);
+      const headers = { authorization: "Bearer " + token };
+      const get = (route: string, extra: Record<string, string> = {}) =>
+        app.inject({
+          method: "GET",
+          url: prefix + "/" + route,
+          headers: { ...headers, ...extra },
+        });
+      const offers = await get("staging-customer-offers");
+      assertStagingBookingResponse(
+        "staging-customer-offers",
+        "get",
+        200,
+        offers,
+      );
+      assert.equal(offers.json().offers.length, 1);
+      const selection = { locationId: owner.locationId, staffId, serviceId };
+      const query = new URLSearchParams({ ...selection, localDate: date });
+      const slots = await get("staging-customer-slots?" + query.toString());
+      assertStagingBookingResponse("staging-customer-slots", "get", 200, slots);
+      assert.ok(slots.json().slots.length > 0);
+      const createCapability = "staging-customer-bookings/capability";
+      assertStagingBookingResponse(
+        createCapability,
+        "get",
+        200,
+        await get(createCapability),
+      );
+      const createKey = randomUUID();
+      const created = await post(
+        "/staging-customer-bookings",
+        token,
+        { ...selection, startAt: date + "T09:00:00.000Z" },
+        createKey,
+      );
+      assertStagingBookingResponse(
+        "staging-customer-bookings",
+        "post",
+        201,
+        created,
+      );
+      const receiptRoute = "staging-customer-bookings/receipt";
+      const receipt = await get(receiptRoute, { "idempotency-key": createKey });
+      assertStagingBookingResponse(receiptRoute, "get", 200, receipt);
+      assert.deepEqual(receipt.json(), created.json());
+      const historyRoute = "staging-customer-history";
+      const history = await get(historyRoute);
+      assertStagingBookingResponse(historyRoute, "get", 200, history);
+      assert.equal(history.json().bookings.length, 1);
+      const bookingId: string = created.json().bookingId;
+      assert.equal(history.json().bookings[0].bookingId, bookingId);
+      const cancelCapability = "staging-customer-cancellation/capability";
+      assertStagingBookingResponse(
+        cancelCapability,
+        "get",
+        200,
+        await get(cancelCapability),
+      );
+      const cancelled = await post(
+        "/staging-customer-cancellation/" + bookingId,
+        token,
+        {},
+      );
+      assertStagingBookingResponse(
+        "staging-customer-cancellation/{bookingId}",
+        "post",
+        200,
+        cancelled,
+      );
+      assert.equal(cancelled.json().bookingId, bookingId);
+      const finalHistory = await get(historyRoute);
+      assertStagingBookingResponse(historyRoute, "get", 200, finalHistory);
+      assert.equal(finalHistory.json().bookings[0].status, "CancelledByClient");
+    } finally {
+      try {
+        await app.close();
+        if (tenantId) {
+          await pool.query(
+            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid",
+            [tenantId],
+          );
+        }
+      } finally {
+        await pool.end();
+      }
+    }
+  },
+);
