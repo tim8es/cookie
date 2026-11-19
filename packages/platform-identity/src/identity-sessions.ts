@@ -233,16 +233,26 @@ export class IdentitySessions {
     );
   }
 
-  /** Delete expired bearer hashes in a bounded batch. */
+  /**
+   * Delete expired bearer hashes in a bounded batch. Family-linked hashes
+   * also select the exact family for logout; retain them until irrevocable
+   * revocation or absolute expiry, never based only on sliding idle expiry.
+   */
   async purgeExpired(batchSize: number): Promise<number> {
     if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 1000) {
       throw new Error("Invalid identity session cleanup batch");
     }
     const result = await this.pool.query(
       `WITH expired AS (
-         SELECT token_sha256 FROM cookie_identity.identity_sessions
-         WHERE expires_at<=clock_timestamp()
-         ORDER BY expires_at,token_sha256 LIMIT $1 FOR UPDATE SKIP LOCKED
+         SELECT s.token_sha256 FROM cookie_identity.identity_sessions s
+         WHERE s.expires_at<=clock_timestamp()
+           AND (s.refresh_family_id IS NULL OR EXISTS (
+             SELECT 1 FROM cookie_identity.refresh_session_families f
+             WHERE f.id=s.refresh_family_id AND (
+               f.revoked_at IS NOT NULL OR f.absolute_expires_at<=clock_timestamp()
+             )
+           ))
+         ORDER BY s.expires_at,s.token_sha256 LIMIT $1 FOR UPDATE OF s SKIP LOCKED
        )
        DELETE FROM cookie_identity.identity_sessions AS session
        USING expired WHERE session.token_sha256=expired.token_sha256`,
