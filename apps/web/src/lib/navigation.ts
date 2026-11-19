@@ -40,6 +40,9 @@ export function ownerScreenFromPath(path: string): Screen | null {
 }
 
 /** Retain existing launch context; never add any session or tenant claims. */
-export function ownerRouteHref(screen: Screen, location: Pick<Location, "search" | "hash">): string {
+export function ownerRouteHref(
+  screen: Screen,
+  location: Pick<Location, "search" | "hash">,
+): string {
   return ownerScreenPath(screen) + location.search + location.hash;
 }
