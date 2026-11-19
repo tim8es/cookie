@@ -38,7 +38,7 @@
     { id: "feedback", label: "Состояния" },
     { id: "public", label: "Публичная запись" },
     { id: "calendar", label: "Календарь и смены" },
-    { id: "account", label: "Аккаунт" },
+    { id: "account", label: "Меню аккаунта" },
   ];
 
   let theme = $state<RhythmPreviewTheme>("workspace");
