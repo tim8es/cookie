@@ -27,8 +27,8 @@ export async function probeChromiumPage(handle, { readPort, getLocal }) {
   const contents = readPort(handle.dir);
   if (contents === null) return null;
   handle.probeStage = "invalid-port";
-  const firstLine = contents.split(/\\r?\\n/)[0];
-  if (!/^\\d{1,5}$/.test(firstLine)) return null;
+  const firstLine = contents.split(/\r?\n/)[0];
+  if (!/^\d{1,5}$/.test(firstLine)) return null;
   const port = Number(firstLine);
   if (!Number.isInteger(port) || port <= 0 || port >= 65536) return null;
   handle.probeStage = "http-transport";
