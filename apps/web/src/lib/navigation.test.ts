@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { screens } from "./navigation";
+import { defaultOwnerScreen, ownerRouteHref, ownerScreenFromPath, ownerScreenPath, screens } from "./navigation";
 
 test("demo navigation contains unique screen targets for the owner and public flow", () => {
   const ids = screens.map((item) => item.id);
@@ -13,4 +13,26 @@ test("demo navigation contains unique screen targets for the owner and public fl
   assert.ok(ids.includes("locations"));
   assert.ok(ids.includes("appearance"));
   assert.ok(ids.includes("booking"));
+});
+
+test("every owner screen has a unique reversible canonical URL", () => {
+  assert.deepEqual(screens.map(({ id }) => ownerScreenPath(id)), [
+    "/overview", "/calendar", "/services", "/staff", "/schedule", "/locations", "/appearance", "/booking",
+  ]);
+  for (const { id } of screens) {
+    assert.equal(ownerScreenFromPath(ownerScreenPath(id)), id);
+    assert.equal(ownerScreenFromPath(ownerScreenPath(id) + "/"), id);
+  }
+  assert.equal(ownerScreenFromPath("/"), defaultOwnerScreen);
+});
+
+test("unknown and reserved paths are never interpreted as owner screens", () => {
+  for (const path of ["/v1/services", "/assets/calendar", "/demo", "/unknown", "//calendar", "/%63alendar", "/calendar/details"]) {
+    assert.equal(ownerScreenFromPath(path), null);
+  }
+});
+
+test("owner navigation retains existing launch context without inventing credentials", () => {
+  assert.equal(ownerRouteHref("calendar", { search: "?lang=ru", hash: "#context" }), "/calendar?lang=ru#context");
+  assert.equal(ownerRouteHref("services", { search: "", hash: "" }), "/services");
 });
