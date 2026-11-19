@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -153,19 +153,34 @@ test(
         });
       for (const value of [-1, 1441, 0.5, null, "15"]) {
         assert.equal(
-          (await submit(a, { ...base, postServiceBufferMinutes: value }, randomUUID()))
-            .statusCode,
+          (
+            await submit(
+              a,
+              { ...base, postServiceBufferMinutes: value },
+              randomUUID(),
+            )
+          ).statusCode,
           400,
         );
         assert.equal(
-          (await edit({ ...base, expectedRevision: 0, postServiceBufferMinutes: value }))
-            .statusCode,
+          (
+            await edit({
+              ...base,
+              expectedRevision: 0,
+              postServiceBufferMinutes: value,
+            })
+          ).statusCode,
           400,
         );
       }
       assert.equal(
-        (await edit({ ...base, expectedRevision: 0, postServiceBufferMinutes: 0 }, randomUUID(), b))
-          .statusCode,
+        (
+          await edit(
+            { ...base, expectedRevision: 0, postServiceBufferMinutes: 0 },
+            randomUUID(),
+            b,
+          )
+        ).statusCode,
         404,
       );
       // Old clients cannot accidentally erase a configured buffer.
@@ -176,13 +191,35 @@ test(
       assert.equal(preserved.json().service.postServiceBufferMinutes, 15);
       // Simulate an immutable pre-upgrade receipt without the newly exposed
       // field, never reconstruct it from later current state.
+      const legacyEditHash = createHash("sha256")
+        .update(
+          JSON.stringify([
+            1,
+            service.id,
+            legacyEdit.expectedRevision,
+            base.displayName,
+            base.durationMinutes,
+            base.basePriceKopecks,
+          ]),
+        )
+        .digest("hex");
+      const oldEditRow = await pool.query(
+        `SELECT request_sha256 FROM cookie_catalog.service_edit_receipts
+          WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid AND idempotency_key=$3`,
+        [a.tenantId, a.ownerId, legacyEditKey],
+      );
+      assert.deepEqual(oldEditRow.rows, [{ request_sha256: legacyEditHash }]);
       await pool.query(
         `UPDATE cookie_catalog.service_edit_receipts
           SET result_service=result_service-'postServiceBufferMinutes'
           WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid AND idempotency_key=$3`,
         [a.tenantId, a.ownerId, legacyEditKey],
       );
-      const explicit = { ...base, expectedRevision: 1, postServiceBufferMinutes: 0 };
+      const explicit = {
+        ...base,
+        expectedRevision: 1,
+        postServiceBufferMinutes: 0,
+      };
       const explicitKey = randomUUID();
       const cleared = await edit(explicit, explicitKey);
       assert.equal(cleared.statusCode, 200);
@@ -190,14 +227,24 @@ test(
       assert.equal(cleared.json().service.revision, 2);
       assert.equal((await edit(explicit)).statusCode, 409);
       assert.equal(
-        (await edit({ ...explicit, postServiceBufferMinutes: 1 }, explicitKey)).statusCode,
+        (
+          await edit({ ...explicit, postServiceBufferMinutes: 1 }, explicitKey)
+        ).statusCode,
         409,
       );
-      assert.deepEqual((await edit(explicit, explicitKey)).json(), cleared.json());
+      assert.deepEqual(
+        (await edit(explicit, explicitKey)).json(),
+        cleared.json(),
+      );
       const legacy = await edit(legacyEdit, legacyEditKey);
       assert.equal(legacy.statusCode, 200);
-      assert.equal(Object.hasOwn(legacy.json().service, "postServiceBufferMinutes"), false);
-      assert.deepEqual((await list(a)).json().services, [cleared.json().service]);
+      assert.equal(
+        Object.hasOwn(legacy.json().service, "postServiceBufferMinutes"),
+        false,
+      );
+      assert.deepEqual((await list(a)).json().services, [
+        cleared.json().service,
+      ]);
       assert.deepEqual((await list(b)).json().services, [other]);
       const stored = await pool.query(
         `SELECT post_service_buffer_minutes,draft_revision
@@ -212,6 +259,24 @@ test(
       const old = await submit(a, base, oldKey);
       assert.equal(old.statusCode, 201);
       assert.equal(old.json().service.postServiceBufferMinutes, 0);
+      const legacyCreateHash = createHash("sha256")
+        .update(
+          JSON.stringify([
+            1,
+            base.displayName,
+            base.durationMinutes,
+            base.basePriceKopecks,
+          ]),
+        )
+        .digest("hex");
+      const oldCreateRow = await pool.query(
+        `SELECT request_sha256 FROM cookie_catalog.service_create_receipts
+          WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid AND idempotency_key=$3`,
+        [a.tenantId, a.ownerId, oldKey],
+      );
+      assert.deepEqual(oldCreateRow.rows, [
+        { request_sha256: legacyCreateHash },
+      ]);
       await pool.query(
         `UPDATE cookie_catalog.service_create_receipts
           SET result_service=result_service-'postServiceBufferMinutes'
@@ -221,9 +286,13 @@ test(
       const oldReplay = await submit(a, base, oldKey);
       assert.equal(oldReplay.statusCode, 200);
       assert.equal(oldReplay.json().service.id, old.json().service.id);
-      assert.equal(Object.hasOwn(oldReplay.json().service, "postServiceBufferMinutes"), false);
       assert.equal(
-        (await submit(a, { ...base, postServiceBufferMinutes: 0 }, oldKey)).statusCode,
+        Object.hasOwn(oldReplay.json().service, "postServiceBufferMinutes"),
+        false,
+      );
+      assert.equal(
+        (await submit(a, { ...base, postServiceBufferMinutes: 0 }, oldKey))
+          .statusCode,
         409,
       );
     } finally {
