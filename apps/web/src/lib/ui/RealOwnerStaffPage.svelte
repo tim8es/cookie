@@ -139,7 +139,7 @@
         : "Профиль и назначения сохранены. Для записи клиентов мастер пока недоступен.";
       reads.staff.invalidate();
       reads.invalidateCalendars();
-      await refresh(true);
+      await refresh();
     } catch (reason) {
       if (!retainStaffCreateKey(retrying, reason)) pendingKey = "";
       reads.staff.invalidate();
@@ -179,7 +179,7 @@
 {#if readError}
   <div class="alert-error" role="alert">
     <p>{readError}</p>
-    <Button variant="outline" type="button" onclick={() => void refresh(true)} disabled={loading}>Повторить загрузку</Button>
+    <Button variant="outline" type="button" onclick={() => void refresh()} disabled={loading}>Повторить загрузку</Button>
   </div>
 {/if}
 {#if writeError}
@@ -195,7 +195,7 @@
   <section class="card">
     <div class="card-title">
       <div><span class="eyebrow">КОМАНДА</span><h2>Профили мастеров</h2></div>
-      <Button variant="outline" type="button" onclick={() => void refresh(true)} disabled={loading || saving || publicationPending || !!pendingKey}>Обновить</Button>
+      <Button variant="outline" type="button" onclick={() => void refresh()} disabled={loading || saving || publicationPending || !!pendingKey}>Обновить</Button>
     </div>
     {#if loading && !loaded}
       <OwnerReadPlaceholder label="Загружаем профили…" />
@@ -245,6 +245,6 @@
       reads.services.invalidate();
       reads.shifts.invalidate();
       reads.invalidateCalendars();
-      await refresh(true);
+      await refresh();
     }} />
 {/if}
