@@ -113,7 +113,7 @@ test("browser continuity verifies a global bearer and resumes without replay", a
     },
   });
   assert.equal(logout.statusCode, 204);
-  assert.match(String(logout.headers["set-cookie"]), /Max-Age=0/);
+  assert.equal(logout.headers["set-cookie"], undefined);
   const after = await app.inject({
     method: "GET",
     url: path,
@@ -192,4 +192,79 @@ test("renewal is opt-in, cookie-bound and does not accept a lifetime from the br
     String(allowed.headers["set-cookie"]),
     /HttpOnly; Secure; SameSite=Strict/,
   );
+});
+
+test("delayed logout cannot erase a newer browser login cookie", async (t) => {
+  const first = "is_" + "A".repeat(43);
+  const second = "is_" + "B".repeat(43);
+  const expiry = Math.floor(Date.now() / 1000) + 120;
+  const live = new Set([first, second]);
+  let enter!: () => void;
+  let release!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const provider = {
+    async resolveWithExpiry(value: string) {
+      return live.has(value)
+        ? {
+            identityId: "11111111-1111-4111-8111-111111111111",
+            expiresAtUnixSeconds: expiry,
+          }
+        : null;
+    },
+    async revoke(value: string) {
+      if (value === first) {
+        enter();
+        await gate;
+      }
+      live.delete(value);
+    },
+  } as unknown as IdentitySessions;
+  const app = createApp(
+    { query: async () => ({ rows: [] }) },
+    { identitySessionProviders: [provider] },
+  );
+  t.after(() => app.close());
+  const browser = { "sec-fetch-site": "same-origin", "x-kuki-session": "1" };
+  const path = "/v1/auth/browser-session";
+  const oldCookie = "__Host-kuki-session=" + first;
+  const pending = app.inject({
+    method: "POST",
+    url: "/v1/auth/identity/logout",
+    headers: { ...browser, cookie: oldCookie, authorization: "Bearer " + first },
+  });
+  try {
+    await entered;
+    const login = await app.inject({
+      method: "POST",
+      url: path,
+      headers: { ...browser, authorization: "Bearer " + second },
+    });
+    assert.equal(login.statusCode, 204);
+    const newCookie = String(login.headers["set-cookie"]).split(";", 1)[0]!;
+    release();
+    const logout = await pending;
+    assert.equal(logout.statusCode, 204);
+    assert.equal(logout.headers["set-cookie"], undefined);
+    const resumed = await app.inject({
+      method: "GET",
+      url: path,
+      headers: { ...browser, cookie: newCookie },
+    });
+    assert.equal(resumed.statusCode, 200);
+    assert.equal(resumed.json().accessToken, second);
+    const denied = await app.inject({
+      method: "GET",
+      url: path,
+      headers: { ...browser, cookie: oldCookie },
+    });
+    assert.equal(denied.statusCode, 401);
+  } finally {
+    release();
+    await pending;
+  }
 });
