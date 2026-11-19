@@ -13,13 +13,12 @@ function validTelegramUserId(value: unknown): value is string {
   );
 }
 
-async function issueGlobalTelegramSession(
+async function consumeGlobalTelegramProof(
   client: PoolClient,
   fingerprint: Buffer,
   exchangeHash: Buffer,
   register: boolean,
-  ttlSeconds: number,
-): Promise<{ token: string; expiresAtUnixSeconds: number } | null> {
+): Promise<{ identityId: string; createdIdentity: boolean } | null> {
   const legacy = await client.query(
     "SELECT 1 FROM cookie_identity.telegram_identity_links WHERE telegram_user_hmac_sha256=$1 LIMIT 1",
     [fingerprint],
@@ -87,6 +86,24 @@ async function issueGlobalTelegramSession(
     [exchangeHash, identityId],
   );
   if (consumed.rowCount !== 1) return null;
+  return { identityId, createdIdentity };
+}
+
+async function issueGlobalTelegramSession(
+  client: PoolClient,
+  fingerprint: Buffer,
+  exchangeHash: Buffer,
+  register: boolean,
+  ttlSeconds: number,
+): Promise<{ token: string; expiresAtUnixSeconds: number } | null> {
+  const accepted = await consumeGlobalTelegramProof(
+    client,
+    fingerprint,
+    exchangeHash,
+    register,
+  );
+  if (!accepted) return null;
+  const { identityId, createdIdentity } = accepted;
   const token = "is_" + randomBytes(32).toString("base64url");
   const issued = await client.query<{ expires_at: Date }>(
     `INSERT INTO cookie_identity.identity_sessions(token_sha256,identity_id,issuer,audience,issued_at,expires_at)
@@ -152,6 +169,35 @@ export async function exchangeSelfServiceTelegram(
 ): Promise<{ token: string; expiresAtUnixSeconds: number } | null> {
   if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds < 60 || ttlSeconds > 3600)
     throw new Error("Invalid session lifetime");
+  return exchangeMiniAppProof(
+    transaction,
+    verifier,
+    fingerprintSecret,
+    rawInitData,
+    register,
+    (client, fingerprint, exchangeHash) =>
+      issueGlobalTelegramSession(
+        client,
+        fingerprint,
+        exchangeHash,
+        register,
+        ttlSeconds,
+      ),
+  );
+}
+
+async function exchangeMiniAppProof<T>(
+  transaction: <R>(work: (client: PoolClient) => Promise<R>) => Promise<R>,
+  verifier: TelegramMiniAppProofVerifier,
+  fingerprintSecret: Buffer,
+  rawInitData: unknown,
+  register: boolean,
+  issue: (
+    client: PoolClient,
+    fingerprint: Buffer,
+    exchangeHash: Buffer,
+  ) => Promise<T | null>,
+): Promise<T | null> {
   if (typeof rawInitData !== "string" || typeof register !== "boolean")
     return null;
   const proof = verifier.verify(rawInitData);
@@ -182,14 +228,49 @@ export async function exchangeSelfServiceTelegram(
       [exchangeHash],
     );
     if (legacyProof.rowCount) return null;
-    return issueGlobalTelegramSession(
-      client,
-      fingerprint,
-      exchangeHash,
-      register,
-      ttlSeconds,
-    );
+    return issue(client, fingerprint, exchangeHash);
   });
+}
+
+/**
+ * Internal synthetic continuation only; not exported from the package index.
+ * The continuation is part of the same acknowledged transaction as proof
+ * consumption. It must throw on failure, never publish credentials early.
+ */
+export async function continueSyntheticTelegramLogin<T>(
+  transaction: <R>(work: (client: PoolClient) => Promise<R>) => Promise<R>,
+  verifier: TelegramMiniAppProofVerifier,
+  fingerprintSecret: Buffer,
+  rawInitData: unknown,
+  issue: (
+    client: PoolClient,
+    identityId: string,
+    fingerprint: Buffer,
+  ) => Promise<T>,
+): Promise<T | null> {
+  return exchangeMiniAppProof(
+    transaction,
+    verifier,
+    fingerprintSecret,
+    rawInitData,
+    false,
+    async (client, fingerprint, exchangeHash) => {
+      const accepted = await consumeGlobalTelegramProof(
+        client,
+        fingerprint,
+        exchangeHash,
+        false,
+      );
+      if (!accepted) return null;
+      const result = await issue(client, accepted.identityId, fingerprint);
+      await appendAuthIdentityAudit(
+        client,
+        "telegram_login",
+        accepted.identityId,
+      );
+      return result;
+    },
+  );
 }
 
 /** Attach a Telegram proof to the already-authenticated pre-organization Identity. */
