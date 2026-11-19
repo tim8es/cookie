@@ -59,3 +59,12 @@ could overwrite the cookie. Do not enable the route in runtime or add automatic
 client retries until the refresh credential/family, logout race, audit and
 idle/absolute policy have been independently reviewed. The current UI keeps
 its original expiry semantics. Integration and HTTP negative tests are included.
+
+Existing client memberships are selectable in the account chooser without new
+enrollment or consent writes; selection uses the same current membership and
+server GET-context check as workspace restoration. Explicit customer links
+restrict the listing to their tenant. New enrollment remains separate and
+requires consent, an available membership list, and the private staging flag.
+The optional renewal client transport is tested but not called automatically:
+it rejects memory-only/expired credentials, different bearers, regressed
+expiry, and revocation; a disabled route does not grant any renewed session.

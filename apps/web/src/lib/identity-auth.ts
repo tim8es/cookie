@@ -696,6 +696,52 @@ export async function restoreBrowserIdentitySession(
   }
 }
 
+/**
+ * Engineering transport for the disabled renewal candidate.
+ * No automatic caller: the session policy and logout races need review first.
+ */
+export async function renewBrowserIdentitySession(
+  session: IdentityAuthSession,
+  fetcher: typeof fetch = globalThis.fetch,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<IdentityAuthSession | null> {
+  if (
+    !session.browserBound ||
+    !IDENTITY_BEARER.test(session.accessToken) ||
+    session.expiresAtUnixSeconds <= nowSeconds
+  )
+    throw new IdentityAuthFailure("unauthorized");
+  const response = await request(
+    "/v1/auth/browser-session/renew",
+    {
+      method: "POST",
+      headers: {
+        authorization: "Bearer " + session.accessToken,
+        "x-kuki-session": "1",
+      },
+    },
+    fetcher,
+    "same-origin",
+  );
+  // Missing route means the installation has not enabled this candidate.
+  if (response.status === 404) return null;
+  if (response.status === 401 || response.status === 403)
+    throw new IdentityAuthFailure("unauthorized");
+  if (response.status !== 200) throw new IdentityAuthFailure("unavailable");
+  try {
+    const updated = identitySession(await response.json(), nowSeconds);
+    if (
+      updated.accessToken !== session.accessToken ||
+      updated.expiresAtUnixSeconds < session.expiresAtUnixSeconds
+    )
+      throw new IdentityAuthFailure("invalid-response");
+    return { ...updated, browserBound: true };
+  } catch (error) {
+    if (error instanceof IdentityAuthFailure) throw error;
+    throw new IdentityAuthFailure("invalid-response");
+  }
+}
+
 /** A broadcast is only a hint. The current server cookie decides the result. */
 export async function checkBrowserIdentitySession(
   session: IdentityAuthSession,

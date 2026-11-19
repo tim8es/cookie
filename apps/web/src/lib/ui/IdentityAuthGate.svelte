@@ -105,6 +105,11 @@
     organization.roleTypes.includes("admin"),
   );
 
+  $: customerOrganizations = organizations.filter((organization) =>
+    organization.roleTypes.includes("client") &&
+    (!customerSurface || !customerTenantId || organization.tenantId === customerTenantId),
+  );
+
   function clearUrlSecret(): void {
     const current = new URL(window.location.href);
     current.hash = "";
@@ -136,6 +141,7 @@
   async function refreshAccount(): Promise<void> {
     const current = identitySession;
     if (!current || accountLoading) return;
+    accountLoaded = false;
     accountLoading = true;
     error = "";
     try {
@@ -543,6 +549,23 @@
     }
   }
 
+  async function enterCustomerOrganization(organization: IdentityOrganization): Promise<void> {
+    const current = identitySession;
+    if (!current || busy || !accountLoaded) return;
+    busy = true;
+    error = "";
+    try {
+      const context = await restoreWorkspaceContext(current, { role: "customer", tenantId: organization.tenantId }, organizations);
+      if (identitySession === current && context.role === "customer") onCustomerSession(context.session);
+    } catch (reason) {
+      if (identitySession === current) error = reason instanceof IdentityAuthFailure && reason.reason === "unauthorized"
+        ? "Доступ к клиентскому кабинету не подтверждён. Выберите другой кабинет или обновите список организаций."
+        : errorMessage(reason);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function enrollAsCustomer(): Promise<void> {
     const current = identitySession;
     if (!current) return;
@@ -596,7 +619,7 @@
     role = value;
     error = "";
     notice = "";
-    if (value === "business" && !accountLoaded && !accountLoading) void refreshAccount();
+    if (!accountLoaded && !accountLoading) void refreshAccount();
   }
 
   function beginRegistration(): void {
@@ -624,7 +647,7 @@
       {#if !role}
         <div class="identity-role-options" aria-label="Тип учётной записи">
           <Button variant="outline" disabled={busy} onclick={() => chooseRole("business")}>Я представляю бизнес</Button>
-          <Button variant="outline" disabled={busy || !methods?.stagingCustomerEnrollment} onclick={() => chooseRole("customer")}>Я клиент</Button>
+          <Button variant="outline" disabled={busy || (!methods?.stagingCustomerEnrollment && !customerOrganizations.length)} onclick={() => chooseRole("customer")}>Я клиент</Button>
         </div>
         {#if !methodsLoading && !methods?.stagingCustomerEnrollment}<p>Клиентская регистрация доступна на приватной тестовой странице опубликованной организации.</p>{/if}
       {:else if role === "business"}
@@ -670,19 +693,34 @@
             <div><span>КЛИЕНТСКИЙ СЦЕНАРИЙ / STAGING</span><h2>Клиентская запись</h2></div>
             {#if !customerSurface}<Button variant="ghost" onclick={() => role = null}>Сменить сценарий</Button>{/if}
           </div>
-          {#if !methods?.stagingCustomerEnrollment}
+          {#if accountLoading}
+            <p role="status">Проверяем организации…</p>
+          {:else if !accountLoaded}
+            <p role="status">Не удалось подтвердить список клиентских кабинетов.</p>
+          {:else if customerOrganizations.length}
+            <p>Выберите существующий клиентский кабинет.</p>
+            <div class="identity-organization-list" aria-label="Клиентские организации">
+              {#each customerOrganizations as organization (organization.tenantId)}
+                <Button variant="outline" disabled={busy} onclick={() => void enterCustomerOrganization(organization)}>
+                  <span>{organization.organizationName}</span><small>Клиент</small>
+                </Button>
+              {/each}
+            </div>
+          {/if}
+          {#if methods?.stagingCustomerEnrollment && accountLoaded}
+            <p>Для регистрации в новой тестовой организации введите её ID и подтвердите согласие.</p>
+            <form class="identity-auth-fields" onsubmit={(event) => { event.preventDefault(); void enrollAsCustomer(); }}>
+              <Label for="customer-tenant-id">ID тестовой организации</Label>
+              <Input id="customer-tenant-id" bind:value={tenantId} pattern="[0-9a-fA-F-]{36}" maxlength={36} required disabled={busy} />
+              <label class="identity-consent">
+                <input type="checkbox" bind:checked={consentConfirmed} disabled={busy} />
+                <span>Согласен создать клиентскую учётную запись в этой тестовой организации.</span>
+              </label>
+              <Button type="submit" disabled={busy || !consentConfirmed}>{busy ? "Проверяем…" : "Продолжить как клиент"}</Button>
+            </form>
+          {:else if !methods?.stagingCustomerEnrollment}
             <p role="status">Клиентское тестовое зачисление отключено на этом сервере.</p>
           {/if}
-          <p>Для приватного тестирования введите ID организации из staging. Сервер проверит опубликованную тестовую организацию перед созданием клиентской роли.</p>
-          <form class="identity-auth-fields" onsubmit={(event) => { event.preventDefault(); void enrollAsCustomer(); }}>
-            <Label for="customer-tenant-id">ID тестовой организации</Label>
-            <Input id="customer-tenant-id" bind:value={tenantId} pattern="[0-9a-fA-F-]{36}" maxlength={36} required disabled={busy} />
-            <label class="identity-consent">
-              <input type="checkbox" bind:checked={consentConfirmed} disabled={busy} />
-              <span>Согласен создать клиентскую учётную запись в этой тестовой организации.</span>
-            </label>
-            <Button type="submit" disabled={busy || !consentConfirmed || !methods?.stagingCustomerEnrollment}>{busy ? "Проверяем…" : "Продолжить как клиент"}</Button>
-          </form>
         </div>
       {/if}
 

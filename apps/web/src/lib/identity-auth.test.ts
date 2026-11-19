@@ -11,6 +11,7 @@ import {
   loginEmailPassword,
   loginTelegramMiniApp,
   selectTelegramTransport,
+  renewBrowserIdentitySession,
   restoreBrowserIdentitySession,
   restoreWorkspaceContext,
   type IdentityOrganization,
@@ -361,4 +362,56 @@ test("workspace resume checks current role and context without enrolling", async
       denied,
     ),
   );
+});
+
+test("candidate renewal requires a live browser-bound session and the same bearer", async () => {
+  const bound = { ...session, browserBound: true };
+  let sent: Request | undefined;
+  const updated = { ...bound, expiresAtUnixSeconds: 2000 };
+  const fetcher: typeof fetch = async (_input, init) => {
+    sent = new Request(
+      "https://cookie.example.invalid/v1/auth/browser-session/renew",
+      init,
+    );
+    return Response.json({
+      tokenType: "Bearer",
+      scope: "identity",
+      ...updated,
+    });
+  };
+  assert.deepEqual(
+    await renewBrowserIdentitySession(bound, fetcher, 1000),
+    updated,
+  );
+  assert.equal(sent?.method, "POST");
+  assert.equal(sent?.credentials, "same-origin");
+  assert.equal(
+    sent?.headers.get("authorization"),
+    "Bearer " + session.accessToken,
+  );
+  assert.equal(sent?.headers.get("x-kuki-session"), "1");
+  assert.equal(sent?.body, null);
+  const disabled = async () => new Response(null, { status: 404 });
+  assert.equal(await renewBrowserIdentitySession(bound, disabled, 1000), null);
+  const revoked = async () => new Response(null, { status: 401 });
+  await assert.rejects(
+    renewBrowserIdentitySession(bound, revoked, 1000),
+    (error: unknown) =>
+      error instanceof IdentityAuthFailure && error.reason === "unauthorized",
+  );
+  await assert.rejects(renewBrowserIdentitySession(session, fetcher, 1000));
+  await assert.rejects(renewBrowserIdentitySession(bound, fetcher, 1800));
+  for (const bad of [
+    { ...updated, accessToken: "is_" + "B".repeat(43) },
+    { ...updated, expiresAtUnixSeconds: 1700 },
+  ]) {
+    const invalid = async () =>
+      Response.json({ tokenType: "Bearer", scope: "identity", ...bad });
+    await assert.rejects(
+      renewBrowserIdentitySession(bound, invalid, 1000),
+      (error: unknown) =>
+        error instanceof IdentityAuthFailure &&
+        error.reason === "invalid-response",
+    );
+  }
 });
