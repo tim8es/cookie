@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHmac, randomBytes, randomInt, randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { createRequire, stripTypeScriptTypes } from "node:module";
+import { createRequire } from "node:module";
+import ts from "typescript";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
@@ -20,6 +21,7 @@ import { registerSyntheticRefreshHttp } from "../../../dist/apps/api/src/synthet
 
 const require = createRequire(new URL("../../api/package.json", import.meta.url));
 const Fastify = require("fastify");
+let phase = "bootstrap";
 
 function isolatedDatabase() {
   if (process.env.CI !== "true" || !process.env.TEST_DATABASE_URL)
@@ -127,14 +129,17 @@ async function main() {
       },
       logout: (...args) => service.logout(...args),
     });
-    const js = stripTypeScriptTypes(
+    phase = "candidate-transpile";
+    const js = ts.transpileModule(
       readFileSync(new URL("../src/lib/synthetic-refresh-browser.ts", import.meta.url), "utf8"),
-      { mode: "transform" },
-    );
+      { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } },
+    ).outputText;
+    phase = "server-listen";
     app.get("/", async (_request, reply) => reply.type("text/html").send(html));
     app.get("/candidate.js", async (_request, reply) =>
       reply.type("application/javascript").send(js));
     const origin = await app.listen({ host: "127.0.0.1", port: 0 });
+    phase = "chromium-startup";
     const started = await startChromiumWithRetry({
       startAttempt: async () => {
         const dir = mkdtempSync(join(tmpdir(), "kuki-refresh-browser-"));
@@ -166,17 +171,20 @@ async function main() {
       await bounded(cdp.send("Network.setBlockedURLs", { urls: ["https://*"] }));
       return cdp;
     }
+    phase = "first-tab";
     const a = await connect(started.ready);
     const run = (cdp, expression) => bounded(evaluate(cdp, expression));
     const ready = (cdp) => poll("real Web Locks controller", () =>
       run(cdp, "window.controllerReady === true && window.isSecureContext"));
     await a.send("Page.navigate", { url: origin + "/?tab=1" });
     await ready(a);
+    phase = "first-login";
     const familyA = await run(a,
       "controller.login(" + JSON.stringify(proof(token, users[0])) + ").then(s=>s?.familyId)");
     assert.ok(familyA, "Real browser login failed");
     assert.equal(await run(a, "document.cookie.includes('__Host-kuki-refresh-candidate')"), false);
 
+    phase = "second-tab";
     await run(a, "Boolean(window.open(" + JSON.stringify(origin + "/?tab=2") + ", '_blank'))");
     const second = await poll("second actual Chromium tab", async () => {
       const result = await getLocal("http://127.0.0.1:" + handle.port + "/json/list");
@@ -186,6 +194,7 @@ async function main() {
     const b = await connect(second);
     await ready(b);
     assert.equal(await run(b, "controller.restore().then(s=>s?.familyId)"), familyA);
+    phase = "concurrent-rotation";
     const count = rotates;
     const concurrent = await Promise.all([
       run(a, "controller.renewIfNeeded(3600).then(s=>s?.familyId)"),
@@ -197,6 +206,7 @@ async function main() {
 
     // Delay a real, successfully committed response in one tab. The other
     // must shed authority while pending, and never replay if response is lost.
+    phase = "response-loss";
     const beforeLost = rotates;
     await run(a, "window.holdNextRotation=true; window.loseRotation=true; true");
     const lost = run(a, "controller.renewIfNeeded(3600).then(s=>s===null)");
@@ -213,6 +223,7 @@ async function main() {
     assert.equal(rotates, beforeLost + 1);
 
     // Explicit fresh login can replace a blocked family, not silently adopt it.
+    phase = "account-switch";
     const familyB = await run(a,
       "controller.login(" + JSON.stringify(proof(token, users[1])) + ").then(s=>s?.familyId)");
     assert.ok(familyB && familyB !== familyA);
@@ -222,6 +233,7 @@ async function main() {
     await b.send("Page.reload");
     await ready(b);
     assert.equal(await run(b, "controller.restore().then(s=>s?.familyId)"), familyB);
+    phase = "exact-family-logout";
     assert.equal(await run(a, "controller.logout()"), true);
     assert.equal(await run(b, "controller.current()===null"), true);
     const revoked = await pool.query(
@@ -264,7 +276,10 @@ async function main() {
 
 main().catch((error) => {
   // Never print HTTP bodies, proof, tokens or CDP payloads.
-  console.error("Synthetic refresh browser smoke failed:", error.name);
+  console.error("Synthetic refresh browser smoke failed:", phase, error.name);
+  // Report only test source line numbers, never stack payloads or URL/query strings.
+  const line = /refresh-browser-smoke\.mjs:(\d+):(\d+)/.exec(String(error.stack ?? ""));
+  if (line) console.error("Test source line:", line[1], "column:", line[2]);
   if (error.code === "ERR_ASSERTION") console.error("Assertion failed in refresh browser smoke");
   process.exitCode = 1;
 });
