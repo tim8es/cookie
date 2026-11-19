@@ -11,23 +11,17 @@ function deferredNumber() {
   return { promise, resolve };
 }
 
-test("workspace shows recent data immediately and shares the refresh", async () => {
-  let now = 1_000;
+test("workspace coalesces pending reads but rechecks every settled read", async () => {
   let calls = 0;
   const slot = createOwnerRead(
     async () => ++calls,
     () => true,
-    () => now,
   );
 
   assert.deepEqual(await Promise.all([slot.load(), slot.load()]), [1, 1]);
-  assert.equal(await slot.load(), 1);
-  now += 6_000;
-  assert.equal(slot.peek(), 1);
-  assert.deepEqual(await Promise.all([slot.load(), slot.load()]), [2, 2]);
-  assert.equal(await slot.load(true), 3);
-  now += 30_000;
-  assert.equal(slot.peek(), undefined);
+  assert.equal(await slot.load(), 2);
+  assert.deepEqual(await Promise.all([slot.load(), slot.load()]), [3, 3]);
+  assert.equal(calls, 3);
 });
 
 test("a late response started before a write cannot restore the old data", async () => {
@@ -43,10 +37,10 @@ test("a late response started before a write cannot restore the old data", async
   assert.equal(await slot.load(), 2);
   previous.resolve(1);
   assert.equal(await beforeWrite, 2);
-  assert.equal(slot.peek(), 2);
+  assert.equal(calls, 3);
 });
 
-test("an API rejection clears the snapshot and closing the session discards in-flight data", async () => {
+test("failed reads retry and closed sessions reject in-flight data", async () => {
   const slow = deferredNumber();
   let active = true;
   let calls = 0;
@@ -60,14 +54,12 @@ test("an API rejection clears the snapshot and closing the session discards in-f
   );
 
   assert.equal(await slot.load(), 1);
-  await assert.rejects(slot.load(true), /unauthorized/);
-  assert.equal(slot.peek(), undefined);
+  await assert.rejects(slot.load(), /unauthorized/);
 
   const pending = slot.load();
   active = false;
   slow.resolve(2);
   await assert.rejects(pending, /session ended/);
-  assert.equal(slot.peek(), undefined);
   await assert.rejects(slot.load(), /session ended/);
   assert.equal(calls, 3);
 });
@@ -102,20 +94,17 @@ for (const status of [401, 403]) {
     );
     await reads.services.load();
     await other.services.load();
-    assert.deepEqual(reads.services.peek(), []);
 
     const slow = reads.locations.load();
     const rejected = assert.rejects(slow, /session ended/);
     await assert.rejects(reads.staff.load(), /unauthorized/);
     assert.equal(denied, 1);
-    assert.equal(reads.services.peek(), undefined);
-    assert.deepEqual(other.services.peek(), []);
+    assert.deepEqual(await other.services.load(), []);
 
     release(Response.json({ locations: [] }));
     await rejected;
-    assert.equal(reads.locations.peek(), undefined);
     await assert.rejects(reads.services.load(), /session ended/);
-    assert.equal(requests, 4);
+    assert.equal(requests, 5);
     reads.close();
     other.close();
   });

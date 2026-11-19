@@ -13,33 +13,23 @@ import { readRealWorkspaceOverview } from "./workspace-overview-api";
 export function createOwnerRead<T>(
   read: () => Promise<T>,
   active: () => boolean,
-  now = Date.now,
 ) {
-  let snapshot: { value: T; timestamp: number } | undefined;
+  // Coalesce only requests that are still in flight. Never reuse a
+  // completed protected read instead of a new server authorization check.
   let pending: Promise<T> | undefined;
 
   function invalidate(): void {
-    snapshot = undefined;
     pending = undefined;
   }
 
-  function peek(): T | undefined {
-    return active() && snapshot && now() - snapshot.timestamp < 30_000
-      ? snapshot.value
-      : undefined;
-  }
-
-  async function load(force = false): Promise<T> {
+  async function load(): Promise<T> {
     if (!active()) throw new Error("Workspace session ended");
     if (pending) return pending;
-    if (!force && snapshot && now() - snapshot.timestamp < 5_000)
-      return snapshot.value;
 
     const request = read().then(
       (value) => {
         if (!active()) throw new Error("Workspace session ended");
         if (pending !== request) return load();
-        snapshot = { value, timestamp: now() };
         pending = undefined;
         return value;
       },
@@ -52,7 +42,7 @@ export function createOwnerRead<T>(
     return request;
   }
 
-  return { peek, load, invalidate };
+  return { load, invalidate };
 }
 
 type CalendarBranch = Pick<RealLocation, "id" | "displayName" | "timeZone">;
@@ -79,7 +69,7 @@ export function createOwnerReads(
 
   // Observe every shared protected read, including late responses from a
   // different slot. A known denial closes this exact workspace, not the
-  // global Identity session. No other snapshot may survive that denial.
+  // global Identity session. No other pending read may survive that denial.
   const guardedFetch: typeof fetch = async (input, init) => {
     if (!active()) throw new Error("Workspace session ended");
     const response = await fetcher(input, init);
@@ -135,21 +125,8 @@ export function createOwnerReads(
     return slot;
   }
 
-  function peekCalendarBranches(): CalendarBranch[] | undefined {
-    return (
-      locations.peek() ??
-      overview
-        .peek()
-        ?.locations.map(({ locationId, displayName, timeZone }) => ({
-          id: locationId,
-          displayName,
-          timeZone,
-        }))
-    );
-  }
-
   async function calendarBranches(): Promise<CalendarBranch[]> {
-    return peekCalendarBranches() ?? locations.load();
+    return locations.load();
   }
 
   function invalidateCalendars(): void {
@@ -172,7 +149,6 @@ export function createOwnerReads(
     staff,
     shifts,
     calendar,
-    peekCalendarBranches,
     calendarBranches,
     invalidateCalendars,
     close,

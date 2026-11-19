@@ -44,16 +44,11 @@
     return "Нет подтверждения от сервера. Повторите запрос.";
   }
 
-  async function refresh(force = false): Promise<void> {
-    const cached = reads.locations.peek();
-    if (cached) {
-      locations = cached;
-      loaded = true;
-    }
+  async function refresh(): Promise<void> {
     loading = true;
     readError = "";
     try {
-      locations = await reads.locations.load(force);
+      locations = await reads.locations.load();
       loaded = true;
     } catch (reason) {
       loaded = false;
@@ -107,7 +102,7 @@
       reads.staff.invalidate();
       reads.invalidateCalendars();
       reads.overview.invalidate();
-      await refresh(true);
+      await refresh();
     } catch (reason) {
       reads.locations.invalidate();
       reads.overview.invalidate();
@@ -137,7 +132,7 @@
 {#if readError}
   <div class="alert-error" role="alert">
     <p>{readError}</p>
-    <Button type="button" variant="outline" onclick={() => void refresh(true)} disabled={loading}>
+    <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading}>
       Повторить загрузку
     </Button>
   </div>
@@ -156,7 +151,7 @@
         <span class="eyebrow">ОРГАНИЗАЦИЯ</span>
         <h2>Сохранённые филиалы</h2>
       </div>
-      <Button type="button" variant="outline" onclick={() => void refresh(true)} disabled={loading || saving}>
+      <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || saving}>
         Обновить
       </Button>
     </div>

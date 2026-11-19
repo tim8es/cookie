@@ -70,21 +70,13 @@
     writeError = "";
   }
 
-  async function refresh(force = false): Promise<void> {
-    const cachedDirectory = reads.staff.peek();
-    const cachedCatalog = reads.services.peek();
-    if (cachedDirectory && cachedCatalog) {
-      staff = cachedDirectory.staff;
-      locations = cachedDirectory.locations;
-      services = cachedCatalog;
-      loaded = true;
-    }
+  async function refresh(): Promise<void> {
     loading = true;
     readError = "";
     try {
       const [directory, catalog] = await Promise.all([
-        reads.staff.load(force),
-        reads.services.load(force),
+        reads.staff.load(),
+        reads.services.load(),
       ]);
       staff = directory.staff;
       locations = directory.locations;
@@ -141,7 +133,7 @@
       notice = "Профиль и назначения сохранены. Для записи клиентов мастер пока недоступен.";
       reads.staff.invalidate();
       reads.invalidateCalendars();
-      await refresh(true);
+      await refresh();
     } catch (reason) {
       reads.staff.invalidate();
       reads.invalidateCalendars();
@@ -178,7 +170,7 @@
 {#if readError}
   <div class="alert-error" role="alert">
     <p>{readError}</p>
-    <Button variant="outline" type="button" onclick={() => void refresh(true)} disabled={loading}>Повторить загрузку</Button>
+    <Button variant="outline" type="button" onclick={() => void refresh()} disabled={loading}>Повторить загрузку</Button>
   </div>
 {/if}
 {#if writeError}
@@ -192,7 +184,7 @@
   <section class="card">
     <div class="card-title">
       <div><span class="eyebrow">КОМАНДА</span><h2>Профили мастеров</h2></div>
-      <Button variant="outline" type="button" onclick={() => void refresh(true)} disabled={loading || saving || publicationPending}>Обновить</Button>
+      <Button variant="outline" type="button" onclick={() => void refresh()} disabled={loading || saving || publicationPending}>Обновить</Button>
     </div>
     {#if loading && !loaded}
       <OwnerReadPlaceholder label="Загружаем профили…" />
@@ -241,6 +233,6 @@
       reads.services.invalidate();
       reads.shifts.invalidate();
       reads.invalidateCalendars();
-      await refresh(true);
+      await refresh();
     }} />
 {/if}
