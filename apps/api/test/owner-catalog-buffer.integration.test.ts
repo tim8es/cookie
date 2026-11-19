@@ -65,6 +65,7 @@ test(
       telegramAuthRoutes: { sessions },
       catalogRoutes: { pool, verifier: sessions },
     });
+    let bookingTenant: string | undefined;
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
       async function setup(userId: number) {
@@ -109,15 +110,11 @@ test(
         durationMinutes: 45,
         basePriceKopecks: 150000,
       };
-      const submit = (
-        scope: typeof a,
-        payload: object,
-        idempotencyKey = key,
-      ) =>
+      const submit = (scope: typeof a, payload: object, requestKey = key) =>
         app.inject({
           method: "POST",
           url: scope.url,
-          headers: { ...scope.headers, "idempotency-key": idempotencyKey },
+          headers: { ...scope.headers, "idempotency-key": requestKey },
           payload,
         });
       const list = (scope: typeof a) =>
@@ -234,10 +231,8 @@ test(
         ).statusCode,
         409,
       );
-      assert.deepEqual(
-        (await edit(explicit, explicitKey)).json(),
-        cleared.json(),
-      );
+      const editedReplay = await edit(explicit, explicitKey);
+      assert.deepEqual(editedReplay.json(), cleared.json());
       const legacy = await edit(legacyEdit, legacyEditKey);
       assert.equal(legacy.statusCode, 200);
       assert.equal(
@@ -303,6 +298,7 @@ test(
       const staff = randomUUID();
       const customer = randomUUID();
       const tenant = b.tenantId;
+      bookingTenant = tenant;
       const location = b.locationId;
       await pool.query(
         "UPDATE cookie_catalog.services SET active=true WHERE tenant_id=$1 AND id=$2",
@@ -350,18 +346,12 @@ test(
         startAt: "2028-04-12T10:00:00Z",
         idempotencyKey: randomUUID(),
       };
-      const allowSynthetic = async () => undefined;
-      const booking = await createBookingInternal(
-        pool,
-        command,
-        allowSynthetic,
-      );
+      const allow = async () => undefined;
+      const booking = await createBookingInternal(pool, command, allow);
       assert.equal(booking.endAt, "2028-04-12T10:45:00.000Z");
       assert.equal(booking.occupiedUntil, "2028-04-12T11:30:00.000Z");
-      assert.deepEqual(
-        await createBookingInternal(pool, command, allowSynthetic),
-        booking,
-      );
+      const bookingReplay = await createBookingInternal(pool, command, allow);
+      assert.deepEqual(bookingReplay, booking);
       await assert.rejects(
         createBookingInternal(
           pool,
@@ -370,7 +360,7 @@ test(
             startAt: "2028-04-12T10:45:00Z",
             idempotencyKey: randomUUID(),
           },
-          allowSynthetic,
+          allow,
         ),
         { code: "BOOKING_NOT_AVAILABLE" },
       );
@@ -381,7 +371,7 @@ test(
           startAt: "2028-04-12T11:30:00Z",
           idempotencyKey: randomUUID(),
         },
-        allowSynthetic,
+        allow,
       );
       assert.equal(boundary.endAt, "2028-04-12T12:15:00.000Z");
       assert.equal(boundary.occupiedUntil, "2028-04-12T13:00:00.000Z");
@@ -398,8 +388,22 @@ test(
       };
       assert.deepEqual(snapshots.rows, [expectedSnapshot, expectedSnapshot]);
     } finally {
-      await app.close();
-      await pool.end();
+      // The integration suite shares a database with the global Worker
+      // test. Remove only events from this test's generated booking tenant.
+      try {
+        if (bookingTenant) {
+          await pool.query(
+            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1",
+            [bookingTenant],
+          );
+        }
+      } finally {
+        try {
+          await app.close();
+        } finally {
+          await pool.end();
+        }
+      }
     }
   },
 );
