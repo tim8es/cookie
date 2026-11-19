@@ -1,4 +1,9 @@
-export type RhythmPreviewTheme = "workspace" | "studio" | "linen" | "graphite" | "sage";
+export type RhythmPreviewTheme =
+  | "workspace"
+  | "studio"
+  | "linen"
+  | "graphite"
+  | "sage";
 
 export interface SegmentOption {
   id: string;
