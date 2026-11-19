@@ -14,7 +14,7 @@
     type VerifiedCustomerSession,
     type VerifiedOwnerSession,
   } from "./lib/owner-auth";
-  import type { IdentityAuthSession } from "./lib/identity-auth";
+  import { watchBrowserIdentitySession, type IdentityAuthSession } from "./lib/identity-auth";
   import "./styles.css";
   import "./visual-system.css";
 
@@ -28,6 +28,7 @@
   let customerAuthNotice = "";
   let ownerAuthPhase: "unavailable" | "verified" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
   let stopOwnerExpiry: (() => void) | null = null;
+  let stopBrowserWatch: (() => void) | null = null;
   let identityForSwitch: IdentityAuthSession | null = null;
   let restoreAllowed = true;
 
@@ -43,9 +44,25 @@
 
   onMount(() => () => {
     stopOwnerExpiry?.();
+    stopBrowserWatch?.();
     ownerSession = null;
     customerSession = null;
   });
+
+  function watchWorkspace(session: VerifiedOwnerSession): void {
+    stopBrowserWatch?.();
+    stopBrowserWatch = watchBrowserIdentitySession(session, () => {
+      if (ownerSession !== session && customerSession !== session) return;
+      stopOwnerExpiry?.();
+      stopOwnerExpiry = null;
+      identityForSwitch = null;
+      restoreAllowed = false;
+      ownerSession = null;
+      customerSession = null;
+      ownerAuthPhase = "unavailable";
+      customerAuthNotice = "Сессия в браузере изменилась или завершилась. Войдите снова.";
+    }, window, document);
+  }
 
   function acceptOwnerSession(session: VerifiedOwnerSession): void {
     identityForSwitch = null;
@@ -54,11 +71,13 @@
     stopOwnerExpiry?.();
     ownerSession = session;
     ownerAuthPhase = "verified";
+    watchWorkspace(session);
     stopOwnerExpiry = watchOwnerSessionExpiry(
       session.expiresAtUnixSeconds,
       () => {
         if (ownerSession !== session) return;
         ownerSession = null;
+        stopBrowserWatch?.();
         restoreAllowed = false;
         ownerAuthPhase = "expired";
       },
@@ -75,9 +94,11 @@
     ownerAuthPhase = "unavailable";
     customerAuthNotice = "";
     customerSession = session;
+    watchWorkspace(session);
   }
 
   function clearCustomerSession(reason: "expired" | "signed-out" | "logout-failed"): void {
+    stopBrowserWatch?.();
     restoreAllowed = false;
     identityForSwitch = null;
     customerSession = null;
@@ -95,8 +116,10 @@
     identityForSwitch = {
       accessToken: current.accessToken,
       expiresAtUnixSeconds: current.expiresAtUnixSeconds,
+      browserBound: current.browserBound,
     };
     restoreAllowed = true;
+    stopBrowserWatch?.();
     stopOwnerExpiry?.();
     stopOwnerExpiry = null;
     ownerSession = null;
@@ -116,6 +139,7 @@
   async function logoutOwner(): Promise<void> {
     const session = ownerSession;
     if (!session || ownerAuthPhase !== "verified") return;
+    stopBrowserWatch?.();
     stopOwnerExpiry?.();
     stopOwnerExpiry = null;
     restoreAllowed = false;

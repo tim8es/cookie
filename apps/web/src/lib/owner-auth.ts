@@ -1,3 +1,5 @@
+import { notifyBrowserSessionChanged } from "./browser-session-events";
+
 /**
  * Real owner authentication is an independent, opt-in vertical slice.
  * No browser persistence, tenant selection, token in URL or implicit retries.
@@ -7,6 +9,7 @@ export interface VerifiedOwnerSession {
   readonly accessToken: string;
   readonly tenantId: string;
   readonly expiresAtUnixSeconds: number;
+  readonly browserBound?: boolean;
 }
 
 export type OwnerAuthFailureReason =
@@ -211,6 +214,7 @@ export async function revokeTelegramOwnerSession(
     },
     session.accessToken.startsWith("is_") ? "same-origin" : "omit",
   );
+  if (session.accessToken.startsWith("is_")) notifyBrowserSessionChanged();
   if (result.status !== 204) {
     throw new OwnerAuthFailure("unavailable");
   }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  checkBrowserIdentitySession,
   completeEmailCredentialLink,
   createOwnerWorkspace,
   discoverAuthMethods,
@@ -244,4 +245,50 @@ test("restore uses same-origin cookie without replay or browser storage", async 
   const unavailable = async () => new Response(null, { status: 503 });
   assert.equal(await restoreBrowserIdentitySession(denied), null);
   await assert.rejects(restoreBrowserIdentitySession(unavailable));
+});
+
+test("denied customer context preserves the global identity", async () => {
+  const requests: string[] = [];
+  await assert.rejects(
+    verifyStagingCustomerSession({ ...session, tenantId }, async (input) => {
+      requests.push(String(input));
+      return new Response(null, { status: 403 });
+    }),
+    (error: unknown) =>
+      error instanceof IdentityAuthFailure && error.reason === "unauthorized",
+  );
+  assert.deepEqual(requests, [
+    `/v1/organizations/${tenantId}/staging-customer-context`,
+  ]);
+});
+
+test("cross-tab session checks distinguish change from outage", async () => {
+  const now = 1000;
+  const matching = async () =>
+    Response.json({ tokenType: "Bearer", scope: "identity", ...session });
+  const different = async () =>
+    Response.json({
+      tokenType: "Bearer",
+      scope: "identity",
+      ...session,
+      accessToken: "is_" + "B".repeat(43),
+    });
+  const missing = async () => new Response(null, { status: 401 });
+  const offline = async () => new Response(null, { status: 503 });
+  assert.equal(
+    await checkBrowserIdentitySession(session, matching, now),
+    "match",
+  );
+  assert.equal(
+    await checkBrowserIdentitySession(session, different, now),
+    "changed",
+  );
+  assert.equal(
+    await checkBrowserIdentitySession(session, missing, now),
+    "changed",
+  );
+  assert.equal(
+    await checkBrowserIdentitySession(session, offline, now),
+    "unavailable",
+  );
 });

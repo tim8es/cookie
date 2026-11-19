@@ -20,6 +20,7 @@
     logoutIdentitySession,
     persistBrowserIdentitySession,
     restoreBrowserIdentitySession,
+    watchBrowserIdentitySession,
     requestEmailCredentialLink,
     requestEmailPasswordRecovery,
     requestEmailRegistration,
@@ -88,6 +89,7 @@
   $: if (authNotice) notice = authNotice;
   let emailLinkRequested = false;
   let stopIdentityExpiry: (() => void) | null = null;
+  let stopBrowserWatch: (() => void) | null = null;
   let workspaceRetry: {
     key: string;
     organizationName: string;
@@ -152,8 +154,24 @@
     }
   }
 
+  function invalidateIdentity(session: IdentityAuthSession, message: string): void {
+    if (identitySession !== session) return;
+    stopIdentityExpiry?.();
+    stopBrowserWatch?.();
+    identitySession = null;
+    accountLoading = false;
+    accountLoaded = false;
+    providers = null;
+    organizations = [];
+    workspaceRetry = null;
+    role = customerSurface ? "customer" : null;
+    page = role ? "login" : "choose-role";
+    notice = message;
+  }
+
   function acceptIdentity(session: IdentityAuthSession): void {
     stopIdentityExpiry?.();
+    stopBrowserWatch?.();
     identitySession = session;
     accountLoading = false;
     accountLoaded = false;
@@ -161,18 +179,10 @@
     organizations = [];
     notice = "Вход подтверждён. Выберите, как пользоваться kuki.";
     void refreshAccount();
+    stopBrowserWatch = watchBrowserIdentitySession(session, () => invalidateIdentity(session, "Сессия в браузере изменилась или завершилась. Войдите снова."), window, document);
     stopIdentityExpiry = watchOwnerSessionExpiry(
       session.expiresAtUnixSeconds,
-      () => {
-        identitySession = null;
-        accountLoading = false;
-        accountLoaded = false;
-        providers = null;
-        organizations = [];
-        role = customerSurface ? "customer" : null;
-        page = role ? "login" : "choose-role";
-        notice = "Срок действия входа истёк. Войдите снова.";
-      },
+      () => invalidateIdentity(session, "Срок действия входа истёк. Войдите снова."),
       window,
       document,
     );
@@ -186,15 +196,19 @@
     } catch {
       // Authentication remains valid in this tab, but persistence is not proven.
     }
-    acceptIdentity(session);
+    acceptIdentity({ ...session, browserBound: persisted });
     if (!persisted) notice = "Вход подтверждён, но браузер не сохранил сессию. При обновлении может потребоваться повторный вход.";
   }
 
   async function restoreIdentity(): Promise<void> {
     busy = true;
     try {
-      const restored = initialIdentitySession ?? await restoreBrowserIdentitySession();
-      if (restored) acceptIdentity(restored);
+      if (initialIdentitySession) {
+        acceptIdentity(initialIdentitySession);
+      } else {
+        const restored = await restoreBrowserIdentitySession();
+        if (restored) acceptIdentity({ ...restored, browserBound: true });
+      }
     } catch (reason) {
       error = errorMessage(reason);
     } finally {
@@ -267,6 +281,7 @@
 
     return () => {
       stopIdentityExpiry?.();
+      stopBrowserWatch?.();
       stopIdentityExpiry = null;
     };
   });
@@ -456,7 +471,8 @@
   }
 
   async function createWorkspace(): Promise<void> {
-    if (!identitySession) return;
+    const current = identitySession;
+    if (!current) return;
     if (!workspaceRetry) {
       workspaceRetry = {
         key: crypto.randomUUID(),
@@ -470,11 +486,11 @@
     try {
       const { key, ...workspaceInput } = workspaceRetry;
       const result = await createOwnerWorkspace(
-        identitySession,
+        current,
         workspaceInput,
         key,
       );
-      onOwnerSession({ ...identitySession, tenantId: result.tenantId });
+      if (identitySession === current) onOwnerSession({ ...current, tenantId: result.tenantId });
     } catch (reason) {
       if (reason instanceof IdentityAuthFailure && reason.reason === "invalid-request") {
         workspaceRetry = null;
@@ -497,7 +513,8 @@
   }
 
   async function enrollAsCustomer(): Promise<void> {
-    if (!identitySession) return;
+    const current = identitySession;
+    if (!current) return;
     if (!methods?.stagingCustomerEnrollment) {
       error = "Самостоятельное клиентское зачисление включается только в контролируемом staging.";
       return;
@@ -509,7 +526,8 @@
     busy = true;
     error = "";
     try {
-      onCustomerSession(await enrollCustomer(identitySession, tenantId));
+      const session = await enrollCustomer(current, tenantId);
+      if (identitySession === current) onCustomerSession(session);
     } catch (reason) {
       error = reason instanceof IdentityAuthFailure && reason.reason === "unavailable"
         ? "Тестовое зачисление не подтверждено. Проверьте ID организации и активное разрешение staging."
@@ -521,6 +539,7 @@
 
   async function signOutIdentity(): Promise<void> {
     const current = identitySession;
+    stopBrowserWatch?.();
     stopIdentityExpiry?.();
     stopIdentityExpiry = null;
     identitySession = null;
@@ -528,6 +547,7 @@
     accountLoaded = false;
     providers = null;
     organizations = [];
+    workspaceRetry = null;
     role = customerSurface ? "customer" : null;
     page = role ? "login" : "choose-role";
     if (current) {

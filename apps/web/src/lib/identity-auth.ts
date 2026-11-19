@@ -3,6 +3,10 @@ import {
   type VerifiedCustomerSession,
   type VerifiedOwnerSession,
 } from "./owner-auth";
+import {
+  notifyBrowserSessionChanged,
+  subscribeBrowserSessionChanges,
+} from "./browser-session-events";
 
 const IDENTITY_BEARER = /^is_[A-Za-z0-9_-]{43}$/;
 const TENANT_BEARER = /^cs_[A-Za-z0-9_-]{43}$/;
@@ -12,6 +16,8 @@ const UUID =
 export interface IdentityAuthSession {
   readonly accessToken: string;
   readonly expiresAtUnixSeconds: number;
+  /** Local UI evidence only; never used to authorize requests. */
+  readonly browserBound?: boolean;
 }
 
 export interface IdentityOrganization {
@@ -241,7 +247,10 @@ export async function verifyStagingCustomerSession(
     }
     return { ...session, customerId: value.customerId };
   } catch (reason) {
-    await revokeTelegramOwnerSession(session, fetcher).catch(() => undefined);
+    // A failed tenant/customer selection must not revoke a global identity.
+    if (TENANT_BEARER.test(session.accessToken)) {
+      await revokeTelegramOwnerSession(session, fetcher).catch(() => undefined);
+    }
     if (reason instanceof IdentityAuthFailure) throw reason;
     throw new IdentityAuthFailure("invalid-response");
   }
@@ -636,6 +645,7 @@ export async function logoutIdentitySession(
     fetcher,
     "same-origin",
   );
+  notifyBrowserSessionChanged();
   if (response.status !== 204) throw new IdentityAuthFailure("unavailable");
 }
 
@@ -657,6 +667,7 @@ export async function persistBrowserIdentitySession(
     "same-origin",
   );
   if (response.status !== 204) throw new IdentityAuthFailure("unavailable");
+  notifyBrowserSessionChanged();
   // Some WebViews reject Secure cookies. Verify persistence rather than
   // assuming a successful Set-Cookie response means the browser retained it.
   const restored = await restoreBrowserIdentitySession(fetcher);
@@ -682,4 +693,59 @@ export async function restoreBrowserIdentitySession(
     if (error instanceof IdentityAuthFailure) throw error;
     throw new IdentityAuthFailure("invalid-response");
   }
+}
+
+/** A broadcast is only a hint. The current server cookie decides the result. */
+export async function checkBrowserIdentitySession(
+  session: IdentityAuthSession,
+  fetcher: typeof fetch = globalThis.fetch,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<"match" | "changed" | "unavailable"> {
+  try {
+    const current = await restoreBrowserIdentitySession(fetcher, nowSeconds);
+    return current?.accessToken === session.accessToken ? "match" : "changed";
+  } catch {
+    return "unavailable";
+  }
+}
+
+export function watchBrowserIdentitySession(
+  session: IdentityAuthSession,
+  invalidate: () => void,
+  win: Window,
+  doc: Document,
+): () => void {
+  if (!session.browserBound) return () => {};
+  let stopped = false;
+  let checking = false;
+  let again = false;
+  const check = async () => {
+    if (stopped) return;
+    if (checking) {
+      again = true;
+      return;
+    }
+    checking = true;
+    try {
+      const result = await checkBrowserIdentitySession(session);
+      if (!stopped && result === "changed") {
+        stop();
+        invalidate();
+      }
+    } finally {
+      checking = false;
+      if (again && !stopped) {
+        again = false;
+        void check();
+      }
+    }
+  };
+  const unsubscribe = subscribeBrowserSessionChanges(win, doc, () => {
+    void check();
+  });
+  function stop(): void {
+    stopped = true;
+    unsubscribe();
+  }
+  return stop;
 }

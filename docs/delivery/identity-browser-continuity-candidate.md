@@ -22,8 +22,17 @@ credentials, and reloads provider/organization context. Legacy sessions do not
 show the new switch action.
 
 Not included: refresh-token rotation/long-lived login policy, migration of
-legacy Telegram tenant identities, automatic last-workspace resume, browser
-cross-tab synchronization, full physical-device/WebView and Altare acceptance.
+legacy Telegram tenant identities, automatic last-workspace resume,
+full physical-device/WebView and Altare acceptance.
 Those remain open #309. The new transport must be exercised in HTTPS staging
 with real browser Fetch Metadata and synthetic accounts before merge. No
 production rollout or real customer PII.
+
+Browser-bound global sessions also revalidate their cookie after a credential-free
+BroadcastChannel signal or focus/page resume. A verified missing or different
+cookie invalidates the old UI session without automatically adopting a different
+account; network failure is not proof of logout. Memory-only and legacy sessions
+do not use this cookie watcher. Protected API calls retain their server checks.
+A denied customer-context selection does not revoke a global Identity bearer.
+This is best-effort browser convergence, not a distributed lock for simultaneous
+HTTP login/logout operations or a new refresh policy.
