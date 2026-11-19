@@ -34,6 +34,28 @@ async function verifyChoice(cdp) {
   assert.equal(result, true, "Unselected choice must inherit the booking canvas");
 }
 
+async function verifyModal(cdp, triggerLabel, layout) {
+  await button(cdp, triggerLabel);
+  await requireDom(cdp, "modal open", "document.querySelector('[role=dialog]')");
+  const metrics = await evaluate(cdp, `(() => {
+    const modal = document.querySelector('[role=dialog]');
+    const host = modal.closest('.rhythm-scope');
+    const rect = modal.getBoundingClientRect();
+    return {
+      inScope: Boolean(host),
+      layout: modal.classList.contains("rhythm-modal--${layout}"),
+      canvas: host && getComputedStyle(modal).backgroundColor === getComputedStyle(host).backgroundColor,
+      named: Boolean(modal.getAttribute('aria-labelledby')),
+      inside: rect.left >= -1 && rect.top >= -1 && rect.right <= innerWidth + 1 && rect.bottom <= innerHeight + 1,
+    };
+  })()`);
+  assert.deepEqual(metrics, { inScope: true, layout: true, canvas: true, named: true, inside: true }, triggerLabel);
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await requireDom(cdp, "modal closed", "!document.querySelector('[role=dialog]')");
+  await requireDom(cdp, "focus returned", "document.activeElement?.textContent.trim() === " + JSON.stringify(triggerLabel));
+}
+
 async function capture(cdp, stem) {
   await evaluate(cdp, "window.scrollTo(0,0)");
   await pause(160);
@@ -117,6 +139,8 @@ async function main() {
             await button(cdp, "Переключить ошибку");
             await requireDom(cdp, "error state", "document.querySelector('#catalog-name').getAttribute('aria-invalid') === 'true'");
             await button(cdp, "Переключить ошибку");
+            await click(cdp, 'nav[aria-label="Боковое меню"] button:nth-child(2)');
+            await requireDom(cdp, "shared navigation", "[...document.querySelectorAll('nav[data-component=Navigation]')].every(nav => nav.querySelector('[aria-current=page]')?.textContent.trim() === 'Записи')");
           }
           if (section === "Записи") {
             await button(cdp, "Открыть");
@@ -136,6 +160,9 @@ async function main() {
           if (section === "Состояния") {
             await button(cdp, "Повторить");
             await expectText(cdp, "Повторная попытка");
+            await verifyModal(cdp, "Открыть диалог", "dialog");
+            await verifyModal(cdp, "Открыть панель", "sheet");
+            await verifyModal(cdp, "Открыть нижнюю панель", "drawer");
           }
           if (width === 375 || width === 1280) await capture(cdp, [width, theme, sections.indexOf(section)].join("-"));
           states++;
