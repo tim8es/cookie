@@ -283,7 +283,8 @@ test(
 
       const recoveryFirstGate = pauseTransactionAfter(
         pool,
-        (sql) => sql.includes("email_credentials") && sql.includes("FOR UPDATE"),
+        (sql) =>
+          sql.includes("email_credentials") && sql.includes("FOR UPDATE"),
       );
       releaseGates.push(recoveryFirstGate.resume);
       const recoveryFirst = completeEmailPasswordRecovery(
@@ -348,7 +349,9 @@ test(
     } finally {
       for (const resume of releaseGates) resume();
       await Promise.all(
-        concurrentOperations.map((operation) => operation.catch(() => undefined)),
+        concurrentOperations.map((operation) =>
+          operation.catch(() => undefined),
+        ),
       );
       try {
         await pool.query(

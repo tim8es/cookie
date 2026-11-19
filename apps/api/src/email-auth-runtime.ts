@@ -273,12 +273,13 @@ export function createLiveEmailIdentityAuth(
       enqueueMail: (purpose, email, source) =>
         queue.enqueue(purpose, email, source),
       completeRegistration: async (token, password, sourceFingerprint) =>
-        (await reserveProofCompletion(
-          "registration",
-          token,
-          sourceFingerprint,
-        ))
-          ? completeEmailRegistration(transaction, passwordWork, token, password)
+        (await reserveProofCompletion("registration", token, sourceFingerprint))
+          ? completeEmailRegistration(
+              transaction,
+              passwordWork,
+              token,
+              password,
+            )
           : null,
       login: (email, password, source) =>
         loginEmailPassword(
@@ -333,11 +334,7 @@ export function createLiveEmailIdentityAuth(
         await purgeExpiredEmailRegistrationChallenges(transaction, 100);
         await purgeExpiredEmailRecoveryChallenges(transaction, 100);
         await purgeExpiredEmailLoginAttempts(transaction, 100);
-        await purgeAuthSecurityEvents(
-          transaction,
-          100,
-          auditRetentionSeconds,
-        );
+        await purgeAuthSecurityEvents(transaction, 100, auditRetentionSeconds);
       },
     },
   };

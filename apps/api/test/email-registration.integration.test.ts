@@ -210,15 +210,18 @@ test(
           await new Promise((done) => setTimeout(done, 10));
       }
       assert.equal(registrationWaiting, true);
-      const expiredWhileWaiting = await runSqlTransaction(pool, async (client) => {
-        await client.query("SET LOCAL lock_timeout='500ms'");
-        return client.query(
-          `UPDATE cookie_identity.email_registration_challenges
+      const expiredWhileWaiting = await runSqlTransaction(
+        pool,
+        async (client) => {
+          await client.query("SET LOCAL lock_timeout='500ms'");
+          return client.query(
+            `UPDATE cookie_identity.email_registration_challenges
            SET expires_at=clock_timestamp()-interval '1 second'
            WHERE token_sha256=$1 RETURNING token_sha256`,
-          [createHash("sha256").update(locked.token).digest()],
-        );
-      });
+            [createHash("sha256").update(locked.token).digest()],
+          );
+        },
+      );
       assert.equal(expiredWhileWaiting.rowCount, 1);
       releaseAccountLock();
       await heldAccountLock;

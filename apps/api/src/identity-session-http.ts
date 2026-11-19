@@ -71,7 +71,6 @@ export function registerIdentityOrganizations(
 
       const verifiedIdentityId = identityId;
       const organizations = await runSqlTransaction(pool, async (client) => {
-
         stage = "read-memberships";
         const memberships = await client.query<{ tenant_id: string }>(
           `SELECT tenant_id::text FROM cookie_identity.memberships

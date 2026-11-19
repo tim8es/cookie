@@ -18,7 +18,12 @@ test(
       connectionTimeoutMillis: 1000,
     });
     const identityId = randomUUID();
-    const sessions = new IdentitySessions(pool, "organization-test", "web", 900);
+    const sessions = new IdentitySessions(
+      pool,
+      "organization-test",
+      "web",
+      900,
+    );
     const app = createApp(pool, {
       identitySessionProviders: [sessions],
       identitySessionPool: pool,

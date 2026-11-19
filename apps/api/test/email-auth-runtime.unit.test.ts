@@ -165,7 +165,9 @@ test("registration proof completion reserves shared source and proof budgets", a
       COOKIE_AUTH_LOGIN_ACCOUNT_ATTEMPTS: "5",
       COOKIE_AUTH_LOGIN_SOURCE_ATTEMPTS: "30",
       COOKIE_AUTH_MAIL_SENDMAIL_PATH:
-        process.platform === "win32" ? "C:\\sendmail.exe" : "/usr/sbin/sendmail",
+        process.platform === "win32"
+          ? "C:\\sendmail.exe"
+          : "/usr/sbin/sendmail",
       COOKIE_AUTH_MAIL_FROM: "noreply@example.invalid",
       COOKIE_PUBLIC_ORIGIN: "https://cookie.example.invalid",
     },
@@ -184,7 +186,10 @@ test("registration proof completion reserves shared source and proof budgets", a
       null,
     );
   }
-  assert.deepEqual([...attempts.values()].sort((a, b) => a - b), [6, 6]);
+  assert.deepEqual(
+    [...attempts.values()].sort((a, b) => a - b),
+    [6, 6],
+  );
 });
 
 test("email auth maintenance purges expiring proofs, attempt windows and retained audit rows", async () => {
@@ -204,7 +209,9 @@ test("email auth maintenance purges expiring proofs, attempt windows and retaine
       COOKIE_AUTH_MAIL_ENCRYPTION_KEY: "3".repeat(64),
       COOKIE_AUTH_SECURITY_AUDIT_RETENTION_SECONDS: "86400",
       COOKIE_AUTH_MAIL_SENDMAIL_PATH:
-        process.platform === "win32" ? "C:\\sendmail.exe" : "/usr/sbin/sendmail",
+        process.platform === "win32"
+          ? "C:\\sendmail.exe"
+          : "/usr/sbin/sendmail",
       COOKIE_AUTH_MAIL_FROM: "noreply@example.invalid",
       COOKIE_PUBLIC_ORIGIN: "https://cookie.example.invalid",
     },
@@ -219,6 +226,9 @@ test("email auth maintenance purges expiring proofs, attempt windows and retaine
     "email_login_attempts",
     "auth_security_events",
   ]) {
-    assert.ok(queries.some((sql) => sql.includes(table)), table);
+    assert.ok(
+      queries.some((sql) => sql.includes(table)),
+      table,
+    );
   }
 });
