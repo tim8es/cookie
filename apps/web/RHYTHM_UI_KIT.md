@@ -56,10 +56,10 @@ pnpm --filter @cookie/web exec vite build --config vite.ui-kit.config.mts
 ```
 
 Catalog artifacts go to apps/web/.tmp/rhythm-ui-kit-dist, not runtime dist.
-Do not deploy the catalog. The existing F1 web gate now builds the isolated catalog as well as the application; no second CI workflow. Existing F1 checks remain required. Run catalog
+Do not deploy the catalog. The existing F1 workflow runs an early isolated UI-kit gate and uploads the compiled review app and screenshots separately; no second workflow. Existing F1 checks remain required. Run catalog
 build and manual browser review at 320, 375, 768 and 1280 px; inspect all
 five palette scopes, keyboard navigation, pointer states and form labels.
-The token tests are automatic via the existing web test command. The compiled catalog has a separate Chromium smoke using the existing CDP harness: 5 scopes × 4 widths × 8 sections, selection, save/busy, file preview/remove, errors, basic keyboard navigation, canvas inheritance, shared navigation selection, three modal layouts, theme portal and focus restoration, a complete synthetic four-step booking composition, shared channel shells, account switch callback, day selection, no external requests. It runs in the existing browser gate; evidence is uploaded separately. Run after building: node apps/web/scripts/rhythm-catalog-smoke.mjs. They
+The token tests are automatic via the existing web test command. The compiled catalog has a separate Chromium smoke using the existing CDP harness: 5 scopes × 4 widths × 8 sections, selection, save/busy, file preview/remove, errors, basic keyboard navigation, canvas inheritance, shared navigation selection, three modal layouts, theme portal and focus restoration, a complete synthetic four-step booking composition, shared channel shells, account switch callback, day selection, no external requests. It runs in the early ui_kit gate; evidence and the compiled catalog are uploaded separately. Run after building: node apps/web/scripts/rhythm-catalog-smoke.mjs. The whole isolated gate is bash scripts/ci/f1-gates.sh ui_kit. They
 verify declared palette pairs and catalog canvas inheritance, not pixel
 contrast, screen readers, or visual regression.
 
