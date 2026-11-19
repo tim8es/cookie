@@ -368,9 +368,11 @@ async function main() {
     });
     await viewport(cdp, 375, 812);
 
-    let script = await load(cdp, origin, "", undefined);
+    let script = await load(cdp, origin + "calendar", "", undefined);
     await requireDom(cdp, "self-service role selection before authentication",
       "document.body.innerText.includes('Вход и регистрация') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я представляю бизнес') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я клиент')");
+    await requireDom(cdp, "owner deep link remains behind authentication",
+      "location.pathname==='/calendar' && !document.querySelector('.real-owner-nav')");
     await poll("auth methods response", () => responses.some((r) => r.path === "/v1/auth/methods" && r.status === 200));
     for (const [width, height] of [[320,568],[375,812],[1280,800]]) {
       await viewport(cdp,width,height);
@@ -381,7 +383,7 @@ async function main() {
 
     const onboardingOrganization = "Synthetic onboarding salon";
     const onboardingLocation = "Synthetic onboarding branch";
-    script = await load(cdp, origin, signedProof(botToken, onboardingUserId), script);
+    script = await load(cdp, origin + "overview", signedProof(botToken, onboardingUserId), script);
     await requireDom(cdp, "business signup role", "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я представляю бизнес')");
     await button(cdp, "Я представляю бизнес");
     await button(cdp, "Создать учётную запись");
@@ -401,9 +403,18 @@ async function main() {
     const workspaceResponse=await poll("owner workspace API response",()=>responses.find(r=>r.path==="/v1/auth/owner/workspace"));
     assert.equal(workspaceResponse.status,201,"Owner workspace response should create a workspace; UI: "+(await evaluate(cdp,"document.body.innerText")).slice(-500));
     await requireDom(cdp,"new owner navigation after signup","document.querySelector('.real-owner-nav')");
-    await button(cdp,"Обзор");
-    await requireDom(cdp,"new owner workspace appears after signup",
-      "document.querySelector('h1')?.textContent.trim()==="+JSON.stringify(onboardingOrganization)+" && document.querySelector('.list-items')?.innerText.includes("+JSON.stringify(onboardingLocation)+")");
+    await requireDom(cdp,"new owner deep link appears after signup",
+      "location.pathname==='/overview' && document.querySelector('h1')?.textContent.trim()==="+JSON.stringify(onboardingOrganization)+" && document.querySelector('.list-items')?.innerText.includes("+JSON.stringify(onboardingLocation)+")");
+    await evaluate(cdp, "window.__kukiNavigationMarker=1");
+    await button(cdp, "Услуги");
+    await requireDom(cdp, "owner click updates path without full reload",
+      "location.pathname==='/services' && window.__kukiNavigationMarker===1 && document.querySelector('[data-screen=services][aria-current=page]')");
+    await evaluate(cdp, "history.back()");
+    await requireDom(cdp, "owner back restores overview",
+      "location.pathname==='/overview' && window.__kukiNavigationMarker===1 && document.querySelector('[data-screen=home][aria-current=page]')");
+    await evaluate(cdp, "history.forward()");
+    await requireDom(cdp, "owner forward restores services",
+      "location.pathname==='/services' && window.__kukiNavigationMarker===1 && document.querySelector('[data-screen=services][aria-current=page]')");
     const onboardingRows=await pool.query(
       `SELECT o.id::text AS tenant_id,l.id::text AS location_id,l.time_zone
          FROM cookie_tenancy.organizations o
