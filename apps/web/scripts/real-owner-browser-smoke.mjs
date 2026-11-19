@@ -566,6 +566,10 @@ async function main() {
     await requireDom(cdp,"owner role survives client revocation","document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
     await evaluate(cdp,"[...document.querySelectorAll('.identity-organization-list button')].find(b=>b.textContent.includes("+JSON.stringify(onboardingOrganization)+")&&!b.disabled).click()");
     await requireDom(cdp,"owner workspace still accessible","document.querySelector('.real-owner-nav')");
+    await evaluate(cdp, "history.replaceState({...history.state,kukiEarlierRoute:true},'')");
+    await button(cdp, "Календарь");
+    await requireDom(cdp, "owner navigation retains verified workspace hint",
+      "location.pathname==='/calendar' && history.state?.kukiWorkspace?.role==='business'");
     await button(cdp,"Сменить кабинет");
     await requireDom(cdp,"identity chooser before logout","document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");
     assert.equal(responses.slice(beforeRestore).filter(r=>r.path==="/v1/auth/telegram/identity").length,0);
@@ -589,6 +593,15 @@ async function main() {
     await requireDom(cdp,"pending logout blocks automatic restore","document.body.innerText.includes('Автоматическое восстановление отключено') && !document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");
     await poll("methods after failed logout reload",()=>responses.slice(beforeFailedLogoutReload).some(r=>r.path==="/v1/auth/methods"&&r.status===200));
     assert.ok(!responses.slice(beforeFailedLogoutReload).some(r=>r.path==="/v1/auth/browser-session"));
+    const beforeBackReload = responses.length;
+    await evaluate(cdp, "history.back()");
+    await requireDom(cdp, "earlier owner history entry after failed logout",
+      "history.state?.kukiEarlierRoute===true && history.state?.kukiLogoutPending!==true && !document.querySelector('.real-owner-nav')");
+    await cdp.send("Page.reload", {ignoreCache:true});
+    await requireDom(cdp, "failed logout blocks restore from earlier route",
+      "document.body.innerText.includes('Автоматическое восстановление отключено') && !document.querySelector('.real-owner-nav')");
+    await poll("methods after earlier route reload",()=>responses.slice(beforeBackReload).some(r=>r.path==="/v1/auth/methods"&&r.status===200));
+    assert.ok(!responses.slice(beforeBackReload).some(r=>r.path==="/v1/auth/browser-session"));
     await button(cdp,"Я представляю бизнес");
     await requireDom(cdp,"explicit Telegram reauthentication ready","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Войти через Telegram'&&!b.disabled)");
     await button(cdp,"Войти через Telegram");
@@ -1083,7 +1096,7 @@ async function main() {
     api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60" }, origin);
 
     const historyResponseStart = responses.length;
-    script = await load(cdp, origin+"?surface=customer-staging", signedProof(botToken, customerUserId), script);
+    script = await loadAndEnterTelegram(cdp, origin+"?surface=customer-staging", signedProof(botToken, customerUserId), script, "customer");
     try {
       await poll("fresh client history HTTP 200 after Booking restart", () => responses.slice(historyResponseStart).some(r=>r.status===200&&r.path.endsWith("/staging-customer-history")));
     } catch (error) {
@@ -1100,7 +1113,7 @@ async function main() {
     await button(cdp, "Выйти");
     await requireDom(cdp, "customer logout before fresh owner calendar",
       "document.querySelector('[aria-label=\\\"Клиентский вход staging\\\"] h1')?.innerText==='Вы вышли'");
-    script = await load(cdp, origin, signedProof(botToken, userId), script);
+    script = await loadAndEnterTelegram(cdp, origin, signedProof(botToken, userId), script, "business");
     await requireDom(cdp, "fresh owner after Booking restart", "document.querySelector('.real-owner-nav')");
     await button(cdp, "Календарь");
     await requireDom(cdp, "owner calendar initialized after Booking restart",
@@ -1132,7 +1145,7 @@ async function main() {
     // Preserve the direct cancellation test above. Independently lose the
     // second cancellation's actual committed response, then reconcile only
     // from a fresh server history read, without issuing another mutation.
-    script = await load(cdp, origin+"?surface=customer-staging", signedProof(botToken, customerUserId), script);
+    script = await loadAndEnterTelegram(cdp, origin+"?surface=customer-staging", signedProof(botToken, customerUserId), script, "customer");
     await requireDom(cdp, "fresh client before lost cancellation response", "Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)");
     let cancellationRequests = 0;
     cdp.onEvent("Network.requestWillBeSent", ({ request }) => {

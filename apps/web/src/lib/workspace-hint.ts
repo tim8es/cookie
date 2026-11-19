@@ -8,6 +8,16 @@ type WorkspaceHistory = Pick<History, "state" | "replaceState">;
 
 const KEY = "kukiWorkspace";
 const LOGOUT_PENDING = "kukiLogoutPending";
+const TAB_LOGOUT_PENDING = "kuki.logout.pending";
+type TabStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+function browserTabStorage(): TabStorage | undefined {
+  try {
+    return typeof window === "undefined" ? undefined : window.sessionStorage;
+  } catch {
+    return undefined;
+  }
+}
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -53,11 +63,20 @@ export function writeWorkspaceHint(
 }
 
 /**
- * A noncredential, tab/history-entry-local guard. If logout fails before
- * the server can clear its HttpOnly cookie, never silently restore that
- * cookie on reload of this history entry. It is not a revocation receipt.
+ * Noncredential tab-local guard, with a history-entry fallback. A failed
+ * logout must not automatically restore a live cookie via earlier SPA routes.
+ * No token, identity, tenant or other private value is stored here.
+ * Neither marker proves server revocation.
  */
-export function isLogoutPending(history: WorkspaceHistory): boolean {
+export function isLogoutPending(
+  history: WorkspaceHistory,
+  storage = browserTabStorage(),
+): boolean {
+  try {
+    if (storage?.getItem(TAB_LOGOUT_PENDING) === "1") return true;
+  } catch {
+    // A disabled storage implementation still has the history fallback.
+  }
   try {
     return history.state?.[LOGOUT_PENDING] === true;
   } catch {
@@ -68,7 +87,14 @@ export function isLogoutPending(history: WorkspaceHistory): boolean {
 export function writeLogoutPending(
   history: WorkspaceHistory,
   pending: boolean,
+  storage = browserTabStorage(),
 ): void {
+  try {
+    if (pending) storage?.setItem(TAB_LOGOUT_PENDING, "1");
+    else storage?.removeItem(TAB_LOGOUT_PENDING);
+  } catch {
+    // Persist the history fallback independently.
+  }
   try {
     const previous: unknown = history.state;
     const state =
