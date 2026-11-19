@@ -802,6 +802,33 @@ export function watchBrowserIdentitySession(
   return stop;
 }
 
+/**
+ * A tenant-scoped denial is not a global logout. Preserve only an independently
+ * validated, exact global credential; never adopt another browser account.
+ */
+export async function canRetainGlobalIdentity(
+  session: IdentityAuthSession,
+  fetcher: typeof fetch = globalThis.fetch,
+  now = () => Math.floor(Date.now() / 1000),
+): Promise<boolean> {
+  if (
+    !IDENTITY_BEARER.test(session.accessToken) ||
+    session.expiresAtUnixSeconds <= now()
+  )
+    return false;
+  try {
+    if (
+      session.browserBound &&
+      (await checkBrowserIdentitySession(session, fetcher, now())) !== "match"
+    )
+      return false;
+    await listIdentityOrganizations(session, fetcher);
+    return session.expiresAtUnixSeconds > now();
+  } catch {
+    return false;
+  }
+}
+
 /** Resume only current server-confirmed memberships; never enroll on reload. */
 export async function restoreWorkspaceContext(
   identity: IdentityAuthSession,

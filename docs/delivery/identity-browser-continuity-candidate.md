@@ -93,3 +93,12 @@ revoke a potentially different account's cookie, and cannot protect a new tab
 or a different history entry while the server remains unreachable. The
 synthetic browser regression simulates a lost logout request, reloads, and
 checks explicit fresh Telegram login before the cross-tab logout scenario.
+
+A customer API authorization denial closes and clears the customer view before
+checking the global credential. Only if the same live browser bearer (when
+bound) and independent identity organizations API both verify may the UI
+return to the authenticated chooser. No automatic adoption of a new account;
+legacy/expired/unconfirmed sessions retain fail-closed behavior. Browser
+regression revokes the actual client role assignment in PostgreSQL and checks
+HTTP 403, removal of the customer workspace, and continued owner access
+without new Telegram login. This does not give either role new permissions.

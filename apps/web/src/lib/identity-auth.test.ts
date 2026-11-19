@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canRetainGlobalIdentity,
   checkBrowserIdentitySession,
   completeEmailCredentialLink,
   createOwnerWorkspace,
@@ -443,4 +444,55 @@ test("pending logout removes the workspace hint but preserves unrelated history"
   writeLogoutPending(history, false);
   assert.equal(isLogoutPending(history), false);
   assert.deepEqual(state, { unrelated: "kept" });
+});
+
+test("tenant denial retains only the independently live global identity", async () => {
+  const bound = { ...session, browserBound: true };
+  const calls: string[] = [];
+  const live: typeof fetch = async (input, init) => {
+    const path = String(input);
+    calls.push(path);
+    if (path.endsWith("/browser-session")) {
+      return Response.json({
+        tokenType: "Bearer",
+        scope: "identity",
+        ...session,
+      });
+    }
+    assert.equal(
+      new Headers(init?.headers).get("authorization"),
+      "Bearer " + session.accessToken,
+    );
+    return Response.json({ organizations: [] });
+  };
+  assert.equal(await canRetainGlobalIdentity(bound, live, () => 1000), true);
+  assert.deepEqual(calls, [
+    "/v1/auth/browser-session",
+    "/v1/auth/identity/organizations",
+  ]);
+  calls.length = 0;
+  assert.equal(await canRetainGlobalIdentity(session, live, () => 1000), true);
+  assert.deepEqual(calls, ["/v1/auth/identity/organizations"]);
+  assert.equal(await canRetainGlobalIdentity(bound, live, () => 1800), false);
+  for (const status of [401, 403, 503]) {
+    const denied: typeof fetch = async (input, init) =>
+      String(input).endsWith("/browser-session")
+        ? live(input, init)
+        : new Response(null, { status });
+    assert.equal(
+      await canRetainGlobalIdentity(bound, denied, () => 1000),
+      false,
+    );
+  }
+  const different: typeof fetch = async () =>
+    Response.json({
+      tokenType: "Bearer",
+      scope: "identity",
+      ...session,
+      accessToken: "is_" + "B".repeat(43),
+    });
+  assert.equal(
+    await canRetainGlobalIdentity(bound, different, () => 1000),
+    false,
+  );
 });

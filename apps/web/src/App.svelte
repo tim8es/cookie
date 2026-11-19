@@ -14,7 +14,7 @@
     type VerifiedCustomerSession,
     type VerifiedOwnerSession,
   } from "./lib/owner-auth";
-  import { watchBrowserIdentitySession, type IdentityAuthSession } from "./lib/identity-auth";
+  import { canRetainGlobalIdentity, watchBrowserIdentitySession, type IdentityAuthSession } from "./lib/identity-auth";
   import { writeLogoutPending, writeWorkspaceHint } from "./lib/workspace-hint";
   import "./styles.css";
   import "./visual-system.css";
@@ -102,6 +102,21 @@
     watchWorkspace(session);
   }
 
+  async function leaveDeniedCustomerContext(): Promise<void> {
+    const current = customerSession;
+    if (!current) return;
+    // The child has already hidden all customer data. Only re-enter the
+    // chooser if this exact account is still authenticated independently.
+    const retain = await canRetainGlobalIdentity(current);
+    if (customerSession !== current) return;
+    if (retain && current.expiresAtUnixSeconds > Math.floor(Date.now() / 1000)) {
+      switchAccountContext();
+      customerAuthNotice = "Доступ к клиентскому кабинету не подтверждён. Выберите доступный кабинет.";
+      return;
+    }
+    clearCustomerSession("expired");
+  }
+
   function clearCustomerSession(reason: "expired" | "signed-out" | "logout-failed"): void {
     stopBrowserWatch?.();
     writeWorkspaceHint(window.history, null);
@@ -182,7 +197,7 @@
     {/if}
     <main class="content">
       {#if customerSession}
-        <StagingCustomerGate initialSession={customerSession} onSessionCleared={clearCustomerSession} onSwitchAccount={customerSession.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
+        <StagingCustomerGate initialSession={customerSession} onContextDenied={() => void leaveDeniedCustomerContext()} onSessionCleared={clearCustomerSession} onSwitchAccount={customerSession.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
       {:else if verifiedOwner && ownerSession}
         {#key ownerSession}
           <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} />

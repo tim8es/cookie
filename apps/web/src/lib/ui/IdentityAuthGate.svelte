@@ -188,7 +188,7 @@
     accountLoaded = false;
     providers = null;
     organizations = [];
-    notice = "Вход подтверждён. Выберите, как пользоваться kuki.";
+    notice = initialIdentitySession && authNotice ? authNotice : "Вход подтверждён. Выберите, как пользоваться kuki.";
     stopBrowserWatch = watchBrowserIdentitySession(session, () => invalidateIdentity(session, "Сессия в браузере изменилась или завершилась. Войдите снова."), window, document);
     stopIdentityExpiry = watchOwnerSessionExpiry(
       session.expiresAtUnixSeconds,

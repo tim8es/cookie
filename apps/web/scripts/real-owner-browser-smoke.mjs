@@ -487,6 +487,22 @@ async function main() {
     await requireDom(cdp,"existing customer reentered",clientGate);
     assert.equal(responses.slice(beforeRestore).filter(r=>r.path.endsWith("/staging-customer/enroll")).length,1,"Existing client selection must not enroll again");
     assert.deepEqual((await pool.query("SELECT c.customer_id::text,c.identity_id::text FROM cookie_customers.staging_customer_identities c WHERE c.tenant_id=$1::uuid",[dualTenant])).rows,enrolled.rows);
+    // Actual committed role revocation (not a mocked 403) must close only
+    // the client workspace and preserve the independently valid identity.
+    await requireDom(cdp,"customer catalog ready before role revocation","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Обновить каталог'&&!b.disabled)");
+    const revokedClient=await pool.query(
+      "UPDATE cookie_identity.role_assignments a SET active=false FROM cookie_identity.roles r WHERE a.tenant_id=$1::uuid AND a.identity_id=$2::uuid AND a.tenant_id=r.tenant_id AND a.role_id=r.id AND r.base_type='client' AND a.active",
+      [dualTenant,enrolled.rows[0].identity_id],
+    );
+    assert.equal(revokedClient.rowCount,1);
+    const beforeDenied=responses.length;
+    await button(cdp,"Обновить каталог");
+    await requireDom(cdp,"revoked client returns to authenticated chooser","document.body.innerText.includes('Настройте kuki') && document.body.innerText.includes('Доступ к клиентскому кабинету не подтверждён') && !document.querySelector('.real-owner-nav')");
+    assert.ok(responses.slice(beforeDenied).some(r=>r.path.endsWith("/staging-customer-offers")&&r.status===403));
+    await button(cdp,"Я представляю бизнес");
+    await requireDom(cdp,"owner role survives client revocation","document.querySelector('.identity-organization-list')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
+    await evaluate(cdp,"[...document.querySelectorAll('.identity-organization-list button')].find(b=>b.textContent.includes("+JSON.stringify(onboardingOrganization)+")&&!b.disabled).click()");
+    await requireDom(cdp,"owner workspace still accessible","document.querySelector('.real-owner-nav')");
     await button(cdp,"Сменить кабинет");
     await requireDom(cdp,"identity chooser before logout","document.body.innerText.includes('Настройте kuki') && !document.querySelector('.real-owner-nav')");
     assert.equal(responses.slice(beforeRestore).filter(r=>r.path==="/v1/auth/telegram/identity").length,0);

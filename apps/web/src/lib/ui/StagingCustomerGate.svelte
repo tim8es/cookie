@@ -11,6 +11,7 @@
   export let initialSession: VerifiedCustomerSession | null = null;
   export let onSwitchAccount: (() => void) | undefined = undefined;
   export let onSessionCleared: (reason: SessionClearReason) => void = () => {};
+  export let onContextDenied: (() => void) | undefined = undefined;
   let session: VerifiedCustomerSession | null = initialSession;
   let phase: "loading" | "unavailable" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" = "loading";
   let stopExpiry: (() => void) | null = null;
@@ -28,6 +29,20 @@
     stopExpiry?.(); stopExpiry = null;
     onSessionCleared("expired");
   }
+  function denyContext(): void {
+    if (!mounted || phase !== "verified" || !session) return;
+    if (!session.accessToken.startsWith("is_") || !onContextDenied ||
+        session.expiresAtUnixSeconds <= Math.floor(Date.now() / 1000)) {
+      expire();
+      return;
+    }
+    session = null;
+    historySnapshot = null;
+    stopExpiry?.(); stopExpiry = null;
+    phase = "loading";
+    onContextDenied();
+  }
+
   async function signIn(): Promise<void> {
     try {
       const proof = await loadTelegramInitData(window, document);
@@ -94,8 +109,8 @@
 </Card.Root>
 
 {#if phase === "verified" && session}
-  <StagingCustomerOffers {session} {historySnapshot} onUnauthorized={expire} onConfirmed={created} />
+  <StagingCustomerOffers {session} {historySnapshot} onUnauthorized={denyContext} onConfirmed={created} />
   {#key historyVersion}
-    <StagingCustomerHistory {session} onUnauthorized={expire} onHistory={value => historySnapshot = value} />
+    <StagingCustomerHistory {session} onUnauthorized={denyContext} onHistory={value => historySnapshot = value} />
   {/key}
 {/if}
