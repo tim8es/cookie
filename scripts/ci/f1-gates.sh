@@ -30,6 +30,7 @@ browser_evidence() { node scripts/ci-visual-evidence-check.mjs; }
 real_owner() {
   pnpm build:runtime
   node apps/web/scripts/real-owner-browser-smoke.mjs
+  node apps/web/scripts/refresh-browser-smoke.mjs
   # Explicit test cases, not product defaults. Separate isolated Docker projects.
   # Run the same real catalog scenario in QA and actual demo mode.
   env -u COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES node scripts/local-staging.mjs verify
