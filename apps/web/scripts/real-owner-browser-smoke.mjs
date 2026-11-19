@@ -1000,7 +1000,15 @@ async function main() {
 
     const historyResponseStart = responses.length;
     script = await load(cdp, origin+"?surface=customer-staging", signedProof(botToken, customerUserId), script);
-    await poll("fresh client history HTTP 200 after Booking restart", () => responses.slice(historyResponseStart).some(r=>r.status===200&&r.path.endsWith("/staging-customer-history")));
+    try {
+      await poll("fresh client history HTTP 200 after Booking restart", () => responses.slice(historyResponseStart).some(r=>r.status===200&&r.path.endsWith("/staging-customer-history")));
+    } catch (error) {
+      const authResponses = responses.slice(historyResponseStart)
+        .filter(r => r.path.includes("/auth/") || r.path.includes("/staging-customer"))
+        .map(({ status, path }) => ({ status, path }));
+      const screen = await evaluate(cdp, "document.body.innerText.slice(-800)");
+      throw new Error(`${String(error)}; responses=${JSON.stringify(authResponses)}; screen=${JSON.stringify(screen)}`);
+    }
     await requireDom(cdp, "own Booking survives restart with ID, status, price and times",
       "(()=>{const rows=[...document.querySelectorAll('[aria-label=\\\"Мои записи\\\"] .customer-history li')];const row=rows.find(r=>r.querySelector('.history-id')?.textContent.includes("+JSON.stringify(restartBookingId)+"));return rows.length===2&&row?.querySelector('.history-heading span')?.textContent==='Подтверждена'&&row.querySelectorAll('time')[0]?.dateTime==="+JSON.stringify(restartStart)+"&&row.querySelectorAll('time')[1]?.dateTime==="+JSON.stringify(restartEnd)+"&&row.innerText.replace(/\\s/g,'').includes('1250,50')&&rows.some(r=>r.querySelector('.history-id')?.textContent.includes("+JSON.stringify(realBooking.rows[0].id)+")&&r.querySelector('.history-heading span')?.textContent==='Отменена клиентом');})()");
     assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0);
