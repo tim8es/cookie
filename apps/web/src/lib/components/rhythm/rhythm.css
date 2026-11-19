@@ -1,0 +1,312 @@
+.rhythm-scope {
+  --rhythm-canvas: #f3f0ec;
+  --rhythm-ink: #29232c;
+  --rhythm-surface: #ffffff;
+  --rhythm-surface-ink: #29232c;
+  --rhythm-muted: #625963;
+  --rhythm-line: #837786;
+  --rhythm-brand: #422d49;
+  --rhythm-on-brand: #ffffff;
+  --rhythm-selected: #eee4ed;
+  --rhythm-on-selected: #422d49;
+  --rhythm-selected-line: #765287;
+  --rhythm-radius: 11px;
+  --rhythm-panel-radius: 15px;
+  --rhythm-control-height: 42px;
+  --rhythm-gap: 12px;
+  --rhythm-danger: #9b302c;
+  --rhythm-focus: #765287;
+  --rhythm-font: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --background: var(--rhythm-canvas);
+  --foreground: var(--rhythm-ink);
+  --card: var(--rhythm-surface);
+  --card-foreground: var(--rhythm-surface-ink);
+  --popover: var(--rhythm-surface);
+  --popover-foreground: var(--rhythm-surface-ink);
+  --primary: var(--rhythm-brand);
+  --primary-foreground: var(--rhythm-on-brand);
+  --secondary: var(--rhythm-selected);
+  --secondary-foreground: var(--rhythm-on-selected);
+  --muted: var(--rhythm-selected);
+  --muted-foreground: var(--rhythm-muted);
+  --accent: var(--rhythm-selected);
+  --accent-foreground: var(--rhythm-on-selected);
+  --destructive: var(--rhythm-danger);
+  --ring: var(--rhythm-focus);
+  --border: var(--rhythm-line);
+  --input: var(--rhythm-line);
+  --radius: var(--rhythm-radius);
+  font-family: var(--rhythm-font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--rhythm-ink);
+  background: var(--rhythm-canvas);
+}
+
+/* Presets for the isolated review catalog; not a publication contract. */
+.rhythm-scope[data-rhythm-theme="studio"] {
+  --rhythm-selected: #e9d6eb;
+}
+.rhythm-scope[data-rhythm-theme="linen"] {
+  --rhythm-canvas: #f8f0e4;
+  --rhythm-brand: #75513c;
+  --rhythm-selected: #e8d1b5;
+  --rhythm-on-selected: #3b291c;
+  --rhythm-focus: #75513c;
+  --rhythm-selected-line: #75513c;
+  --rhythm-line: #837160;
+  --rhythm-radius: 13px;
+}
+.rhythm-scope[data-rhythm-theme="graphite"] {
+  --rhythm-canvas: #26252d;
+  --rhythm-ink: #ffffff;
+  --rhythm-surface: #302f38;
+  --rhythm-surface-ink: #ffffff;
+  --rhythm-muted: #d1cdd6;
+  --rhythm-line: #928b9d;
+  --rhythm-brand: #d4c2f1;
+  --rhythm-on-brand: #17141a;
+  --rhythm-selected: #c1d4be;
+  --rhythm-on-selected: #17141a;
+  --rhythm-selected-line: #ffffff;
+  --rhythm-danger: #ffb4ab;
+  --rhythm-focus: #d4c2f1;
+  --rhythm-radius: 6px;
+}
+.rhythm-scope[data-rhythm-theme="sage"] {
+  --rhythm-canvas: #edf3eb;
+  --rhythm-brand: #365d4d;
+  --rhythm-selected: #d4e3c8;
+  --rhythm-on-selected: #233a2c;
+  --rhythm-focus: #365d4d;
+  --rhythm-selected-line: #365d4d;
+  --rhythm-line: #67786c;
+  --rhythm-radius: 22px;
+}
+
+.rhythm-scope [data-slot="button"].rhythm-action {
+  min-height: var(--rhythm-control-height);
+  height: auto;
+  padding: 9px 14px;
+  white-space: normal;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius);
+  color: var(--rhythm-ink);
+  background: transparent;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.rhythm-scope [data-slot="button"].rhythm-action--primary {
+  color: var(--rhythm-on-brand);
+  background: var(--rhythm-brand);
+  border-color: var(--rhythm-brand);
+}
+.rhythm-scope [data-slot="button"].rhythm-action--danger {
+  color: var(--rhythm-danger);
+}
+.rhythm-scope [data-slot="button"].rhythm-action:not(:disabled):hover {
+  background: var(--rhythm-selected);
+  color: var(--rhythm-on-selected);
+}
+.rhythm-scope [data-slot="button"].rhythm-action--primary:not(:disabled):hover {
+  background: var(--rhythm-brand);
+  color: var(--rhythm-on-brand);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.rhythm-scope [data-slot="button"].rhythm-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.rhythm-scope :is(button, input, select, textarea, a):focus-visible {
+  outline: 3px solid var(--rhythm-focus);
+  outline-offset: 3px;
+}
+.rhythm-scope [data-slot="input"].rhythm-input {
+  width: 100%;
+  min-height: var(--rhythm-control-height);
+  height: auto;
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius);
+  color: var(--rhythm-ink);
+  background: var(--rhythm-canvas);
+  padding: 9px 12px;
+  font-size: 16px;
+}
+.rhythm-scope [data-slot="input"].rhythm-input::placeholder {
+  color: var(--rhythm-muted);
+}
+.rhythm-scope [data-slot="input"].rhythm-input[aria-invalid="true"] {
+  border-color: var(--rhythm-danger);
+}
+.rhythm-scope .rhythm-muted {
+  color: var(--rhythm-muted);
+}
+.rhythm-scope .rhythm-error {
+  color: var(--rhythm-danger);
+}
+.rhythm-scope .rhythm-panel {
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-panel-radius);
+  padding: 16px;
+  min-width: 0;
+}
+.rhythm-scope .rhythm-stack {
+  display: grid;
+  gap: var(--rhythm-gap);
+  min-width: 0;
+}
+.rhythm-scope .rhythm-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 76px;
+  padding: 14px 12px;
+  text-align: left;
+  white-space: normal;
+  border: 1px solid transparent;
+  border-bottom-color: var(--rhythm-line);
+  border-radius: 0;
+  color: var(--rhythm-ink);
+  background: var(--rhythm-canvas);
+  box-shadow: none;
+}
+.rhythm-scope .rhythm-choice[data-choice-variant="option"] {
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius);
+}
+.rhythm-scope .rhythm-choice[aria-pressed="true"] {
+  color: var(--rhythm-on-selected);
+  background: var(--rhythm-selected);
+  border: 1px solid var(--rhythm-selected-line);
+  border-radius: var(--rhythm-radius);
+}
+.rhythm-scope .rhythm-choice[aria-pressed="true"] .rhythm-muted {
+  color: var(--rhythm-on-selected);
+}
+.rhythm-scope .rhythm-choice:not(:disabled):hover {
+  border-color: var(--rhythm-line);
+}
+.rhythm-scope .rhythm-choice:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.rhythm-scope .rhythm-choice-check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 19px;
+  height: 19px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+}
+.rhythm-scope .rhythm-copy {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.rhythm-scope .rhythm-copy strong {
+  font-weight: 650;
+}
+.rhythm-scope .rhythm-copy small {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.rhythm-scope .rhythm-trailing {
+  flex: 0 1 auto;
+  max-width: 35%;
+  text-align: right;
+  overflow-wrap: anywhere;
+  font-weight: 650;
+}
+.rhythm-scope .rhythm-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--rhythm-selected);
+  color: var(--rhythm-on-selected);
+  font-weight: 650;
+}
+.rhythm-scope .rhythm-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rhythm-scope .rhythm-record {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rhythm-line);
+  min-width: 0;
+}
+.rhythm-scope .rhythm-segment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius);
+}
+.rhythm-scope .rhythm-segment [data-slot="button"] {
+  flex: 1 1 auto;
+  min-height: 40px;
+  height: auto;
+  padding: 8px 12px;
+  border-radius: calc(var(--rhythm-radius) - 2px);
+  background: transparent;
+  color: var(--rhythm-ink);
+  white-space: normal;
+}
+.rhythm-scope .rhythm-segment [aria-pressed="true"] {
+  color: var(--rhythm-on-selected);
+  background: var(--rhythm-selected);
+}
+.rhythm-scope .rhythm-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.rhythm-scope .rhythm-field label {
+  font-weight: 600;
+}
+.rhythm-scope .rhythm-field :is(p, small) {
+  margin: 0;
+  font-size: 12px;
+}
+.rhythm-scope .rhythm-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.rhythm-scope .rhythm-empty {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 24px 16px;
+}
+@media (max-width: 440px) {
+  .rhythm-scope .rhythm-panel {
+    padding: 12px;
+  }
+  .rhythm-scope .rhythm-actions > * {
+    flex: 1 1 auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rhythm-scope [data-slot="button"].rhythm-action {
+    transition: none;
+  }
+}
