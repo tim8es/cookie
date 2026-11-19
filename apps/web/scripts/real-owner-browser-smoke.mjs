@@ -347,13 +347,23 @@ async function main() {
     await viewport(cdp, 375, 812);
 
     // Malformed proof must not show authenticated UI or a synthetic fallback.
-    let script = await load(cdp, origin, "invalid-synthetic-proof", undefined);
+    let script = await load(cdp, origin + "calendar", "invalid-synthetic-proof", undefined);
     await requireDom(cdp, "forged proof rejected",
-      "document.body.innerText.includes('Вход не подтверждён') && !document.querySelector('.real-owner-nav')");
+      "location.pathname==='/calendar' && document.body.innerText.includes('Вход не подтверждён') && !document.querySelector('.real-owner-nav')");
     assert.ok(responses.some((r) => r.path === "/v1/auth/telegram/exchange" && r.status === 401));
-    script = await load(cdp, origin, signedProof(botToken, userId), script);
-    await requireDom(cdp, "authenticated real services",
-      "document.querySelector('.real-owner-nav') && document.body.innerText.includes('Услуги салона')");
+    script = await load(cdp, origin + "locations", signedProof(botToken, userId), script);
+    await requireDom(cdp, "authenticated direct location link",
+      "location.pathname==='/locations' && document.querySelector('.real-owner-nav') && document.querySelector('.list-items')?.innerText.includes('Synthetic Central')");
+    await evaluate(cdp, "window.__kukiNavigationMarker=1");
+    await button(cdp, "Услуги");
+    await requireDom(cdp, "owner click updates path without reload",
+      "location.pathname==='/services' && window.__kukiNavigationMarker===1 && document.body.innerText.includes('Услуги салона')");
+    await evaluate(cdp, "history.back()");
+    await requireDom(cdp, "back restores locations",
+      "location.pathname==='/locations' && window.__kukiNavigationMarker===1 && document.querySelector('[data-screen=locations][aria-current=page]')");
+    await evaluate(cdp, "history.forward()");
+    await requireDom(cdp, "forward restores services",
+      "location.pathname==='/services' && window.__kukiNavigationMarker===1 && document.querySelector('[data-screen=services][aria-current=page]')");
     await requireDom(cdp, "shared owner shell without demo controls", "document.querySelector(\'.verified-owner-shell[data-cookie-mode=api] .sidebar\') && !document.querySelector(\'.demo-ribbon, .preview-control, .onboarding-header\')");
     await requireDom(cdp, "canonical runtime owner brand", "document.querySelector('.sidebar .brand strong')?.textContent.trim() === 'kuki.' && document.querySelector('.nav-links')?.getAttribute('aria-label') === 'Разделы kuki' && document.title === 'kuki — кабинет салона'");
     await button(cdp, "Оформление");
