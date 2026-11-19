@@ -202,6 +202,7 @@ export class IdentitySessions {
          clock_timestamp()+$4::integer*interval '1 second'))
        WHERE token_sha256=$1 AND issuer=$2 AND audience=$3
          AND revoked_at IS NULL AND expires_at>clock_timestamp()
+         AND refresh_family_id IS NULL
          AND issued_at+$5::integer*interval '1 second'>clock_timestamp()
        RETURNING expires_at`,
       [
