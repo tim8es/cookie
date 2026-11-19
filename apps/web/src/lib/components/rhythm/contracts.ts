@@ -78,7 +78,7 @@ export interface MetricItem {
   label: string;
 }
 
-export interface MenuOption extends SegmentOption {}
+export type MenuOption = SegmentOption;
 
 export interface ModuleDisplay {
   id: string;
