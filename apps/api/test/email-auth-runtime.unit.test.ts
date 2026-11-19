@@ -137,7 +137,7 @@ test("registration proof completion reserves shared source and proof budgets", a
     async query(query: unknown, values?: unknown[]) {
       const sql = typeof query === "string" ? query : String(query);
       if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK")
-        return { rows: [], rowCount: 0 };
+        return { command: sql, rows: [], rowCount: null };
       if (sql.includes("SELECT (floor(extract(epoch"))
         return { rows: [{ window_start: "1700000000" }], rowCount: 1 };
       if (sql.includes("INSERT INTO cookie_identity.email_login_attempts")) {
@@ -196,7 +196,10 @@ test("email auth maintenance purges expiring proofs, attempt windows and retaine
   const queries: string[] = [];
   const client = {
     async query(query: unknown) {
-      queries.push(typeof query === "string" ? query : String(query));
+      const sql = typeof query === "string" ? query : String(query);
+      queries.push(sql);
+      if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK")
+        return { command: sql, rows: [], rowCount: null };
       return { rows: [], rowCount: 0 };
     },
     release() {},
