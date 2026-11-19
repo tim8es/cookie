@@ -59,6 +59,20 @@ jobs:
         run: bash scripts/ci/f1-gates.sh boundaries
       - name: Check frontend UI module boundaries
         run: bash scripts/ci/f1-gates.sh ui
+      - name: Build and verify isolated Rhythm UI kit
+        id: rhythm_catalog
+        run: bash scripts/ci/f1-gates.sh ui_kit
+      - name: Attach isolated Rhythm UI kit evidence
+        if: ${{ always() && steps.rhythm_catalog.outcome != 'skipped' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: kuki-rhythm-ui-kit
+          path: |
+            apps/web/artifacts/rhythm-ui-kit/
+            apps/web/.tmp/rhythm-ui-kit-dist/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
       - name: Typecheck API and shared contracts
         run: bash scripts/ci/f1-gates.sh types
       - name: Unit tests
@@ -85,14 +99,6 @@ jobs:
           name: cookie-frontend-visual-smoke
           path: apps/web/artifacts/visual-smoke/
           if-no-files-found: error
-          retention-days: 7
-      - name: Attach isolated Rhythm UI kit evidence
-        if: ${{ always() && steps.browser_smoke.outcome != 'skipped' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: kuki-rhythm-ui-kit
-          path: apps/web/artifacts/rhythm-ui-kit/
-          if-no-files-found: warn
           retention-days: 7
       # Actual compiled API-mode + disposable PostgreSQL, separate from mock evidence.
       - name: Real owner browser E2E with PostgreSQL (synthetic signed proof)
