@@ -11,12 +11,13 @@ function colors(selector: string): Record<string, string> {
   const start = css.indexOf(selector + " {");
   assert.ok(start >= 0, selector);
   const block = css.slice(start, css.indexOf("}", start));
-  return Object.fromEntries(
-    Array.from(block.matchAll(/--rhythm-([\w-]+):\s*(#[\da-f]{6});/gi), (m) => [
-      m[1]!,
-      m[2]!,
-    ]),
-  );
+  const matches = block.matchAll(/--rhythm-([\w-]+):\s*(#[\da-f]{6});/gi);
+  const result: Record<string, string> = {};
+  for (const match of matches) {
+    const [, name, value] = match;
+    if (name && value) result[name] = value;
+  }
+  return result;
 }
 
 function luminance(hex: string): number {
@@ -62,10 +63,8 @@ for (const theme of ["workspace", "studio", "linen", "graphite", "sage"]) {
       const a = palette[foreground];
       const b = palette[background];
       assert.ok(a && b, foreground + "/" + background);
-      assert.ok(
-        contrast(a, b) >= min,
-        theme + " " + foreground + "/" + background,
-      );
+      const explanation = theme + " " + foreground + "/" + background;
+      assert.ok(contrast(a, b) >= min, explanation);
     }
   });
 }
