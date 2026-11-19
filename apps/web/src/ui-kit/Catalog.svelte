@@ -1,8 +1,12 @@
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button/index.js";
+  import { onDestroy } from "svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import {
+    ActionButton,
     Avatar,
+    CheckGroup,
+    ImageAssetField,
+    Notice,
     BookingTicket,
     ChoiceRow,
     EmptyState,
@@ -42,6 +46,26 @@
   let busy = $state(false);
   let message = $state("");
   let showDetails = $state(false);
+  let assignments = $state<string[]>(["haircut"]);
+  let imageSrc = $state<string | undefined>();
+  let imageError = $state<string | undefined>();
+
+  function removeImage() {
+    if (imageSrc) URL.revokeObjectURL(imageSrc);
+    imageSrc = undefined;
+  }
+
+  function previewFile(file: File) {
+    imageError = undefined;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      imageError = "Для учебного примера выберите PNG, JPEG или WebP до 2 МБ.";
+      return;
+    }
+    removeImage();
+    imageSrc = URL.createObjectURL(file);
+  }
+
+  onDestroy(removeImage);
 
   function reset() {
     service = "haircut";
@@ -53,6 +77,9 @@
     busy = false;
     message = "";
     showDetails = false;
+    assignments = ["haircut"];
+    removeImage();
+    imageError = undefined;
   }
 </script>
 
@@ -64,7 +91,7 @@
         <h1>Rhythm UI Kit</h1>
         <p class="rhythm-muted">Внутренний каталог компонентов · RC7.1 · учебные данные</p>
       </div>
-      <Button variant="outline" class="rhythm-action" onclick={reset}>Сбросить примеры</Button>
+      <ActionButton onclick={reset}>Сбросить примеры</ActionButton>
     </header>
 
     <div class="catalog-nav rhythm-stack">
@@ -91,18 +118,18 @@
       {#if section === "controls"}
         <h2>Контролы и состояния</h2>
         <div class="rhythm-panel rhythm-stack">
-          <h3>Button · существующий shadcn-svelte</h3>
+          <h3>ActionButton · существующий shadcn-svelte Button</h3>
           <div class="catalog-actions">
-            <Button class="rhythm-action rhythm-action--primary" onclick={() => (message = "Основное действие")}>Продолжить</Button>
-            <Button variant="outline" class="rhythm-action" onclick={() => (message = "Вторичное действие")}>Отмена</Button>
-            <Button variant="destructive" class="rhythm-action rhythm-action--danger" onclick={() => (message = "Опасное действие — пример")}>Удалить</Button>
-            <Button class="rhythm-action rhythm-action--primary" disabled>Недоступно</Button>
+            <ActionButton tone="primary" onclick={() => (message = "Основное действие")}>Продолжить</ActionButton>
+            <ActionButton onclick={() => (message = "Вторичное действие")}>Отмена</ActionButton>
+            <ActionButton tone="danger" onclick={() => (message = "Опасное действие — пример")}>Удалить</ActionButton>
+            <ActionButton tone="primary" disabled>Недоступно</ActionButton>
           </div>
         </div>
         <div class="rhythm-panel rhythm-stack">
           <h3>TextField · Input + label</h3>
           <TextField id="catalog-name" label="Название салона" bind:value={name} required hint="Только учебные данные." error={showError ? "Проверьте значение." : undefined} />
-          <Button variant="outline" class="rhythm-action" onclick={() => (showError = !showError)}>Переключить ошибку</Button>
+          <ActionButton onclick={() => (showError = !showError)}>Переключить ошибку</ActionButton>
           <TextField id="catalog-disabled" label="Недоступное поле" value="Сохранено" disabled />
         </div>
         <div class="rhythm-panel rhythm-stack">
@@ -139,7 +166,7 @@
           <h3>RecordRow · справочник</h3>
           <RecordRow record={{ title: "Анна", subtitle: "Стилист", initials: "А", detail: "Активна" }}>
             {#snippet action()}
-              <Button variant="outline" class="rhythm-action" onclick={() => (message = "Редактирование — учебный пример")}>Изменить</Button>
+              <ActionButton onclick={() => (message = "Редактирование — учебный пример")}>Изменить</ActionButton>
             {/snippet}
           </RecordRow>
           <RecordRow record={{ title: "Укладка", subtitle: "45 минут", detail: "1 800 ₽" }} />
@@ -157,10 +184,20 @@
           }}
         >
           <TextField id="catalog-service" label="Название" bind:value={formName} required disabled={busy} />
+          <CheckGroup label="Назначенные услуги" options={[{ id: "haircut", label: "Стрижка" }, { id: "style", label: "Укладка" }, { id: "color", label: "Окрашивание", disabled: true }]} selected={assignments} disabled={busy} onChange={(ids) => (assignments = ids)} />
         </EntityEditor>
-        <Button variant="outline" class="rhythm-action" onclick={() => (busy = !busy)}>Переключить состояние сохранения</Button>
+        <ActionButton onclick={() => (busy = !busy)}>Переключить состояние сохранения</ActionButton>
+        <div class="rhythm-panel rhythm-stack">
+          <h3>ImageAssetField</h3>
+          <ImageAssetField id="catalog-image" label="Фотография мастера" {imageSrc} error={imageError} hint="Только локальный предпросмотр. Файл не покидает браузер." onFile={previewFile} onRemove={removeImage} />
+        </div>
       {:else}
         <h2>Обратная связь</h2>
+        <Notice title="Загрузка данных" description="Учебный пример ожидания." tone="loading" />
+        <Notice title="Изменения сохранены" description="Учебное состояние." tone="success" />
+        <Notice title="Не удалось загрузить данные" description="Повторите попытку." tone="error">
+          {#snippet action()}<ActionButton onclick={() => (message = "Повторная попытка — учебный пример")}>Повторить</ActionButton>{/snippet}
+        </Notice>
         <div class="rhythm-panel rhythm-stack">
           <h3>Badge · существующий shadcn-svelte</h3>
           <div class="catalog-actions">
