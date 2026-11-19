@@ -235,7 +235,11 @@ test("delayed logout cannot erase a newer browser login cookie", async (t) => {
   const pending = app.inject({
     method: "POST",
     url: "/v1/auth/identity/logout",
-    headers: { ...browser, cookie: oldCookie, authorization: "Bearer " + first },
+    headers: {
+      ...browser,
+      cookie: oldCookie,
+      authorization: "Bearer " + first,
+    },
   });
   try {
     await entered;
