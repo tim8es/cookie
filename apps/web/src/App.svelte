@@ -56,17 +56,28 @@
     }
   }
 
+  function rememberVerifiedOwner(): void {
+    if (!verifiedOwner || !ownerSession) return;
+    writeWorkspaceHint(window.history, ownerSession.browserBound
+      ? { role: "business", tenantId: ownerSession.tenantId }
+      : null);
+  }
+
   function navigateOwner(next: Screen): void {
     if (!verifiedOwner) return;
     const target = ownerRouteHref(next, window.location);
     if (target !== window.location.pathname + window.location.search + window.location.hash) {
-      window.history.pushState(window.history.state, "", target);
+      window.history.pushState(null, "", target);
+      rememberVerifiedOwner();
     }
     screen = next;
   }
 
   onMount(() => {
-    const onPopState = () => syncOwnerLocation(verifiedOwner);
+    const onPopState = () => {
+      syncOwnerLocation(verifiedOwner);
+      rememberVerifiedOwner();
+    };
     window.addEventListener("popstate", onPopState);
     return () => {
       window.removeEventListener("popstate", onPopState);

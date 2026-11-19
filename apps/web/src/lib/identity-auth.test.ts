@@ -535,3 +535,32 @@ test("legacy Telegram owner entry requires current matching business context", a
   );
   assert.deepEqual(paths, [`/v1/organizations/${tenantId}/session-context`]);
 });
+
+test("failed logout blocks auto-restore on earlier history entries in the same tab", () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+    removeItem: (key: string) => {
+      values.delete(key);
+    },
+  };
+  const history = {
+    state: {} as Record<string, unknown>,
+    replaceState(value: Record<string, unknown>) {
+      this.state = value;
+    },
+  };
+  writeWorkspaceHint(history, { role: "business", tenantId });
+  const earlier = { ...history.state };
+  writeLogoutPending(history, true, storage);
+  assert.equal(isLogoutPending(history, storage), true);
+  assert.deepEqual([...values.values()], ["1"]);
+  history.state = earlier;
+  assert.equal(isLogoutPending(history, storage), true);
+  writeLogoutPending(history, false, storage);
+  assert.equal(isLogoutPending(history, storage), false);
+  assert.equal(values.size, 0);
+});
