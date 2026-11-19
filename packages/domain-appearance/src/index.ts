@@ -32,3 +32,4 @@ export type {
   AssetKind,
   TenantAssetOwnership,
 } from "./postgres.js";
+export { recordAppearancePublicationAudit } from "./publication-audit.js";
