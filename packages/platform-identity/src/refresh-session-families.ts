@@ -148,7 +148,9 @@ export class RefreshSessionFamilies {
       );
       const row = current.rows[0];
       if (!row?.live) return { status: "denied" };
-      if (row.consumed_at !== null || row.generation !== row.family_generation) {
+      const replayed =
+        row.consumed_at !== null || row.generation !== row.family_generation;
+      if (replayed) {
         await client.query(
           `UPDATE cookie_identity.refresh_session_families
            SET revoked_at=clock_timestamp() WHERE id=$1::uuid AND revoked_at IS NULL`,

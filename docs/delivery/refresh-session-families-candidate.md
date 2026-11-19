@@ -36,3 +36,19 @@ acceptance. Current short-lived session behavior remains unchanged.
 PG integration exercises rotation, replay/concurrency, scope, separate
 families, logout by historical credential, idle and absolute cap, rollback,
 hashed persistence and absence of access issuance. Exact-head CI required.
+
+## Synthetic access integration (0056)
+
+A separate candidate service uses ONLY issuer cookie-refresh-candidate and
+synthetic-test audience, not accepted by the deployed runtime. Access mint
+and refresh rotation commit together, with expiry capped by family limits.
+Composite FK binds access to exact Identity/issuer/audience/family. A family
+revocation trigger revokes all its access generations and records audit events
+atomically. Same-bearer renewal is prohibited for family-linked access.
+Synthetic PG tests exercise runtime-issuer denial, generation revocation,
+independent family isolation, concurrent rotation/logout and rollback.
+
+An access-only revoke is not family logout. Provider-aware issuance and
+recovery/revocation lock order, access-cookie semantics and browser protocol
+remain required before using a real issuer or mounting endpoints. Existing
+production-shaped provider sessions still have their original behavior.

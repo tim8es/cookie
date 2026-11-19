@@ -6,6 +6,8 @@ import { Pool } from "pg";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { runSqlTransaction } from "../../../packages/platform-db/src/transaction.js";
 import { RefreshSessionFamilies } from "../../../packages/platform-identity/src/refresh-session-families.js";
+import { IdentitySessions } from "../../../packages/platform-identity/src/identity-sessions.js";
+import { SyntheticRefreshAccessSessions } from "../../../packages/platform-identity/src/synthetic-refresh-access-sessions.js";
 
 const digest = (token: string) => createHash("sha256").update(token).digest();
 
@@ -166,6 +168,136 @@ test(
       await pool.query(
         "DELETE FROM cookie_identity.identities WHERE id=$1::uuid",
         [identityId],
+      );
+      await pool.end();
+    }
+  },
+);
+
+test(
+  "synthetic refresh access is capped and family revocation invalidates every generation",
+  { skip: !process.env.TEST_DATABASE_URL },
+  async () => {
+    const pool = new Pool({
+      connectionString: process.env.TEST_DATABASE_URL,
+      max: 5,
+    });
+    const id = randomUUID();
+    const transaction = <T>(work: Parameters<typeof runSqlTransaction<T>>[1]) =>
+      runSqlTransaction(pool, work);
+    const service = new SyntheticRefreshAccessSessions(transaction, {
+      idleSeconds: 120,
+      absoluteSeconds: 300,
+      accessSeconds: 180,
+    });
+    const sessions = new IdentitySessions(
+      pool,
+      "cookie-refresh-candidate",
+      "synthetic-test",
+      180,
+    );
+    const production = new IdentitySessions(
+      pool,
+      "cookie-telegram",
+      "cookie-web",
+      180,
+    );
+    try {
+      await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [id],
+      );
+      const a = await service.createForVerifiedIdentity(id);
+      const unrelated = await service.createForVerifiedIdentity(id);
+      assert.equal(await sessions.resolve(a.accessToken), id);
+      assert.equal(await production.resolve(a.accessToken), null);
+      assert.ok(a.accessExpiresAtUnixSeconds <= a.expiresAtUnixSeconds);
+      assert.equal(
+        await sessions.renewWithinAbsoluteLifetime(a.accessToken, 3600),
+        null,
+      );
+      const b = await service.rotate(a.refreshToken);
+      assert.ok(b.status === "rotated");
+      assert.notEqual(b.accessToken, a.accessToken);
+      assert.equal(await sessions.resolve(b.accessToken), id);
+      assert.equal(await sessions.resolve(a.accessToken), id);
+      assert.ok(b.accessExpiresAtUnixSeconds <= b.expiresAtUnixSeconds);
+      assert.deepEqual(await service.rotate(a.refreshToken), {
+        status: "replayed",
+      });
+      assert.equal(await sessions.resolve(a.accessToken), null);
+      assert.equal(await sessions.resolve(b.accessToken), null);
+      assert.equal(await sessions.resolve(unrelated.accessToken), id);
+
+      const race = await Promise.all([
+        service.rotate(unrelated.refreshToken),
+        service.revoke(unrelated.refreshToken),
+      ]);
+      assert.equal(await sessions.resolve(unrelated.accessToken), null);
+      const rotated = race[0];
+      if (rotated.status === "rotated") {
+        assert.equal(await sessions.resolve(rotated.accessToken), null);
+        assert.deepEqual(await service.rotate(rotated.refreshToken), {
+          status: "denied",
+        });
+      }
+
+      const rollback = await service.createForVerifiedIdentity(id);
+      await assert.rejects(
+        transaction(async (client) => {
+          const nested = new SyntheticRefreshAccessSessions(
+            async (work) => work(client),
+            { idleSeconds: 120, absoluteSeconds: 300, accessSeconds: 180 },
+          );
+          assert.equal(
+            (await nested.rotate(rollback.refreshToken)).status,
+            "rotated",
+          );
+          throw new Error("synthetic access rollback");
+        }),
+        /synthetic access rollback/,
+      );
+      assert.equal(await sessions.resolve(rollback.accessToken), id);
+      assert.equal(
+        (await service.rotate(rollback.refreshToken)).status,
+        "rotated",
+      );
+      const accessRows = await pool.query<{
+        linked: boolean;
+        bounded: boolean;
+      }>(
+        `SELECT s.refresh_family_id IS NOT NULL AS linked,
+                s.expires_at<=f.absolute_expires_at AS bounded
+         FROM cookie_identity.identity_sessions s
+         JOIN cookie_identity.refresh_session_families f ON f.id=s.refresh_family_id
+         WHERE s.identity_id=$1::uuid`,
+        [id],
+      );
+      assert.ok(accessRows.rowCount);
+      assert.ok(accessRows.rows.every((row) => row.linked && row.bounded));
+    } finally {
+      await pool.query(
+        "DELETE FROM cookie_identity.identity_sessions WHERE identity_id=$1::uuid",
+        [id],
+      );
+      await pool.query(
+        `DELETE FROM cookie_identity.refresh_session_credentials
+         WHERE family_id IN (SELECT id FROM cookie_identity.refresh_session_families
+                             WHERE identity_id=$1::uuid)`,
+        [id],
+      );
+      await pool.query(
+        "DELETE FROM cookie_identity.refresh_session_families WHERE identity_id=$1::uuid",
+        [id],
+      );
+      await pool.query(
+        "DELETE FROM cookie_identity.auth_security_events WHERE identity_id=$1::uuid",
+        [id],
+      );
+      await pool.query(
+        "DELETE FROM cookie_identity.identities WHERE id=$1::uuid",
+        [id],
       );
       await pool.end();
     }
