@@ -308,6 +308,60 @@ test(
         ),
         "no-legacy-link",
       );
+      // Exercise real provider and role conflicts without leaving test
+      // credentials or changed permissions behind after the transaction.
+      const isolated = await pool.connect();
+      try {
+        await isolated.query("BEGIN");
+        const linked = await isolated.query<{ identity_id: string }>(
+          "SELECT identity_id::text FROM cookie_identity.telegram_identity_links WHERE telegram_user_hmac_sha256=$1 AND revoked_at IS NULL",
+          [legacyFingerprint],
+        );
+        const linkedId = linked.rows[0]!.identity_id;
+        const sameTransaction = async <T>(
+          work: Parameters<typeof runSqlTransaction<T>>[1],
+        ): Promise<T> => work(isolated);
+        const assess = () =>
+          assessLegacyTelegramMigration(
+            sameTransaction,
+            verifier,
+            secret,
+            signedInitData(TEST_BOT, legacyUser),
+          );
+        await isolated.query("SAVEPOINT scenario");
+        await isolated.query(
+          "INSERT INTO cookie_identity.email_credentials(email_hmac_sha256,identity_id,password_hash) VALUES($1,$2::uuid,$3)",
+          [
+            Buffer.from(randomUUID().replaceAll("-", "").repeat(2), "hex"),
+            linkedId,
+            "scrypt-v1$" + "0".repeat(32) + "$" + "0".repeat(64),
+          ],
+        );
+        assert.equal(await assess(), "existing-email-provider");
+        await isolated.query("ROLLBACK TO SAVEPOINT scenario");
+        await isolated.query(
+          "UPDATE cookie_identity.role_assignments SET active=false WHERE tenant_id=$1::uuid AND identity_id=$2::uuid",
+          [tenantId, linkedId],
+        );
+        assert.equal(await assess(), "role-scope-review");
+        await isolated.query("ROLLBACK TO SAVEPOINT scenario");
+        await isolated.query(
+          "INSERT INTO cookie_identity.global_telegram_identities(telegram_user_hmac_sha256,identity_id) VALUES($1,$2::uuid)",
+          [legacyFingerprint, linkedId],
+        );
+        assert.equal(await assess(), "global-link-conflict");
+        await isolated.query("ROLLBACK TO SAVEPOINT scenario");
+        await isolated.query(
+          `INSERT INTO cookie_identity.telegram_identity_links
+            (tenant_id,id,identity_id,telegram_user_hmac_sha256,proof_verified_at,consent_confirmed_at,revoked_at)
+            VALUES($1::uuid,$2::uuid,$3::uuid,$4,clock_timestamp(),clock_timestamp(),clock_timestamp())`,
+          [tenantId, randomUUID(), linkedId, legacyFingerprint],
+        );
+        assert.equal(await assess(), "ambiguous-legacy-history");
+      } finally {
+        await isolated.query("ROLLBACK");
+        isolated.release();
+      }
       const legacyLock = await pool.connect();
       await legacyLock.query("BEGIN");
       await lockTelegramUser(legacyLock, secret, String(legacyUser));
@@ -332,6 +386,15 @@ test(
       ]);
       assert.equal(globalResult, null);
       assert.ok(legacyResult);
+      assert.equal(
+        await assessLegacyTelegramMigration(
+          transaction,
+          verifier,
+          secret,
+          rawLegacy,
+        ),
+        "consumed-proof",
+      );
 
       // Deliberately revoke only the synthetic legacy link after its
       // successful exchange. A revoked-only history is not a candidate.

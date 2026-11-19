@@ -14,6 +14,10 @@ const eligible = {
   global_conflict: false,
   other_legacy: false,
   membership_count: 1,
+  consumed_proof: false,
+  email_provider: false,
+  active_role_count: 1,
+  unsupported_role: false,
 };
 
 test("migration assessment rejects invalid proof before SQL", async () => {
@@ -48,7 +52,7 @@ test("migration assessment rechecks proof after fingerprint lock", async () => {
       async (work) => work(client),
       { verify: () => (++checks === 1 ? proof : null) },
       Buffer.alloc(32),
-      "synthetic",
+      "hash=" + "a".repeat(64),
     ),
     "invalid-proof",
   );
@@ -63,6 +67,10 @@ test("migration assessment is read-only and rejects every ambiguous class", asyn
     [{ ...eligible, global_conflict: true }, "global-link-conflict"],
     [{ ...eligible, other_legacy: true }, "other-legacy-link"],
     [{ ...eligible, membership_count: 2 }, "additional-memberships"],
+    [{ ...eligible, consumed_proof: true }, "consumed-proof"],
+    [{ ...eligible, email_provider: true }, "existing-email-provider"],
+    [{ ...eligible, active_role_count: 0 }, "role-scope-review"],
+    [{ ...eligible, unsupported_role: true }, "role-scope-review"],
     [eligible, "candidate-for-review"],
   ] as const) {
     const seen: string[] = [];
@@ -77,7 +85,7 @@ test("migration assessment is read-only and rejects every ambiguous class", asyn
         async (work) => work(client),
         { verify: () => proof },
         Buffer.alloc(32),
-        "synthetic",
+        "hash=" + "a".repeat(64),
       ),
       expected,
     );

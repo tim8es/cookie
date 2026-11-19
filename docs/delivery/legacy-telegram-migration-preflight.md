@@ -12,12 +12,15 @@ contains a classification only, no identity/tenant IDs, fingerprints or tokens.
 | Classification | Meaning |
 | --- | --- |
 | invalid-proof | Proof is invalid or no longer current |
+| consumed-proof | The proof digest already exists in either exchange store |
 | no-legacy-link | No matching historical link |
 | ambiguous-legacy-history | More than one historical mapping, even if revoked |
 | inactive-or-unverified | No unique active verified and consented legacy link with active membership |
 | global-link-conflict | Existing global mapping for the fingerprint or legacy identity |
 | other-legacy-link | Another legacy fingerprint for that identity |
 | additional-memberships | Membership scope is not exactly the original single membership |
+| existing-email-provider | Existing email credentials must be reviewed, not merged |
+| role-scope-review | No active role, unsupported role/scope, or owner mismatch |
 | candidate-for-review | Narrow candidate for additional operator/security review only |
 
 Conservative review scope is a proposed engineering choice, not an approved
@@ -32,3 +35,13 @@ PG regression uses only synthetic records: eligible customer, unknown Telegram,
 no global account creation and existing one-time legacy exchange, then revoked
 link. Unit tests exercise refusal classifications and post-lock proof expiry.
 No real data or rollout; HTTPS Telegram acceptance remains open.
+
+The initial single-organization scope is deliberately narrowed to active
+organization-wide client/actual-owner assignments without another email
+provider. Admin/staff/location-specific role mappings are not intrinsically
+invalid; they require a separate scope review. Preflight rejects proof digests
+already consumed by either legacy or global exchange. The PostgreSQL regression
+inserts conflict fixtures under savepoints and rolls them back, including
+email credentials, global link collisions, historical duplicates and removed
+roles. This does not modify the production migration contract or consume any
+credential.
