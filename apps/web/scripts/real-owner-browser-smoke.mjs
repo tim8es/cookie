@@ -126,6 +126,12 @@ async function button(cdp, label) {
     }
     return;
   }
+  // Authentication may be restoring on mount. Await the enabled control,
+  // not merely its presence, before attempting the user's next action.
+  if (label === "Я представляю бизнес" || label === "Войти через Telegram") {
+    await requireDom(cdp, "auth control ready: " + label,
+      "[...document.querySelectorAll('button')].some(el=>el.getClientRects().length&&!el.disabled&&el.textContent.trim()===" + JSON.stringify(label) + ")");
+  }
   // Actual rendered button + native click, no direct function invocation.
   const clicked = await evaluate(cdp,
     "(() => {const b=[...document.querySelectorAll('button')].find(el=>el.getClientRects().length&&!el.disabled&&el.textContent.trim()===" +
