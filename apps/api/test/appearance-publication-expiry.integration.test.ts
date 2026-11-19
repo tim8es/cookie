@@ -233,7 +233,9 @@ test(
       assert.ok(pending);
       const denied = await pending;
       assert.equal(denied.statusCode, 409);
-      assert.deepEqual(denied.json(), { error: "appearance-grant-unavailable" });
+      assert.deepEqual(denied.json(), {
+        error: "appearance-grant-unavailable",
+      });
       assert.equal(denied.headers["cache-control"], "no-store");
       assert.deepEqual(await snapshot(), before);
 
