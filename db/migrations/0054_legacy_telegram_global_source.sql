@@ -33,7 +33,7 @@ BEGIN
      WHERE legacy_tenant_id=NEW.tenant_id AND identity_id=NEW.identity_id
        AND legacy_revoked_at IS NULL
        AND legacy_link_id IS NOT NULL
-       AND (TG_TABLE_NAME='memberships' OR legacy_link_id::text=to_jsonb(NEW)->>'id')
+       AND (TG_TABLE_NAME='memberships' OR legacy_link_id::text=(to_jsonb(NEW)->>'id'))
      RETURNING identity_id
   ), revoked AS (
     UPDATE cookie_identity.identity_sessions s

@@ -547,6 +547,34 @@ test(
       );
 
       assert.equal(await migratedSessions.resolve(migrated.token), null);
+      // Even changing the historical fingerprint and clearing revoked_at
+      // must not make the old global mapping usable again.
+      const changedSource = await pool.connect();
+      try {
+        await changedSource.query("BEGIN");
+        await changedSource.query(
+          "UPDATE cookie_identity.telegram_identity_links SET telegram_user_hmac_sha256=$1 WHERE tenant_id=$2::uuid AND id=$3::uuid",
+          [
+            telegramUserFingerprint(secret, String(legacyUser + 1000000000)),
+            tenantId,
+            preparation.legacyLinkId,
+          ],
+        );
+        assert.equal(
+          await exchangeSelfServiceTelegram(
+            async (work) => work(changedSource),
+            verifier,
+            secret,
+            signedInitData(TEST_BOT, legacyUser),
+            false,
+            900,
+          ),
+          null,
+        );
+      } finally {
+        await changedSource.query("ROLLBACK");
+        changedSource.release();
+      }
       assert.equal(
         await exchangeSelfServiceTelegram(
           transaction,

@@ -52,12 +52,22 @@ async function issueGlobalTelegramSession(
     [exchangeHash],
   );
   if (priorExchange.rowCount) return null;
-  const link = await client.query<{ identity_id: string }>(
-    "SELECT identity_id::text FROM cookie_identity.global_telegram_identities WHERE telegram_user_hmac_sha256=$1",
+  const link = await client.query<{
+    identity_id: string;
+    legacy_link_id: string | null;
+    legacy_revoked_at: Date | null;
+  }>(
+    "SELECT identity_id::text,legacy_link_id::text,legacy_revoked_at FROM cookie_identity.global_telegram_identities WHERE telegram_user_hmac_sha256=$1",
     [fingerprint],
   );
-  let identityId = link.rows[0]?.identity_id;
-  if (migratedIdentity && identityId !== migratedIdentity) return null;
+  const mapping = link.rows[0];
+  let identityId = mapping?.identity_id;
+  if (
+    (mapping?.legacy_link_id && migratedIdentity !== identityId) ||
+    mapping?.legacy_revoked_at ||
+    (migratedIdentity && identityId !== migratedIdentity)
+  )
+    return null;
   let createdIdentity = false;
   if (!identityId) {
     if (!register) return null;

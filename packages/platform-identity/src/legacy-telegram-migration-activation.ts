@@ -43,8 +43,7 @@ export async function activateLegacyTelegramMigration(
     return "invalid-input";
   const proof = verifier.verify(input.rawInitData);
   const hash = new URLSearchParams(input.rawInitData).get("hash");
-  if (!proof || !hash || !/^[0-9a-f]{64}$/i.test(hash))
-    return "invalid-proof";
+  if (!proof || !hash || !/^[0-9a-f]{64}$/i.test(hash)) return "invalid-proof";
   const digest = createHash("sha256")
     .update("telegram-initdata-exchange-v1\0")
     .update(hash.toLowerCase())
