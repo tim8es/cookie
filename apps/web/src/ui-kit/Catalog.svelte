@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
+  import CompositionStories from "./CompositionStories.svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import {
     ActionButton,
@@ -35,10 +36,14 @@
     { id: "visits", label: "Записи" },
     { id: "forms", label: "Редакторы" },
     { id: "feedback", label: "Состояния" },
+    { id: "public", label: "Публичная запись" },
+    { id: "calendar", label: "Календарь и смены" },
+    { id: "account", label: "Аккаунт" },
   ];
 
   let theme = $state<RhythmPreviewTheme>("workspace");
   let section = $state("controls");
+  let resetVersion = $state(0);
   let service = $state("haircut");
   let specialist = $state("anna");
   let filter = $state("upcoming");
@@ -79,6 +84,7 @@
   onDestroy(removeImage);
 
   function reset() {
+    resetVersion += 1;
     service = "haircut";
     specialist = "anna";
     filter = "upcoming";
@@ -211,6 +217,8 @@
           <h3>ImageAssetField</h3>
           <ImageAssetField id="catalog-image" label="Фотография мастера" {imageSrc} error={imageError} hint="Только локальный предпросмотр. Файл не покидает браузер." onFile={previewFile} onRemove={removeImage} />
         </div>
+      {:else if section === "public" || section === "calendar" || section === "account"}
+        {#key resetVersion}<CompositionStories {section} />{/key}
       {:else}
         <h2>Обратная связь</h2>
         <div class="rhythm-panel rhythm-stack">
