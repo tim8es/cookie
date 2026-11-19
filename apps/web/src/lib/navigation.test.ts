@@ -21,17 +21,15 @@ test("demo navigation contains unique screen targets for the owner and public fl
   assert.ok(ids.includes("booking"));
 });
 
-test("every owner screen has a unique reversible canonical URL", () => {
-  assert.deepEqual(screens.map(({ id }) => ownerScreenPath(id)), [
-    "/overview",
-    "/calendar",
-    "/services",
-    "/staff",
-    "/schedule",
-    "/locations",
-    "/appearance",
-    "/booking",
-  ]);
+test("owner routes map to screens", () => {
+  assert.equal(ownerScreenPath("home"), "/overview");
+  assert.equal(ownerScreenPath("calendar"), "/calendar");
+  assert.equal(ownerScreenPath("services"), "/services");
+  assert.equal(ownerScreenPath("staff"), "/staff");
+  assert.equal(ownerScreenPath("schedule"), "/schedule");
+  assert.equal(ownerScreenPath("locations"), "/locations");
+  assert.equal(ownerScreenPath("appearance"), "/appearance");
+  assert.equal(ownerScreenPath("booking"), "/booking");
   for (const { id } of screens) {
     assert.equal(ownerScreenFromPath(ownerScreenPath(id)), id);
     assert.equal(ownerScreenFromPath(ownerScreenPath(id) + "/"), id);
@@ -39,18 +37,14 @@ test("every owner screen has a unique reversible canonical URL", () => {
   assert.equal(ownerScreenFromPath("/"), defaultOwnerScreen);
 });
 
-test("unknown and reserved paths are not owner screens", () => {
-  for (const path of [
-    "/v1/services",
-    "/assets/calendar",
-    "/demo",
-    "/unknown",
-    "//calendar",
-    "/%63alendar",
-    "/calendar/details",
-  ]) {
-    assert.equal(ownerScreenFromPath(path), null);
-  }
+test("reserved paths are not owner screens", () => {
+  assert.equal(ownerScreenFromPath("/v1/services"), null);
+  assert.equal(ownerScreenFromPath("/assets/calendar"), null);
+  assert.equal(ownerScreenFromPath("/demo"), null);
+  assert.equal(ownerScreenFromPath("/unknown"), null);
+  assert.equal(ownerScreenFromPath("//calendar"), null);
+  assert.equal(ownerScreenFromPath("/%63alendar"), null);
+  assert.equal(ownerScreenFromPath("/calendar/details"), null);
 });
 
 test("owner links preserve launch context", () => {
