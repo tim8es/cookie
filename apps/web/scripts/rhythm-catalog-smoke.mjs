@@ -14,7 +14,7 @@ const dist = join(webDir, ".tmp/rhythm-ui-kit-dist");
 const evidence = join(webDir, "artifacts/rhythm-ui-kit");
 const themes = ["workspace", "studio", "linen", "graphite", "sage"];
 const widths = [[375, 812], [1280, 800], [320, 568], [768, 960]];
-const sections = ["Контролы", "Каталог", "Записи", "Редакторы", "Состояния", "Публичная запись", "Календарь и смены", "Меню аккаунта"];
+const sections = ["Контролы", "Каталог", "Записи", "Редакторы", "Состояния", "Публичная запись", "Календарь и смены", "Меню аккаунта", "Показатели и модули"];
 
 async function button(cdp, name) {
   const ok = await evaluate(cdp, "(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === " + JSON.stringify(name) + "); if (!b || b.disabled) return false; b.focus(); b.click(); return true; })()");
@@ -196,6 +196,19 @@ async function main() {
             await requireDom(cdp, "resources", "document.querySelectorAll('[data-component=ResourceDay] [data-component=VisitRow]').length === 2");
             await click(cdp, '[data-component=DateStrip] button:nth-child(2)');
             await requireDom(cdp, "empty day", "document.querySelectorAll('[data-component=ResourceDay] [data-component=VisitRow]').length === 0");
+          }
+          if (section === "Показатели и модули") {
+            await requireDom(cdp, "shared metric", "document.querySelector('[data-component=MetricStrip] .rhythm-metrics-grid')?.children.length === 3");
+            await button(cdp, "Скрыть показатели⌃");
+            await requireDom(cdp, "metrics hidden", "document.querySelector('[data-component=MetricStrip]')?.dataset.expanded === 'false'");
+            await button(cdp, "Показать показатели⌄");
+            await requireDom(cdp, "metrics restored", "document.querySelector('[data-component=MetricStrip]')?.dataset.expanded === 'true'");
+            await click(cdp, '[data-component=PopoverMenu] summary');
+            await requireDom(cdp, "popover open", "document.querySelector('[data-component=PopoverMenu]')?.open === true");
+            await click(cdp, '[data-component=PopoverMenu] button:nth-child(2)');
+            await requireDom(cdp, "popover selected", "document.querySelector('[data-component=PopoverMenu] summary')?.textContent.includes('Центр')");
+            await click(cdp, '[data-component=ModuleSettings] button[aria-label=Клиенты]');
+            await requireDom(cdp, "module switched", "document.querySelector('[data-component=ModuleSettings] button[aria-label=Клиенты]')?.getAttribute('aria-checked') === 'false'");
           }
           if (section === "Меню аккаунта") {
             await click(cdp, '[data-component=AccountMenu] button');
