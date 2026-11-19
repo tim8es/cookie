@@ -59,14 +59,14 @@ export function branchToday(zone: string): string {
 export function createOwnerReads(
   session: VerifiedOwnerSession,
   onAccessDenied: () => void,
-  fetcher: typeof fetch = globalThis.fetch,
+  fetcher?: typeof fetch,
 ) {
   let closed = false;
   const active = () =>
     !closed && Date.now() < session.expiresAtUnixSeconds * 1000;
   const guardedFetch: typeof fetch = async (input, init) => {
     if (!active()) throw new Error("Workspace session ended");
-    const response = await fetcher(input, init);
+    const response = await (fetcher ?? globalThis.fetch)(input, init);
     if (active() && (response.status === 401 || response.status === 403)) {
       close();
       onAccessDenied();
