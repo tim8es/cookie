@@ -4,8 +4,9 @@ import type { Pool, PoolClient, QueryResultRow } from "pg";
 
 import {
   evaluateAvailableStart,
+  lockActiveShiftWindows,
+  lockActiveBlockedWindows,
   type StaffOccupancy,
-  type UtcInterval,
 } from "../../domain-scheduling/src/index.js";
 import {
   enqueueOutbox,
@@ -71,10 +72,6 @@ interface ServiceRow extends QueryResultRow {
   base_price_kopecks: string;
   time_zone: string | null;
 }
-interface WindowRow extends QueryResultRow {
-  start_at: Date;
-  end_at: Date;
-}
 interface OccupiedRow extends QueryResultRow {
   location_id: string;
   start_at: Date;
@@ -136,13 +133,6 @@ function localDateAt(instant: string, timeZone: string): string {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-function toIntervals(rows: readonly WindowRow[]): UtcInterval[] {
-  return rows.map((row) => ({
-    startAt: row.start_at.toISOString(),
-    endAt: row.end_at.toISOString(),
-  }));
-}
-
 async function loadService(
   client: PoolClient,
   input: InternalCreateBooking,
@@ -192,21 +182,14 @@ async function checkSlot(
     throw new CreateBookingFailure("BOOKING_NOT_AVAILABLE");
   }
 
-  const [shiftResult, blockResult, occupiedResult] = await Promise.all([
-    client.query<WindowRow>(
-      `SELECT start_at, end_at FROM cookie_scheduling.shift_windows
-        WHERE tenant_id=$1::uuid AND staff_id=$2::uuid
-          AND location_id=$3::uuid AND active
-        FOR SHARE`,
-      [input.actor.tenantId, input.staffId, input.locationId],
-    ),
-    client.query<WindowRow & { kind: "break" | "exception" }>(
-      `SELECT start_at, end_at, kind FROM cookie_scheduling.blocked_windows
-        WHERE tenant_id=$1::uuid AND staff_id=$2::uuid
-          AND location_id=$3::uuid AND active
-        FOR SHARE`,
-      [input.actor.tenantId, input.staffId, input.locationId],
-    ),
+  const scope = {
+    tenantId: input.actor.tenantId,
+    staffId: input.staffId,
+    locationId: input.locationId,
+  };
+  const [shifts, blocked, occupiedResult] = await Promise.all([
+    lockActiveShiftWindows(client, scope),
+    lockActiveBlockedWindows(client, scope),
     client.query<OccupiedRow>(
       `SELECT location_id::text, start_at, occupied_until
          FROM cookie_booking.bookings
@@ -216,7 +199,6 @@ async function checkSlot(
     ),
   ]);
 
-  const blocked = blockResult.rows;
   const occupied: StaffOccupancy[] = occupiedResult.rows.map((row) => ({
     organizationId: input.actor.tenantId,
     staffId: input.staffId,
@@ -234,11 +216,9 @@ async function checkSlot(
       serviceDurationMinutes: service.duration_minutes,
       postServiceBufferMinutes: service.post_service_buffer_minutes,
       stepMinutes,
-      shifts: toIntervals(shiftResult.rows),
-      breaks: toIntervals(blocked.filter((row) => row.kind === "break")),
-      exceptions: toIntervals(
-        blocked.filter((row) => row.kind === "exception"),
-      ),
+      shifts,
+      breaks: blocked.filter((row) => row.kind === "break"),
+      exceptions: blocked.filter((row) => row.kind === "exception"),
       occupied,
     },
     startAt,
