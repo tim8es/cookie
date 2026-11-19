@@ -53,10 +53,9 @@ test("unknown and reserved paths are never interpreted as owner screens", () => 
   }
 });
 
-test("owner navigation retains existing launch context without inventing credentials", () => {
-  assert.equal(
-    ownerRouteHref("calendar", { search: "?lang=ru", hash: "#context" }),
-    "/calendar?lang=ru#context",
-  );
-  assert.equal(ownerRouteHref("services", { search: "", hash: "" }), "/services");
+test("owner links preserve launch context", () => {
+  const context = { search: "?lang=ru", hash: "#context" };
+  assert.equal(ownerRouteHref("calendar", context), "/calendar?lang=ru#context");
+  const empty = { search: "", hash: "" };
+  assert.equal(ownerRouteHref("services", empty), "/services");
 });
