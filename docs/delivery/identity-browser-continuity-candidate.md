@@ -109,3 +109,16 @@ must not open business UI; a denied newly issued legacy bearer is revoked
 best-effort. Global identity credentials are not revoked by tenant selection.
 The browser regression exercises legacy client proof on the business surface
 and then a fresh proof on the correct client surface; no legacy migration.
+
+## Global account authority denial
+
+The role chooser observes 401 from either global Identity provider or
+organization read, including a late 401 after the parallel request has
+already failed transiently. It clears only the exact current Identity and
+workspace hint; a stale denial cannot clear a different session. A 503 or
+invalid response alone still leaves the retry UI available. Provider-link
+success notices cannot overwrite a session invalidation after account refresh.
+The compiled browser regression holds an organization request, simulates
+provider 503, revokes the synthetic Identity's Telegram sessions in PostgreSQL,
+then releases the real request and requires 401 plus the unauthenticated UI.
+Tenant-scoped denials retain the existing independent authority checks.
