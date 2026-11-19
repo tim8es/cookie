@@ -47,7 +47,7 @@ function pauseTransactionAfter(
         values?: unknown[],
       ) => Promise<unknown>;
       const wrapped = new Proxy(client, {
-        get(target, property, receiver) {
+        get(target, property) {
           if (property === "query") {
             return async (sql: string, values?: unknown[]) => {
               const result = await originalQuery(sql, values);

@@ -135,7 +135,7 @@ export async function completeEmailRegistration(
     const consumed = await client.query(
       "DELETE FROM cookie_identity.email_registration_challenges WHERE token_sha256=$1 AND email_hmac_sha256=$2 AND target_identity_id IS NULL AND expires_at > clock_timestamp() RETURNING email_hmac_sha256",
       [digest, pending.email_hmac_sha256],
-    ]);
+    );
     if (consumed.rowCount !== 1) return null;
 
     const existing = await client.query(
