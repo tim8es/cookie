@@ -23,9 +23,8 @@ function colors(selector: string): Record<string, string> {
 function luminance(hex: string): number {
   const convert = (channel: number) => {
     const value = channel / 255;
-    return value <= 0.04045
-      ? value / 12.92
-      : ((value + 0.055) / 1.055) ** 2.4;
+    if (value <= 0.04045) return value / 12.92;
+    return ((value + 0.055) / 1.055) ** 2.4;
   };
   return (
     0.2126 * convert(Number.parseInt(hex.slice(1, 3), 16)) +
@@ -40,13 +39,17 @@ function contrast(a: string, b: string): number {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
+function colorsForTheme(theme: string): Record<string, string> {
+  if (theme === "workspace") return {};
+  const selector = '.rhythm-scope[data-rhythm-theme="' + theme + '"]';
+  return colors(selector);
+}
+
 const workspace = colors(".rhythm-scope");
 for (const theme of ["workspace", "studio", "linen", "graphite", "sage"]) {
   const palette = {
     ...workspace,
-    ...(theme === "workspace"
-      ? {}
-      : colors('.rhythm-scope[data-rhythm-theme="' + theme + '"]')),
+    ...colorsForTheme(theme),
   };
   test("Rhythm " + theme + ": semantic contrast", () => {
     for (const [foreground, background, min] of [
