@@ -1,4 +1,4 @@
-# kuki — Rhythm UI Kit, D6 candidate 0.2
+# kuki — Rhythm UI Kit, D6 candidate 0.3
 
 Status: PROPOSED, not Design Freeze. Refs #338 and #223. Visual reference:
 RC7.1 interactive concept (owner review), RC6 component contracts, RC7.1 catalog
@@ -28,6 +28,8 @@ owns opt-in styling; its CSS is separate from the legacy cascade.
 | CheckGroup | Controlled IDs; native labelled checkboxes, no assignment rules. |
 | Notice | Feedback with text status/alert and optional recovery action snippet. |
 | ImageAssetField | Local input and parent-provided preview/error/busy; caller handles validation, URL lifetime and asset upload. |
+| Modal | Existing Bits UI Dialog with dialog/sheet/drawer layout, labelled trigger, content/actions snippets and bindable open. Portal into nearest ThemeScope (no transformed/clipped scope ancestors); Escape/focus owned by Bits UI. |
+| Navigation | Controlled current page and caller-filtered items; rail/bar variants, same active state. Does not implement routing or authorize access. |
 
 Component catalog is a small local-only Svelte app with synthetic data,
 not Storybook yet. Uses actual components, no HTML-prototype runtime, no
@@ -48,7 +50,7 @@ Catalog artifacts go to apps/web/.tmp/rhythm-ui-kit-dist, not runtime dist.
 Do not deploy the catalog. The existing F1 web gate now builds the isolated catalog as well as the application; no second CI workflow. Existing F1 checks remain required. Run catalog
 build and manual browser review at 320, 375, 768 and 1280 px; inspect all
 five palette scopes, keyboard navigation, pointer states and form labels.
-The token tests are automatic via the existing web test command. The compiled catalog has a separate Chromium smoke using the existing CDP harness: 5 scopes × 4 widths × 5 sections, selection, save/busy, file preview/remove, errors, basic keyboard navigation, canvas inheritance and no external requests. It runs in the existing browser gate; evidence is uploaded separately. Run after building: node apps/web/scripts/rhythm-catalog-smoke.mjs. They
+The token tests are automatic via the existing web test command. The compiled catalog has a separate Chromium smoke using the existing CDP harness: 5 scopes × 4 widths × 5 sections, selection, save/busy, file preview/remove, errors, basic keyboard navigation, canvas inheritance, shared navigation selection, three modal layouts, theme portal and focus restoration, no external requests. It runs in the existing browser gate; evidence is uploaded separately. Run after building: node apps/web/scripts/rhythm-catalog-smoke.mjs. They
 verify declared palette pairs and catalog canvas inheritance, not pixel
 contrast, screen readers, or visual regression.
 
@@ -59,14 +61,10 @@ contrast, screen readers, or visual regression.
 - Published appearance values must come from the existing validated server
   contract. These CSS presets are reference samples for the catalog only.
   Do not promote them to a second runtime theme source.
-- ThemeScope must wrap the entire public canvas. For portal components
-  such as Dialog, preserve theme scope using the existing Bits UI portal
-  contract and test focus, colors and clipping before adopting.
+- ThemeScope must wrap the entire public canvas. Modal portals into its closest ThemeScope. Keep that scope free of transforms and clipping; test focus, colors and clipping in host layouts before adopting.
 - Refactor actual screens by bounded vertical slices after review.
   Do not insert old prototype CSS or rewrite runtime authentication.
-- Additional variants, navigation, shared
-  salon/booking shell, schedule and calendar patterns, dialog/sheet
-  composition and Storybook/visual QA gates remain open.
+- Additional variants, account menu, shared salon/booking shell, schedule and calendar patterns, Storybook and visual regression baselines remain open. The dialog/sheet/drawer candidates and navigation must pass compiled catalog smoke.
 
 CI, real build, visual browser screenshots and owner acceptance are distinct
 gates. Do not mark this library fully ready until verified and integrated.
