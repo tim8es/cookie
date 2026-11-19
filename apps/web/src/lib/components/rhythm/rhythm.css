@@ -645,3 +645,100 @@
     transition: none;
   }
 }
+
+/* Shared metrics: identical geometry on owner, calendar, CRM and reports. */
+.rhythm-scope .rhythm-metrics { width: 100%; min-width: 0; }
+.rhythm-scope .rhythm-metrics-toolbar {
+  display: flex; justify-content: flex-end; align-items: center;
+  min-height: 36px; margin-bottom: 6px;
+}
+.rhythm-scope .rhythm-metrics-toggle {
+  min-height: 36px; padding: 6px 11px;
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--rhythm-line); border-radius: var(--rhythm-radius);
+  color: var(--rhythm-ink); background: var(--rhythm-canvas);
+  font-size: 12px; font-weight: 600;
+}
+.rhythm-scope .rhythm-metrics-grid {
+  display: grid; grid-template-columns: repeat(3,minmax(0,1fr));
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-panel-radius);
+  overflow: hidden;
+  background: var(--rhythm-selected);
+}
+.rhythm-scope .rhythm-metrics-grid[hidden] { display: none; }
+.rhythm-scope .rhythm-metric {
+  display: flex; flex-direction: column; justify-content: center;
+  gap: 5px; min-height: 104px; min-width: 0; padding: 16px 20px;
+  border-right: 1px solid var(--rhythm-line);
+  color: var(--rhythm-on-selected);
+}
+.rhythm-scope .rhythm-metric:last-child { border-right: 0; }
+.rhythm-scope .rhythm-metric strong {
+  font-size: clamp(23px,2.4vw,32px);
+  font-weight: 700; letter-spacing: -.045em;
+  font-variant-numeric: tabular-nums; line-height: 1.13; overflow-wrap: anywhere;
+}
+.rhythm-scope .rhythm-metric > span { font-size: 12px; line-height: 1.35; }
+/* Native details + explicit options: one menu for all branch and filter selectors. */
+.rhythm-scope .rhythm-popover { display: inline-block; position: relative; max-width: 100%; z-index: 5; }
+.rhythm-scope .rhythm-popover summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  list-style: none; cursor: pointer; min-width: 156px; min-height: 42px;
+  background: var(--rhythm-canvas); color: var(--rhythm-ink);
+  padding: 9px 12px; border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius); font-size: 13px; font-weight: 600;
+}
+.rhythm-scope .rhythm-popover summary::-webkit-details-marker { display: none; }
+.rhythm-scope .rhythm-popover[open] summary {
+  background: var(--rhythm-selected); color: var(--rhythm-on-selected);
+}
+.rhythm-scope .rhythm-popover-items {
+  position: absolute; right: 0; top: calc(100% + 6px);
+  min-width: max(100%, 200px); max-width: 90vw;
+  background: var(--rhythm-surface); color: var(--rhythm-surface-ink);
+  box-shadow: 0 12px 35px #17141a24;
+  border: 1px solid var(--rhythm-line); border-radius: var(--rhythm-radius);
+  padding: 6px; display: grid; gap: 3px; z-index: 9;
+}
+.rhythm-scope .rhythm-popover-item {
+  display: block; width: 100%; min-height: 42px; padding: 9px 12px; text-align: left;
+  color: var(--rhythm-surface-ink); background: transparent;
+  border-radius: calc(var(--rhythm-radius) - 3px); font-size: 13px;
+}
+.rhythm-scope .rhythm-popover-item:hover:not(:disabled),
+.rhythm-scope .rhythm-popover-item[aria-current="true"] {
+  color: var(--rhythm-on-selected); background: var(--rhythm-selected);
+}
+/* Tenant module controls are only presentation of server-validated state. */
+.rhythm-scope .rhythm-module-grid { display: grid; gap: 10px; grid-template-columns: repeat(2,minmax(0,1fr)); }
+.rhythm-scope .rhythm-module-item {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; min-width: 0; min-height: 76px; padding: 12px;
+  border: 1px solid var(--rhythm-line); border-radius: var(--rhythm-radius);
+}
+.rhythm-scope .rhythm-module-switch {
+  position: relative; width: 47px; height: 28px; border-radius: 999px;
+  flex: none; background: var(--rhythm-line); border: none;
+}
+.rhythm-scope .rhythm-module-switch::after {
+  content: ""; position: absolute; left: 4px; top: 4px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--rhythm-surface); transition: transform 140ms ease;
+}
+.rhythm-scope .rhythm-module-switch[aria-checked="true"] { background: var(--rhythm-brand); }
+.rhythm-scope .rhythm-module-switch[aria-checked="true"]::after { transform: translateX(19px); }
+.rhythm-scope .rhythm-module-switch:disabled { opacity: .5; cursor: not-allowed; }
+@media(max-width:650px) {
+  .rhythm-scope .rhythm-metric { padding: 12px 8px; min-height: 100px; }
+  .rhythm-scope .rhythm-metric strong { font-size: 22px; }
+  .rhythm-scope .rhythm-metric > span { font-size: 11px; }
+  .rhythm-scope .rhythm-module-grid { grid-template-columns: minmax(0,1fr); }
+}
+@media(max-width:350px) {
+  .rhythm-scope .rhythm-metric strong { font-size: 19px; }
+  .rhythm-scope .rhythm-metric > span { font-size: 10px; }
+}
+@media(prefers-reduced-motion: reduce) {
+  .rhythm-scope .rhythm-module-switch::after { transition: none; }
+}
