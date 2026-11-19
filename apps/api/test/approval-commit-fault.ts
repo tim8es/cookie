@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { setTimeout as pause } from "node:timers/promises";
 
 import type { Pool, PoolClient } from "pg";
 
@@ -8,6 +9,7 @@ export async function expectApprovalCommitFailure(
   realPool: Pool,
   mode: "abort" | "lose-ack",
   work: (pool: Pool) => Promise<unknown>,
+  beforeCommit?: (client: PoolClient) => Promise<void>,
 ): Promise<void> {
   const commands: string[] = [];
   const releases: boolean[] = [];
@@ -24,6 +26,7 @@ export async function expectApprovalCommitFailure(
                 code: "22012",
               });
             }
+            await beforeCommit?.(physical);
             const result = await physical.query(sql);
             tag = result.command;
             if (mode === "lose-ack") {
@@ -158,4 +161,104 @@ export async function recoverNewApprovalRequestAfterLostAck<
     committedState,
   );
   return recovered;
+}
+
+/** First applied decision commits, loses its ack, while a same-key concurrent
+ * reviewer is blocked on the real transaction. No timing-only race assumption.
+ */
+export async function recoverAppliedApprovalAfterLostAck<
+  T extends { readonly requestId: string; readonly status: string },
+>(
+  pool: Pool,
+  tenantId: string,
+  kind: "edit" | "publish",
+  requestId: string,
+  work: (pool: Pool) => Promise<T>,
+): Promise<T> {
+  const table =
+    kind === "edit"
+      ? "cookie_scheduling.schedule_edit_requests"
+      : "cookie_scheduling.schedule_publish_requests";
+  const topic = `schedule.${kind}.applied`;
+  const read = async () =>
+    (
+      await pool.query<{ status: string; applied_receipt: unknown }>(
+        `SELECT status,applied_receipt FROM ${table}
+          WHERE tenant_id=$1::uuid AND id=$2::uuid`,
+        [tenantId, requestId],
+      )
+    ).rows[0];
+  assert.deepEqual(await read(), { status: "pending", applied_receipt: null });
+  const before = await approvalSnapshot(pool, tenantId, false);
+  let competing: Promise<T> | undefined;
+  try {
+    await expectApprovalCommitFailure(pool, "lose-ack", work, async (client) => {
+      const backend = await client.query<{ pid: number }>(
+        "SELECT pg_backend_pid() AS pid",
+      );
+      const pid = backend.rows[0]!.pid;
+      competing = work(pool);
+      // Attach a rejection handler immediately; the outcome is asserted below.
+      void competing.catch(() => undefined);
+      const deadline = Date.now() + 5_000;
+      while (true) {
+        const waiting = await pool.query<{ blocked: boolean }>(
+          `SELECT EXISTS (
+             SELECT 1 FROM pg_stat_activity
+              WHERE $1::int=ANY(pg_blocking_pids(pid))
+           ) AS blocked`,
+          [pid],
+        );
+        if (waiting.rows[0]?.blocked) break;
+        assert.ok(
+          Date.now() < deadline,
+          "Concurrent same-key review not blocked",
+        );
+        await pause(25);
+      }
+    });
+
+    const committed = await read();
+    assert.equal(committed?.status, "applied");
+    assert.ok(committed.applied_receipt);
+    const events = await pool.query<{ dedupe_key: string }>(
+      `SELECT dedupe_key FROM cookie_jobs.outbox_events
+        WHERE tenant_id=$1::uuid AND topic=$2
+          AND payload->>'requestId'=$3`,
+      [tenantId, topic, requestId],
+    );
+    assert.deepEqual(events.rows, [{ dedupe_key: `${topic}:${requestId}` }]);
+    const committedState = await approvalSnapshot(pool, tenantId, false);
+    const changed = tables
+      .filter((name) => name !== "cookie_identity.authorization_audit")
+      .filter(
+        (_, index) =>
+          JSON.stringify(before[index]) !==
+          JSON.stringify(committedState[index]),
+      );
+    assert.deepEqual(changed, [
+      table,
+      "cookie_scheduling.shift_windows",
+      `cookie_scheduling.shift_${kind}_audit`,
+      `cookie_scheduling.shift_${kind}_receipts`,
+      "cookie_jobs.outbox_events",
+    ]);
+    assert.ok(competing);
+    const recovered = await competing;
+    const receiptField = kind === "edit" ? "editedShift" : "publishedShift";
+    assert.deepEqual(recovered, {
+      requestId,
+      status: "applied",
+      [receiptField]: committed.applied_receipt,
+    });
+    assert.deepEqual(await work(pool), recovered);
+    assert.deepEqual(
+      await approvalSnapshot(pool, tenantId, false),
+      committedState,
+    );
+    return recovered;
+  } finally {
+    // Drain a started competitor even on assertion failure.
+    await competing?.catch(() => undefined);
+  }
 }

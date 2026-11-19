@@ -19,6 +19,7 @@ import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import {
   approvalSnapshot,
   expectApprovalCommitFailure,
+  recoverAppliedApprovalAfterLostAck,
   recoverNewApprovalRequestAfterLostAck,
 } from "./approval-commit-fault.js";
 
@@ -337,11 +338,14 @@ test(
       );
       assert.deepEqual(await approvalSnapshot(pool, tenant), beforeReviewFault);
 
-      const [approved, approvedReplay] = await Promise.all([
-        reviewScheduleEditRequestInternal(pool, review, allow),
-        reviewScheduleEditRequestInternal(pool, review, allow),
-      ]);
-      assert.deepEqual(approvedReplay, approved);
+      const approved = await recoverAppliedApprovalAfterLostAck(
+        pool,
+        tenant,
+        "edit",
+        request.requestId,
+        (reviewPool) =>
+          reviewScheduleEditRequestInternal(reviewPool, review, allow),
+      );
       assert.equal(approved.status, "applied");
       const beforeReviewReplay = await approvalSnapshot(pool, tenant, false);
       await expectApprovalCommitFailure(pool, "lose-ack", (faultPool) =>
