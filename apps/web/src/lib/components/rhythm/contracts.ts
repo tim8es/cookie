@@ -71,3 +71,19 @@ export interface ScheduleDisplay {
   period: string;
   status: string;
 }
+
+export interface MetricItem {
+  id: string;
+  value: string;
+  label: string;
+}
+
+export interface MenuOption extends SegmentOption {}
+
+export interface ModuleDisplay {
+  id: string;
+  label: string;
+  description?: string;
+  enabled: boolean;
+  locked?: boolean;
+}
