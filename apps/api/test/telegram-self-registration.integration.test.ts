@@ -3,10 +3,13 @@ import { createHmac, randomBytes, randomInt, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 import { Pool } from "pg";
+import Fastify from "fastify";
+import { registerSyntheticRefreshHttp } from "../src/synthetic-refresh-http.js";
 import { provisionStagingCustomer } from "../../../packages/domain-customers/src/staging-customer.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { runSqlTransaction } from "../../../packages/platform-db/src/transaction.js";
 import { IdentitySessions } from "../../../packages/platform-identity/src/identity-sessions.js";
+import { SyntheticTelegramRefresh } from "../../../packages/platform-identity/src/synthetic-telegram-refresh.js";
 import { assessLegacyTelegramMigration } from "../../../packages/platform-identity/src/legacy-telegram-migration-preflight.js";
 import { prepareLegacyTelegramMigration } from "../../../packages/platform-identity/src/legacy-telegram-migration-preparation.js";
 import { activateLegacyTelegramMigration } from "../../../packages/platform-identity/src/legacy-telegram-migration-activation.js";
@@ -591,6 +594,145 @@ test(
         await migratedSessions.resolve(migrated.token),
         preparation.identityId,
       );
+      const refresh = new SyntheticTelegramRefresh(
+        transaction,
+        verifier,
+        secret,
+        { idleSeconds: 120, absoluteSeconds: 300, accessSeconds: 60 },
+      );
+      const candidateSessions = new IdentitySessions(
+        pool,
+        "cookie-refresh-candidate",
+        "synthetic-test",
+        60,
+      );
+      const refreshProof = signedInitData(TEST_BOT, legacyUser);
+      assert.equal(await refresh.login(migrated.token), null);
+      const refreshLogin = await refresh.login(refreshProof);
+      assert.ok(refreshLogin);
+      assert.equal(await refresh.login(refreshProof), null);
+      assert.equal(
+        await candidateSessions.resolve(refreshLogin.accessToken),
+        preparation.identityId,
+      );
+      assert.equal(
+        await migratedSessions.resolve(refreshLogin.accessToken),
+        null,
+      );
+      const rotatedRefresh = await refresh.rotate(refreshLogin.refreshToken);
+      assert.ok(rotatedRefresh.status === "rotated");
+      assert.equal(
+        await candidateSessions.resolve(rotatedRefresh.accessToken),
+        preparation.identityId,
+      );
+      // Exercise actual HTTP transport against the same PostgreSQL Identity.
+      // This server is inject-only; the normal app never registers the routes.
+      const refreshHttp = Fastify({ logger: false });
+      try {
+        registerSyntheticRefreshHttp(refreshHttp, refresh);
+        const path = "/v1/auth/synthetic-refresh";
+        const browser = {
+          "sec-fetch-site": "same-origin",
+          "x-kuki-session": "1",
+        };
+        const login = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/login",
+          headers: browser,
+          payload: { initData: signedInitData(TEST_BOT, legacyUser) },
+        });
+        assert.equal(login.statusCode, 200);
+        const firstCookie = String(login.headers["set-cookie"]);
+        assert.match(firstCookie, /^__Host-kuki-refresh-candidate=ir_/);
+        assert.match(firstCookie, /HttpOnly; Secure; SameSite=Strict/);
+        assert.equal(login.headers["cache-control"], "no-store");
+        assert.equal("refreshToken" in login.json(), false);
+        const firstAccess = login.json().accessToken as string;
+        const familyId = login.json().familyId as string;
+        const familyBrowser = { ...browser, "x-kuki-family": familyId };
+        const cookie = firstCookie.split(";", 1)[0]!;
+        assert.equal(
+          await candidateSessions.resolve(firstAccess),
+          preparation.identityId,
+        );
+        const wrongFamily = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/rotate",
+          headers: {
+            ...browser,
+            cookie,
+            "x-kuki-family": refreshLogin.familyId,
+          },
+        });
+        assert.equal(wrongFamily.statusCode, 401);
+        assert.equal(wrongFamily.headers["set-cookie"], undefined);
+        const mismatch = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/rotate",
+          headers: {
+            ...familyBrowser,
+            cookie,
+            authorization: "Bearer " + refreshLogin.accessToken,
+          },
+        });
+        assert.equal(mismatch.statusCode, 401);
+        assert.equal(mismatch.headers["set-cookie"], undefined);
+        const rotated = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/rotate",
+          headers: { ...familyBrowser, cookie },
+        });
+        assert.equal(rotated.statusCode, 200);
+        assert.equal(rotated.json().familyId, familyId);
+        const nextCookie = String(rotated.headers["set-cookie"]).split(
+          ";",
+          1,
+        )[0]!;
+        const nextAccess = rotated.json().accessToken as string;
+        assert.notEqual(nextCookie, cookie);
+        assert.notEqual(nextAccess, firstAccess);
+        const staleLogout = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/logout",
+          headers: {
+            ...familyBrowser,
+            cookie: nextCookie,
+            authorization: "Bearer " + refreshLogin.accessToken,
+          },
+        });
+        assert.equal(staleLogout.statusCode, 401);
+        assert.equal(staleLogout.headers["set-cookie"], undefined);
+        assert.equal(
+          await candidateSessions.resolve(nextAccess),
+          preparation.identityId,
+        );
+        const logout = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/logout",
+          headers: {
+            ...familyBrowser,
+            cookie: nextCookie,
+            authorization: "Bearer " + firstAccess,
+          },
+        });
+        assert.equal(logout.statusCode, 204);
+        assert.equal(logout.headers["set-cookie"], undefined);
+        assert.equal(await candidateSessions.resolve(firstAccess), null);
+        assert.equal(await candidateSessions.resolve(nextAccess), null);
+        assert.equal(
+          await candidateSessions.resolve(rotatedRefresh.accessToken),
+          preparation.identityId,
+        );
+        const denied = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/rotate",
+          headers: { ...familyBrowser, cookie: nextCookie },
+        });
+        assert.equal(denied.statusCode, 401);
+        assert.equal(denied.headers["set-cookie"], undefined);
+      } finally {
+        await refreshHttp.close();
+      }
       const webProof = randomBytes(32);
       const webSession = await exchangeTrustedTelegramUser(
         transaction,
@@ -698,6 +840,21 @@ test(
 
       assert.equal(await migratedSessions.resolve(migrated.token), null);
       assert.equal(await migratedSessions.resolve(webSession.token), null);
+      assert.equal(
+        await candidateSessions.resolve(refreshLogin.accessToken),
+        null,
+      );
+      assert.equal(
+        await candidateSessions.resolve(rotatedRefresh.accessToken),
+        null,
+      );
+      assert.deepEqual(await refresh.rotate(rotatedRefresh.refreshToken), {
+        status: "denied",
+      });
+      assert.equal(
+        await refresh.login(signedInitData(TEST_BOT, legacyUser)),
+        null,
+      );
       assert.equal(
         await emailSessions.resolve(unrelated.token),
         preparation.identityId,
@@ -824,6 +981,16 @@ test(
           );
           await pool.query(
             "DELETE FROM cookie_identity.identity_sessions WHERE identity_id=$1::uuid",
+            [customerIdentityId],
+          );
+          await pool.query(
+            `DELETE FROM cookie_identity.refresh_session_credentials
+             WHERE family_id IN (SELECT id FROM cookie_identity.refresh_session_families
+                                 WHERE identity_id=$1::uuid)`,
+            [customerIdentityId],
+          );
+          await pool.query(
+            "DELETE FROM cookie_identity.refresh_session_families WHERE identity_id=$1::uuid",
             [customerIdentityId],
           );
           await pool.query(
