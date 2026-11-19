@@ -18,6 +18,7 @@ export async function seedDemoCatalog(origin, signedProof, workspace) {
     assert.deepEqual(await readRealServices(session, fetcher), []);
     const serviceDraft = {
       displayName: "Демо-стрижка", durationMinutes: 60, basePriceKopecks: 180000,
+      postServiceBufferMinutes: 0,
     };
     const service = await createRealService(session, serviceDraft, randomUUID(), fetcher);
     const staff = await createRealStaff(session, {
@@ -42,6 +43,7 @@ export async function seedDemoCatalog(origin, signedProof, workspace) {
     assert.equal(catalog[0].displayName, serviceDraft.displayName);
     assert.equal(catalog[0].durationMinutes, serviceDraft.durationMinutes);
     assert.equal(catalog[0].basePriceKopecks, serviceDraft.basePriceKopecks);
+    assert.equal(catalog[0].postServiceBufferMinutes, serviceDraft.postServiceBufferMinutes);
     const directory = await readRealStaff(session, fetcher);
     assert.equal(directory.staff.length, 1);
     assert.equal(directory.staff[0].id, staff.id);
