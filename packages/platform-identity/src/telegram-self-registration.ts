@@ -24,17 +24,50 @@ async function issueGlobalTelegramSession(
     "SELECT 1 FROM cookie_identity.telegram_identity_links WHERE telegram_user_hmac_sha256=$1 LIMIT 1",
     [fingerprint],
   );
-  if (legacy.rowCount) return null;
+  // A historical legacy mapping remains a hard barrier except for an
+  // explicitly migrated, exact, currently active source. Revocation of
+  // that source also revokes issued Telegram identity sessions atomically.
+  let migratedIdentity: string | undefined;
+  if (legacy.rowCount) {
+    const migrated = await client.query<{ identity_id: string }>(
+      `SELECT g.identity_id::text
+       FROM cookie_identity.global_telegram_identities g
+       JOIN cookie_identity.telegram_identity_links l
+         ON l.tenant_id=g.legacy_tenant_id AND l.identity_id=g.identity_id
+         AND l.id=g.legacy_link_id
+       JOIN cookie_identity.memberships m
+         ON m.tenant_id=l.tenant_id AND m.identity_id=l.identity_id
+       WHERE g.telegram_user_hmac_sha256=$1::bytea
+         AND l.telegram_user_hmac_sha256=$1::bytea
+         AND g.migration_request_id IS NOT NULL AND g.legacy_revoked_at IS NULL
+         AND l.revoked_at IS NULL AND m.active
+       FOR SHARE OF g,l,m NOWAIT`,
+      [fingerprint],
+    );
+    migratedIdentity = migrated.rows[0]?.identity_id;
+    if (!migratedIdentity) return null;
+  }
   const priorExchange = await client.query(
     "SELECT 1 FROM cookie_identity.global_telegram_exchanges WHERE proof_sha256=$1 LIMIT 1",
     [exchangeHash],
   );
   if (priorExchange.rowCount) return null;
-  const link = await client.query<{ identity_id: string }>(
-    "SELECT identity_id::text FROM cookie_identity.global_telegram_identities WHERE telegram_user_hmac_sha256=$1",
+  const link = await client.query<{
+    identity_id: string;
+    legacy_link_id: string | null;
+    legacy_revoked_at: Date | null;
+  }>(
+    "SELECT identity_id::text,legacy_link_id::text,legacy_revoked_at FROM cookie_identity.global_telegram_identities WHERE telegram_user_hmac_sha256=$1",
     [fingerprint],
   );
-  let identityId = link.rows[0]?.identity_id;
+  const mapping = link.rows[0];
+  let identityId = mapping?.identity_id;
+  if (
+    (mapping?.legacy_link_id && migratedIdentity !== identityId) ||
+    mapping?.legacy_revoked_at ||
+    (migratedIdentity && identityId !== migratedIdentity)
+  )
+    return null;
   let createdIdentity = false;
   if (!identityId) {
     if (!register) return null;
