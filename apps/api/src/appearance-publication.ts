@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 
 import {
   publishTenantBrandDraft,
+  recordAppearancePublicationAudit,
   type AppearancePublished,
   type TenantAssetOwnership,
 } from "../../../packages/domain-appearance/src/index.js";
@@ -29,20 +30,13 @@ export async function publishAppearanceWithStagingGrant(
     assets,
   );
   // A repeated publication is idempotent, including its audit record.
-  await client.query(
-    `INSERT INTO cookie_appearance.publication_audit
-       (tenant_id,revision,grant_id,actor_identity_id,correlation_id,published_at)
-     VALUES($1::uuid,$2::bigint,$3::uuid,$4::uuid,$5,$6::timestamptz)
-     ON CONFLICT (tenant_id,revision) DO NOTHING`,
-    [
-      actor.tenantId,
-      published.revision,
-      grantId,
-      actor.identityId,
-      actor.correlationId,
-      published.publishedAt,
-    ],
-  );
+  await recordAppearancePublicationAudit(client, {
+    tenantId: actor.tenantId,
+    grantId,
+    actorIdentityId: actor.identityId,
+    correlationId: actor.correlationId,
+    published,
+  });
   const current = await lockLiveStagingAppearanceGrant(client, actor.tenantId);
   if (current !== grantId) throw new AppearancePublicationDenied();
   return published;

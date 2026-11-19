@@ -1,14 +1,4 @@
 {
-  "apps/api/src/booking-http-mutations.ts": [
-    "../../../packages/domain-booking/src/cancel.js",
-    "../../../packages/domain-booking/src/reschedule.js",
-    "../../../packages/platform-identity/src/authorization.js"
-  ],
-  "apps/api/src/booking-http.ts": [
-    "../../../packages/domain-booking/src/create.js",
-    "../../../packages/platform-identity/src/authorization.js",
-    "../../../packages/platform-identity/src/postgres.js"
-  ],
   "apps/api/src/session-context.ts": [
     "../../../packages/platform-identity/src/authorization.js",
     "../../../packages/platform-identity/src/postgres.js"
