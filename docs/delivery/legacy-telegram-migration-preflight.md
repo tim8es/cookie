@@ -90,3 +90,12 @@ the same transaction; other providers' sessions are not revoked by this
 trigger. No automatic conversion, API or operator CLI is registered. Full
 revocation concurrency, OIDC, browser and operator authorization/retention
 acceptance remain required before release; this is a policy proposal.
+
+Additional PG regression covers activation while a membership UPDATE holds
+its lock (NOWAIT denial), rollback after activation writes, simultaneous
+same-request activation, fresh trusted Telegram subject login and replay,
+original membership disable/re-enable without Telegram resurrection and
+issuer-specific session revocation. The trusted-subject test is not a real
+OIDC network callback; the independently issued synthetic email token is
+not a password login. Provider status excludes permanently disabled migrated
+Telegram mappings. No operator/runtime activation or real deployment.

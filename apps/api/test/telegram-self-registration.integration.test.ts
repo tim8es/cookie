@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHmac, randomInt, randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomInt, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 import { Pool } from "pg";
@@ -21,6 +21,7 @@ import {
 } from "../../../packages/platform-identity/src/telegram-links.js";
 import {
   exchangeSelfServiceTelegram,
+  exchangeTrustedTelegramUser,
   linkSelfServiceTelegram,
 } from "../../../packages/platform-identity/src/telegram-self-registration.js";
 
@@ -477,8 +478,45 @@ test(
         }),
         "target-mismatch",
       );
-      assert.equal(await activate(), "activated");
-      assert.equal(await activate(), "already-activated");
+      // Activation must reject conflicting live membership changes rather
+      // than wait in inverse lock order. The failed attempt writes nothing.
+      const memberChange = await pool.connect();
+      try {
+        await memberChange.query("BEGIN");
+        await memberChange.query(
+          "UPDATE cookie_identity.memberships SET active=false WHERE tenant_id=$1::uuid AND identity_id=$2::uuid",
+          [tenantId, preparation.identityId],
+        );
+        await assert.rejects(activate(), { code: "55P03" });
+      } finally {
+        await memberChange.query("ROLLBACK");
+        memberChange.release();
+      }
+      // A transaction failure must not publish a mapping, consume the
+      // activation proof, or revoke the original credential.
+      await assert.rejects(
+        transaction(async (client) => {
+          assert.equal(
+            await activateLegacyTelegramMigration(
+              async (work) => work(client),
+              verifier,
+              secret,
+              activation,
+            ),
+            "activated",
+          );
+          throw new Error("synthetic activation rollback");
+        }),
+        /synthetic activation rollback/,
+      );
+      assert.ok(
+        await legacySessions.verifyBearerToken(legacyResult.bearerToken),
+      );
+      const activationResults = await Promise.all([activate(), activate()]);
+      assert.deepEqual(activationResults.sort(), [
+        "activated",
+        "already-activated",
+      ]);
       assert.equal(
         await legacySessions.verifyBearerToken(legacyResult.bearerToken),
         null,
@@ -519,6 +557,84 @@ test(
         await migratedSessions.resolve(migrated.token),
         preparation.identityId,
       );
+      const webProof = randomBytes(32);
+      const webSession = await exchangeTrustedTelegramUser(
+        transaction,
+        secret,
+        String(legacyUser),
+        webProof,
+        false,
+        900,
+      );
+      assert.ok(webSession);
+      assert.equal(
+        await migratedSessions.resolve(webSession.token),
+        preparation.identityId,
+      );
+      assert.equal(
+        await exchangeTrustedTelegramUser(
+          transaction,
+          secret,
+          String(legacyUser),
+          webProof,
+          false,
+          900,
+        ),
+        null,
+      );
+      // This test-only issuer credential checks revocation boundaries; it
+      // does not exercise email password verification.
+      const emailSessions = new IdentitySessions(
+        pool,
+        "cookie-email",
+        "cookie-web",
+        900,
+      );
+      const unrelated = await emailSessions.issueForVerifiedIdentity(
+        preparation.identityId,
+      );
+      // Membership disable and re-enable must not resurrect authority.
+      // Roll back the entire scenario to test link revocation independently.
+      const memberScenario = await pool.connect();
+      try {
+        await memberScenario.query("BEGIN");
+        await memberScenario.query(
+          "UPDATE cookie_identity.memberships SET active=false WHERE tenant_id=$1::uuid AND identity_id=$2::uuid",
+          [tenantId, preparation.identityId],
+        );
+        await memberScenario.query(
+          "UPDATE cookie_identity.memberships SET active=true WHERE tenant_id=$1::uuid AND identity_id=$2::uuid",
+          [tenantId, preparation.identityId],
+        );
+        assert.equal(
+          await migratedSessions.resolveWithinTransaction(
+            memberScenario,
+            migrated.token,
+          ),
+          null,
+        );
+        assert.equal(
+          await emailSessions.resolveWithinTransaction(
+            memberScenario,
+            unrelated.token,
+          ),
+          preparation.identityId,
+        );
+        assert.equal(
+          await exchangeSelfServiceTelegram(
+            async (work) => work(memberScenario),
+            verifier,
+            secret,
+            signedInitData(TEST_BOT, legacyUser),
+            false,
+            900,
+          ),
+          null,
+        );
+      } finally {
+        await memberScenario.query("ROLLBACK");
+        memberScenario.release();
+      }
       const customerAfter = await pool.query<{ identity_id: string }>(
         "SELECT identity_id::text FROM cookie_customers.staging_customer_identities WHERE tenant_id=$1::uuid",
         [tenantId],
@@ -547,6 +663,22 @@ test(
       );
 
       assert.equal(await migratedSessions.resolve(migrated.token), null);
+      assert.equal(await migratedSessions.resolve(webSession.token), null);
+      assert.equal(
+        await emailSessions.resolve(unrelated.token),
+        preparation.identityId,
+      );
+      assert.equal(
+        await exchangeTrustedTelegramUser(
+          transaction,
+          secret,
+          String(legacyUser),
+          randomBytes(32),
+          false,
+          900,
+        ),
+        null,
+      );
       // Even changing the historical fingerprint and clearing revoked_at
       // must not make the old global mapping usable again.
       const changedSource = await pool.connect();
