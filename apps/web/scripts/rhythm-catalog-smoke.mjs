@@ -14,7 +14,7 @@ const dist = join(webDir, ".tmp/rhythm-ui-kit-dist");
 const evidence = join(webDir, "artifacts/rhythm-ui-kit");
 const themes = ["workspace", "studio", "linen", "graphite", "sage"];
 const widths = [[375, 812], [1280, 800], [320, 568], [768, 960]];
-const sections = ["Контролы", "Каталог", "Записи", "Редакторы", "Состояния", "Публичная запись", "Календарь и смены", "Аккаунт"];
+const sections = ["Контролы", "Каталог", "Записи", "Редакторы", "Состояния", "Публичная запись", "Календарь и смены", "Меню аккаунта"];
 
 async function button(cdp, name) {
   const ok = await evaluate(cdp, "(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === " + JSON.stringify(name) + "); if (!b || b.disabled) return false; b.focus(); b.click(); return true; })()");
@@ -197,7 +197,7 @@ async function main() {
             await click(cdp, '[data-component=DateStrip] button:nth-child(2)');
             await requireDom(cdp, "empty day", "document.querySelectorAll('[data-component=ResourceDay] [data-component=VisitRow]').length === 0");
           }
-          if (section === "Аккаунт") {
+          if (section === "Меню аккаунта") {
             await click(cdp, '[data-component=AccountMenu] button');
             await requireDom(cdp, "account dialog", "document.querySelector('[role=dialog] [data-component=ChoiceRow]')");
             await click(cdp, '[role=dialog] [data-component=ChoiceRow]:first-child');
