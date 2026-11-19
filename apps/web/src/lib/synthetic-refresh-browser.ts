@@ -187,9 +187,12 @@ export class CandidateRefreshBrowser {
       // Block restoration in every tab even when logout cannot be confirmed.
       this.setFence("blocked");
       try {
-        return (
-          await this.request("logout", current.familyId, current.accessToken)
-        ).status === 204;
+        const response = await this.request(
+          "logout",
+          current.familyId,
+          current.accessToken,
+        );
+        return response.status === 204;
       } catch {
         return false;
       }
