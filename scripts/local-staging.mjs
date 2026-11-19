@@ -210,15 +210,21 @@ async function verifySharedCatalog(cdp, databaseUrl, tenantId, example) {
     await cdp.send("Emulation.clearDeviceMetricsOverride");
     await fill(cdp, ".owner-form input:not([type=number])", marker);
     await evaluate(cdp, "(() => {const n=document.querySelectorAll('.owner-form input[type=number]');n[0].value='45';n[0].dispatchEvent(new Event('input',{bubbles:true}));n[1].value='1200';n[1].dispatchEvent(new Event('input',{bubbles:true}));})()");
+    await fill(cdp, ".owner-form input[name=post-service-buffer-minutes]", "15");
     await submitValidForm(cdp, ".owner-form");
     await requireDom(cdp, "confirmed real catalog service",
-      "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(marker) + ")");
+      "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(marker) + ") && document.querySelector('.list-items')?.innerText.includes('Буфер: 15 мин')");
     const stored = await read();
     assert.equal(stored.length, baseline.length + 1);
     assert.deepEqual(stored.filter((item) => item.display_name === marker), [{
       display_name: marker, duration_minutes: 45, price: "120000", active: false,
     }]);
     assert.deepEqual(stored.filter((item) => item.display_name !== marker), baseline);
+    const buffer = await pool.query(
+      "SELECT post_service_buffer_minutes FROM cookie_catalog.services WHERE tenant_id=$1::uuid AND display_name=$2",
+      [tenantId, marker],
+    );
+    assert.deepEqual(buffer.rows, [{ post_service_buffer_minutes: 15 }]);
     const receipt = await pool.query(
       "SELECT count(*)::int AS count FROM cookie_catalog.service_create_receipts WHERE tenant_id=$1::uuid",
       [tenantId],

@@ -245,7 +245,7 @@ async function assertStored(pool, owner, locationId) {
   const result = await pool.query(
     `SELECT
        s.id::text AS service_id, s.display_name AS service_name,
-       s.duration_minutes, s.base_price_kopecks::text AS price, s.active AS service_active, s.draft_revision,
+       s.duration_minutes, s.post_service_buffer_minutes, s.base_price_kopecks::text AS price, s.active AS service_active, s.draft_revision,
        p.id::text AS staff_id, p.display_name AS staff_name, p.position_title,
        p.active AS staff_active, p.bookable, la.active AS location_active,
        sa.active AS assignment_active, la.location_id::text AS location_id
@@ -261,6 +261,7 @@ async function assertStored(pool, owner, locationId) {
   const row = result.rows[0];
   assert.equal(row.service_name, "Synthetic E2E Edited Service");
   assert.equal(row.duration_minutes, 50);
+  assert.equal(row.post_service_buffer_minutes, 0);
   assert.equal(row.price, "125050");
   assert.equal(row.draft_revision, 1);
   assert.equal(row.staff_name, "Synthetic E2E Staff");
@@ -716,11 +717,14 @@ async function main() {
     await checkLabeledControls(cdp, "real service form");
     await fill(cdp, ".owner-form input:not([type=number])", "Synthetic E2E Service");
     await fill(cdp, ".owner-form input[type=number]:nth-of-type(1)", "45");
-    // The two numeric fields belong to separate labels.
+    // Enter the business inputs explicitly, including the new buffer.
     await evaluate(cdp, "(() => {const n=document.querySelectorAll('.owner-form input[type=number]');n[0].value='45';n[0].dispatchEvent(new Event('input',{bubbles:true}));n[1].value='1200';n[1].dispatchEvent(new Event('input',{bubbles:true}));})()");
+    await fill(cdp, ".owner-form input[name=post-service-buffer-minutes]", "15");
     await submitValidForm(cdp, ".owner-form");
     await requireDom(cdp, "persisted service renders",
-      "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Service') && !document.querySelector('.owner-form button[type=submit]')?.disabled");
+      "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Service') && document.querySelector('.list-items')?.innerText.includes('Буфер: 15 мин') && !document.querySelector('.owner-form button[type=submit]')?.disabled");
+    const initialBuffer = await pool.query("SELECT post_service_buffer_minutes FROM cookie_catalog.services WHERE tenant_id=$1::uuid", [owner.tenantId]);
+    assert.deepEqual(initialBuffer.rows, [{post_service_buffer_minutes:15}]);
     await button(cdp, "Филиалы");
     await requireDom(cdp, "real locations loaded",
       "document.querySelector('h1')?.textContent.trim()==='Филиалы' && document.querySelector('.list-items')?.innerText.includes('Synthetic Central') && document.querySelector('.owner-form input')");
@@ -750,10 +754,10 @@ async function main() {
     await button(cdp, "Услуги");
     await requireDom(cdp, "service edit button", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Service')");
     await button(cdp, "Изменить");
-    await requireDom(cdp, "edit selected", "document.querySelector('.owner-form')?.innerText.includes('Сохранить изменения')");
-    await evaluate(cdp, "(() => {const inputs=document.querySelectorAll('.owner-form input');const values=['Synthetic E2E Edited Service','50','1250.50'];inputs.forEach((input,i)=>{input.value=values[i];input.dispatchEvent(new Event('input',{bubbles:true}));});})()");
+    await requireDom(cdp, "edit selected", "document.querySelector('.owner-form')?.innerText.includes('Сохранить изменения') && document.querySelector('input[name=post-service-buffer-minutes]')?.value==='15'");
+    await evaluate(cdp, "(() => {const inputs=document.querySelectorAll('.owner-form input');const values=['Synthetic E2E Edited Service','50','1250.50','0'];inputs.forEach((input,i)=>{input.value=values[i];input.dispatchEvent(new Event('input',{bubbles:true}));});})()");
     await submitValidForm(cdp, ".owner-form");
-    await requireDom(cdp, "edited service visible", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service') && document.querySelector('.list-items')?.innerText.includes('50 мин')");
+    await requireDom(cdp, "edited service visible", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service') && document.querySelector('.list-items')?.innerText.includes('50 мин') && document.querySelector('.list-items')?.innerText.includes('Буфер: 0 мин')");
     await checkWidth(cdp, "edited list 375px");
     await button(cdp, "Мастера");
     await requireDom(cdp, "assignment retains edited service", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
