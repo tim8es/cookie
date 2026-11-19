@@ -191,32 +191,30 @@ export async function recoverAppliedApprovalAfterLostAck<
   assert.deepEqual(await read(), { status: "pending", applied_receipt: null });
   const before = await approvalSnapshot(pool, tenantId, false);
   let competing: Promise<T> | undefined;
-  try {
-    await expectApprovalCommitFailure(pool, "lose-ack", work, async (client) => {
-      const backend = await client.query<{ pid: number }>(
-        "SELECT pg_backend_pid() AS pid",
+  const beforeCommit = async (client: PoolClient): Promise<void> => {
+    const backend = await client.query<{ pid: number }>(
+      "SELECT pg_backend_pid() AS pid",
+    );
+    const pid = backend.rows[0]!.pid;
+    competing = work(pool);
+    // Attach a rejection handler immediately; the outcome is asserted below.
+    void competing.catch(() => undefined);
+    const deadline = Date.now() + 5_000;
+    while (true) {
+      const waiting = await pool.query<{ blocked: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM pg_stat_activity
+            WHERE $1::int=ANY(pg_blocking_pids(pid))
+         ) AS blocked`,
+        [pid],
       );
-      const pid = backend.rows[0]!.pid;
-      competing = work(pool);
-      // Attach a rejection handler immediately; the outcome is asserted below.
-      void competing.catch(() => undefined);
-      const deadline = Date.now() + 5_000;
-      while (true) {
-        const waiting = await pool.query<{ blocked: boolean }>(
-          `SELECT EXISTS (
-             SELECT 1 FROM pg_stat_activity
-              WHERE $1::int=ANY(pg_blocking_pids(pid))
-           ) AS blocked`,
-          [pid],
-        );
-        if (waiting.rows[0]?.blocked) break;
-        assert.ok(
-          Date.now() < deadline,
-          "Concurrent same-key review not blocked",
-        );
-        await pause(25);
-      }
-    });
+      if (waiting.rows[0]?.blocked) break;
+      assert.ok(Date.now() < deadline, "Concurrent review not blocked");
+      await pause(25);
+    }
+  };
+  try {
+    await expectApprovalCommitFailure(pool, "lose-ack", work, beforeCommit);
 
     const committed = await read();
     assert.equal(committed?.status, "applied");
@@ -231,11 +229,10 @@ export async function recoverAppliedApprovalAfterLostAck<
     const committedState = await approvalSnapshot(pool, tenantId, false);
     const changed = tables
       .filter((name) => name !== "cookie_identity.authorization_audit")
-      .filter(
-        (_, index) =>
-          JSON.stringify(before[index]) !==
-          JSON.stringify(committedState[index]),
-      );
+      .filter((_, index) => {
+        const previous = JSON.stringify(before[index]);
+        return previous !== JSON.stringify(committedState[index]);
+      });
     assert.deepEqual(changed, [
       table,
       "cookie_scheduling.shift_windows",
