@@ -12,11 +12,15 @@
   } = $props();
 
   let pending = $state<string[]>([]);
+  let error = $state("");
   async function request(id: string, enabled: boolean) {
     if (pending.includes(id)) return;
     pending = [...pending, id];
+    error = "";
     try {
       await onToggle(id, enabled);
+    } catch {
+      error = "Не удалось изменить модуль. Повторите попытку.";
     } finally {
       pending = pending.filter((candidate) => candidate !== id);
     }
@@ -43,4 +47,5 @@
       </div>
     {/each}
   </div>
+  {#if error}<p role="alert" class="rhythm-error">{error}</p>{/if}
 </section>
