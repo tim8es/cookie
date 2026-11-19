@@ -69,8 +69,13 @@ export class SyntheticTelegramRefresh {
     );
   }
 
-  async rotate(token: unknown) {
-    if (typeof token !== "string" || !/^ir_[A-Za-z0-9_-]{43}$/.test(token))
+  async rotate(token: unknown, expectedAccessToken?: string) {
+    if (
+      typeof token !== "string" ||
+      !/^ir_[A-Za-z0-9_-]{43}$/.test(token) ||
+      (expectedAccessToken !== undefined &&
+        !/^is_[A-Za-z0-9_-]{43}$/.test(expectedAccessToken))
+    )
       return { status: "denied" } as const;
     return this.transaction(async (client) => {
       // Lock provider before family. Never wait for a source lock while
@@ -84,11 +89,49 @@ export class SyntheticTelegramRefresh {
            AND g.identity_id=f.identity_id
          WHERE c.token_sha256=$1::bytea AND f.issuer='cookie-refresh-candidate'
            AND f.audience='synthetic-test' AND g.legacy_revoked_at IS NULL
+           AND ($2::bytea IS NULL OR EXISTS (
+             SELECT 1 FROM cookie_identity.identity_sessions s
+             WHERE s.token_sha256=$2::bytea AND s.refresh_family_id=f.id
+           ))
          FOR SHARE OF g NOWAIT`,
-        [digest(token)],
+        [
+          digest(token),
+          expectedAccessToken ? digest(expectedAccessToken) : null,
+        ],
       );
       if (source.rowCount !== 1) return { status: "denied" } as const;
       return this.sessions(client).rotate(token);
+    });
+  }
+
+  /**
+   * A stale access credential is only a family selection check, never a
+   * login grant. Logout also requires the exact refresh cookie. It can
+   * acknowledge a previously revoked family without revoking another.
+   */
+  async logout(token: unknown, expectedAccessToken: unknown): Promise<boolean> {
+    if (
+      typeof token !== "string" ||
+      !/^ir_[A-Za-z0-9_-]{43}$/.test(token) ||
+      typeof expectedAccessToken !== "string" ||
+      !/^is_[A-Za-z0-9_-]{43}$/.test(expectedAccessToken)
+    )
+      return false;
+    return this.transaction(async (client) => {
+      const family = await client.query(
+        `SELECT f.id
+         FROM cookie_identity.refresh_session_credentials c
+         JOIN cookie_identity.refresh_session_families f ON f.id=c.family_id
+         JOIN cookie_identity.identity_sessions s ON s.refresh_family_id=f.id
+         WHERE c.token_sha256=$1::bytea AND s.token_sha256=$2::bytea
+           AND f.issuer='cookie-refresh-candidate'
+           AND f.audience='synthetic-test' AND f.telegram_provider_fingerprint IS NOT NULL
+         FOR UPDATE OF f`,
+        [digest(token), digest(expectedAccessToken)],
+      );
+      if (family.rowCount !== 1) return false;
+      await this.sessions(client).revoke(token);
+      return true;
     });
   }
 }

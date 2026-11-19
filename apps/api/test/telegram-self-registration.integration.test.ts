@@ -3,6 +3,8 @@ import { createHmac, randomBytes, randomInt, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 import { Pool } from "pg";
+import Fastify from "fastify";
+import { registerSyntheticRefreshHttp } from "../src/synthetic-refresh-http.js";
 import { provisionStagingCustomer } from "../../../packages/domain-customers/src/staging-customer.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
 import { runSqlTransaction } from "../../../packages/platform-db/src/transaction.js";
@@ -589,6 +591,100 @@ test(
         await candidateSessions.resolve(rotatedRefresh.accessToken),
         preparation.identityId,
       );
+      // Exercise actual HTTP transport against the same PostgreSQL Identity.
+      // This server is inject-only; the normal app never registers the routes.
+      const refreshHttp = Fastify({ logger: false });
+      try {
+        registerSyntheticRefreshHttp(refreshHttp, refresh);
+        const path = "/v1/auth/synthetic-refresh";
+        const browser = {
+          "sec-fetch-site": "same-origin",
+          "x-kuki-session": "1",
+        };
+        const login = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/login",
+          headers: browser,
+          payload: { initData: signedInitData(TEST_BOT, legacyUser) },
+        });
+        assert.equal(login.statusCode, 200);
+        const firstCookie = String(login.headers["set-cookie"]);
+        assert.match(firstCookie, /^__Host-kuki-refresh-candidate=ir_/);
+        assert.match(firstCookie, /HttpOnly; Secure; SameSite=Strict/);
+        assert.equal(login.headers["cache-control"], "no-store");
+        assert.equal("refreshToken" in login.json(), false);
+        const firstAccess = login.json().accessToken as string;
+        const cookie = firstCookie.split(";", 1)[0]!;
+        assert.equal(
+          await candidateSessions.resolve(firstAccess),
+          preparation.identityId,
+        );
+        const mismatch = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/rotate",
+          headers: {
+            ...browser,
+            cookie,
+            authorization: "Bearer " + refreshLogin.accessToken,
+          },
+        });
+        assert.equal(mismatch.statusCode, 401);
+        assert.equal(mismatch.headers["set-cookie"], undefined);
+        const rotated = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/rotate",
+          headers: { ...browser, cookie },
+        });
+        assert.equal(rotated.statusCode, 200);
+        const nextCookie = String(rotated.headers["set-cookie"]).split(
+          ";",
+          1,
+        )[0]!;
+        const nextAccess = rotated.json().accessToken as string;
+        assert.notEqual(nextCookie, cookie);
+        assert.notEqual(nextAccess, firstAccess);
+        const staleLogout = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/logout",
+          headers: {
+            ...browser,
+            cookie: nextCookie,
+            authorization: "Bearer " + refreshLogin.accessToken,
+          },
+        });
+        assert.equal(staleLogout.statusCode, 401);
+        assert.equal(staleLogout.headers["set-cookie"], undefined);
+        assert.equal(
+          await candidateSessions.resolve(nextAccess),
+          preparation.identityId,
+        );
+        const logout = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/logout",
+          headers: {
+            ...browser,
+            cookie: nextCookie,
+            authorization: "Bearer " + firstAccess,
+          },
+        });
+        assert.equal(logout.statusCode, 204);
+        assert.equal(logout.headers["set-cookie"], undefined);
+        assert.equal(await candidateSessions.resolve(firstAccess), null);
+        assert.equal(await candidateSessions.resolve(nextAccess), null);
+        assert.equal(
+          await candidateSessions.resolve(rotatedRefresh.accessToken),
+          preparation.identityId,
+        );
+        const denied = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/rotate",
+          headers: { ...browser, cookie: nextCookie },
+        });
+        assert.equal(denied.statusCode, 401);
+        assert.equal(denied.headers["set-cookie"], undefined);
+      } finally {
+        await refreshHttp.close();
+      }
       const webProof = randomBytes(32);
       const webSession = await exchangeTrustedTelegramUser(
         transaction,

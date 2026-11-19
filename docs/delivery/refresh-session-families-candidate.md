@@ -70,3 +70,28 @@ denial, source revocation and retention of unrelated email-origin access.
 Runtime fresh OIDC continuation, real issuer, provider lifecycle/retention,
 family logout routed from HTTP, browser rotation serialization and approved
 lifetime/replay policy remain open. No operator, API or deployment activation.
+
+## Isolated HTTP transport candidate
+
+The inject-only Fastify adapter is deliberately absent from app/runtime
+registration. Its separate candidate cookie is host-only, Secure, HttpOnly,
+SameSite=Strict, with server-bounded Max-Age. Only access credentials go in
+JSON; all operations require same-origin Fetch Metadata and the explicit
+session header. Login requires fresh signed Mini App proof. Rotation accepts
+no body/query/TTL and optionally requires the prior access credential to
+belong to the exact refresh family. Fresh-page restoration can rotate without
+an access token. Logout always requires both cookie and matching family
+access, including older/expired access while its digest remains stored.
+It revokes all family generations server-side and never sends a cookie-delete
+response that could erase a subsequent login. Denials/uncertain commits do
+not emit Set-Cookie. A dead cookie may remain until expiry/replacement.
+
+PostgreSQL + inject coverage tests login, restoration, same-Identity separate
+family mismatch, exact-family logout, unaffected parallel family and no
+refresh credential in JSON. HTTP unit negatives cover CSRF metadata, duplicate
+cookies, malformed inputs, TTL override and uncertain transaction response.
+Not yet a browser protocol: login/rotate responses can still arrive out of
+order, and strict replay can force reauthentication after response loss.
+Cross-tab single-flight, lost-response behavior, stored digest cleanup and
+real HTTPS WebView acceptance must be resolved before runtime activation.
+Integrate with current-main auth stack #368 only after separate review.
