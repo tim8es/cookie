@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { ViewState } from "./lib/model";
-  import type { Screen } from "./lib/navigation";
+  import { defaultOwnerScreen, ownerRouteHref, ownerScreenFromPath, type Screen } from "./lib/navigation";
   import Sidebar from "./lib/ui/Sidebar.svelte";
   import Topbar from "./lib/ui/Topbar.svelte";
   import OnboardingHeader from "./lib/ui/OnboardingHeader.svelte";
@@ -20,7 +20,7 @@
   // URL selects a customer presentation only; all access is checked by the API.
   const customerSurface = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "customer-staging";
   const customerTenantId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tenantId") ?? "" : "";
-  let screen: Screen = "services";
+  let screen: Screen = typeof window === "undefined" ? defaultOwnerScreen : ownerScreenFromPath(window.location.pathname) ?? defaultOwnerScreen;
   let preview: ViewState = "normal";
   let ownerSession: VerifiedOwnerSession | null = null;
   let customerSession: VerifiedCustomerSession | null = null;
@@ -38,16 +38,40 @@
         ? "Срок действия сеанса истёк. Войдите снова."
         : "";
 
-  onMount(() => () => {
-    stopOwnerExpiry?.();
-    ownerSession = null;
-    customerSession = null;
+  function syncOwnerLocation(canonicalize: boolean): void {
+    screen = ownerScreenFromPath(window.location.pathname) ?? defaultOwnerScreen;
+    if (!canonicalize || customerSurface) return;
+    const target = ownerRouteHref(screen, window.location);
+    if (target !== window.location.pathname + window.location.search + window.location.hash) {
+      window.history.replaceState(window.history.state, "", target);
+    }
+  }
+
+  function navigateOwner(next: Screen): void {
+    if (!verifiedOwner) return;
+    const target = ownerRouteHref(next, window.location);
+    if (target !== window.location.pathname + window.location.search + window.location.hash) {
+      window.history.pushState(null, "", target);
+    }
+    screen = next;
+  }
+
+  onMount(() => {
+    const onPopState = () => syncOwnerLocation(verifiedOwner);
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      stopOwnerExpiry?.();
+      ownerSession = null;
+      customerSession = null;
+    };
   });
 
   function acceptOwnerSession(session: VerifiedOwnerSession): void {
     stopOwnerExpiry?.();
     ownerSession = session;
     ownerAuthPhase = "verified";
+    syncOwnerLocation(customerSession === null);
     stopOwnerExpiry = watchOwnerSessionExpiry(
       session.expiresAtUnixSeconds,
       () => {
@@ -97,11 +121,11 @@
 
 <div class="app-shell real-owner-shell" data-cookie-mode="api" class:verified-owner-shell={verifiedOwner}>
   {#if verifiedOwner}
-    <Sidebar {screen} stepCount={0} realOwner={true} onNavigate={(next) => screen = next} />
+    <Sidebar {screen} stepCount={0} realOwner={true} onNavigate={navigateOwner} />
   {/if}
   <div class="main-area">
     {#if verifiedOwner}
-      <Topbar {screen} bind:preview canCreateBooking={false} demoMode={false} onNavigate={(next) => screen = next} onLogout={() => void logoutOwner()} />
+      <Topbar {screen} bind:preview canCreateBooking={false} demoMode={false} onNavigate={navigateOwner} onLogout={() => void logoutOwner()} />
     {:else}
       <OnboardingHeader apiMode={true} label={customerMode ? "Клиентский staging" : "Вход и регистрация"} />
     {/if}
@@ -110,7 +134,7 @@
         <StagingCustomerGate initialSession={customerSession} onSessionCleared={clearCustomerSession} />
       {:else if verifiedOwner && ownerSession}
         {#key ownerSession}
-          <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} />
+          <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={navigateOwner} />
         {/key}
       {:else}
         <IdentityAuthGate
