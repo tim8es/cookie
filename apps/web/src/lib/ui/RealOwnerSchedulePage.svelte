@@ -79,23 +79,6 @@
     saveError = "";
   }
 
-  async function refreshPublication(): Promise<void> {
-    publicationReady = false;
-    publicationError = "";
-    try {
-      const [capacity, result] = await Promise.all([
-        readStagingPublicationCapacity(session), readPublishedShifts(session),
-      ]);
-      publicationReady = capacity.state === "active";
-      published = result.published;
-      publishedHasMore = result.hasMore;
-    } catch {
-      published = [];
-      publishedHasMore = false;
-      publicationError = "Состояние публикации не подтверждено сервером.";
-    }
-  }
-
   function choosePublication(plan: ShiftPlan): void {
     if (!canPublish) return;
     selectedPublication = plan;
@@ -133,6 +116,12 @@
   async function refresh(): Promise<void> {
     loading = true;
     readError = "";
+    publicationReady = false;
+    publicationError = "";
+    // Independent, always-fresh publication checks; handle early rejection.
+    const publicationRead = Promise.all([
+      readStagingPublicationCapacity(session), readPublishedShifts(session),
+    ]).catch(() => null);
     try {
       const [directory, branches, result] = await Promise.all([
         readRealStaff(session), readRealLocations(session), readShiftPlans(session),
@@ -149,7 +138,17 @@
         chooseStaff(staffId);
       }
       loaded = true;
-      await refreshPublication();
+      const publication = await publicationRead;
+      if (publication) {
+        const [capacity, result] = publication;
+        publicationReady = capacity.state === "active";
+        published = result.published;
+        publishedHasMore = result.hasMore;
+      } else {
+        published = [];
+        publishedHasMore = false;
+        publicationError = "Состояние публикации не подтверждено сервером.";
+      }
     } catch (reason) {
       loaded = false;
       readError = message(reason);
