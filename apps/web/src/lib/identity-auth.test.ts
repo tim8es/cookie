@@ -432,7 +432,7 @@ test("pending logout removes the workspace hint but preserves unrelated history"
     replaceState(next: unknown) {
       state = next;
     },
-  } as History;
+  };
   writeWorkspaceHint(history, { role: "business", tenantId });
   assert.ok(readWorkspaceHint(history));
   writeLogoutPending(history, true);

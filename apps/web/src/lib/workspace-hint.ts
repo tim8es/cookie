@@ -4,6 +4,8 @@ export interface WorkspaceHint {
   readonly tenantId: string;
 }
 
+type WorkspaceHistory = Pick<History, "state" | "replaceState">;
+
 const KEY = "kukiWorkspace";
 const LOGOUT_PENDING = "kukiLogoutPending";
 const UUID =
@@ -22,7 +24,9 @@ export function parseWorkspaceHint(value: unknown): WorkspaceHint | null {
   return { role: hint.role, tenantId: hint.tenantId };
 }
 
-export function readWorkspaceHint(history: History): WorkspaceHint | null {
+export function readWorkspaceHint(
+  history: WorkspaceHistory,
+): WorkspaceHint | null {
   try {
     return parseWorkspaceHint(history.state?.[KEY]);
   } catch {
@@ -31,7 +35,7 @@ export function readWorkspaceHint(history: History): WorkspaceHint | null {
 }
 
 export function writeWorkspaceHint(
-  history: History,
+  history: WorkspaceHistory,
   hint: WorkspaceHint | null,
 ): void {
   try {
@@ -53,7 +57,7 @@ export function writeWorkspaceHint(
  * the server can clear its HttpOnly cookie, never silently restore that
  * cookie on reload of this history entry. It is not a revocation receipt.
  */
-export function isLogoutPending(history: History): boolean {
+export function isLogoutPending(history: WorkspaceHistory): boolean {
   try {
     return history.state?.[LOGOUT_PENDING] === true;
   } catch {
@@ -61,7 +65,10 @@ export function isLogoutPending(history: History): boolean {
   }
 }
 
-export function writeLogoutPending(history: History, pending: boolean): void {
+export function writeLogoutPending(
+  history: WorkspaceHistory,
+  pending: boolean,
+): void {
   try {
     const previous: unknown = history.state;
     const state =
