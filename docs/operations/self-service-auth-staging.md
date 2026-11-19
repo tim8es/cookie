@@ -20,6 +20,8 @@
 | `COOKIE_AUTH_SECURITY_AUDIT_RETENTION_SECONDS` | Обязательная явная политика хранения журнала безопасности (60–31536000 секунд) |
 | `COOKIE_STAGING_PUBLICATION_MODE` | `enabled` только для частного staging с отдельным operator-issued grant |
 
+Перед включением `COOKIE_EMAIL_AUTH_MODE` задайте `COOKIE_AUTH_SECURITY_AUDIT_RETENTION_SECONDS` согласно утверждённой политике хранения. Значение по умолчанию намеренно отсутствует; без переменной API не запустится.
+
 `COOKIE_TELEGRAM_SELF_REGISTRATION_MODE` и `COOKIE_EMAIL_AUTH_MODE` выключены, если переменные отсутствуют. Для web-входа через Telegram дополнительно задайте:
 
 | Variable | Purpose |
