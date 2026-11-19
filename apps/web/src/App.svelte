@@ -25,7 +25,7 @@
   let ownerSession: VerifiedOwnerSession | null = null;
   let customerSession: VerifiedCustomerSession | null = null;
   let customerAuthNotice = "";
-  let ownerAuthPhase: "unavailable" | "verified" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
+  let ownerAuthPhase: "unavailable" | "verified" | "signing-out" | "signed-out" | "logout-failed" | "expired" | "denied" = "unavailable";
   let stopOwnerExpiry: (() => void) | null = null;
 
   $: customerMode = customerSurface || customerSession !== null;
@@ -36,7 +36,9 @@
       ? "Локальный вход закрыт, но сервер не подтвердил отзыв. Старая сессия может действовать до истечения срока."
       : ownerAuthPhase === "expired"
         ? "Срок действия сеанса истёк. Войдите снова."
-        : "";
+        : ownerAuthPhase === "denied"
+          ? "Доступ к кабинету не подтверждён сервером. Войдите снова."
+          : "";
 
   onMount(() => () => {
     stopOwnerExpiry?.();
@@ -58,6 +60,14 @@
       window,
       document,
     );
+  }
+
+  function denyOwnerSession(session: VerifiedOwnerSession): void {
+    if (ownerSession !== session) return;
+    stopOwnerExpiry?.();
+    stopOwnerExpiry = null;
+    ownerSession = null;
+    ownerAuthPhase = "denied";
   }
 
   function acceptCustomerSession(session: VerifiedCustomerSession): void {
@@ -110,7 +120,7 @@
         <StagingCustomerGate initialSession={customerSession} onSessionCleared={clearCustomerSession} />
       {:else if verifiedOwner && ownerSession}
         {#key ownerSession}
-          <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} />
+          <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={(next) => screen = next} onAccessDenied={denyOwnerSession} />
         {/key}
       {:else}
         <IdentityAuthGate
