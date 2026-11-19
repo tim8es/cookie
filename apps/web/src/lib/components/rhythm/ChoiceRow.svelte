@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button } from "$lib/components/ui/button/index.js";
   import type { Snippet } from "svelte";
+  import RowContent from "./RowContent.svelte";
 
   let {
     title,
@@ -32,11 +33,6 @@
   {disabled}
   onclick={onSelect}
 >
-  {#if leading}{@render leading()}{/if}
-  <span class="rhythm-copy">
-    <strong>{title}</strong>
-    {#if description}<small class="rhythm-muted">{description}</small>{/if}
-  </span>
-  {#if trailing}<span class="rhythm-trailing">{trailing}</span>{/if}
+  <RowContent {title} {description} detail={trailing} {leading} />
   <span class="rhythm-choice-check" aria-hidden="true">{selected ? "✓" : ""}</span>
 </Button>
