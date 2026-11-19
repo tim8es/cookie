@@ -14,6 +14,7 @@ import {
   requireDom, fill, submitValidForm, checkWidth, checkLabeledControls,
 } from "./browser-smoke.mjs";
 import { startChromiumWithRetry } from "../../../scripts/f1-chromium-startup.mjs";
+import { verifyOwnerBookingDetail } from "./owner-booking-detail-smoke.mjs";
 
 import { issueStagingGrant } from "../../../dist/packages/domain-entitlement/src/staging.js";
 import { provisionStagingCustomer } from "../../../dist/packages/domain-customers/src/staging-customer.js";
@@ -841,6 +842,10 @@ async function main() {
     await button(cdp,"Неделя");
     await requireDom(cdp,"week reads persisted Booking","document.querySelector('[aria-label=\"Записи за выбранный период\"]')?.innerText.includes('Synthetic E2E Staff')");
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/owner-calendar")));
+    await verifyOwnerBookingDetail(cdp, responses, {
+      bookingId, duration: 50, buffer: 0, priceKopecks: "125050",
+      status: "Подтверждена", tenantId: owner.tenantId, viewport, testLatePeriod: true,
+    });
     for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
       await viewport(cdp,width,height);
       await checkWidth(cdp,"real owner calendar "+width+"px");
@@ -1029,6 +1034,13 @@ async function main() {
     await poll("fresh owner calendar HTTP 200 after Booking restart", () => responses.slice(calendarResponseStart).some(r=>r.status===200&&r.path.endsWith("/owner-calendar")));
     await requireDom(cdp, "actual persisted Booking visible in owner's calendar after restart",
       "(()=>{const rows=[...document.querySelectorAll('[aria-label=\\\"Записи за выбранный период\\\"] .schedule-summary')];const fmt=value=>new Intl.DateTimeFormat('ru-RU',{timeZone:"+JSON.stringify(BRANCH_ZONE)+",dateStyle:'short',timeStyle:'short'}).format(new Date(value));const interval=fmt("+JSON.stringify(restartStart)+")+' — '+fmt("+JSON.stringify(restartEnd)+");const price=new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(1250.5);return rows.length===3&&rows.filter(row=>row.innerText.includes(interval)&&row.innerText.includes(price)&&row.innerText.includes('Synthetic E2E Edited Service')&&row.innerText.includes('Synthetic E2E Staff')&&row.querySelector('.status-pill')?.innerText==='Подтверждена').length===1;})()");
+    await verifyOwnerBookingDetail(cdp, responses, {
+      bookingId: restartBookingId,
+      duration: beforeBookingRestart.booking.service_duration_minutes_snapshot,
+      buffer: beforeBookingRestart.booking.post_service_buffer_minutes_snapshot,
+      priceKopecks: originalReceipt.priceKopecks,
+      status: "Подтверждена", tenantId: owner.tenantId, viewport,
+    });
     assert.deepEqual(await durableBooking(), beforeBookingRestart, "Fresh authenticated reads changed durable Booking/receipt/outbox");
     assert.deepEqual((await recoveryProjection()).rows, beforeProjection.rows);
     assert.equal(customerCreateRequests, writesBeforeRestart, "Restart recovery must not issue any Create POST");

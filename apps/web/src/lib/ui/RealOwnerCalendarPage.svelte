@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { branchToday, type OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
+  import OwnerBookingDetail from "./OwnerBookingDetail.svelte";
   import { Button } from "../components/ui/button/index.js";
   import { Input } from "../components/ui/input/index.js";
   import type { VerifiedOwnerSession } from "../owner-auth";
@@ -180,6 +181,11 @@
               <p>{calendarClock?.format(new Date(item.startAt))} — {calendarClock?.format(new Date(item.endAt))}</p>
               <p>{prices.format(Number(item.priceKopecks) / 100)}</p>
               <span class="status-pill">{statusNames[item.status]}</span>
+              {#key session}
+                {#key data.locationId + "/" + data.localDate + "/" + data.days}
+                  <OwnerBookingDetail {session} locationId={data.locationId} bookingId={item.id} disabled={loading || expired} />
+                {/key}
+              {/key}
             </div>
           </div>
         {/each}
