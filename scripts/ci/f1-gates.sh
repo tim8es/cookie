@@ -27,6 +27,8 @@ web() {
 browser() {
   pnpm --filter @cookie/web build:fixture
   node apps/web/scripts/browser-smoke.mjs
+  pnpm --filter @cookie/web exec vite build --config vite.ui-kit.config.mts
+  node apps/web/scripts/rhythm-catalog-smoke.mjs
 }
 browser_evidence() { node scripts/ci-visual-evidence-check.mjs; }
 real_owner() {
