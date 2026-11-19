@@ -689,7 +689,7 @@
   padding: 9px 12px; border: 1px solid var(--rhythm-line);
   border-radius: var(--rhythm-radius); font-size: 13px; font-weight: 600;
 }
-.rhythm-scope .rhythm-popover summary::-webkit-details-marker { display: none; }
+.rhythm-scope .rhythm-popover summary::-webkit-details-marker { display: none; }\n.rhythm-scope .rhythm-popover summary:focus-visible { outline: 3px solid var(--rhythm-focus); outline-offset: 3px; }
 .rhythm-scope .rhythm-popover[open] summary {
   background: var(--rhythm-selected); color: var(--rhythm-on-selected);
 }
