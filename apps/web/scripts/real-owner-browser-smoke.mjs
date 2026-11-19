@@ -775,6 +775,24 @@ async function main() {
     await checkWidth(cdp,"cancelled customer booking");
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
+    // A real server-side session revocation must hide previously verified
+    // data from every owner section, not only the section receiving 401/403.
+    script = await loadAndEnterTelegram(cdp, origin, signedProof(botToken,userId), script, "business");
+    await requireDom(cdp, "warm owner service snapshot", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
+    await button(cdp, "Мастера");
+    await requireDom(cdp, "warm owner staff snapshot", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
+    const revokedOwner = await pool.query(
+      "UPDATE cookie_identity.opaque_sessions SET revoked_at=clock_timestamp() WHERE tenant_id=$1::uuid AND revoked_at IS NULL",
+      [owner.tenantId],
+    );
+    assert.ok(revokedOwner.rowCount > 0, "Expected an active synthetic owner session");
+    const denialMarker = responses.length;
+    await button(cdp, "Филиалы");
+    await poll("real protected owner request denied", () => responses.slice(denialMarker).some(r=>r.path.endsWith("/locations")&&(r.status===401||r.status===403)));
+    await requireDom(cdp, "owner cache denial closes the whole protected workspace",
+      "document.body.innerText.includes('Доступ к кабинету не подтверждён сервером') && !document.querySelector('.real-owner-nav') && !document.body.innerText.includes('Synthetic E2E Edited Service') && !document.body.innerText.includes('Synthetic E2E Staff')");
+    assert.deepEqual(errors, [], "Unexpected browser runtime errors after revocation");
+    assert.deepEqual(external, [], "Unexpected external requests after revocation");
     const demoApiRequests = [];
     cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
       if (request.url.startsWith(origin + "v1/")) demoApiRequests.push(new URL(request.url).pathname);
