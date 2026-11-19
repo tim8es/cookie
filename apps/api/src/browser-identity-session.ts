@@ -34,19 +34,6 @@ function privateResponse(reply: FastifyReply): void {
   reply.header("Vary", "Cookie, Authorization, Sec-Fetch-Site, X-Kuki-Session");
 }
 
-export function clearMatchingBrowserSession(
-  request: FastifyRequest,
-  reply: FastifyReply,
-  bearer: string,
-): void {
-  // A stale tab logging out must not erase a different account's cookie.
-  if (
-    sameOriginBrowser(request) &&
-    cookieToken(request.headers.cookie) === bearer
-  )
-    reply.header("Set-Cookie", cookieHeader("", 0));
-}
-
 export function registerBrowserIdentitySession(
   app: FastifyInstance,
   providers: readonly IdentitySessions[],
