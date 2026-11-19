@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { createReadStream, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve, extname } from "node:path";
+import { join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as pause } from "node:timers/promises";
 import { browserBinary, freePort, poll, getLocal, createClient, evaluate, requireDom, click, fill, checkWidth, checkLabeledControls } from "./browser-smoke.mjs";
@@ -13,8 +13,8 @@ const webDir = fileURLToPath(new URL("../", import.meta.url));
 const dist = join(webDir, ".tmp/rhythm-ui-kit-dist");
 const evidence = join(webDir, "artifacts/rhythm-ui-kit");
 const themes = ["workspace", "studio", "linen", "graphite", "sage"];
-const widths = [[320, 568], [375, 812], [768, 960], [1280, 800]];
-const sections = ["Контролы", "Каталог", "Записи", "Редакторы", "Состояния"];
+const widths = [[375, 812], [1280, 800], [320, 568], [768, 960]];
+const sections = ["Контролы", "Каталог", "Записи", "Редакторы", "Состояния", "Публичная запись", "Календарь и смены", "Аккаунт"];
 
 async function button(cdp, name) {
   const ok = await evaluate(cdp, "(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === " + JSON.stringify(name) + "); if (!b || b.disabled) return false; b.focus(); b.click(); return true; })()");
@@ -26,17 +26,17 @@ async function expectText(cdp, value) {
 }
 
 async function verifyChoice(cdp) {
-  const result = await evaluate(cdp, `(() => {
-    const row = document.querySelector('[data-component=ChoiceRow][aria-pressed=false]:not(:disabled)');
-    const scope = row?.closest('.rhythm-scope');
-    return row && scope && getComputedStyle(row).backgroundColor === getComputedStyle(scope).backgroundColor;
-  })()`);
-  assert.equal(result, true, "Unselected choice must inherit the booking canvas");
+  const matches = `(() => {
+    const rows = [...document.querySelectorAll('[data-component=ChoiceRow][aria-pressed=false]:not(:disabled)')];
+    return rows.length > 0 && rows.every(row => getComputedStyle(row).backgroundColor === getComputedStyle(row.closest('.rhythm-scope')).backgroundColor);
+  })()`;
+  await requireDom(cdp, "Unselected choice must inherit the booking canvas", matches);
 }
 
 async function verifyModal(cdp, triggerLabel, layout) {
   await button(cdp, triggerLabel);
   await requireDom(cdp, "modal open", "document.querySelector('[role=dialog]')");
+  await pause(220);
   const metrics = await evaluate(cdp, `(() => {
     const modal = document.querySelector('[role=dialog]');
     const host = modal.closest('.rhythm-scope');
@@ -59,7 +59,7 @@ async function verifyModal(cdp, triggerLabel, layout) {
 async function capture(cdp, stem) {
   await evaluate(cdp, "window.scrollTo(0,0)");
   await pause(160);
-  const shot = await cdp.send("Page.captureScreenshot", { format: "png" });
+  const shot = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
   writeFileSync(join(evidence, stem + ".png"), Buffer.from(shot.data, "base64"));
 }
 
@@ -117,6 +117,7 @@ async function main() {
       if (/^https?:/.test(url) && new URL(url).hostname !== "127.0.0.1") external.push(url);
     });
     let states = 0;
+    let captures = 0;
     for (const [width, height] of widths) {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, mobile: width < 600, deviceScaleFactor: 1 });
       await cdp.send("Page.navigate", { url: origin });
@@ -129,6 +130,7 @@ async function main() {
           await requireDom(cdp, "section selected", "[...document.querySelectorAll('.rhythm-segment button[aria-pressed=true]')].some(b => b.textContent.trim() === " + JSON.stringify(section) + ")");
           await checkWidth(cdp, width + "/" + theme + "/" + section);
           await checkLabeledControls(cdp, section);
+          if (width === 375 || width === 1280) { await capture(cdp, [width, theme, sections.indexOf(section)].join("-")); captures++; }
           if (section === "Каталог") {
             await verifyChoice(cdp);
             await click(cdp, '[data-component=ChoiceRow]:nth-child(2)');
@@ -164,7 +166,43 @@ async function main() {
             await verifyModal(cdp, "Открыть панель", "sheet");
             await verifyModal(cdp, "Открыть нижнюю панель", "drawer");
           }
-          if (width === 375 || width === 1280) await capture(cdp, [width, theme, sections.indexOf(section)].join("-"));
+          if (section === "Публичная запись") {
+            await click(cdp, '[data-component=SalonPage] .rhythm-hero button');
+            await requireDom(cdp, "booking layout", "document.querySelector('[data-component=BookingLayout]')");
+            await verifyChoice(cdp);
+            await click(cdp, '[data-component=ChoiceList] [data-component=ChoiceRow]:first-of-type');
+            await button(cdp, "Продолжить");
+            await requireDom(cdp, "staff selection", "document.querySelector('[data-component=ChoiceList]')?.getAttribute('aria-label') === 'Мастера'");
+            await click(cdp, '[data-component=ChoiceList] [data-component=ChoiceRow]:nth-of-type(2)');
+            await button(cdp, "Продолжить");
+            await requireDom(cdp, "date selection", "document.querySelector('[data-component=DateStrip]')");
+            await click(cdp, '[data-component=DateStrip] button:first-child');
+            await requireDom(cdp, "slots", "document.querySelector('[data-component=SlotGrid] button')");
+            await click(cdp, '[data-component=SlotGrid] button:first-child');
+            await button(cdp, "Продолжить");
+            await button(cdp, "Подтвердить пример");
+            await expectText(cdp, "Реальная запись не создана");
+            for (const channel of ["Виджет", "Mini App", "Ручная запись", "Сайт"]) {
+              await button(cdp, channel);
+              await checkWidth(cdp, "booking " + channel);
+              await checkLabeledControls(cdp, channel);
+              assert.equal(await evaluate(cdp, "document.querySelectorAll('[data-component=BookingLayout]').length"), 1);
+            }
+            if (width === 375 || width === 1280) {
+              await capture(cdp, [width, theme, "booking-review"].join("-")); captures++;
+            }
+          }
+          if (section === "Календарь и смены") {
+            await requireDom(cdp, "resources", "document.querySelectorAll('[data-component=ResourceDay] [data-component=VisitRow]').length === 2");
+            await click(cdp, '[data-component=DateStrip] button:nth-child(2)');
+            await requireDom(cdp, "empty day", "document.querySelectorAll('[data-component=ResourceDay] [data-component=VisitRow]').length === 0");
+          }
+          if (section === "Аккаунт") {
+            await click(cdp, '[data-component=AccountMenu] button');
+            await requireDom(cdp, "account dialog", "document.querySelector('[role=dialog] [data-component=ChoiceRow]')");
+            await click(cdp, '[role=dialog] [data-component=ChoiceRow]:first-child');
+            await requireDom(cdp, "selected account", "!document.querySelector('[role=dialog]') && document.body.textContent.includes('Выбрано: Личный профиль')");
+          }
           states++;
         }
         await button(cdp, "Сбросить примеры");
@@ -186,8 +224,17 @@ async function main() {
     }
     assert.deepEqual(errors, [], "Uncaught catalog errors");
     assert.deepEqual(external, [], "Unexpected external network requests");
-    writeFileSync(join(evidence, "manifest.json"), JSON.stringify({ states, themes, widths, captures: 50, externalRequests: external.length }, null, 2));
+    writeFileSync(join(evidence, "manifest.json"), JSON.stringify({ states, themes, widths, captures, externalRequests: external.length }, null, 2));
     console.log("PASS Rhythm catalog: " + states + " states, file preview/remove, keyboard, no external requests");
+  } catch (error) {
+    if (cdp) {
+      try {
+        await capture(cdp, "failure");
+        const diagnostic = await evaluate(cdp, "({width: innerWidth, theme: document.querySelector('.rhythm-scope')?.dataset.rhythmTheme, text: document.body.innerText.slice(0, 1200)})");
+        console.error("Catalog state:", diagnostic);
+      } catch { /* retain original failure */ }
+    }
+    throw error;
   } finally {
     cdp?.close();
     chrome?.kill("SIGTERM");
