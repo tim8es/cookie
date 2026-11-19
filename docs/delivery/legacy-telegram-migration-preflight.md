@@ -99,3 +99,12 @@ issuer-specific session revocation. The trusted-subject test is not a real
 OIDC network callback; the independently issued synthetic email token is
 not a password login. Provider status excludes permanently disabled migrated
 Telegram mappings. No operator/runtime activation or real deployment.
+
+A compiled Chromium regression now attempts the internal migration only after
+real customer create/cancel/receipt recovery. It asserts same customer and
+Identity linkage, both existing bookings and unchanged durable booking/receipt/
+outbox projection, no repeated enrollment, cookie restoration on reload
+without proof replay, and rejection of the migrated cookie after original
+link revocation. The activation is a test process call against the isolated
+CI database, not an exposed operator/API action. The new browser evidence
+requires exact-head CI; real Telegram and Altare remain unverified.
