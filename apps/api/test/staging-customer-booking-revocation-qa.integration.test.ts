@@ -408,6 +408,35 @@ test(
       // Grant revoked before a *new* command resumes. Existing exact receipt
       // remains recoverable while the exact Customer authorization is valid.
       const last = await customer(19191031);
+      assert.notEqual(last.context.customerId, good.context.customerId);
+      const getReceipt = (token: string, receiptKey: string) =>
+        app.inject({
+          method: "GET",
+          url: prefix + "/staging-customer-bookings/receipt",
+          headers: {
+            authorization: "Bearer " + token,
+            "idempotency-key": receiptKey,
+          },
+        });
+      const ownReceipt = await getReceipt(good.token, key);
+      assert.equal(ownReceipt.statusCode, 200);
+      assert.deepEqual(ownReceipt.json(), successful.json());
+      assert.equal(ownReceipt.headers["cache-control"], "no-store");
+
+      // This independently verified Customer belongs to the SAME tenant.
+      // Knowing the winning raw key must not distinguish its receipt from
+      // an unknown key or expose any booking ID, time or price.
+      const foreignReceipt = await getReceipt(last.token, key);
+      const unknownReceipt = await getReceipt(last.token, randomUUID());
+      for (const response of [foreignReceipt, unknownReceipt]) {
+        assert.equal(response.statusCode, 404);
+        assert.deepEqual(response.json(), { error: "receipt-unavailable" });
+        assert.equal(response.headers["cache-control"], "no-store");
+        assert.equal(response.headers.vary, "Authorization, Idempotency-Key");
+      }
+      assert.deepEqual(foreignReceipt.json(), unknownReceipt.json());
+      assert.deepEqual(await durable(pool, tenant), one);
+
       const revoked = await atBarrier(
         pool,
         staffBarrier,
@@ -422,7 +451,19 @@ test(
       const recover = await request(good.token, start, key);
       assert.equal(recover.statusCode, 201);
       assert.deepEqual(recover.json(), successful.json());
+      const recoveredRead = await getReceipt(good.token, key);
+      assert.equal(recoveredRead.statusCode, 200);
+      assert.deepEqual(recoveredRead.json(), successful.json());
+      const foreignAfterGrant = await getReceipt(last.token, key);
+      assert.equal(foreignAfterGrant.statusCode, 404);
+      assert.deepEqual(foreignAfterGrant.json(), {
+        error: "receipt-unavailable",
+      });
       assert.equal(await sessions.revokeBearerToken(good.token), true);
+      const revokedRead = await getReceipt(good.token, key);
+      assert.ok([401, 403].includes(revokedRead.statusCode));
+      assert.deepEqual(Object.keys(revokedRead.json()), ["error"]);
+      assert.equal(revokedRead.headers["cache-control"], "no-store");
       assert.ok(
         [401, 403].includes((await request(good.token, start, key)).statusCode),
       );
