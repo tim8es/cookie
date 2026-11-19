@@ -22,6 +22,9 @@ import { runMigrations } from "../../../dist/packages/platform-db/src/migrations
 import { provisionOwnerWorkspace } from "../../../dist/packages/platform-identity/src/provision-owner-workspace.js";
 import { createTelegramMiniAppProofVerifier } from "../../../dist/packages/platform-identity/src/telegram-init-data.js";
 import { linkVerifiedTelegramOwner } from "../../../dist/packages/platform-identity/src/link-telegram-owner.js";
+import { runSqlTransaction } from "../../../dist/packages/platform-db/src/transaction.js";
+import { prepareLegacyTelegramMigration } from "../../../dist/packages/platform-identity/src/legacy-telegram-migration-preparation.js";
+import { activateLegacyTelegramMigration } from "../../../dist/packages/platform-identity/src/legacy-telegram-migration-activation.js";
 
 function isolatedDatabase() {
   if (process.env.CI !== "true" || !process.env.TEST_DATABASE_URL) {
@@ -1205,6 +1208,69 @@ async function main() {
 
     assert.deepEqual(errors, [], "Unexpected browser runtime errors during booking");
     assert.deepEqual(external, [], "Unexpected external requests during booking");
+    // Migrate the same synthetic customer only after actual UI booking,
+    // cancellation and receipt recovery. No runtime migration route exists.
+    const legacyCustomer = await pool.query(
+      `SELECT c.customer_id::text,c.identity_id::text,c.telegram_link_id::text
+       FROM cookie_customers.staging_customer_identities c WHERE c.tenant_id=$1::uuid`,
+      [owner.tenantId],
+    );
+    assert.equal(legacyCustomer.rowCount,1);
+    const original = legacyCustomer.rows[0];
+    const ownedBookings = () => pool.query(
+      "SELECT id::text,customer_id::text,status FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND customer_id=$2::uuid ORDER BY id",
+      [owner.tenantId,original.customer_id],
+    );
+    const beforeMigration = await ownedBookings();
+    assert.equal(beforeMigration.rowCount,2);
+    const migrationVerifier = createTelegramMiniAppProofVerifier({botToken,maxAgeSeconds:300});
+    const migrationTransaction = (work) => runSqlTransaction(pool,work);
+    const migrationRequest = randomUUID();
+    assert.equal(await prepareLegacyTelegramMigration(migrationTransaction,migrationVerifier,userHashSecret,{
+      requestId:migrationRequest,tenantId:owner.tenantId,
+      identityId:original.identity_id,legacyLinkId:original.telegram_link_id,
+      rawInitData:signedProof(botToken,customerUserId),consentConfirmed:true,
+    }),"prepared");
+    assert.equal(await activateLegacyTelegramMigration(migrationTransaction,migrationVerifier,userHashSecret,{
+      requestId:migrationRequest,rawInitData:signedProof(botToken,customerUserId),consentConfirmed:true,
+    }),"activated");
+    // Re-enter with a new signed proof after activation revoked the old bearer.
+    const beforeMigratedLogin = responses.length;
+    script=await loadAndEnterTelegram(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script,"customer");
+    await requireDom(cdp,"migrated client has existing organization",
+      "document.querySelector('[aria-label=\"Клиентские организации\"] button') && !document.querySelector('[aria-label=\"Клиентская витрина staging\"]')");
+    await evaluate(cdp,"document.querySelector('[aria-label=\"Клиентские организации\"] button').click()");
+    await requireDom(cdp,"migrated client sees both original bookings",
+      "document.querySelector("+JSON.stringify(historyPanel)+")?.innerText.includes("+JSON.stringify(beforeRecovery.rows[0].id)+") && document.querySelector("+JSON.stringify(historyPanel)+")?.innerText.includes("+JSON.stringify(realBooking.rows[0].id)+")");
+    assert.ok(responses.slice(beforeMigratedLogin).some(r=>r.path==="/v1/auth/browser-session"&&r.status===204));
+    const migrationReload = responses.length;
+    await cdp.send("Page.reload",{ignoreCache:true});
+    await poll("migrated browser cookie restored",()=>responses.slice(migrationReload).some(r=>r.path==="/v1/auth/browser-session"&&r.status===200));
+    await requireDom(cdp,"migrated booking history restored without proof replay",historyContains+" && document.querySelector("+JSON.stringify(historyPanel)+")?.innerText.includes("+JSON.stringify(beforeRecovery.rows[0].id)+")");
+    assert.equal(responses.slice(migrationReload).filter(r=>r.path==="/v1/auth/telegram/identity").length,0);
+    assert.equal(responses.slice(beforeMigratedLogin).filter(r=>r.path.endsWith("/staging-customer/enroll")).length,0);
+    assert.deepEqual((await pool.query(
+      "SELECT customer_id::text,identity_id::text,telegram_link_id::text FROM cookie_customers.staging_customer_identities WHERE tenant_id=$1::uuid",
+      [owner.tenantId],
+    )).rows,legacyCustomer.rows);
+    assert.deepEqual((await ownedBookings()).rows,beforeMigration.rows);
+    assert.deepEqual((await recoveryProjection()).rows,beforeProjection.rows);
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
+    // Original trusted-link revocation must invalidate the migrated cookie,
+    // close the private UI and leave booking data intact.
+    assert.equal((await pool.query(
+      "UPDATE cookie_identity.telegram_identity_links SET revoked_at=clock_timestamp() WHERE tenant_id=$1::uuid AND id=$2::uuid AND revoked_at IS NULL",
+      [owner.tenantId,original.telegram_link_id],
+    )).rowCount,1);
+    const beforeMigrationRevoke=responses.length;
+    await cdp.send("Page.reload",{ignoreCache:true});
+    await poll("revoked migration cookie rejected",()=>responses.slice(beforeMigrationRevoke).some(r=>r.path==="/v1/auth/browser-session"&&r.status===401));
+    await requireDom(cdp,"revoked migrated session hides history",
+      "!document.querySelector("+JSON.stringify(historyPanel)+") && !document.querySelector("+JSON.stringify(panel)+") && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Войти через Telegram')");
+    assert.deepEqual((await ownedBookings()).rows,beforeMigration.rows);
+    assert.deepEqual(errors, [], "Unexpected browser runtime errors after migration");
+    assert.deepEqual(external, [], "Unexpected external requests after migration");
+    console.log("PASS synthetic migrated customer retains original Identity, booking history, cookie restoration and source revocation");
     const demoApiRequests = [];
     cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
       if (request.url.startsWith(origin + "v1/")) demoApiRequests.push(new URL(request.url).pathname);
