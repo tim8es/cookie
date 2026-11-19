@@ -210,7 +210,8 @@ export function createCandidateRefreshBrowser(
     const storage = win.localStorage;
     storage.getItem(KEY);
     return new CandidateRefreshBrowser({
-      exclusive: (work) => locks.request(LOCK, { mode: "exclusive" }, work),
+      exclusive: async (work) =>
+        await locks.request(LOCK, { mode: "exclusive" }, work),
       storage,
       fetcher: win.fetch.bind(win),
       nowSeconds: () => Math.floor(Date.now() / 1000),
