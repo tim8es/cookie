@@ -95,3 +95,26 @@ order, and strict replay can force reauthentication after response loss.
 Cross-tab single-flight, lost-response behavior, stored digest cleanup and
 real HTTPS WebView acceptance must be resolved before runtime activation.
 Integrate with current-main auth stack #368 only after separate review.
+
+## Browser coordination candidate (not mounted)
+
+HTTP rotation and logout now require a matching non-authorizing random family
+UUID even when restoring without a previous access bearer. The cookie remains
+the actual refresh authority; a family UUID alone grants nothing. A stale
+or mismatched cookie cannot be adopted after a tab switch or late response.
+The test-only browser controller serializes login, rotate and logout with one
+origin-wide exclusive Web Lock, rechecks the family after acquiring it and
+stores only a nonsecret family/fence value (not a token, identity or role) in
+localStorage. An interrupted operation leaves a durable pending/blocked fence;
+rotation is never blindly retried and other tabs do not silently adopt another
+family. Fresh explicit login is needed to clear the fence. Lack of Web Locks
+or accessible storage disables this candidate; no unsafe fallback.
+
+The proposed nonsecret storage policy, strict replay recovery, explicit
+account-switch/logout behavior and renewal lead time require review. The
+controller is not wired into the application or a timer. Unit tests use
+shared lock/storage doubles and PG HTTP tests reject a wrong family handle.
+Real multi-tab Chromium, lost-response and WebView acceptance remain open;
+UI must check current authority on focus/storage events and before protected
+reads. This does not revoke an old family merely by signing into another;
+that policy and server-side cleanup remain separate.

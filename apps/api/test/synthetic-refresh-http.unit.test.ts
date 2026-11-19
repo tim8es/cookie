@@ -28,6 +28,7 @@ test("synthetic refresh HTTP rejects foreign origin, malformed credentials and o
   };
   const cookie = "__Host-kuki-refresh-candidate=ir_" + "A".repeat(43);
   const bearer = "Bearer is_" + "B".repeat(43);
+  const family = "11111111-1111-4111-8111-111111111111";
   const cross = await app.inject({
     method: "POST",
     url: path + "/login",
@@ -42,7 +43,9 @@ test("synthetic refresh HTTP rejects foreign origin, malformed credentials and o
       headers: { authorization: bearer },
       payload: { initData: "synthetic" },
     },
-    { url: "/rotate?ttl=99999", headers: { cookie } },
+    { url: "/rotate", headers: { cookie } },
+    { url: "/rotate", headers: { cookie, "x-kuki-family": "invalid" } },
+    { url: "/rotate?ttl=99999", headers: { cookie, "x-kuki-family": family } },
     { url: "/rotate", headers: { cookie: cookie + "; " + cookie } },
     { url: "/rotate", headers: { cookie, authorization: "Bearer invalid" } },
     { url: "/rotate", payload: { refreshToken: "ir_" + "A".repeat(43) } },
@@ -63,7 +66,12 @@ test("synthetic refresh HTTP rejects foreign origin, malformed credentials and o
   const uncertain = await app.inject({
     method: "POST",
     url: path + "/rotate",
-    headers: { ...browser, cookie, authorization: bearer },
+    headers: {
+      ...browser,
+      cookie,
+      authorization: bearer,
+      "x-kuki-family": family,
+    },
   });
   assert.equal(uncertain.statusCode, 503);
   assert.deepEqual(uncertain.json(), { error: "BACKEND_UNAVAILABLE" });

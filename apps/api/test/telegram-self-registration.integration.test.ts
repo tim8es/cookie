@@ -614,16 +614,29 @@ test(
         assert.equal(login.headers["cache-control"], "no-store");
         assert.equal("refreshToken" in login.json(), false);
         const firstAccess = login.json().accessToken as string;
+        const familyId = login.json().familyId as string;
+        const familyBrowser = { ...browser, "x-kuki-family": familyId };
         const cookie = firstCookie.split(";", 1)[0]!;
         assert.equal(
           await candidateSessions.resolve(firstAccess),
           preparation.identityId,
         );
-        const mismatch = await refreshHttp.inject({
+        const wrongFamily = await refreshHttp.inject({
           method: "POST",
           url: path + "/rotate",
           headers: {
             ...browser,
+            cookie,
+            "x-kuki-family": refreshLogin.familyId,
+          },
+        });
+        assert.equal(wrongFamily.statusCode, 401);
+        assert.equal(wrongFamily.headers["set-cookie"], undefined);
+        const mismatch = await refreshHttp.inject({
+          method: "POST",
+          url: path + "/rotate",
+          headers: {
+            ...familyBrowser,
             cookie,
             authorization: "Bearer " + refreshLogin.accessToken,
           },
@@ -633,9 +646,10 @@ test(
         const rotated = await refreshHttp.inject({
           method: "POST",
           url: path + "/rotate",
-          headers: { ...browser, cookie },
+          headers: { ...familyBrowser, cookie },
         });
         assert.equal(rotated.statusCode, 200);
+        assert.equal(rotated.json().familyId, familyId);
         const nextCookie = String(rotated.headers["set-cookie"]).split(
           ";",
           1,
@@ -647,7 +661,7 @@ test(
           method: "POST",
           url: path + "/logout",
           headers: {
-            ...browser,
+            ...familyBrowser,
             cookie: nextCookie,
             authorization: "Bearer " + refreshLogin.accessToken,
           },
@@ -662,7 +676,7 @@ test(
           method: "POST",
           url: path + "/logout",
           headers: {
-            ...browser,
+            ...familyBrowser,
             cookie: nextCookie,
             authorization: "Bearer " + firstAccess,
           },
@@ -678,7 +692,7 @@ test(
         const denied = await refreshHttp.inject({
           method: "POST",
           url: path + "/rotate",
-          headers: { ...browser, cookie: nextCookie },
+          headers: { ...familyBrowser, cookie: nextCookie },
         });
         assert.equal(denied.statusCode, 401);
         assert.equal(denied.headers["set-cookie"], undefined);
