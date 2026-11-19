@@ -1,4 +1,4 @@
-# kuki — Rhythm UI Kit, D6 candidate 0.1
+# kuki — Rhythm UI Kit, D6 candidate 0.2
 
 Status: PROPOSED, not Design Freeze. Refs #338 and #223. Visual reference:
 RC7.1 interactive concept (owner review), RC6 component contracts, RC7.1 catalog
@@ -24,6 +24,10 @@ owns opt-in styling; its CSS is separate from the legacy cascade.
 | EntityEditor | Shared form and actions; parent supplies fields, save and cancel. |
 | BookingTicket | Display-only lines and price label/qualification; no pricing or reservation logic. |
 | EmptyState | Empty state and optional caller-owned action. |
+| ActionButton | Shared Button composition: secondary, primary, danger; native type and disabled/busy handling. |
+| CheckGroup | Controlled IDs; native labelled checkboxes, no assignment rules. |
+| Notice | Feedback with text status/alert and optional recovery action snippet. |
+| ImageAssetField | Local input and parent-provided preview/error/busy; caller handles validation, URL lifetime and asset upload. |
 
 Component catalog is a small local-only Svelte app with synthetic data,
 not Storybook yet. Uses actual components, no HTML-prototype runtime, no
@@ -44,7 +48,7 @@ Catalog artifacts go to apps/web/.tmp/rhythm-ui-kit-dist, not runtime dist.
 Do not deploy the catalog. The existing F1 web gate now builds the isolated catalog as well as the application; no second CI workflow. Existing F1 checks remain required. Run catalog
 build and manual browser review at 320, 375, 768 and 1280 px; inspect all
 five palette scopes, keyboard navigation, pointer states and form labels.
-The token tests are automatic via the existing web test command. They
+The token tests are automatic via the existing web test command. The compiled catalog has a separate Chromium smoke using the existing CDP harness: 5 scopes × 4 widths × 5 sections, selection, save/busy, file preview/remove, errors, basic keyboard navigation, canvas inheritance and no external requests. It runs in the existing browser gate; evidence is uploaded separately. Run after building: node apps/web/scripts/rhythm-catalog-smoke.mjs. They
 verify declared palette pairs and catalog canvas inheritance, not pixel
 contrast, screen readers, or visual regression.
 
@@ -60,7 +64,7 @@ contrast, screen readers, or visual regression.
   contract and test focus, colors and clipping before adopting.
 - Refactor actual screens by bounded vertical slices after review.
   Do not insert old prototype CSS or rewrite runtime authentication.
-- Additional variants, image asset field, check group, navigation, shared
+- Additional variants, navigation, shared
   salon/booking shell, schedule and calendar patterns, dialog/sheet
   composition and Storybook/visual QA gates remain open.
 
