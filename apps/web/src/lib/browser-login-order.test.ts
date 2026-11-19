@@ -45,7 +45,10 @@ test("browser login holds one origin lock through the complete operation", async
   assert.deepEqual(events, ["first provider"]);
   release();
   await Promise.all([first, second]);
-  assert.deepEqual(requests, ["kuki-browser-login-v1", "kuki-browser-login-v1"]);
+  assert.deepEqual(requests, [
+    "kuki-browser-login-v1",
+    "kuki-browser-login-v1",
+  ]);
   assert.deepEqual(events, [
     "first provider",
     "first readback",
