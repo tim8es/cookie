@@ -172,31 +172,33 @@ test(
       assert.match(firstScope.json().scope, /^[A-Za-z0-9_-]{43}$/);
       assert.equal(firstScope.headers["cache-control"], "no-store");
       assert.equal(firstScope.headers.vary, "Authorization");
+      const sameScope = await app.inject({
+        method: "GET",
+        url: scopeUrl,
+        headers,
+      });
       assert.deepEqual(
-        (await app.inject({ method: "GET", url: scopeUrl, headers })).json(),
+        sameScope.json(),
         firstScope.json(),
         "same authenticated actor retains scope across requests",
       );
-      assert.equal(
-        (await app.inject({ method: "GET", url: scopeUrl })).statusCode,
-        401,
-      );
-      assert.equal(
-        (
-          await app.inject({
-            method: "GET",
-            url: scopeUrl + "?actor=other",
-            headers,
-          })
-        ).statusCode,
-        400,
-      );
-      assert.equal(
-        (
-          await disabled.inject({ method: "GET", url: scopeUrl, headers })
-        ).statusCode,
-        404,
-      );
+      const noBearerScope = await app.inject({
+        method: "GET",
+        url: scopeUrl,
+      });
+      assert.equal(noBearerScope.statusCode, 401);
+      const invalidScopeQuery = await app.inject({
+        method: "GET",
+        url: scopeUrl + "?actor=other",
+        headers,
+      });
+      assert.equal(invalidScopeQuery.statusCode, 400);
+      const disabledScope = await disabled.inject({
+        method: "GET",
+        url: scopeUrl,
+        headers,
+      });
+      assert.equal(disabledScope.statusCode, 404);
       const key = randomUUID();
       const recover = (receiptKey: string = key, receiptHeaders = headers) =>
         app.inject({
@@ -439,20 +441,20 @@ test(
       );
       assert.equal((await submit()).statusCode, 403);
       assert.equal((await recover()).statusCode, 403);
-      assert.equal(
-        (
-          await app.inject({ method: "GET", url: scopeUrl, headers })
-        ).statusCode,
-        403,
-      );
+      const revokedScope = await app.inject({
+        method: "GET",
+        url: scopeUrl,
+        headers,
+      });
+      assert.equal(revokedScope.statusCode, 403);
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal((await recover()).statusCode, 401);
-      assert.equal(
-        (
-          await app.inject({ method: "GET", url: scopeUrl, headers })
-        ).statusCode,
-        401,
-      );
+      const loggedOutScope = await app.inject({
+        method: "GET",
+        url: scopeUrl,
+        headers,
+      });
+      assert.equal(loggedOutScope.statusCode, 401);
       assert.equal(
         (await app.inject({ method: "GET", url: path, headers })).statusCode,
         401,
