@@ -97,7 +97,7 @@ export function createApp(
     readonly databaseReadiness?: () => Promise<void>;
     readonly appearanceDraftRoutes?: Pick<
       RealAppearanceRouteDependencies,
-      "pool" | "verifier"
+      "pool" | "verifier" | "stagingPublicationEnabled"
     >;
     readonly sessionRoutes?: ProtectedSessionDependencies;
     readonly liveWorkspaceReads?: LiveWorkspaceReadDependencies;
@@ -230,7 +230,9 @@ export function createApp(
   if (options.appearanceDraftRoutes)
     registerRealAppearanceRoutes(app, {
       ...options.appearanceDraftRoutes,
-      draftOnly: true,
+      // The ordinary compiled runtime remains draft-only unless an independent
+      // controlled-staging Appearance flag is explicitly enabled.
+      draftOnly: options.appearanceDraftRoutes.stagingPublicationEnabled !== true,
     });
 
   if (options.catalogRoutes)
