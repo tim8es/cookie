@@ -238,7 +238,7 @@
         <h2>Общие показатели и модули</h2>
         <MetricStrip
           items={metrics}
-          storageKey="kuki.rhythm.catalog.metricstrip"
+          storageKey={"kuki.rhythm.catalog.metricstrip." + theme}
         />
         <div class="rhythm-panel rhythm-stack">
           <h3>PopoverMenu · филиал</h3>

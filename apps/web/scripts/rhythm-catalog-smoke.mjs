@@ -203,10 +203,28 @@ async function main() {
             await requireDom(cdp, "metrics hidden", "document.querySelector('[data-component=MetricStrip]')?.dataset.expanded === 'false'");
             await click(cdp, "[data-component=MetricStrip] .rhythm-metrics-toggle");
             await requireDom(cdp, "metrics restored", "document.querySelector('[data-component=MetricStrip]')?.dataset.expanded === 'true'");
+            // Change the key on the *same mounted instance*; the previous
+            // organization's preference must not bleed into the new scope.
+            const alternateTheme = theme === "workspace" ? "studio" : "workspace";
+            await evaluate(cdp, "localStorage.setItem(" + JSON.stringify("kuki.rhythm.catalog.metricstrip." + alternateTheme) + ", 'hidden')");
+            await fill(cdp, "#theme", alternateTheme, "change");
+            await requireDom(cdp, "metrics follow newly scoped hidden preference",
+              "document.querySelector('[data-component=MetricStrip]')?.dataset.expanded === 'false' && document.querySelector('.rhythm-scope')?.dataset.rhythmTheme === " + JSON.stringify(alternateTheme));
+            await fill(cdp, "#theme", theme, "change");
+            await requireDom(cdp, "metrics restore original scope preference",
+              "document.querySelector('[data-component=MetricStrip]')?.dataset.expanded === 'true' && document.querySelector('.rhythm-scope')?.dataset.rhythmTheme === " + JSON.stringify(theme));
+            await evaluate(cdp, "localStorage.removeItem(" + JSON.stringify("kuki.rhythm.catalog.metricstrip." + alternateTheme) + ")");
             await click(cdp, '[data-component=PopoverMenu] summary');
             await requireDom(cdp, "popover open", "document.querySelector('[data-component=PopoverMenu]')?.open === true");
             await click(cdp, '[data-component=PopoverMenu] button:nth-child(2)');
-            await requireDom(cdp, "popover selected", "document.querySelector('[data-component=PopoverMenu] summary')?.textContent.includes('Центр')");
+            await requireDom(cdp, "popover selected and keyboard focus restored",
+              "document.querySelector('[data-component=PopoverMenu] summary')?.textContent.includes('Центр') && !document.querySelector('[data-component=PopoverMenu]')?.open && document.activeElement === document.querySelector('[data-component=PopoverMenu] summary')");
+            await click(cdp, '[data-component=PopoverMenu] summary');
+            await requireDom(cdp, "popover reopened with keyboard focus", "document.querySelector('[data-component=PopoverMenu]')?.open === true");
+            await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+            await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+            await requireDom(cdp, "popover Escape closes and restores summary focus",
+              "document.querySelector('[data-component=PopoverMenu]')?.open === false && document.activeElement === document.querySelector('[data-component=PopoverMenu] summary')");
             await click(cdp, '[data-component=ModuleSettings] button[aria-label=Клиенты]');
             await requireDom(cdp, "module switched", "document.querySelector('[data-component=ModuleSettings] button[aria-label=Клиенты]')?.getAttribute('aria-checked') === 'false'");
           }

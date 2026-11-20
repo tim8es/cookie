@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import type { MetricItem } from "./contracts.js";
 
   let {
@@ -17,14 +16,21 @@
   let expanded = $state(initiallyExpanded);
   const targetId = $props.id();
 
-  onMount(() => {
+  // A mounted widget may be reused for another role, organization or screen.
+  // Always hydrate the preference for the *current* scope, not the last one.
+  // Effects run only in the browser, so SSR never reads localStorage.
+  $effect(() => {
+    const key = storageKey;
+    const fallback = initiallyExpanded;
+    let next = fallback;
     try {
-      const cached = localStorage.getItem(storageKey);
-      if (cached === "hidden") expanded = false;
-      if (cached === "shown") expanded = true;
+      const cached = localStorage.getItem(key);
+      if (cached === "hidden") next = false;
+      if (cached === "shown") next = true;
     } catch {
       // Private browsing or blocked storage: the control still works.
     }
+    expanded = next;
   });
 
   function toggle() {
