@@ -6,6 +6,10 @@ import {
   readRealStaff,
   retainStaffCreateKey,
   recoverRealStaffCreate,
+  readRealStaffRecoveryScope,
+  readStaffPendingMarker,
+  writeStaffPendingMarker,
+  clearStaffPendingMarker,
   StaffApiFailure,
 } from "./staff-api";
 import type { VerifiedOwnerSession } from "./owner-auth";
@@ -351,4 +355,82 @@ test("staff receipt absence, denial and corruption do not resolve the attempt", 
     null,
   );
   assert.equal(calls.length, 0);
+});
+
+test("actor-scoped recovery namespace only accepts exact server shape", async () => {
+  const scope = "B".repeat(43);
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  assert.equal(
+    await readRealStaffRecoveryScope(
+      session,
+      mock(Response.json({ scope }), calls),
+    ),
+    scope,
+  );
+  assert.equal(
+    calls[0]?.url,
+    "/v1/organizations/" + TENANT + "/staff/recovery-scope",
+  );
+  assert.equal(calls[0]?.init.cache, "no-store");
+  assert.equal(calls[0]?.init.redirect, "error");
+  assert.equal(
+    new Headers(calls[0]?.init.headers).get("authorization"),
+    "Bearer " + session.accessToken,
+  );
+  for (const body of [
+    null,
+    {},
+    { scope: "short" },
+    { scope, identityId: TENANT },
+  ]) {
+    assert.equal(
+      await readRealStaffRecoveryScope(session, mock(Response.json(body), [])),
+      null,
+    );
+  }
+  for (const status of [201, 400, 401, 403, 404, 503]) {
+    assert.equal(
+      await readRealStaffRecoveryScope(
+        session,
+        mock(Response.json({ scope }, { status }), []),
+      ),
+      null,
+    );
+  }
+});
+
+test("tab marker stores only UUID under an actor-scoped namespace", () => {
+  const ownerScope = "A".repeat(43);
+  const otherScope = "B".repeat(43);
+  const data = new Map<string, string>();
+  const storage = {
+    getItem(key: string) { return data.get(key) ?? null; },
+    setItem(key: string, value: string) { data.set(key, value); },
+    removeItem(key: string) { data.delete(key); },
+  };
+  assert.equal(writeStaffPendingMarker(storage, ownerScope, KEY), true);
+  assert.equal(data.size, 1);
+  assert.ok([...data.keys()][0]?.endsWith(ownerScope));
+  assert.equal([...data.values()][0], KEY);
+  assert.equal(readStaffPendingMarker(storage, otherScope), null);
+  assert.equal(readStaffPendingMarker(storage, ownerScope), KEY);
+  assert.equal(writeStaffPendingMarker(storage, ownerScope, "invalid"), false);
+  assert.equal(writeStaffPendingMarker(storage, "invalid", KEY), false);
+  data.set([...data.keys()][0]!, JSON.stringify({ key: KEY, name: "PII" }));
+  assert.equal(readStaffPendingMarker(storage, ownerScope), null);
+  data.set([...data.keys()][0]!, KEY);
+  clearStaffPendingMarker(storage, ownerScope);
+  assert.equal(data.size, 0);
+  assert.equal(readStaffPendingMarker({
+    ...storage,
+    getItem() { throw new Error("disabled"); },
+  }, ownerScope), null);
+  assert.equal(writeStaffPendingMarker({
+    ...storage,
+    setItem() { throw new Error("disabled"); },
+  }, ownerScope, KEY), false);
+  clearStaffPendingMarker({
+    ...storage,
+    removeItem() { throw new Error("disabled"); },
+  }, ownerScope);
 });
