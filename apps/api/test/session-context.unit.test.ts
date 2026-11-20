@@ -238,7 +238,7 @@ test("Cookie-format verifier must bind server-owned digest and issuer/audience",
   }
 });
 
-test("global Identity bearer cannot select a foreign organization route", async (t) => {
+test("global Identity bearer cannot select a foreign tenant", async (t) => {
   const token = "is_" + "C".repeat(43);
   const authority = {
     tokenSha256: createHash("sha256").update(token).digest("hex"),
@@ -276,7 +276,7 @@ test("global Identity bearer cannot select a foreign organization route", async 
   assert.equal(response.statusCode, 403);
   assert.deepEqual(response.json(), { error: "forbidden" });
   assert.equal(response.headers["cache-control"], "no-store");
-  assert.equal(policyChecks, 0, "foreign tenant cannot reach policy evaluation");
+  assert.equal(policyChecks, 0, "foreign tenant cannot reach policy");
 });
 
 test("global Identity bearer keeps its authority type while tenant membership stays protected", async () => {
