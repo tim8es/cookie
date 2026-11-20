@@ -182,11 +182,19 @@ test(
         401,
       );
       assert.equal(
-        (await app.inject({ method: "GET", url: scopeUrl + "?actor=other", headers })).statusCode,
+        (
+          await app.inject({
+            method: "GET",
+            url: scopeUrl + "?actor=other",
+            headers,
+          })
+        ).statusCode,
         400,
       );
       assert.equal(
-        (await disabled.inject({ method: "GET", url: scopeUrl, headers })).statusCode,
+        (
+          await disabled.inject({ method: "GET", url: scopeUrl, headers })
+        ).statusCode,
         404,
       );
       const key = randomUUID();
@@ -432,13 +440,17 @@ test(
       assert.equal((await submit()).statusCode, 403);
       assert.equal((await recover()).statusCode, 403);
       assert.equal(
-        (await app.inject({ method: "GET", url: scopeUrl, headers })).statusCode,
+        (
+          await app.inject({ method: "GET", url: scopeUrl, headers })
+        ).statusCode,
         403,
       );
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal((await recover()).statusCode, 401);
       assert.equal(
-        (await app.inject({ method: "GET", url: scopeUrl, headers })).statusCode,
+        (
+          await app.inject({ method: "GET", url: scopeUrl, headers })
+        ).statusCode,
         401,
       );
       assert.equal(
