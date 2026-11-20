@@ -69,7 +69,7 @@ test(
     const app = createApp(pool, {
       telegramAuthRoutes: { sessions },
       catalogRoutes: { pool, verifier: sessions },
-      staffRoutes: { pool, verifier: sessions },
+      staffRoutes: { pool, verifier: sessions, recoveryScopeSecret: SECRET },
     });
     const disabled = createApp(pool);
     try {
@@ -162,6 +162,33 @@ test(
         locationId: owner.locationId,
         serviceId,
       };
+      const scopeUrl = path + "/recovery-scope";
+      const firstScope = await app.inject({
+        method: "GET",
+        url: scopeUrl,
+        headers,
+      });
+      assert.equal(firstScope.statusCode, 200);
+      assert.match(firstScope.json().scope, /^[A-Za-z0-9_-]{43}$/);
+      assert.equal(firstScope.headers["cache-control"], "no-store");
+      assert.equal(firstScope.headers.vary, "Authorization");
+      assert.deepEqual(
+        (await app.inject({ method: "GET", url: scopeUrl, headers })).json(),
+        firstScope.json(),
+        "same authenticated actor retains scope across requests",
+      );
+      assert.equal(
+        (await app.inject({ method: "GET", url: scopeUrl })).statusCode,
+        401,
+      );
+      assert.equal(
+        (await app.inject({ method: "GET", url: scopeUrl + "?actor=other", headers })).statusCode,
+        400,
+      );
+      assert.equal(
+        (await disabled.inject({ method: "GET", url: scopeUrl, headers })).statusCode,
+        404,
+      );
       const key = randomUUID();
       const recover = (receiptKey: string = key, receiptHeaders = headers) =>
         app.inject({
@@ -295,6 +322,17 @@ test(
           .statusCode,
         200,
       );
+      const otherScope = await app.inject({
+        method: "GET",
+        url: scopeUrl,
+        headers: otherHeaders,
+      });
+      assert.equal(otherScope.statusCode, 200);
+      assert.notEqual(
+        otherScope.json().scope,
+        firstScope.json().scope,
+        "same-tenant second actor never shares the browser marker namespace",
+      );
       const isolated = await recover(key, otherHeaders);
       assert.equal(isolated.statusCode, 404);
       assert.deepEqual(isolated.json(), { error: "receipt-unavailable" });
@@ -393,8 +431,16 @@ test(
       );
       assert.equal((await submit()).statusCode, 403);
       assert.equal((await recover()).statusCode, 403);
+      assert.equal(
+        (await app.inject({ method: "GET", url: scopeUrl, headers })).statusCode,
+        403,
+      );
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal((await recover()).statusCode, 401);
+      assert.equal(
+        (await app.inject({ method: "GET", url: scopeUrl, headers })).statusCode,
+        401,
+      );
       assert.equal(
         (await app.inject({ method: "GET", url: path, headers })).statusCode,
         401,
