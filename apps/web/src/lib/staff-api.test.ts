@@ -478,11 +478,21 @@ test("unmatched actor or rotated server namespace cannot silently create", () =>
   const currentScope = "B".repeat(43);
   const data = new Map<string, string>();
   const storage = {
-    get length() { return data.size; },
-    key(index: number) { return [...data.keys()][index] ?? null; },
-    getItem(key: string) { return data.get(key) ?? null; },
-    setItem(key: string, value: string) { data.set(key, value); },
-    removeItem(key: string) { data.delete(key); },
+    get length() {
+      return data.size;
+    },
+    key(index: number) {
+      return [...data.keys()][index] ?? null;
+    },
+    getItem(key: string) {
+      return data.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      data.set(key, value);
+    },
+    removeItem(key: string) {
+      data.delete(key);
+    },
   };
   assert.equal(hasUnmatchedStaffPendingMarkers(storage, currentScope), false);
   assert.equal(writeStaffPendingMarker(storage, priorScope, KEY), true);
@@ -493,8 +503,16 @@ test("unmatched actor or rotated server namespace cannot silently create", () =>
   assert.equal(hasUnmatchedStaffPendingMarkers(storage, priorScope), true);
   clearStaffPendingMarker(storage, priorScope);
   assert.equal(hasUnmatchedStaffPendingMarkers(storage, currentScope), false);
-  assert.equal(hasUnmatchedStaffPendingMarkers({
-    ...storage,
-    get length() { throw new Error("storage disabled"); },
-  }, currentScope), true);
+  assert.equal(
+    hasUnmatchedStaffPendingMarkers(
+      {
+        ...storage,
+        get length() {
+          throw new Error("storage disabled");
+        },
+      },
+      currentScope,
+    ),
+    true,
+  );
 });
