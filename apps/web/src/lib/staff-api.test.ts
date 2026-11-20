@@ -413,9 +413,15 @@ test("tab marker stores only UUID under an actor-scoped namespace", () => {
   const otherScope = "B".repeat(43);
   const data = new Map<string, string>();
   const storage = {
-    getItem(key: string) { return data.get(key) ?? null; },
-    setItem(key: string, value: string) { data.set(key, value); },
-    removeItem(key: string) { data.delete(key); },
+    getItem(key: string) {
+      return data.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      data.set(key, value);
+    },
+    removeItem(key: string) {
+      data.delete(key);
+    },
   };
   assert.equal(writeStaffPendingMarker(storage, ownerScope, KEY), true);
   assert.equal(data.size, 1);
@@ -430,16 +436,38 @@ test("tab marker stores only UUID under an actor-scoped namespace", () => {
   data.set([...data.keys()][0]!, KEY);
   clearStaffPendingMarker(storage, ownerScope);
   assert.equal(data.size, 0);
-  assert.equal(readStaffPendingMarker({
-    ...storage,
-    getItem() { throw new Error("disabled"); },
-  }, ownerScope), null);
-  assert.equal(writeStaffPendingMarker({
-    ...storage,
-    setItem() { throw new Error("disabled"); },
-  }, ownerScope, KEY), false);
-  clearStaffPendingMarker({
-    ...storage,
-    removeItem() { throw new Error("disabled"); },
-  }, ownerScope);
+  assert.equal(
+    readStaffPendingMarker(
+      {
+        ...storage,
+        getItem() {
+          throw new Error("disabled");
+        },
+      },
+      ownerScope,
+    ),
+    null,
+  );
+  assert.equal(
+    writeStaffPendingMarker(
+      {
+        ...storage,
+        setItem() {
+          throw new Error("disabled");
+        },
+      },
+      ownerScope,
+      KEY,
+    ),
+    false,
+  );
+  clearStaffPendingMarker(
+    {
+      ...storage,
+      removeItem() {
+        throw new Error("disabled");
+      },
+    },
+    ownerScope,
+  );
 });
