@@ -384,6 +384,7 @@ async function main() {
       COOKIE_TELEGRAM_OIDC_REDIRECT_URI: "https://cookie-e2e.invalid/auth/telegram/callback",
       COOKIE_TELEGRAM_OIDC_COOKIE_KEY: randomBytes(32).toString("hex"),
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
+      COOKIE_STAFF_RECOVERY_SCOPE_SECRET_HEX: randomBytes(32).toString("hex"),
       COOKIE_TELEGRAM_USER_HMAC_SECRET: userHashSecret.toString("hex"),
       COOKIE_TELEGRAM_BOT_TOKEN: botToken,
       COOKIE_PUBLIC_ORIGIN: "https://cookie-e2e.invalid",
@@ -809,9 +810,20 @@ async function main() {
       "SELECT count(*)::int AS count FROM cookie_staff.staff_create_receipts WHERE tenant_id=$1::uuid",
       [owner.tenantId],
     )).rows[0].count,1);
+    assert.equal(await evaluate(cdp, "sessionStorage.length"), 1,
+      "only the scoped idempotency UUID marker survives a lost response");
+    const staffReloadStart = responses.length;
+    await cdp.send("Page.reload", { ignoreCache: true });
+    await poll("Staff owner session restored after lost response", () =>
+      responses.slice(staffReloadStart).some(r=>r.path==="/v1/auth/browser-session"&&r.status===200));
+    await requireDom(cdp, "Staff workspace route restored after reload", "document.querySelector('.real-owner-nav')");
+    await button(cdp, "Мастера");
+    await requireDom(cdp, "same actor pending Staff marker restored without PII or bearer",
+      "document.body.innerText.includes('Найден незавершённый запрос создания.') && document.querySelector('.owner-form input')?.disabled && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Проверить сохранение')");
+    assert.equal(await evaluate(cdp, "sessionStorage.length"), 1);
     await button(cdp, "Проверить сохранение");
-    await requireDom(cdp, "real positive receipt restores Staff UI without a second POST",
-      "window.__kukiReceiptMisses===2 && document.body.innerText.includes('Исходное создание профиля подтверждено сервером.') && document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff') && !document.querySelector('.owner-form input')?.disabled");
+    await requireDom(cdp, "real positive receipt restores Staff UI after reload without a second POST",
+      "document.body.innerText.includes('Исходное создание профиля подтверждено сервером.') && document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff') && !document.querySelector('.owner-form input')?.disabled");
     assert.equal(responses.filter((r) => r.path.endsWith("/staff") && r.status === 201).length, staffPostsBefore + 1);
     assert.ok(responses.some((r) => r.path.endsWith("/staff/receipt") && r.status === 200));
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
