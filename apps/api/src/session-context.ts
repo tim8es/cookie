@@ -5,11 +5,11 @@ import type { Pool } from "pg";
 
 import {
   AuthorizationDeniedError,
+  requireTenantPermission,
   type OpaqueSessionAuthority,
   type ProtectedResource,
   type TrustedActor,
-} from "../../../packages/platform-identity/src/authorization.js";
-import { requireTenantPermission } from "../../../packages/platform-identity/src/postgres.js";
+} from "../../../packages/platform-identity/src/index.js";
 import { runProtectedTransaction } from "./protected-tenant-transaction.js";
 
 /**

@@ -5,6 +5,8 @@
  */
 export {
   AuthorizationDeniedError,
+  type OpaqueSessionAuthority,
+  type ProtectedResource,
   type TrustedActor,
 } from "./authorization.js";
 export { requireTenantPermission } from "./postgres.js";
@@ -70,3 +72,6 @@ export type {
   OwnerWorkspaceProvisionInput,
   OwnerWorkspaceProvisionResult,
 } from "./provision-owner-workspace.js";
+
+/** Trusted transaction-scoped policy port for manual outbox replay. */
+export { authorizeOutboxReplay } from "./outbox-replay-policy.js";
