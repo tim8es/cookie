@@ -49,7 +49,7 @@ assert h["PidsLimit"] == 24, h["PidsLimit"]
 assert "ALL" in h["CapDrop"], h["CapDrop"]
 assert any("no-new-privileges" in x for x in h["SecurityOpt"]), h["SecurityOpt"]
 assert not h["Binds"], "host bind mount unexpectedly present"
-assert not h["Mounts"], "unexpected externally mounted data"
+assert not c.get("Mounts", []), "unexpected externally mounted data"
 assert len(h["Tmpfs"]) == 1 and "/tmp" in h["Tmpfs"], h["Tmpfs"]
 print("PASS: real Docker network, user, filesystem, caps, cgroup and pid constraints")
 '
