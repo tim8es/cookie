@@ -238,6 +238,47 @@ test("Cookie-format verifier must bind server-owned digest and issuer/audience",
   }
 });
 
+test("global Identity bearer cannot select a foreign organization route", async (t) => {
+  const token = "is_" + "C".repeat(43);
+  const authority = {
+    tokenSha256: createHash("sha256").update(token).digest("hex"),
+    issuer: "cookie-email",
+    audience: "cookie-web",
+    kind: "identity" as const,
+  };
+  let policyChecks = 0;
+  const app = createApp(readDatabase, {
+    sessionRoutes: dependencies({
+      verifier: {
+        verifyBearerToken: async (value, tenantId) => {
+          assert.equal(value, token);
+          assert.equal(tenantId, TENANT_B);
+          return validSession({
+            tenantId: TENANT_A,
+            opaqueSessionAuthority: authority,
+          });
+        },
+      },
+      policy: {
+        assertPermission: async () => {
+          policyChecks++;
+        },
+      },
+    }),
+  });
+  t.after(async () => app.close());
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/v1/organizations/" + TENANT_B + "/session-context",
+    headers: { authorization: "Bearer " + token },
+  });
+  assert.equal(response.statusCode, 403);
+  assert.deepEqual(response.json(), { error: "forbidden" });
+  assert.equal(response.headers["cache-control"], "no-store");
+  assert.equal(policyChecks, 0, "foreign tenant cannot reach policy evaluation");
+});
+
 test("global Identity bearer keeps its authority type while tenant membership stays protected", async () => {
   const token = "is_" + "B".repeat(43);
   const digest = createHash("sha256").update(token).digest("hex");
