@@ -147,20 +147,31 @@
     accountLoaded = false;
     accountLoading = true;
     error = "";
+    // An early 503 must not hide a later authoritative 401 from the
+    // other parallel account read. Never revoke a newer Identity.
+    function observe<T>(request: Promise<T>): Promise<T> {
+      return request.catch((reason: unknown) => {
+        if (
+          reason instanceof IdentityAuthFailure &&
+          reason.reason === "unauthorized"
+        ) {
+          invalidateIdentity(current, "Сессия завершилась. Войдите снова.");
+        }
+        throw reason;
+      });
+    }
     try {
       const [linkedProviders, memberships] = await Promise.all([
-        listIdentityProviders(current),
-        listIdentityOrganizations(current),
+        observe(listIdentityProviders(current)),
+        observe(listIdentityOrganizations(current)),
       ]);
       if (identitySession !== current) return;
       providers = linkedProviders;
       organizations = memberships;
       accountLoaded = true;
-    } catch (reason) {
+    } catch {
       if (identitySession !== current) return;
-      error = reason instanceof IdentityAuthFailure && reason.reason === "unauthorized"
-        ? errorMessage(reason)
-        : "Вход подтверждён, но данные учётной записи не загрузились. Повторите загрузку.";
+      error = "Вход подтверждён, но данные учётной записи не загрузились. Повторите загрузку.";
     } finally {
       if (identitySession === current) accountLoading = false;
     }
@@ -177,6 +188,7 @@
     providers = null;
     organizations = [];
     workspaceRetry = null;
+    error = "";
     role = customerSurface ? "customer" : null;
     page = role ? "login" : "choose-role";
     notice = message;
@@ -469,7 +481,8 @@
   }
 
   async function completeEmailLink(): Promise<void> {
-    if (!identitySession) return;
+    const current = identitySession;
+    if (!current) return;
     if ([...emailLinkPassword].length < 15) {
       error = "Пароль должен содержать не менее 15 символов.";
       return;
@@ -477,12 +490,14 @@
     busy = true;
     error = "";
     try {
-      await completeEmailCredentialLink(identitySession, emailLinkToken, emailLinkPassword);
+      await completeEmailCredentialLink(current, emailLinkToken, emailLinkPassword);
+      if (identitySession !== current) return;
       clearUrlSecret();
       emailLinkToken = "";
       emailLinkPassword = "";
       await refreshAccount();
-      notice = "Email привязан к этой учётной записи.";
+      if (identitySession === current && accountLoaded)
+        notice = "Email привязан к этой учётной записи.";
     } catch (reason) {
       error = errorMessage(reason);
     } finally {
@@ -491,14 +506,17 @@
   }
 
   async function linkTelegramMiniAppNow(): Promise<void> {
-    if (!identitySession) return;
+    const current = identitySession;
+    if (!current) return;
     busy = true;
     error = "";
     try {
       if (!telegramInitData) throw new IdentityAuthFailure("unauthorized");
-      await linkTelegramMiniApp(identitySession, telegramInitData);
+      await linkTelegramMiniApp(current, telegramInitData);
+      if (identitySession !== current) return;
       await refreshAccount();
-      notice = "Telegram привязан к этой учётной записи.";
+      if (identitySession === current && accountLoaded)
+        notice = "Telegram привязан к этой учётной записи.";
     } catch (reason) {
       error = errorMessage(reason);
     } finally {
