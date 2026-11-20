@@ -28,7 +28,9 @@ if (
   staffRecoverySecretHex !== undefined &&
   !/^[0-9a-fA-F]{64}$/.test(staffRecoverySecretHex)
 ) {
-  throw new Error("COOKIE_STAFF_RECOVERY_SCOPE_SECRET_HEX must be 32 bytes of hex");
+  throw new Error(
+    "COOKIE_STAFF_RECOVERY_SCOPE_SECRET_HEX must be 32 bytes of hex",
+  );
 }
 const staffRecoveryScopeSecret = staffRecoverySecretHex
   ? Buffer.from(staffRecoverySecretHex, "hex")
@@ -104,7 +106,9 @@ const app = createApp(pool, {
         staffRoutes: {
           pool,
           verifier: tenantSessionVerifier,
-          ...(staffRecoveryScopeSecret ? { recoveryScopeSecret: staffRecoveryScopeSecret } : {}),
+          ...(staffRecoveryScopeSecret
+            ? { recoveryScopeSecret: staffRecoveryScopeSecret }
+            : {}),
         },
         locationRoutes: { pool, verifier: tenantSessionVerifier },
         shiftPlanRoutes: { pool, verifier: tenantSessionVerifier },
