@@ -23,6 +23,7 @@ import { provisionOwnerWorkspace } from "../../../dist/packages/platform-identit
 import { createTelegramMiniAppProofVerifier } from "../../../dist/packages/platform-identity/src/telegram-init-data.js";
 import { linkVerifiedTelegramOwner } from "../../../dist/packages/platform-identity/src/link-telegram-owner.js";
 import { runSqlTransaction } from "../../../dist/packages/platform-db/src/transaction.js";
+import { publishTenantBrandDraft } from "../../../dist/packages/domain-appearance/src/index.js";
 import { prepareLegacyTelegramMigration } from "../../../dist/packages/platform-identity/src/legacy-telegram-migration-preparation.js";
 import { activateLegacyTelegramMigration } from "../../../dist/packages/platform-identity/src/legacy-telegram-migration-activation.js";
 
@@ -738,6 +739,9 @@ async function main() {
     await button(cdp, "Оформление");
     await requireDom(cdp, "persisted appearance reloaded", "document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника') && [...document.querySelectorAll('.brand-actions button')].find(b=>b.textContent.trim()==='Опубликовать')?.disabled && [...document.querySelectorAll('.brand-assets input')].every(i=>i.matches(':disabled'))");
     assert.equal(responses.filter(appearanceChunk).length, 1, "Appearance module requested again within the same document");
+    assert.ok(responses.some(r => r.status === 404 && r.path.endsWith("/appearance/published")),
+      "Owner must see 404 for a never-published appearance");
+
     await button(cdp, "Онлайн-запись");
     await requireDom(cdp, "owner booking unavailable without customer identity", "document.querySelector('h1')?.textContent==='Онлайн-запись' && document.body.innerText.includes('Клиентская запись — отдельный вход') && !document.querySelector('.booking-form')");
     await button(cdp, "Услуги");
@@ -846,6 +850,51 @@ async function main() {
       "document.querySelector('.alert-ok')?.innerText.includes('Черновик сохранён') && !document.querySelector('.owner-form button[type=submit]')?.disabled");
     const shiftId = await assertPlan(pool, owner, beforeRestart.staffId, locationId, date);
     await benchmarkOwnerNavigation(cdp);
+    // Controlled CI fixture for the *read* path only. The trusted domain
+    // capability writes a real PostgreSQL published snapshot; this is NOT a
+    // test of a permissioned owner publish command or public salon delivery.
+    const fixturePublished = await runSqlTransaction(pool, client =>
+      publishTenantBrandDraft(client, owner.tenantId, 1));
+    assert.equal(fixturePublished.revision, 1);
+    assert.equal(fixturePublished.config.presetId, "forest");
+    await button(cdp, "Услуги");
+    await button(cdp, "Оформление");
+    await requireDom(cdp, "real published snapshot read into owner browser",
+      "document.querySelector('.brand-state')?.innerText.includes('Опубликовано · версия 1') && " +
+      "document.body.innerText.includes('На сервере опубликована версия 1 (Ботаника)') && " +
+      "document.body.innerText.includes('Черновик совпадает с опубликованной версией.') && " +
+      "[...document.querySelectorAll('.brand-actions button')].find(b=>b.textContent.trim()==='Опубликовать')?.disabled");
+    assert.ok(responses.some(r => r.status === 200 && r.path.endsWith("/appearance/published")),
+      "Missing real authenticated published Appearance GET");
+    await checkWidth(cdp, "published owner appearance 375px");
+
+    // The browser may save a newer draft, but must keep showing the older
+    // published version until an independently authorized publish succeeds.
+    await evaluate(cdp, "[...document.querySelectorAll('.brand-presets button')].find(b=>b.textContent.includes('Горизонт')).click()");
+    await button(cdp, "Сохранить черновик");
+    await requireDom(cdp, "newer owner draft cannot impersonate published theme",
+      "document.querySelector('.brand-presets button.active')?.textContent.includes('Горизонт') && " +
+      "document.querySelector('.brand-state')?.innerText.includes('Опубликовано · версия 1') && " +
+      "document.body.innerText.includes('Текущий черновик ещё не опубликован.') && " +
+      "document.body.innerText.includes('Черновик сохранён на сервере')");
+    const afterNewerDraft = await pool.query(
+      "SELECT draft_revision::text, draft_config, published_revision::text, published_config FROM cookie_appearance.organization_branding WHERE tenant_id=$1::uuid",
+      [owner.tenantId]);
+    assert.equal(afterNewerDraft.rows[0]?.draft_revision, "2");
+    assert.equal(afterNewerDraft.rows[0]?.draft_config.presetId, "ocean");
+    assert.equal(afterNewerDraft.rows[0]?.published_revision, "1");
+    assert.equal(afterNewerDraft.rows[0]?.published_config.presetId, "forest");
+
+    // Keep the pre-existing warm navigation benchmark's Botanika fixture.
+    await evaluate(cdp, "[...document.querySelectorAll('.brand-presets button')].find(b=>b.textContent.includes('Ботаника')).click()");
+    await button(cdp, "Сохранить черновик");
+    await requireDom(cdp, "restored draft remains distinct from published revision",
+      "document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника') && " +
+      "document.querySelector('.brand-state')?.innerText.includes('Опубликовано · версия 1') && " +
+      "document.body.innerText.includes('Версия черновика: 3.') && " +
+      "document.body.innerText.includes('Текущий черновик ещё не опубликован.')");
+    assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0,
+      "Published appearance wrote browser storage");
     assert.equal(responses.filter((r) => r.status === 201 && r.path.endsWith("/locations")).length, 1);
     assert.equal(responses.filter((r) => r.status === 201 && r.path.endsWith("/shift-plans")).length, 1);
     assert.ok(responses.some((r) => r.status === 200 && r.path.endsWith("/workspace-overview")));
@@ -866,6 +915,18 @@ async function main() {
     script = await loadAndEnterTelegram(cdp, origin, signedProof(botToken, userId), script, "business");
     await requireDom(cdp, "service persisted after process restart",
       "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
+    await button(cdp, "Оформление");
+    await requireDom(cdp, "published appearance persists across API restart",
+      "document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника') && " +
+      "document.querySelector('.brand-state')?.innerText.includes('Опубликовано · версия 1') && " +
+      "document.body.innerText.includes('Версия черновика: 3.') && " +
+      "document.body.innerText.includes('Текущий черновик ещё не опубликован.')");
+    const appearanceAfterRestart = await pool.query(
+      "SELECT draft_revision::text, published_revision::text, published_config FROM cookie_appearance.organization_branding WHERE tenant_id=$1::uuid",
+      [owner.tenantId]);
+    assert.equal(appearanceAfterRestart.rows[0]?.draft_revision, "3");
+    assert.equal(appearanceAfterRestart.rows[0]?.published_revision, "1");
+    assert.equal(appearanceAfterRestart.rows[0]?.published_config.presetId, "forest");
     await button(cdp, "Мастера");
     await requireDom(cdp, "staff persisted after process restart",
       "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
