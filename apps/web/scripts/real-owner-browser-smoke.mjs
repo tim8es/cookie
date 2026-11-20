@@ -23,7 +23,6 @@ import { provisionOwnerWorkspace } from "../../../dist/packages/platform-identit
 import { createTelegramMiniAppProofVerifier } from "../../../dist/packages/platform-identity/src/telegram-init-data.js";
 import { linkVerifiedTelegramOwner } from "../../../dist/packages/platform-identity/src/link-telegram-owner.js";
 import { runSqlTransaction } from "../../../dist/packages/platform-db/src/transaction.js";
-import { publishTenantBrandDraft } from "../../../dist/packages/domain-appearance/src/index.js";
 import { prepareLegacyTelegramMigration } from "../../../dist/packages/platform-identity/src/legacy-telegram-migration-preparation.js";
 import { activateLegacyTelegramMigration } from "../../../dist/packages/platform-identity/src/legacy-telegram-migration-activation.js";
 
@@ -385,6 +384,7 @@ async function main() {
       COOKIE_TELEGRAM_OIDC_REDIRECT_URI: "https://cookie-e2e.invalid/auth/telegram/callback",
       COOKIE_TELEGRAM_OIDC_COOKIE_KEY: randomBytes(32).toString("hex"),
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
+      COOKIE_STAGING_APPEARANCE_MODE: "enabled",
       COOKIE_TELEGRAM_USER_HMAC_SECRET: userHashSecret.toString("hex"),
       COOKIE_TELEGRAM_BOT_TOKEN: botToken,
       COOKIE_PUBLIC_ORIGIN: "https://cookie-e2e.invalid",
@@ -726,7 +726,7 @@ async function main() {
     await poll("appearance module downloaded on demand", () =>
       responses.some((response) => appearanceChunk(response) && response.status === 200),
     );
-    await requireDom(cdp, "real appearance draft loaded", "document.querySelector('.brand-editor') && document.body.innerText.includes('Только черновик') && document.querySelector('.brand-presets button')");
+    await requireDom(cdp, "real appearance draft loaded", "document.querySelector('.brand-editor') && document.body.innerText.includes('Не опубликовано') && document.querySelector('.brand-presets button')");
     await checkWidth(cdp, "real appearance 375px");
     await evaluate(cdp, "[...document.querySelectorAll('.brand-presets button')].find(b=>b.textContent.includes('Ботаника')).click()");
     await button(cdp, "Сохранить черновик");
@@ -741,6 +741,8 @@ async function main() {
     assert.equal(responses.filter(appearanceChunk).length, 1, "Appearance module requested again within the same document");
     assert.ok(responses.some(r => r.status === 404 && r.path.endsWith("/appearance/published")),
       "Owner must see 404 for a never-published appearance");
+    assert.ok(responses.some(r => r.status === 200 && r.path.endsWith("/appearance/publication")),
+      "Explicit staging mode must serve the authenticated owner capability endpoint");
 
     await button(cdp, "Онлайн-запись");
     await requireDom(cdp, "owner booking unavailable without customer identity", "document.querySelector('h1')?.textContent==='Онлайн-запись' && document.body.innerText.includes('Клиентская запись — отдельный вход') && !document.querySelector('.booking-form')");
@@ -813,15 +815,35 @@ async function main() {
       "document.querySelector('.alert-ok')?.innerText.includes('Черновик сохранён') && !document.querySelector('.owner-form button[type=submit]')?.disabled");
     const shiftId = await assertPlan(pool, owner, beforeRestart.staffId, locationId, date);
     await benchmarkOwnerNavigation(cdp);
-    // Controlled CI fixture for the *read* path only. The trusted domain
-    // capability writes a real PostgreSQL published snapshot; this is NOT a
-    // test of a permissioned owner publish command or public salon delivery.
-    const fixturePublished = await runSqlTransaction(pool, client =>
-      publishTenantBrandDraft(client, owner.tenantId, 1));
-    assert.equal(fixturePublished.revision, 1);
-    assert.equal(fixturePublished.config.presetId, "forest");
+    // The compiled API mounts the real owner publish route only because BOTH
+    // explicit staging flags are set, but a separately issued live Appearance
+    // grant is still mandatory. No grant is seeded at onboarding.
     await button(cdp, "Услуги");
     await button(cdp, "Оформление");
+    await requireDom(cdp, "owner publish disabled without a live Appearance grant",
+      "document.querySelector('.brand-editor') && " +
+      "[...document.querySelectorAll('.brand-actions button')].find(b=>b.textContent.trim()==='Опубликовать')?.disabled && " +
+      "document.body.innerText.includes('Публикация недоступна')");
+    const appearanceGrantId = randomUUID();
+    await pool.query(
+      "INSERT INTO cookie_entitlement.staging_appearance_grants (tenant_id,id,expires_at) VALUES ($1::uuid,$2::uuid,clock_timestamp()+interval '1 hour')",
+      [owner.tenantId, appearanceGrantId]);
+    await button(cdp, "Услуги");
+    await button(cdp, "Оформление");
+    await requireDom(cdp, "verified owner publication button enabled by server policy and grant",
+      "document.querySelector('.brand-editor') && " +
+      "[...document.querySelectorAll('.brand-actions button')].find(b=>b.textContent.trim()==='Опубликовать')?.disabled===false");
+    await button(cdp, "Опубликовать");
+    await requireDom(cdp, "actual owner publish POST confirmed by authoritative GET",
+      "document.body.innerText.includes('Сервер подтвердил публикацию оформления версии 1') && " +
+      "document.querySelector('.brand-state')?.innerText.includes('Опубликовано · версия 1')");
+    assert.equal(responses.filter(r => r.status === 200 && r.path.endsWith("/appearance/publish")).length, 1,
+      "Expected exactly one actual owner POST to publish");
+    const appearanceAudit = await pool.query(
+      "SELECT revision::text,grant_id::text,actor_identity_id::text FROM cookie_appearance.publication_audit WHERE tenant_id=$1::uuid",
+      [owner.tenantId]);
+    assert.deepEqual(appearanceAudit.rows, [{revision:"1",grant_id:appearanceGrantId,actor_identity_id:owner.identityId}],
+      "Actual owner publish must create an atomic grant-bound actor audit");
     await requireDom(cdp, "real published snapshot read into owner browser",
       "document.querySelector('.brand-state')?.innerText.includes('Опубликовано · версия 1') && " +
       "document.body.innerText.includes('На сервере опубликована версия 1 (Ботаника)') && " +
