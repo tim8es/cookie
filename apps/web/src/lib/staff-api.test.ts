@@ -507,7 +507,7 @@ test("unmatched actor or rotated server namespace cannot silently create", () =>
     hasUnmatchedStaffPendingMarkers(
       {
         ...storage,
-        get length() {
+        get length(): number {
           throw new Error("storage disabled");
         },
       },
