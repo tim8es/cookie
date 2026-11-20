@@ -301,8 +301,12 @@ export async function readRealStaffRecoveryScope(
   } catch (error) {
     // A 404 from the absent opt-in route permits mounted-only operation.
     // Transient 503, denial or corrupt responses must block new creation.
-    if (error instanceof StaffApiFailure && error.reason === "missing-reference")
+    if (
+      error instanceof StaffApiFailure &&
+      error.reason === "missing-reference"
+    ) {
       return null;
+    }
     throw error;
   }
   if (
@@ -311,10 +315,13 @@ export async function readRealStaffRecoveryScope(
     typeof result.body !== "object" ||
     Array.isArray(result.body) ||
     Object.keys(result.body).length !== 1
-  ) throw new StaffApiFailure("invalid-response");
-  const { scope } = result.body as { scope?: unknown };
-  if (typeof scope !== "string" || !RECOVERY_SCOPE.test(scope))
+  ) {
     throw new StaffApiFailure("invalid-response");
+  }
+  const { scope } = result.body as { scope?: unknown };
+  if (typeof scope !== "string" || !RECOVERY_SCOPE.test(scope)) {
+    throw new StaffApiFailure("invalid-response");
+  }
   return scope;
 }
 
@@ -338,8 +345,9 @@ export function writeStaffPendingMarker(
   scope: string,
   idempotencyKey: string,
 ): boolean {
-  if (!RECOVERY_SCOPE.test(scope) || !UUID.test(idempotencyKey))
+  if (!RECOVERY_SCOPE.test(scope) || !UUID.test(idempotencyKey)) {
     return false;
+  }
   try {
     storage.setItem(MARKER_PREFIX + scope, idempotencyKey);
     return true;
