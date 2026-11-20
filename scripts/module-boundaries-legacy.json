@@ -6,9 +6,5 @@
   "apps/api/src/workspace-http.ts": [
     "../../../packages/platform-identity/src/authorization.js",
     "../../../packages/platform-identity/src/postgres.js"
-  ],
-  "packages/platform-db/src/replay.ts": [
-    "../../platform-identity/src/authorization.js",
-    "../../platform-identity/src/postgres.js"
   ]
 }

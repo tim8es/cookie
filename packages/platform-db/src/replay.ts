@@ -3,13 +3,9 @@ import { randomUUID } from "node:crypto";
 import type { Pool, QueryResultRow } from "pg";
 
 import {
-  requireSensitiveAuthorization,
+  authorizeOutboxReplay,
   type TrustedActor,
-} from "../../platform-identity/src/authorization.js";
-import {
-  loadPolicySnapshot,
-  PostgresPolicyAudit,
-} from "../../platform-identity/src/postgres.js";
+} from "../../platform-identity/src/index.js";
 
 import { runSqlTransaction } from "./transaction.js";
 
@@ -60,17 +56,7 @@ export async function replayDeadOutbox(
     return await runSqlTransaction(pool, async (client) => {
       // PostgreSQL requires this before the first snapshot-taking statement.
       await client.query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
-      const snapshot = await loadPolicySnapshot(client, actor);
-      await requireSensitiveAuthorization(
-        {
-          actor,
-          resource: { kind: "organization", tenantId: actor.tenantId },
-          permission: "outbox.replay",
-          ownerProtected: true,
-        },
-        snapshot,
-        new PostgresPolicyAudit(client),
-      );
+      await authorizeOutboxReplay(client, actor);
 
       const selected = await client.query<DeadRow>(
         `SELECT status, attempts, manual_replay_count
