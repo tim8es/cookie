@@ -110,6 +110,7 @@ test(
       });
       const prefix = "/v1/organizations/" + owner.tenantId + "/appearance";
       const url = prefix + "/draft";
+      const publishedUrl = prefix + "/published";
       assert.equal(
         (await disabled.inject({ method: "GET", url })).statusCode,
         404,
@@ -123,6 +124,22 @@ test(
       assert.equal(exchange.statusCode, 201);
       const token: string = exchange.json().accessToken;
       const headers = { authorization: "Bearer " + token };
+      const publishedRead = () =>
+        app.inject({ method: "GET", url: publishedUrl, headers });
+      const beforePublish = await publishedRead();
+      assert.equal(beforePublish.statusCode, 404);
+      assert.deepEqual(beforePublish.json(), { error: "not-found" });
+      assert.equal(beforePublish.headers["cache-control"], "no-store");
+      assert.equal(
+        (await draftOnly.inject({ method: "GET", url: publishedUrl, headers }))
+          .statusCode,
+        404,
+        "A draft-only runtime must not invent a published theme",
+      );
+      assert.equal(
+        (await app.inject({ method: "GET", url: publishedUrl })).statusCode,
+        401,
+      );
       const capability = prefix + "/assets/capability";
       const enabled = await app.inject({
         method: "GET",
@@ -309,6 +326,17 @@ test(
       assert.equal(published.json().published.revision, 2);
       assert.equal(published.headers["cache-control"], "no-store");
       assert.deepEqual((await publish()).json(), published.json());
+      const publishedSnapshot = await publishedRead();
+      assert.equal(publishedSnapshot.statusCode, 200);
+      assert.deepEqual(publishedSnapshot.json(), published.json());
+      assert.equal(publishedSnapshot.headers["cache-control"], "no-store");
+      assert.equal(publishedSnapshot.headers.vary, "Authorization");
+      assert.deepEqual(
+        (await draftOnly.inject({ method: "GET", url: publishedUrl, headers }))
+          .json(),
+        published.json(),
+        "A draft-only runtime can read the persisted published version",
+      );
       assert.deepEqual((await status()).json(), {
         draftRevision: 2,
         publishedRevision: 2,
@@ -329,6 +357,11 @@ test(
         payload: { expectedRevision: 2, config: createBrandConfig("ocean") },
       });
       assert.equal(newer.statusCode, 200);
+      assert.deepEqual(
+        (await publishedRead()).json(),
+        published.json(),
+        "A newer saved draft cannot change the published revision",
+      );
       const publishNewer = () =>
         app.inject({
           method: "POST",
@@ -347,6 +380,11 @@ test(
         publishedRevision: 2,
         canPublish: false,
       });
+      assert.deepEqual(
+        (await publishedRead()).json(),
+        published.json(),
+        "A revoked publication entitlement cannot erase existing publish",
+      );
       const persisted = await pool.query(
         `SELECT draft_revision::text,published_revision::text
            FROM cookie_appearance.organization_branding WHERE tenant_id=$1::uuid`,
@@ -361,6 +399,13 @@ test(
         headers,
       });
       assert.equal(foreign.statusCode, 403);
+      const foreignPublished = await app.inject({
+        method: "GET",
+        url: "/v1/organizations/" + randomUUID() + "/appearance/published",
+        headers,
+      });
+      assert.equal(foreignPublished.statusCode, 403);
+      assert.equal(foreignPublished.headers["cache-control"], "no-store");
       await pool.query(
         `UPDATE cookie_identity.roles
             SET permissions=array_remove(permissions, 'appearance.publish')
@@ -369,6 +414,7 @@ test(
       );
       assert.equal((await publish()).statusCode, 403);
       assert.equal((await read()).statusCode, 200);
+      assert.deepEqual((await publishedRead()).json(), published.json());
       await pool.query(
         `UPDATE cookie_identity.roles
             SET permissions=array_remove(permissions, 'appearance.manage')
@@ -393,6 +439,7 @@ test(
         401,
       );
       assert.equal((await read()).statusCode, 401);
+      assert.equal((await publishedRead()).statusCode, 401);
     } finally {
       await draftOnly.close();
       await disabled.close();
