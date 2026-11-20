@@ -8,6 +8,11 @@
   import {
     createRealStaff,
     recoverRealStaffCreate,
+    readRealStaffRecoveryScope,
+    readStaffPendingMarker,
+    hasUnmatchedStaffPendingMarkers,
+    writeStaffPendingMarker,
+    clearStaffPendingMarker,
     retainStaffCreateKey,
     StaffApiFailure,
     type RealStaff,
@@ -38,6 +43,18 @@
   let publicationPending = false;
   let recovering = false;
   let mounted = false;
+  let recoveryScope = "";
+  let recoveryScopeLoading = true;
+  let recoveryStorageAvailable = true;
+  let recoveryScopeError = false;
+
+  function tabStorage(): Storage | null {
+    try {
+      return window.sessionStorage;
+    } catch {
+      return null;
+    }
+  }
 
   function message(error: unknown): string {
     if (error instanceof ServiceApiFailure && error.reason === "unauthorized") {
@@ -75,7 +92,10 @@
   }
 
   async function refresh(): Promise<void> {
-    if (pendingKey) return;
+    // On a fresh reload, scope/marker may arrive before the initial Staff
+    // directory. Do not let the pending marker prevent the *first* read.
+    // Once loaded, keep the original uncertain attempt immutable.
+    if (pendingKey && loaded) return;
     loading = true;
     readError = "";
     try {
@@ -105,7 +125,7 @@
   }
 
   async function save(): Promise<void> {
-    if (!loaded || loading || saving || recovering || publicationPending) return;
+    if (!loaded || loading || saving || recovering || recoveryScopeLoading || recoveryScopeError || publicationPending) return;
     if (
       !staffName.trim() ||
       [...staffName.trim()].length > 200 ||
@@ -121,6 +141,16 @@
     notice = "";
     const retrying = Boolean(pendingKey);
     pendingKey ||= crypto.randomUUID();
+    // Persist only the opaque operation UUID, never a bearer or Staff draft.
+    // If storage is blocked, the existing in-memory same-key retry still works.
+    if (recoveryScope) {
+      const storage = tabStorage();
+      recoveryStorageAvailable = !!storage && writeStaffPendingMarker(
+        storage,
+        recoveryScope,
+        pendingKey,
+      );
+    }
     try {
       const created = await createRealStaff(
         session,
@@ -134,6 +164,10 @@
         reads.fetch,
       );
       staff = [...staff.filter((member) => member.id !== created.id), created];
+      if (recoveryScope) {
+        const storage = tabStorage();
+        if (storage) clearStaffPendingMarker(storage, recoveryScope);
+      }
       pendingKey = "";
       staffName = "";
       staffTitle = "";
@@ -144,7 +178,13 @@
       reads.invalidateCalendars();
       await refresh();
     } catch (reason) {
-      if (!retainStaffCreateKey(retrying, reason)) pendingKey = "";
+      if (!retainStaffCreateKey(retrying, reason)) {
+        if (recoveryScope) {
+          const storage = tabStorage();
+          if (storage) clearStaffPendingMarker(storage, recoveryScope);
+        }
+        pendingKey = "";
+      }
       reads.staff.invalidate();
       reads.invalidateCalendars();
       writeError = pendingKey
@@ -176,6 +216,10 @@
         return;
       }
       // The receipt proves the committed identity, never a name-based match.
+      if (recoveryScope) {
+        const storage = tabStorage();
+        if (storage) clearStaffPendingMarker(storage, recoveryScope);
+      }
       pendingKey = "";
       staffName = "";
       staffTitle = "";
@@ -185,6 +229,46 @@
       await refresh();
     } finally {
       if (mounted) recovering = false;
+    }
+  }
+
+  async function loadRecoveryScope(): Promise<void> {
+    const current = session;
+    try {
+      recoveryScopeLoading = true;
+      recoveryScopeError = false;
+      const scope = await readRealStaffRecoveryScope(current, reads.fetch);
+      if (
+        !mounted ||
+        current.accessToken !== session.accessToken ||
+        current.tenantId !== session.tenantId ||
+        Date.now() / 1000 >= current.expiresAtUnixSeconds
+      ) return;
+      recoveryScope = scope ?? "";
+      // Only a server-verified actor scope may select a stored marker. If the
+      // tab contains any other scope (including after secret rotation or a
+      // disabled route), do not silently issue another create POST.
+      const storage = tabStorage();
+      const unmatched = storage
+        ? hasUnmatchedStaffPendingMarkers(storage, scope)
+        : false;
+      const key = scope && storage ? readStaffPendingMarker(storage, scope) : null;
+      if (key && !pendingKey) {
+        pendingKey = key;
+        writeError = "Найден незавершённый запрос создания. Проверьте, сохранил ли сервер профиль.";
+      }
+      if (unmatched) {
+        recoveryScopeError = true;
+        writeError = "В этой вкладке есть незавершённая операция другого контекста или до смены ключа сервера. Новое создание заблокировано до безопасного восстановления.";
+      }
+    } catch {
+      if (mounted && current.accessToken === session.accessToken) {
+        recoveryScopeError = true;
+        writeError = "Не удалось проверить область восстановления. Создание заблокировано до повторной проверки.";
+      }
+    } finally {
+      if (mounted && current.accessToken === session.accessToken)
+        recoveryScopeLoading = false;
     }
   }
 
@@ -202,6 +286,7 @@
   onMount(() => {
     mounted = true;
     void refresh();
+    void loadRecoveryScope();
     return () => { mounted = false; };
   });
 </script>
@@ -224,6 +309,18 @@
   <div class="alert-error" role="alert"><p>{writeError}</p>
     {#if pendingKey}<p>Результат создания неизвестен. Проверьте исходную операцию или повторите сохранение с теми же данными.</p>{/if}
   </div>
+{/if}
+{#if recoveryScopeError}
+  <div class="owner-form-note">
+    <Button variant="outline" type="button" disabled={recoveryScopeLoading}
+      onclick={() => void loadRecoveryScope()}>
+      Повторить проверку восстановления
+    </Button>
+  </div>
+{:else if !recoveryScopeLoading && !recoveryScope && loaded}
+  <p class="owner-form-note">Восстановление после перезагрузки недоступно: сервер не предоставил область восстановления. До подтверждения сохранения оставайтесь на странице.</p>
+{:else if !recoveryStorageAvailable}
+  <p class="owner-form-note">Хранилище вкладки недоступно: восстановление возможно только до закрытия страницы.</p>
 {/if}
 {#if pendingKey}
   <div class="owner-form-note">
@@ -278,7 +375,7 @@
       onOpenServices={onOpenServices}
       onSubmit={() => void save()}
       apiMode={true}
-      busy={saving || loading || publicationPending || recovering}
+      busy={saving || loading || publicationPending || recovering || recoveryScopeLoading || recoveryScopeError}
       locked={!!pendingKey}
     />
   {/if}

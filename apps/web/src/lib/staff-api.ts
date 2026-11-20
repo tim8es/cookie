@@ -281,3 +281,115 @@ export async function recoverRealStaffCreate(
     return null;
   }
 }
+
+/** A stable, server-issued namespace is NOT an authorization credential. */
+const RECOVERY_SCOPE = /^[A-Za-z0-9_-]{43}$/;
+const MARKER_PREFIX = "kuki.staff.create.pending.v1.";
+
+export async function readRealStaffRecoveryScope(
+  session: VerifiedOwnerSession,
+  fetcher: typeof fetch = globalThis.fetch,
+): Promise<string | null> {
+  let result: { body: unknown; status: number };
+  try {
+    result = await request(
+      session,
+      { method: "GET" },
+      fetcher,
+      "/recovery-scope",
+    );
+  } catch (error) {
+    // A 404 from the absent opt-in route permits mounted-only operation.
+    // Transient 503, denial or corrupt responses must block new creation.
+    if (
+      error instanceof StaffApiFailure &&
+      error.reason === "missing-reference"
+    ) {
+      return null;
+    }
+    throw error;
+  }
+  if (
+    result.status !== 200 ||
+    !result.body ||
+    typeof result.body !== "object" ||
+    Array.isArray(result.body) ||
+    Object.keys(result.body).length !== 1
+  ) {
+    throw new StaffApiFailure("invalid-response");
+  }
+  const { scope } = result.body as { scope?: unknown };
+  if (typeof scope !== "string" || !RECOVERY_SCOPE.test(scope)) {
+    throw new StaffApiFailure("invalid-response");
+  }
+  return scope;
+}
+
+type StaffRecoveryStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+export function readStaffPendingMarker(
+  storage: StaffRecoveryStorage,
+  scope: string,
+): string | null {
+  if (!RECOVERY_SCOPE.test(scope)) return null;
+  try {
+    const value = storage.getItem(MARKER_PREFIX + scope);
+    return value !== null && UUID.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeStaffPendingMarker(
+  storage: StaffRecoveryStorage,
+  scope: string,
+  idempotencyKey: string,
+): boolean {
+  if (!RECOVERY_SCOPE.test(scope) || !UUID.test(idempotencyKey)) {
+    return false;
+  }
+  try {
+    storage.setItem(MARKER_PREFIX + scope, idempotencyKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Fail closed if the tab contains a marker from another actor/tenant or
+ * from before a server-secret rotation. A 404-disabled route has no scope and
+ * must not silently enable a new create when an old marker remains.
+ * This reveals no actor, tenant or request data to the current UI. */
+export function hasUnmatchedStaffPendingMarkers(
+  storage: StaffRecoveryStorage & Pick<Storage, "length" | "key">,
+  scope: string | null,
+): boolean {
+  if (scope !== null && !RECOVERY_SCOPE.test(scope)) return true;
+  const current = scope === null ? null : MARKER_PREFIX + scope;
+  try {
+    for (let index = 0; index < storage.length; index++) {
+      const entry = storage.key(index);
+      if (entry?.startsWith(MARKER_PREFIX)) {
+        if (entry !== current) return true;
+        const value = storage.getItem(entry);
+        if (value === null || !UUID.test(value)) return true;
+      }
+    }
+    return false;
+  } catch {
+    // Inaccessible or corrupted storage must never authorize a new key.
+    return true;
+  }
+}
+
+export function clearStaffPendingMarker(
+  storage: StaffRecoveryStorage,
+  scope: string,
+): void {
+  if (!RECOVERY_SCOPE.test(scope)) return;
+  try {
+    storage.removeItem(MARKER_PREFIX + scope);
+  } catch {
+    // A stale marker can only recheck an actor-scoped receipt, not mutate.
+  }
+}

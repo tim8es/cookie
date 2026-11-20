@@ -6,6 +6,11 @@ import {
   readRealStaff,
   retainStaffCreateKey,
   recoverRealStaffCreate,
+  readRealStaffRecoveryScope,
+  readStaffPendingMarker,
+  hasUnmatchedStaffPendingMarkers,
+  writeStaffPendingMarker,
+  clearStaffPendingMarker,
   StaffApiFailure,
 } from "./staff-api";
 import type { VerifiedOwnerSession } from "./owner-auth";
@@ -351,4 +356,163 @@ test("staff receipt absence, denial and corruption do not resolve the attempt", 
     null,
   );
   assert.equal(calls.length, 0);
+});
+
+test("actor-scoped recovery namespace only accepts exact server shape", async () => {
+  const scope = "B".repeat(43);
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  assert.equal(
+    await readRealStaffRecoveryScope(
+      session,
+      mock(Response.json({ scope }), calls),
+    ),
+    scope,
+  );
+  assert.equal(
+    calls[0]?.url,
+    "/v1/organizations/" + TENANT + "/staff/recovery-scope",
+  );
+  assert.equal(calls[0]?.init.cache, "no-store");
+  assert.equal(calls[0]?.init.redirect, "error");
+  assert.equal(
+    new Headers(calls[0]?.init.headers).get("authorization"),
+    "Bearer " + session.accessToken,
+  );
+  for (const body of [
+    null,
+    {},
+    { scope: "short" },
+    { scope, identityId: TENANT },
+  ]) {
+    await assert.rejects(
+      readRealStaffRecoveryScope(session, mock(Response.json(body), [])),
+      (error: unknown) =>
+        error instanceof StaffApiFailure && error.reason === "invalid-response",
+    );
+  }
+  assert.equal(
+    await readRealStaffRecoveryScope(
+      session,
+      mock(new Response(null, { status: 404 }), []),
+    ),
+    null,
+    "only absent opt-in 404 allows a mounted-only fallback",
+  );
+  for (const status of [201, 400, 401, 403, 503]) {
+    await assert.rejects(
+      readRealStaffRecoveryScope(
+        session,
+        mock(Response.json({ scope }, { status }), []),
+      ),
+      (error: unknown) => error instanceof StaffApiFailure,
+    );
+  }
+});
+
+test("tab marker stores only UUID under an actor-scoped namespace", () => {
+  const ownerScope = "A".repeat(43);
+  const otherScope = "B".repeat(43);
+  const data = new Map<string, string>();
+  const storage = {
+    getItem(key: string) {
+      return data.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      data.set(key, value);
+    },
+    removeItem(key: string) {
+      data.delete(key);
+    },
+  };
+  assert.equal(writeStaffPendingMarker(storage, ownerScope, KEY), true);
+  assert.equal(data.size, 1);
+  assert.ok([...data.keys()][0]?.endsWith(ownerScope));
+  assert.equal([...data.values()][0], KEY);
+  assert.equal(readStaffPendingMarker(storage, otherScope), null);
+  assert.equal(readStaffPendingMarker(storage, ownerScope), KEY);
+  assert.equal(writeStaffPendingMarker(storage, ownerScope, "invalid"), false);
+  assert.equal(writeStaffPendingMarker(storage, "invalid", KEY), false);
+  data.set([...data.keys()][0]!, JSON.stringify({ key: KEY, name: "PII" }));
+  assert.equal(readStaffPendingMarker(storage, ownerScope), null);
+  data.set([...data.keys()][0]!, KEY);
+  clearStaffPendingMarker(storage, ownerScope);
+  assert.equal(data.size, 0);
+  assert.equal(
+    readStaffPendingMarker(
+      {
+        ...storage,
+        getItem() {
+          throw new Error("disabled");
+        },
+      },
+      ownerScope,
+    ),
+    null,
+  );
+  assert.equal(
+    writeStaffPendingMarker(
+      {
+        ...storage,
+        setItem() {
+          throw new Error("disabled");
+        },
+      },
+      ownerScope,
+      KEY,
+    ),
+    false,
+  );
+  clearStaffPendingMarker(
+    {
+      ...storage,
+      removeItem() {
+        throw new Error("disabled");
+      },
+    },
+    ownerScope,
+  );
+});
+
+test("unmatched actor or rotated server namespace cannot silently create", () => {
+  const priorScope = "A".repeat(43);
+  const currentScope = "B".repeat(43);
+  const data = new Map<string, string>();
+  const storage = {
+    get length() {
+      return data.size;
+    },
+    key(index: number) {
+      return [...data.keys()][index] ?? null;
+    },
+    getItem(key: string) {
+      return data.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      data.set(key, value);
+    },
+    removeItem(key: string) {
+      data.delete(key);
+    },
+  };
+  assert.equal(hasUnmatchedStaffPendingMarkers(storage, currentScope), false);
+  assert.equal(writeStaffPendingMarker(storage, priorScope, KEY), true);
+  assert.equal(hasUnmatchedStaffPendingMarkers(storage, currentScope), true);
+  assert.equal(hasUnmatchedStaffPendingMarkers(storage, null), true);
+  assert.equal(hasUnmatchedStaffPendingMarkers(storage, priorScope), false);
+  data.set([...data.keys()][0]!, "{corrupted}");
+  assert.equal(hasUnmatchedStaffPendingMarkers(storage, priorScope), true);
+  clearStaffPendingMarker(storage, priorScope);
+  assert.equal(hasUnmatchedStaffPendingMarkers(storage, currentScope), false);
+  assert.equal(
+    hasUnmatchedStaffPendingMarkers(
+      {
+        ...storage,
+        get length(): number {
+          throw new Error("storage disabled");
+        },
+      },
+      currentScope,
+    ),
+    true,
+  );
 });

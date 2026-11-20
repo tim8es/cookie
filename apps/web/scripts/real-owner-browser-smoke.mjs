@@ -384,6 +384,7 @@ async function main() {
       COOKIE_TELEGRAM_OIDC_REDIRECT_URI: "https://cookie-e2e.invalid/auth/telegram/callback",
       COOKIE_TELEGRAM_OIDC_COOKIE_KEY: randomBytes(32).toString("hex"),
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
+      COOKIE_STAFF_RECOVERY_SCOPE_SECRET_HEX: randomBytes(32).toString("hex"),
       COOKIE_STAGING_APPEARANCE_MODE: "enabled",
       COOKIE_TELEGRAM_USER_HMAC_SECRET: userHashSecret.toString("hex"),
       COOKIE_TELEGRAM_BOT_TOKEN: botToken,
@@ -815,9 +816,41 @@ async function main() {
       "SELECT count(*)::int AS count FROM cookie_staff.staff_create_receipts WHERE tenant_id=$1::uuid",
       [owner.tenantId],
     )).rows[0].count,1);
+    assert.equal(await evaluate(cdp, "sessionStorage.length"), 1,
+      "only the scoped idempotency UUID marker survives a lost response");
+    // Force the actor-scoped marker to arrive before the initial Staff read.
+    // This deterministically exercises the restored-key vs first-load race.
+    const {identifier: delayedStaffReadScript} = await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: `window.__kukiStaffOriginalFetch=window.fetch.bind(window);
+        window.fetch=(input,init)=>{
+          const path=new URL(String(input),location.href).pathname;
+          if(path.endsWith('/staff') && (!init?.method || init.method==='GET')){
+            return new Promise(resolve=>{
+              window.__kukiReleaseStaffRead=()=>resolve(window.__kukiStaffOriginalFetch(input,init));
+            });
+          }
+          return window.__kukiStaffOriginalFetch(input,init);
+        };`,
+    });
+    await cdp.send("Page.reload", { ignoreCache: true });
+    await requireDom(cdp, "legacy bearer is not persisted after Staff response loss",
+      "!document.querySelector('.real-owner-nav') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я представляю бизнес')");
+    // This owner uses a legacy cs_ proof, not a global browser-bound cookie.
+    // Reauthenticate the SAME verified actor with a NEW signed Telegram proof,
+    // preserving only tab-local, actor-scoped recovery marker across reload.
+    script = await loadAndEnterTelegram(cdp, origin + "staff", signedProof(botToken,userId), script, "business");
+    await requireDom(cdp, "same actor reauthenticated after Staff response loss", "document.querySelector('.real-owner-nav')");
+    await button(cdp, "Мастера");
+    await requireDom(cdp, "pending Staff marker arrives before delayed first directory read",
+      "document.body.innerText.includes('Найден незавершённый запрос создания.') && typeof window.__kukiReleaseStaffRead==='function'");
+    await evaluate(cdp, "window.__kukiReleaseStaffRead(); window.fetch=window.__kukiStaffOriginalFetch;");
+    await cdp.send("Page.removeScriptToEvaluateOnNewDocument", {identifier:delayedStaffReadScript});
+    await requireDom(cdp, "same actor pending Staff marker restored without PII or bearer",
+      "document.body.innerText.includes('Найден незавершённый запрос создания.') && document.querySelector('.owner-form input')?.disabled && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Проверить сохранение')");
+    assert.equal(await evaluate(cdp, "sessionStorage.length"), 1);
     await button(cdp, "Проверить сохранение");
-    await requireDom(cdp, "real positive receipt restores Staff UI without a second POST",
-      "window.__kukiReceiptMisses===2 && document.body.innerText.includes('Исходное создание профиля подтверждено сервером.') && document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff') && !document.querySelector('.owner-form input')?.disabled");
+    await requireDom(cdp, "real positive receipt restores Staff UI after reload without a second POST",
+      "document.body.innerText.includes('Исходное создание профиля подтверждено сервером.') && document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff') && !document.querySelector('.owner-form input')?.disabled");
     assert.equal(responses.filter((r) => r.path.endsWith("/staff") && r.status === 201).length, staffPostsBefore + 1);
     assert.ok(responses.some((r) => r.path.endsWith("/staff/receipt") && r.status === 200));
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);

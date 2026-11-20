@@ -22,6 +22,21 @@ import { postgresTenantPolicyGuard } from "./session-context.js";
 import { createTenantSessionVerifier } from "./tenant-session-verifier.js";
 
 const config = parseConfig(process.env);
+// Independent server-only, operator-controlled secret for actor-scoped,
+// non-authoritative Staff recovery. Missing configuration disables the route.
+const staffRecoverySecretHex =
+  process.env.COOKIE_STAFF_RECOVERY_SCOPE_SECRET_HEX;
+if (
+  staffRecoverySecretHex !== undefined &&
+  !/^[0-9a-fA-F]{64}$/.test(staffRecoverySecretHex)
+) {
+  throw new Error(
+    "COOKIE_STAFF_RECOVERY_SCOPE_SECRET_HEX must be 32 bytes of hex",
+  );
+}
+const staffRecoveryScopeSecret = staffRecoverySecretHex
+  ? Buffer.from(staffRecoverySecretHex, "hex")
+  : undefined;
 const stagingPublicationEnabled = parseStagingPublicationMode(
   process.env.COOKIE_STAGING_PUBLICATION_MODE,
 );
@@ -100,7 +115,13 @@ const app = createApp(pool, {
           stagingPublicationEnabled: stagingAppearanceEnabled,
         },
         ownerCalendar: { pool, verifier: tenantSessionVerifier },
-        staffRoutes: { pool, verifier: tenantSessionVerifier },
+        staffRoutes: {
+          pool,
+          verifier: tenantSessionVerifier,
+          ...(staffRecoveryScopeSecret
+            ? { recoveryScopeSecret: staffRecoveryScopeSecret }
+            : {}),
+        },
         locationRoutes: { pool, verifier: tenantSessionVerifier },
         shiftPlanRoutes: { pool, verifier: tenantSessionVerifier },
         stagingPublicationRoutes: {
