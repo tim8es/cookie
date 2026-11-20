@@ -144,6 +144,7 @@
   async function refreshAccount(): Promise<void> {
     const current = identitySession;
     if (!current || accountLoading) return;
+    const requestIdentity: IdentityAuthSession = current;
     accountLoaded = false;
     accountLoading = true;
     error = "";
@@ -155,7 +156,7 @@
           reason instanceof IdentityAuthFailure &&
           reason.reason === "unauthorized"
         ) {
-          invalidateIdentity(current, "Сессия завершилась. Войдите снова.");
+          invalidateIdentity(requestIdentity, "Сессия завершилась. Войдите снова.");
         }
         throw reason;
       });
