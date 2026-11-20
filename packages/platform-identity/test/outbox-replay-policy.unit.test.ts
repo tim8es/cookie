@@ -76,10 +76,10 @@ test("public replay port denies delegated Owner role and audits denial", async (
     code: "ACCESS_DENIED",
   });
   assert.equal(calls.length, 2);
-  assert.deepEqual(calls[1]!.parameters.slice(-3), [
+  assert.deepEqual(calls[1]!.parameters.slice(-2), [
     false,
     "owner-required",
-  ].slice(-3));
+  ]);
 });
 
 test("public replay port denies absent membership without replay mutation", async () => {
