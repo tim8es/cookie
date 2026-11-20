@@ -5,6 +5,8 @@
  */
 export {
   AuthorizationDeniedError,
+  type OpaqueSessionAuthority,
+  type ProtectedResource,
   type TrustedActor,
 } from "./authorization.js";
 export { requireTenantPermission } from "./postgres.js";
