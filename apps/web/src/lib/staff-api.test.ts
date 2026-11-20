@@ -383,18 +383,27 @@ test("actor-scoped recovery namespace only accepts exact server shape", async ()
     { scope: "short" },
     { scope, identityId: TENANT },
   ]) {
-    assert.equal(
-      await readRealStaffRecoveryScope(session, mock(Response.json(body), [])),
-      null,
+    await assert.rejects(
+      readRealStaffRecoveryScope(session, mock(Response.json(body), [])),
+      (error: unknown) =>
+        error instanceof StaffApiFailure && error.reason === "invalid-response",
     );
   }
-  for (const status of [201, 400, 401, 403, 404, 503]) {
-    assert.equal(
-      await readRealStaffRecoveryScope(
+  assert.equal(
+    await readRealStaffRecoveryScope(
+      session,
+      mock(new Response(null, { status: 404 }), []),
+    ),
+    null,
+    "only absent opt-in 404 allows a mounted-only fallback",
+  );
+  for (const status of [201, 400, 401, 403, 503]) {
+    await assert.rejects(
+      readRealStaffRecoveryScope(
         session,
         mock(Response.json({ scope }, { status }), []),
       ),
-      null,
+      (error: unknown) => error instanceof StaffApiFailure,
     );
   }
 });
