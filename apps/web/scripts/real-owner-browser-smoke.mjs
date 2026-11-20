@@ -656,6 +656,35 @@ async function main() {
     script = await load(cdp, origin, "", script);
     await poll("revoked global session no longer restores",()=>responses.slice(logoutMarker).some(r=>r.path==="/v1/auth/browser-session"&&r.status===401));
 
+    // A fast 503 from one account endpoint must not mask a later real 401
+    // from another endpoint after PostgreSQL Identity session revocation.
+    // This is a source-backed browser test, not a mock authorization decision.
+    script = await load(cdp, origin, signedProof(botToken,onboardingUserId), script);
+    await evaluate(cdp,`(()=>{const original=window.fetch.bind(window);
+      window.fetch=(input,init)=>{
+        const path=new URL(String(input),location.href).pathname;
+        if(path==='/v1/auth/identity/providers')return Promise.resolve(new Response(null,{status:503}));
+        if(path==='/v1/auth/identity/organizations')return new Promise(resolve=>{
+          window.__kukiReleaseOrganizations=()=>resolve(original(input,init));
+        });
+        return original(input,init);
+      };
+    })()`);
+    await enterTelegram(cdp,"business");
+    await requireDom(cdp,"transient provider error permits retry until definitive denial",
+      "typeof window.__kukiReleaseOrganizations==='function' && document.body.innerText.includes('Вход подтверждён, но данные учётной записи не загрузились. Повторите загрузку.') && document.body.innerText.includes('Настройте kuki')");
+    const beforeAccountDenial = responses.length;
+    assert.ok((await pool.query(
+      "UPDATE cookie_identity.identity_sessions SET revoked_at=clock_timestamp() WHERE identity_id=$1::uuid AND issuer='cookie-telegram' AND revoked_at IS NULL",
+      [enrolled.rows[0].identity_id],
+    )).rowCount >= 1);
+    await evaluate(cdp,"window.__kukiReleaseOrganizations()");
+    await poll("actual PostgreSQL-revoked Identity account read returns 401",()=>responses.slice(beforeAccountDenial).some(r=>r.path==="/v1/auth/identity/organizations"&&r.status===401));
+    await requireDom(cdp,"late 401 clears current global account chooser",
+      "document.body.innerText.includes('Сессия завершилась. Войдите снова.') && !document.body.innerText.includes('Настройте kuki') && !document.querySelector('.identity-organization-list, .identity-provider-section, .real-owner-nav')");
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
+    console.log("PASS account denial after parallel transient error");
+
     const browserAuthResponsesBefore = responses.length;
     script = await load(cdp, origin, "", script);
     await poll("regular browser auth methods response", () =>
