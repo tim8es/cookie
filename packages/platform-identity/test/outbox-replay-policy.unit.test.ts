@@ -54,10 +54,7 @@ test("public Identity replay port authorizes the trusted owner and audits prefli
   await authorizeOutboxReplay(client, actor);
   assert.equal(calls.length, 2);
   assert.match(calls[0]!.sql, /cookie_identity\.memberships/);
-  assert.deepEqual(calls[0]!.parameters, [
-    actor.tenantId,
-    actor.identityId,
-  ]);
+  assert.deepEqual(calls[0]!.parameters, [actor.tenantId, actor.identityId]);
   assert.deepEqual(calls[1]!.parameters, [
     actor.tenantId,
     actor.identityId,
@@ -76,10 +73,7 @@ test("public replay port denies delegated Owner role and audits denial", async (
     code: "ACCESS_DENIED",
   });
   assert.equal(calls.length, 2);
-  assert.deepEqual(calls[1]!.parameters.slice(-2), [
-    false,
-    "owner-required",
-  ]);
+  assert.deepEqual(calls[1]!.parameters.slice(-2), [false, "owner-required"]);
 });
 
 test("public replay port denies absent membership without replay mutation", async () => {
@@ -92,8 +86,5 @@ test("public replay port denies absent membership without replay mutation", asyn
     code: "ACCESS_DENIED",
   });
   assert.equal(calls.length, 2);
-  assert.deepEqual(calls[1]!.parameters.slice(-2), [
-    false,
-    "inactive-membership",
-  ]);
+  assert.deepEqual(calls[1]!.parameters.slice(-2), [false, "inactive-membership"]);
 });
