@@ -98,6 +98,7 @@ async function request(
   session: VerifiedOwnerSession,
   init: RequestInit,
   fetcher: typeof fetch,
+  suffix = "",
 ): Promise<{ body: unknown; status: number }> {
   if (Date.now() / 1000 >= session.expiresAtUnixSeconds) {
     throw new StaffApiFailure("unauthorized");
@@ -105,7 +106,7 @@ async function request(
   let response: Response;
   try {
     response = await fetcher(
-      "/v1/organizations/" + session.tenantId + "/staff",
+      "/v1/organizations/" + session.tenantId + "/staff" + suffix,
       {
         ...init,
         credentials: "omit",
@@ -244,4 +245,38 @@ export async function createRealStaff(
   }
   // A 200 replay returns the current profile, which may since be published.
   return staff;
+}
+
+/**
+ * A positive receipt proves the original Staff CREATE committed.
+ * No result on denied/absent/unavailable/malformed responses; NEVER treat
+ * 404 as evidence that it is safe to issue a new idempotency key.
+ */
+export async function recoverRealStaffCreate(
+  session: VerifiedOwnerSession,
+  key: string,
+  fetcher: typeof fetch = globalThis.fetch,
+): Promise<{ staffId: string } | null> {
+  if (!UUID.test(key)) return null;
+  try {
+    const result = await request(
+      session,
+      { method: "GET", headers: { "idempotency-key": key } },
+      fetcher,
+      "/receipt",
+    );
+    if (
+      result.status !== 200 ||
+      !result.body ||
+      typeof result.body !== "object" ||
+      Array.isArray(result.body) ||
+      Object.keys(result.body).length !== 1
+    ) {
+      return null;
+    }
+    const { staffId } = result.body as { staffId?: unknown };
+    return typeof staffId === "string" && UUID.test(staffId) ? { staffId } : null;
+  } catch {
+    return null;
+  }
 }
