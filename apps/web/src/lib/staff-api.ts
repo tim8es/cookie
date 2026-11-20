@@ -275,7 +275,8 @@ export async function recoverRealStaffCreate(
       return null;
     }
     const { staffId } = result.body as { staffId?: unknown };
-    return typeof staffId === "string" && UUID.test(staffId) ? { staffId } : null;
+    if (typeof staffId !== "string" || !UUID.test(staffId)) return null;
+    return { staffId };
   } catch {
     return null;
   }
