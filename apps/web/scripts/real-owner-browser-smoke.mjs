@@ -748,7 +748,44 @@ async function main() {
     assert.equal(await evaluate(cdp, "document.querySelector('.owner-form select').value"), locationId);
     await fill(cdp, ".owner-form input:nth-of-type(1)", "Synthetic E2E Staff");
     await evaluate(cdp, "(() => {const n=document.querySelectorAll('.owner-form input');n[0].value='Synthetic E2E Staff';n[0].dispatchEvent(new Event('input',{bubbles:true}));n[1].value='Stylist';n[1].dispatchEvent(new Event('input',{bubbles:true}));})()");
+    // The actual POST must COMMIT in PostgreSQL, but its HTTP response is
+    // lost to this browser. A missing receipt must NOT prove the POST failed.
+    await evaluate(cdp, `(()=>{const original=window.fetch.bind(window);
+      window.__kukiStaffPostResponsesLost=0;window.__kukiReceiptMisses=0;
+      window.fetch=async(input,init)=>{
+        const path=new URL(String(input),location.href).pathname;
+        if(path.endsWith('/staff')&&init?.method==='POST'&&window.__kukiStaffPostResponsesLost++===0){
+          const response=await original(input,init);
+          if(response.status!==201) return response;
+          throw new TypeError('Synthetic lost response after real COMMIT');
+        }
+        if(path.endsWith('/staff/receipt')&&init?.method==='GET'&&window.__kukiReceiptMisses++===0)
+          return new Response(JSON.stringify({error:'receipt-unavailable'}),{status:404,headers:{'content-type':'application/json'}});
+        return original(input,init);
+      };
+    })()`);
+    const staffPostsBefore = responses.filter((r) => r.path.endsWith("/staff") && r.status === 201).length;
     await submitValidForm(cdp, ".owner-form");
+    await requireDom(cdp, "lost committed Staff response preserves original form and retry key",
+      "window.__kukiStaffPostResponsesLost===1 && document.body.innerText.includes('Сервер не подтвердил результат создания профиля.') && document.querySelector('.owner-form input')?.disabled && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Проверить сохранение')");
+    assert.equal(responses.filter((r) => r.path.endsWith("/staff") && r.status === 201).length, staffPostsBefore + 1);
+    assert.equal((await pool.query(
+      "SELECT count(*)::int AS count FROM cookie_staff.staff_profiles WHERE tenant_id=$1::uuid",
+      [owner.tenantId],
+    )).rows[0].count,1);
+    await button(cdp, "Проверить сохранение");
+    await requireDom(cdp, "missing receipt is not false success and does not enable different-key creation",
+      "window.__kukiReceiptMisses===1 && document.body.innerText.includes('Сервер не подтвердил исходную операцию.') && document.querySelector('.owner-form input')?.disabled && !document.body.innerText.includes('Исходное создание профиля подтверждено сервером.')");
+    assert.equal((await pool.query(
+      "SELECT count(*)::int AS count FROM cookie_staff.staff_create_receipts WHERE tenant_id=$1::uuid",
+      [owner.tenantId],
+    )).rows[0].count,1);
+    await button(cdp, "Проверить сохранение");
+    await requireDom(cdp, "real positive receipt restores Staff UI without a second POST",
+      "window.__kukiReceiptMisses===2 && document.body.innerText.includes('Исходное создание профиля подтверждено сервером.') && document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff') && !document.querySelector('.owner-form input')?.disabled");
+    assert.equal(responses.filter((r) => r.path.endsWith("/staff") && r.status === 201).length, staffPostsBefore + 1);
+    assert.ok(responses.some((r) => r.path.endsWith("/staff/receipt") && r.status === 200));
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
     await requireDom(cdp, "persisted staff renders",
       "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff') && !document.querySelector('.owner-form button[type=submit]')?.disabled");
     await button(cdp, "Услуги");
