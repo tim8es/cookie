@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   publishAppearanceDraft,
   readAppearancePublicationState,
+  readPublishedAppearanceSnapshot,
 } from "./appearance-publication-api";
 import { createBrandConfig } from "./branding-config";
 
@@ -17,6 +18,81 @@ const published = {
   ...draft,
   publishedAt: "2026-01-01T00:00:00.000Z",
 };
+
+test("owner published snapshot uses authenticated no-cache read", async () => {
+  const fetcher: typeof fetch = async (url, init) => {
+    assert.equal(
+      url,
+      "/v1/organizations/" + session.tenantId + "/appearance/published",
+    );
+    assert.equal(init?.method, "GET");
+    assert.equal(init?.body, undefined);
+    assert.equal(init?.credentials, "omit");
+    assert.equal(init?.cache, "no-store");
+    assert.equal(init?.redirect, "error");
+    assert.equal(init?.referrerPolicy, "no-referrer");
+    assert.equal(
+      new Headers(init?.headers).get("authorization"),
+      "Bearer synthetic",
+    );
+    return Response.json({ published });
+  };
+  assert.deepEqual(
+    await readPublishedAppearanceSnapshot(session, fetcher),
+    published,
+  );
+});
+
+test("unpublished appearance is not a success receipt", async () => {
+  assert.equal(
+    await readPublishedAppearanceSnapshot(
+      session,
+      async () => new Response("", { status: 404 }),
+    ),
+    null,
+  );
+  for (const payload of [
+    { draft: published },
+    { published: { ...published, revision: 0 } },
+    { published: { ...published, revision: 1.5 } },
+    { published: { ...published, publishedAt: "invalid" } },
+    { published: { ...published, config: createBrandConfig("ocean"), extra: 1 } },
+    { published: { ...published, config: { ...draft.config, backgroundColor: "url(evil)" } } },
+  ]) {
+    await assert.rejects(
+      readPublishedAppearanceSnapshot(session, async () =>
+        Response.json(payload),
+      ),
+      /invalid-response/,
+    );
+  }
+});
+
+test("owner published read fails closed on revoked or unavailable authority", async () => {
+  let requests = 0;
+  const fetcher: typeof fetch = async () => {
+    requests++;
+    return new Response("", { status: 403 });
+  };
+  await assert.rejects(
+    readPublishedAppearanceSnapshot(session, fetcher),
+    /unauthorized/,
+  );
+  await assert.rejects(
+    readPublishedAppearanceSnapshot(
+      { ...session, expiresAtUnixSeconds: 0 },
+      fetcher,
+    ),
+    /unauthorized/,
+  );
+  assert.equal(requests, 1);
+  await assert.rejects(
+    readPublishedAppearanceSnapshot(session, async () => {
+      throw new Error("transport secret");
+    }),
+    /unavailable/,
+  );
+});
 
 test("publication capability distinguishes unknown", async () => {
   assert.equal(
