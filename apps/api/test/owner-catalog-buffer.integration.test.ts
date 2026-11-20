@@ -54,6 +54,7 @@ test(
     const sessions = new PostgresOpaqueTelegramSessions({
       pool,
       telegramProofVerifier: verifier,
+      fingerprintSecret: SECRET,
       resolveVerifiedTelegramLink: createPostgresVerifiedTelegramLinkResolver({
         userHashSecret: SECRET,
       }),

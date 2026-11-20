@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import type { OwnerReads } from "../owner-reads";
+  import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import { Button } from "../components/ui/button/index.js";
 
   import type { VerifiedOwnerSession } from "../owner-auth";
   import {
     createRealService,
     editRealService,
-    readRealServices,
     ServiceApiFailure,
     type RealService,
   } from "../services-api";
@@ -14,6 +15,7 @@
   import { emptyRealServiceForm, realServiceDraftFromForm } from "../real-service-form";
 
   export let session: VerifiedOwnerSession;
+  export let reads: OwnerReads;
 
   let services: RealService[] = [];
   let loading = true;
@@ -105,7 +107,7 @@
     loading = true;
     readError = "";
     try {
-      services = await readRealServices(session);
+      services = await reads.services.load();
       loaded = true;
     } catch (reason) {
       loaded = false;
@@ -132,14 +134,22 @@
     try {
       const wasEditing = editing !== null;
       if (editing) await editRealService(session, editing.id,
-        { ...draft, expectedRevision: editing.revision }, key);
-      else await createRealService(session, draft, key);
+        { ...draft, expectedRevision: editing.revision }, key, reads.fetch);
+      else await createRealService(session, draft, key, reads.fetch);
       // Receipt proves the command committed, not that its snapshot is
       // still current. Always re-read after both initial write and replay.
       resetForm();
       notice = wasEditing ? "Изменения черновика сохранены." : "Черновик услуги сохранён на сервере. Для записи клиентов он пока недоступен.";
+      reads.services.invalidate();
+      reads.staff.invalidate();
+      reads.invalidateCalendars();
+      reads.shifts.invalidate();
       await refresh();
     } catch (reason) {
+      reads.services.invalidate();
+      reads.staff.invalidate();
+      reads.invalidateCalendars();
+      reads.shifts.invalidate();
       saveError = description(reason);
       stale = reason instanceof ServiceApiFailure &&
         (reason.reason === "stale-revision" || reason.reason === "draft-unavailable");
@@ -182,8 +192,8 @@
       <div><span class="eyebrow">КАТАЛОГ</span><h2>Сохранённые услуги</h2></div>
       <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || saving}>Обновить</Button>
     </div>
-    {#if loading}
-      <p role="status">Загружаем услуги с сервера…</p>
+    {#if loading && !loaded}
+      <OwnerReadPlaceholder label="Загружаем услуги с сервера…" />
     {:else if loaded && services.length === 0}
       <div class="empty-mini"><strong>Услуг пока нет</strong><p>Создайте первый черновик.</p></div>
     {:else if loaded}

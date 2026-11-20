@@ -39,6 +39,8 @@ export interface OpaqueSessionAuthority {
   readonly tokenSha256: string;
   readonly issuer: string;
   readonly audience: string;
+  /** Present only for pre-tenant Identity sessions; absent means legacy tenant session. */
+  readonly kind?: "identity";
 }
 
 /** Construct ONLY after server-side session/identity verification. */

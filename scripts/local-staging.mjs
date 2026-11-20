@@ -23,6 +23,7 @@ const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 // Disposable demo and CI never read/write the operator's persistent QA state.
 const mode = resolveLocalStagingMode(process.argv.slice(2), process.env.CI);
 const { verification, disposable, demo } = mode;
+let localStagingPhase = "initialization";
 const parent = join(root, ".tmp");
 if (disposable) mkdirSync(parent, { recursive: true, mode: 0o700 });
 const folder = disposable
@@ -172,6 +173,8 @@ async function signIn(cdp, origin, state, role = "owner") {
   try {
     const navigation = await cdp.send("Page.navigate", { url: origin + path });
     if (navigation.errorText) throw new Error("Browser navigation failed");
+    if (role !== "client") await pressButton(cdp, "Я представляю бизнес");
+    await pressButton(cdp, "Войти через Telegram");
     await requireDom(cdp, "verified " + role + " workspace", role === "client"
       ? "document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.innerText==='Вход клиента подтверждён'"
       : "document.querySelector('.verified-owner-shell[data-cookie-mode=api] .sidebar')");
@@ -242,11 +245,12 @@ async function pressButton(cdp, label) {
 async function logoutVerified(cdp) {
   await pressButton(cdp, "Выйти");
   await requireDom(cdp, "server-confirmed logout",
-    "document.querySelector('.feedback-state h1')?.innerText==='Вы вышли' && !document.querySelector('.real-owner-nav')");
+    "document.body.innerText.includes('Вы вышли') && !document.querySelector('.real-owner-nav')");
 }
 
 // Check the seeded offer via the real customer surface and persist a real booking.
 async function verifyDemoBooking(cdp, databaseUrl, tenantId, example) {
+  localStagingPhase = "select synthetic client booking offer";
   const panel = '[aria-label="Клиентская витрина staging"]';
   const selector = JSON.stringify(panel + " select");
   for (let i = 0; i < 3; i++) {
@@ -260,6 +264,7 @@ async function verifyDemoBooking(cdp, databaseUrl, tenantId, example) {
   const slot = "document.querySelector(" + JSON.stringify(panel + " .customer-slot-choice") + ")";
   await requireDom(cdp, "real available slot", slot);
   await evaluate(cdp, slot + ".click()");
+  localStagingPhase = "create synthetic booking from client UI";
   await pressButton(cdp, "Записаться");
   await requireDom(cdp, "server-confirmed demo booking", "document.querySelector(" + JSON.stringify(panel) + ")?.innerText.includes('Создание записи подтверждено')");
   const pool = new Pool({ connectionString: databaseUrl, max: 1 });
@@ -280,6 +285,7 @@ async function verifyDemoBooking(cdp, databaseUrl, tenantId, example) {
 }
 
 async function verifyDemoCalendar(cdp, example, expectedStatus) {
+  localStagingPhase = "verify owner calendar with status " + expectedStatus;
   await cdp.send("Emulation.setDeviceMetricsOverride", {
     width: 1280, height: 800, deviceScaleFactor: 1, mobile: false,
   });
@@ -308,19 +314,26 @@ async function verifyDemoCalendar(cdp, example, expectedStatus) {
 async function verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example) {
   // Both roles use their own ordinary verified session and the exact same
   // compiled application. Every mutation goes through the actual browser UI.
+  localStagingPhase = "create synthetic client booking";
   const id = await verifyDemoBooking(cdp, databaseUrl, tenantId, example);
+  localStagingPhase = "logout client after booking";
   await logoutVerified(cdp);
+  localStagingPhase = "authenticate owner for confirmed calendar";
   await signIn(cdp, origin, state, "owner");
   await verifyDemoCalendar(cdp, example, "Подтверждена");
+  localStagingPhase = "logout owner before client cancellation";
   await logoutVerified(cdp);
+  localStagingPhase = "authenticate client to cancel booking";
   await signIn(cdp, origin, state, "client");
   const history = "document.querySelector('[aria-label=\\\"Мои записи\\\"]')";
   await requireDom(cdp, "same booking after new client authentication",
     history + "?.innerText.includes(" + JSON.stringify(id) + ")");
+  localStagingPhase = "cancel synthetic booking from client UI";
   await pressButton(cdp, "Отменить запись");
   await pressButton(cdp, "Подтвердить отмену");
   await requireDom(cdp, "client cancellation on real runtime",
     history + "?.innerText.includes('Отменена клиентом')");
+  localStagingPhase = "verify persisted client cancellation";
   const pool = new Pool({ connectionString: databaseUrl, max: 1 });
   try {
     const result = await pool.query(
@@ -330,7 +343,9 @@ async function verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenan
     assert.deepEqual(result.rows, [{ id, status: "CancelledByClient", price: example.price }]);
   } finally { await pool.end(); }
   assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0);
+  localStagingPhase = "logout client after cancellation";
   await logoutVerified(cdp);
+  localStagingPhase = "authenticate owner to verify cancelled calendar";
   await signIn(cdp, origin, state, "owner");
   await verifyDemoCalendar(cdp, example, "Отменена клиентом");
   await logoutVerified(cdp);
@@ -353,6 +368,7 @@ async function main() {
   process.on("SIGTERM", closeInput);
   try {
     state = await loadState();
+    localStagingPhase = "validate compiled runtime and browser";
     if (command === "stop") {
       compose(state, ["stop"]);
       return;
@@ -365,6 +381,7 @@ async function main() {
     const binary = browser();
     checkInterrupted();
     composeAttempted = true;
+    localStagingPhase = "start disposable PostgreSQL";
     compose(state, ["up", "-d", "--wait"]);
     const databaseUrl = "postgresql://cookie:" + state.password +
       "@127.0.0.1:" + state.dbPort + "/cookie_manual";
@@ -377,6 +394,7 @@ async function main() {
       }, 30000);
     } finally { await readiness.end(); }
     checkInterrupted();
+    localStagingPhase = "seed synthetic identities and workspace";
     const workspace = await seed(state, databaseUrl);
     const { tenantId } = workspace;
     checkInterrupted();
@@ -384,10 +402,12 @@ async function main() {
     const origin = "http://127.0.0.1:" + port;
     const env = Object.fromEntries(Object.entries(process.env)
       .filter(([key]) => !/^(COOKIE_|DATABASE_URL$|PG|NODE_OPTIONS$)/i.test(key)));
+    localStagingPhase = "start compiled API";
     api = child(process.execPath, ["dist/apps/api/src/main.js"], {
       ...env, HOST: "127.0.0.1", PORT: String(port),
       DATABASE_URL: databaseUrl, COOKIE_WEB_DIST: join(root, "apps/web/dist"),
       COOKIE_TELEGRAM_AUTH_MODE: "enabled",
+      COOKIE_TELEGRAM_SELF_REGISTRATION_MODE: "enabled",
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
       COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled",
       ...(cutoff === undefined ? {} : { COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: String(cutoff) }),
@@ -406,6 +426,7 @@ async function main() {
       example = await seedDemoCatalog(origin, proof(state), workspace);
     }
     checkInterrupted();
+    localStagingPhase = "launch isolated Chromium";
     profile = mkdtempSync(join(tmpdir(), "cookie-manual-chrome-"));
     chrome = child(binary, [
       "--user-data-dir=" + profile, "--remote-debugging-address=127.0.0.1",
@@ -434,10 +455,13 @@ async function main() {
       });
     }
     checkInterrupted();
+    localStagingPhase = "authenticate synthetic owner";
     await signIn(cdp, origin, state);
     checkInterrupted();
     if (verification) {
+      localStagingPhase = "verify authenticated owner catalog";
       const marker = await verifySharedCatalog(cdp, databaseUrl, tenantId, example);
+      localStagingPhase = "authenticate synthetic client";
       await signIn(cdp, origin, state, "client");
       await poll("actual cancellation capability", () => cancellationResponses.includes(cutoff === undefined ? 404 : 200));
       const policyText = cutoff === undefined ? "Отмена в тестовом режиме недоступна." : "более чем " + cutoff + " мин.";
@@ -445,16 +469,19 @@ async function main() {
       await requireDom(cdp, "actual client workspace without owner navigation", "document.querySelector(\'[aria-label=\\\"Клиентский вход staging\\\"]\') && !document.querySelector(\'.real-owner-nav\')");
       if (example) {
         if (cutoff === undefined) throw new Error("Demo lifecycle verification requires explicit synthetic cutoff");
+        localStagingPhase = "verify synthetic booking lifecycle";
         await verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example);
       }
+      localStagingPhase = "verify unauthenticated runtime and legacy-route closure";
       await cdp.send("Page.navigate", { url: origin + "/" });
       await requireDom(cdp, "no owner authorization without fresh signed proof",
-        "document.querySelector('[data-cookie-mode=api] .feedback-state h1') && !document.querySelector('.verified-owner-shell') && !document.querySelector('.sidebar')");
+        "document.querySelector('[data-cookie-mode=api] .identity-auth-page') && !document.querySelector('.verified-owner-shell') && !document.querySelector('.sidebar')");
       for (const path of ["/demo", "/demo/", "/demo?browser-smoke=1", "/demo/example"]) {
         const legacy = await getLocal(origin + path);
         assert.equal(legacy.status, 404, "Legacy fixture must not be served by the real runtime");
         assert.doesNotMatch(legacy.text, /<html/i);
       }
+      localStagingPhase = "re-authenticate synthetic owner";
       await signIn(cdp, origin, state, "owner");
       await requireDom(cdp, "shared catalog survives role switch and fresh authentication",
         "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(marker) + ")");
@@ -519,6 +546,6 @@ async function main() {
 }
 
 main().catch(() => {
-  console.error("Local staging failed. Check Node 26, Docker, Chrome/Edge, build:runtime and local ports. No credentials logged.");
+  console.error(`Local staging failed during ${localStagingPhase}. Check Node 26, Docker, Chrome/Edge, build:runtime and local ports. No credentials logged.`);
   process.exitCode = 1;
 });

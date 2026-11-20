@@ -148,6 +148,7 @@ test(
       });
       const sessions = new PostgresOpaqueTelegramSessions({
         pool,
+        fingerprintSecret: Buffer.alloc(32, 2),
         telegramProofVerifier: proofVerifier,
         resolveVerifiedTelegramLink: async () => ({ tenantId, identityId }),
         issuer: "synthetic",
@@ -286,6 +287,7 @@ test(
 
       const sessions = new PostgresOpaqueTelegramSessions({
         pool,
+        fingerprintSecret: Buffer.alloc(32, 2),
         telegramProofVerifier: createTelegramMiniAppProofVerifier({
           botToken: BOT,
           maxAgeSeconds: 600,

@@ -1,3 +1,5 @@
+import { notifyBrowserSessionChanged } from "./browser-session-events";
+
 /**
  * Real owner authentication is an independent, opt-in vertical slice.
  * No browser persistence, tenant selection, token in URL or implicit retries.
@@ -7,6 +9,7 @@ export interface VerifiedOwnerSession {
   readonly accessToken: string;
   readonly tenantId: string;
   readonly expiresAtUnixSeconds: number;
+  readonly browserBound?: boolean;
 }
 
 export type OwnerAuthFailureReason =
@@ -22,7 +25,7 @@ export class OwnerAuthFailure extends Error {
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const COOKIE_BEARER = /^cs_[A-Za-z0-9_-]{43}$/;
+const COOKIE_BEARER = /^(?:cs|is)_[A-Za-z0-9_-]{43}$/;
 
 type TelegramWindow = Window & {
   Telegram?: { WebApp?: { initData?: unknown } };
@@ -70,11 +73,12 @@ async function request(
   fetcher: typeof fetch,
   url: string,
   init: RequestInit,
+  credentials: RequestCredentials = "omit",
 ): Promise<Response> {
   try {
     return await fetcher(url, {
       ...init,
-      credentials: "omit",
+      credentials,
       cache: "no-store",
       redirect: "error",
       referrerPolicy: "no-referrer",
@@ -194,10 +198,23 @@ export async function revokeTelegramOwnerSession(
   session: VerifiedOwnerSession,
   fetcher: typeof fetch = globalThis.fetch,
 ): Promise<void> {
-  const result = await request(fetcher, "/v1/auth/logout", {
-    method: "POST",
-    headers: { authorization: "Bearer " + session.accessToken },
-  });
+  const result = await request(
+    fetcher,
+    session.accessToken.startsWith("is_")
+      ? "/v1/auth/identity/logout"
+      : "/v1/auth/logout",
+    {
+      method: "POST",
+      headers: {
+        authorization: "Bearer " + session.accessToken,
+        ...(session.accessToken.startsWith("is_")
+          ? { "x-kuki-session": "1" }
+          : {}),
+      },
+    },
+    session.accessToken.startsWith("is_") ? "same-origin" : "omit",
+  );
+  if (session.accessToken.startsWith("is_")) notifyBrowserSessionChanged();
   if (result.status !== 204) {
     throw new OwnerAuthFailure("unavailable");
   }

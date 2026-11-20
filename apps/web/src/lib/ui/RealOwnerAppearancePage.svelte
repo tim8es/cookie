@@ -3,6 +3,7 @@
   import { Button } from "../components/ui/button/index.js";
   import BrandingSettingsEditor from "./BrandingSettingsEditor.svelte";
   import type { VerifiedOwnerSession } from "../owner-auth";
+  import type { OwnerReads } from "../owner-reads";
   import type { BrandConfigV1 } from "../branding-config";
   import {
     AppearanceApiFailure,
@@ -26,6 +27,7 @@
   import { readRealWorkspaceOverview } from "../workspace-overview-api";
 
   export let session: VerifiedOwnerSession;
+  export let reads: OwnerReads;
 
   let stored: RealAppearanceDraft | null = null;
   let draft: BrandConfigV1 | null = null;
@@ -56,7 +58,7 @@
     publication = null;
     publicationError = "";
     try {
-      const current = await readAppearancePublicationState(session, globalThis.fetch, request.signal);
+      const current = await readAppearancePublicationState(session, reads.fetch, request.signal);
       if (active !== request || request.signal.aborted) return null;
       if (current && current.draftRevision !== stored?.revision) {
         publicationError = "Версия черновика изменилась. Загрузите актуальные данные.";
@@ -102,8 +104,8 @@
     if (!assetsAvailable) return;
     try {
       const [logo, background] = await Promise.all([
-        config.logoAssetId ? readAppearanceAssetPreview(session, "logo", config.logoAssetId, globalThis.fetch, request.signal) : null,
-        config.backgroundAssetId ? readAppearanceAssetPreview(session, "background", config.backgroundAssetId, globalThis.fetch, request.signal) : null,
+        config.logoAssetId ? readAppearanceAssetPreview(session, "logo", config.logoAssetId, reads.fetch, request.signal) : null,
+        config.backgroundAssetId ? readAppearanceAssetPreview(session, "background", config.backgroundAssetId, reads.fetch, request.signal) : null,
       ]);
       if (active !== request || request.signal.aborted) return;
       if (logo) setPreview("logo", logo);
@@ -121,8 +123,8 @@
     assetError = "";
     notice = "";
     try {
-      const receipt = await uploadAppearanceAsset(session, kind, file, globalThis.fetch, request.signal);
-      const preview = await readAppearanceAssetPreview(session, kind, receipt.id, globalThis.fetch, request.signal, receipt);
+      const receipt = await uploadAppearanceAsset(session, kind, file, reads.fetch, request.signal);
+      const preview = await readAppearanceAssetPreview(session, kind, receipt.id, reads.fetch, request.signal, receipt);
       if (active !== request || request.signal.aborted || !draft) return;
       setPreview(kind, preview);
       draft = { ...draft, [kind === "logo" ? "logoAssetId" : "backgroundAssetId"]: receipt.id };
@@ -168,9 +170,9 @@
     clearPreviews();
     try {
       const [result, overview, capability] = await Promise.all([
-        readRealAppearanceDraft(session, globalThis.fetch, request.signal),
-        readRealWorkspaceOverview(session, globalThis.fetch, request.signal),
-        readAppearanceAssetCapability(session, globalThis.fetch, request.signal).catch(() => null),
+        readRealAppearanceDraft(session, reads.fetch, request.signal),
+        readRealWorkspaceOverview(session, reads.fetch, request.signal),
+        readAppearanceAssetCapability(session, reads.fetch, request.signal).catch(() => null),
       ]);
       if (active !== request || request.signal.aborted) return;
       stored = result;
@@ -179,7 +181,6 @@
       needsReload = false;
       assetsAvailable = capability ?? false;
       if (capability === null) assetError = "Не удалось проверить доступность загрузки.";
-      // Both depend on the loaded revision, but neither depends on the other.
       await Promise.all([loadPreviews(result.config, request), refreshPublication(request)]);
     } catch (reason) {
       if (active === request) error = describe(reason);
@@ -205,8 +206,8 @@
     error = "";
     notice = "";
     try {
-      await saveRealAppearanceDraft(session, stored.revision, draft, globalThis.fetch, request.signal);
-      const current = await readRealAppearanceDraft(session, globalThis.fetch, request.signal);
+      await saveRealAppearanceDraft(session, stored.revision, draft, reads.fetch, request.signal);
+      const current = await readRealAppearanceDraft(session, reads.fetch, request.signal);
       if (active !== request || request.signal.aborted) return;
       stored = current;
       draft = current.config;
@@ -237,13 +238,14 @@
     notice = "";
     error = "";
     try {
-      await publishAppearanceDraft(session, target, globalThis.fetch, request.signal);
-      const current = await readRealAppearanceDraft(session, globalThis.fetch, request.signal);
+      await publishAppearanceDraft(session, target, reads.fetch, request.signal);
+      const current = await readRealAppearanceDraft(session, reads.fetch, request.signal);
       if (active !== request || request.signal.aborted) return;
       stored = current;
       draft = current.config;
       const [, confirmed] = await Promise.all([
-        loadPreviews(current.config, request), refreshPublication(request),
+        loadPreviews(current.config, request),
+        refreshPublication(request),
       ]);
       if (active !== request || request.signal.aborted) return;
       if (confirmed && confirmed.publishedRevision === target.revision) {

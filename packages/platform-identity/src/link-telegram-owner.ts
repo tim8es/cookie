@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool, QueryResultRow } from "pg";
 
 import type { TelegramMiniAppProofVerifier } from "./telegram-init-data.js";
-import { telegramUserFingerprint } from "./telegram-links.js";
+import { lockTelegramUser } from "./telegram-links.js";
 
 /** Privileged operator-side binding only: never expose this function to HTTP. */
 export interface TrustedOwnerTelegramLinkInput {
@@ -57,7 +57,6 @@ export async function linkVerifiedTelegramOwner(
   if (!proof || proof.channel !== "telegram-mini-app") {
     throw new TrustedOwnerTelegramLinkError("INVALID_PROOF");
   }
-  const hash = telegramUserFingerprint(userHashSecret, proof.telegramUserId);
   const client = await pool.connect();
   let active = false;
   try {
@@ -87,9 +86,19 @@ export async function linkVerifiedTelegramOwner(
 
     // Serialize exactly the same Telegram user across all Organizations,
     // preventing simultaneous ambiguous links on different tenants.
-    await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [
-      hash.readBigInt64BE(0).toString(),
-    ]);
+    const hash = await lockTelegramUser(
+      client,
+      userHashSecret,
+      proof.telegramUserId,
+    );
+    const globalIdentity = await client.query(
+      `SELECT identity_id FROM cookie_identity.global_telegram_identities
+        WHERE telegram_user_hmac_sha256=$1::bytea FOR UPDATE`,
+      [hash],
+    );
+    if (globalIdentity.rowCount) {
+      throw new TrustedOwnerTelegramLinkError("LINK_CONFLICT");
+    }
     const existing = await client.query<LinkRow>(
       `SELECT id::text,tenant_id::text,identity_id::text
          FROM cookie_identity.telegram_identity_links

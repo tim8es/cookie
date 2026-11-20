@@ -9,6 +9,7 @@
   import { previewStagingSlots, StagingAvailabilityError, type SlotPreview } from "../staging-availability-api";
 
   export let session: VerifiedOwnerSession;
+  export let fetcher: typeof fetch;
   export let staff: readonly RealStaff[];
   export let locations: RealLocation[];
   export let disabled = false;
@@ -47,7 +48,7 @@
     loading = true;
     readError = "";
     slots = null;
-    try { services = await readRealServices(session); }
+    try { services = await readRealServices(session, fetcher); }
     catch (reason) { services = []; readError = describe(reason); }
     finally { loading = false; }
   }
@@ -56,7 +57,7 @@
     if (!option || !localDate || loading || previewLoading || disabled) return;
     previewLoading = true; slots = null; previewError = "";
     try {
-      slots = await previewStagingSlots(session, {staffId:option.staffId, locationId:option.locationId, serviceId:option.serviceId, localDate});
+      slots = await previewStagingSlots(session, {staffId:option.staffId, locationId:option.locationId, serviceId:option.serviceId, localDate}, fetcher);
     } catch (reason) {previewError = describe(reason);}
     finally { previewLoading = false; }
   }
