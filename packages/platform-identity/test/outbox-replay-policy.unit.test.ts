@@ -49,7 +49,7 @@ function policyFixture(options: { owner: boolean; membership?: boolean }) {
   return { client, actor, calls };
 }
 
-test("public Identity replay port authorizes the trusted owner and audits preflight", async () => {
+test("owner replay preflight uses public port and writes audit", async () => {
   const { client, actor, calls } = policyFixture({ owner: true });
   await authorizeOutboxReplay(client, actor);
   assert.equal(calls.length, 2);
@@ -66,7 +66,7 @@ test("public Identity replay port authorizes the trusted owner and audits prefli
   ]);
 });
 
-test("public replay port denies delegated Owner role and audits denial", async () => {
+test("delegated Owner role is denied and audited", async () => {
   const { client, actor, calls } = policyFixture({ owner: false });
   await assert.rejects(authorizeOutboxReplay(client, actor), {
     name: "AuthorizationDeniedError",
@@ -76,7 +76,7 @@ test("public replay port denies delegated Owner role and audits denial", async (
   assert.deepEqual(calls[1]!.parameters.slice(-2), [false, "owner-required"]);
 });
 
-test("public replay port denies absent membership without replay mutation", async () => {
+test("missing membership is denied and audited", async () => {
   const { client, actor, calls } = policyFixture({
     owner: true,
     membership: false,
@@ -86,5 +86,8 @@ test("public replay port denies absent membership without replay mutation", asyn
     code: "ACCESS_DENIED",
   });
   assert.equal(calls.length, 2);
-  assert.deepEqual(calls[1]!.parameters.slice(-2), [false, "inactive-membership"]);
+  assert.deepEqual(calls[1]!.parameters.slice(-2), [
+    false,
+    "inactive-membership",
+  ]);
 });
