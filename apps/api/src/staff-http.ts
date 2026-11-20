@@ -22,7 +22,7 @@ import {
 
 type Params = { tenantId: string };
 const KEY = /^[A-Za-z0-9._:-]{16,128}$/;
-const RECOVERY_DOMAIN = "kuki-staff-create-recovery-v1\\0";
+const RECOVERY_DOMAIN = "kuki-staff-create-recovery-v1";
 
 export interface RealStaffRoutesDependencies {
   readonly pool: Pool;
@@ -36,8 +36,12 @@ export function registerRealStaffRoutes(
   app: FastifyInstance,
   { pool, verifier, recoveryScopeSecret }: RealStaffRoutesDependencies,
 ): void {
-  if (recoveryScopeSecret && (!Buffer.isBuffer(recoveryScopeSecret) || recoveryScopeSecret.length < 32))
+  if (
+    recoveryScopeSecret &&
+    (!Buffer.isBuffer(recoveryScopeSecret) || recoveryScopeSecret.length < 32)
+  ) {
     throw new Error("Staff recovery scope requires a server-only 256-bit secret");
+  }
   app.addHook("onRequest", async (request, reply) => {
     if (!/^\/v1\/organizations\/[^/]+\/staff(?:\?|$)/.test(request.url)) return;
     reply.header("Cache-Control", "no-store");
@@ -92,26 +96,28 @@ export function registerRealStaffRoutes(
           verifier,
         );
         const actor = verified.actor;
-        if (!actor) return reply.code(verified.status).send({ error: verified.error });
+        if (!actor)
+          return reply.code(verified.status).send({ error: verified.error });
         if (!actor.opaqueSessionAuthority)
           return reply.code(403).send({ error: "forbidden" });
         if (Object.keys(request.query as object).length !== 0)
           return reply.code(400).send({ error: "invalid-request" });
         try {
-          return await withTenantPermission(
+          const scope = await withTenantPermission(
             pool,
             actor,
             "staff.profile.create",
-            async () => {
-              const scope = createHmac("sha256", secret)
+            async () =>
+              createHmac("sha256", secret)
                 .update(RECOVERY_DOMAIN, "utf8")
+                .update(Buffer.from([0]))
                 .update(actor.tenantId, "utf8")
-                .update("\\0", "utf8")
+                .update(Buffer.from([0]))
                 .update(actor.identityId, "utf8")
-                .digest("base64url");
-              return reply.send({ scope });
-            },
+                .digest("base64url"),
           );
+          // Only respond after the authorization transaction has committed.
+          return reply.send({ scope });
         } catch (reason) {
           return reply
             .code(reason instanceof AuthorizationDeniedError ? 403 : 503)
