@@ -76,7 +76,9 @@ test(
           await writer.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")
         ).rows[0]!.pid;
         const competingPid = (
-          await competing.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")
+          await competing.query<{ pid: number }>(
+            "SELECT pg_backend_pid() AS pid",
+          )
         ).rows[0]!.pid;
 
         await writer.query("BEGIN");
@@ -180,13 +182,11 @@ test(
             ...row,
             bytes: Number(row.bytes),
           })),
-          [tenantA, tenantB]
-            .sort()
-            .map((tenant_id) => ({
-              tenant_id,
-              count: 1,
-              bytes: image.bytes.length,
-            })),
+          [tenantA, tenantB].sort().map((tenant_id) => ({
+            tenant_id,
+            count: 1,
+            bytes: image.bytes.length,
+          })),
         );
 
         // These locks/counts assume READ COMMITTED; refuse an unsafe
