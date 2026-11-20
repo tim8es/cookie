@@ -23,7 +23,8 @@ import { createTenantSessionVerifier } from "./tenant-session-verifier.js";
 const config = parseConfig(process.env);
 // Independent server-only, operator-controlled secret for actor-scoped,
 // non-authoritative Staff recovery. Missing configuration disables the route.
-const staffRecoverySecretHex = process.env.COOKIE_STAFF_RECOVERY_SCOPE_SECRET_HEX;
+const staffRecoverySecretHex =
+  process.env.COOKIE_STAFF_RECOVERY_SCOPE_SECRET_HEX;
 if (
   staffRecoverySecretHex !== undefined &&
   !/^[0-9a-fA-F]{64}$/.test(staffRecoverySecretHex)
