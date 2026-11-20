@@ -812,6 +812,20 @@ async function main() {
     )).rows[0].count,1);
     assert.equal(await evaluate(cdp, "sessionStorage.length"), 1,
       "only the scoped idempotency UUID marker survives a lost response");
+    // Force the actor-scoped marker to arrive before the initial Staff read.
+    // This deterministically exercises the restored-key vs first-load race.
+    const {identifier: delayedStaffReadScript} = await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: `window.__kukiStaffOriginalFetch=window.fetch.bind(window);
+        window.fetch=(input,init)=>{
+          const path=new URL(String(input),location.href).pathname;
+          if(path.endsWith('/staff') && (!init?.method || init.method==='GET')){
+            return new Promise(resolve=>{
+              window.__kukiReleaseStaffRead=()=>resolve(window.__kukiStaffOriginalFetch(input,init));
+            });
+          }
+          return window.__kukiStaffOriginalFetch(input,init);
+        };`,
+    });
     await cdp.send("Page.reload", { ignoreCache: true });
     await requireDom(cdp, "legacy bearer is not persisted after Staff response loss",
       "!document.querySelector('.real-owner-nav') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я представляю бизнес')");
@@ -821,6 +835,10 @@ async function main() {
     script = await loadAndEnterTelegram(cdp, origin + "staff", signedProof(botToken,userId), script, "business");
     await requireDom(cdp, "same actor reauthenticated after Staff response loss", "document.querySelector('.real-owner-nav')");
     await button(cdp, "Мастера");
+    await requireDom(cdp, "pending Staff marker arrives before delayed first directory read",
+      "document.body.innerText.includes('Найден незавершённый запрос создания.') && typeof window.__kukiReleaseStaffRead==='function'");
+    await evaluate(cdp, "window.__kukiReleaseStaffRead(); window.fetch=window.__kukiStaffOriginalFetch;");
+    await cdp.send("Page.removeScriptToEvaluateOnNewDocument", {identifier:delayedStaffReadScript});
     await requireDom(cdp, "same actor pending Staff marker restored without PII or bearer",
       "document.body.innerText.includes('Найден незавершённый запрос создания.') && document.querySelector('.owner-form input')?.disabled && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Проверить сохранение')");
     assert.equal(await evaluate(cdp, "sessionStorage.length"), 1);
