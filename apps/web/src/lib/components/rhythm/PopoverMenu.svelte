@@ -28,8 +28,12 @@
   });
 
   function choose(id: string) {
+    // Capture before the callback: selection may update or remove the menu.
+    const summary = element?.querySelector<HTMLElement>("summary");
     onSelect(id);
     if (element) element.open = false;
+    // Never strand keyboard focus in the newly hidden list of options.
+    if (summary?.isConnected) summary.focus();
   }
 </script>
 
