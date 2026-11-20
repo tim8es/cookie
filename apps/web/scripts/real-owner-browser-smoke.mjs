@@ -385,6 +385,7 @@ async function main() {
       COOKIE_TELEGRAM_OIDC_REDIRECT_URI: "https://cookie-e2e.invalid/auth/telegram/callback",
       COOKIE_TELEGRAM_OIDC_COOKIE_KEY: randomBytes(32).toString("hex"),
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
+      COOKIE_STAFF_RECOVERY_SCOPE_SECRET_HEX: randomBytes(32).toString("hex"),
       COOKIE_TELEGRAM_USER_HMAC_SECRET: userHashSecret.toString("hex"),
       COOKIE_TELEGRAM_BOT_TOKEN: botToken,
       COOKIE_PUBLIC_ORIGIN: "https://cookie-e2e.invalid",
