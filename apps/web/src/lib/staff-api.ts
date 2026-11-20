@@ -290,26 +290,32 @@ export async function readRealStaffRecoveryScope(
   session: VerifiedOwnerSession,
   fetcher: typeof fetch = globalThis.fetch,
 ): Promise<string | null> {
+  let result: { body: unknown; status: number };
   try {
-    const result = await request(
+    result = await request(
       session,
       { method: "GET" },
       fetcher,
       "/recovery-scope",
     );
-    if (
-      result.status !== 200 ||
-      !result.body ||
-      typeof result.body !== "object" ||
-      Array.isArray(result.body) ||
-      Object.keys(result.body).length !== 1
-    ) return null;
-    const { scope } = result.body as { scope?: unknown };
-    return typeof scope === "string" && RECOVERY_SCOPE.test(scope) ? scope : null;
-  } catch {
-    // Disabled server route, denied or unavailable: no unscoped fallback.
-    return null;
+  } catch (error) {
+    // A 404 from the absent opt-in route permits mounted-only operation.
+    // Transient 503, denial or corrupt responses must block new creation.
+    if (error instanceof StaffApiFailure && error.reason === "missing-reference")
+      return null;
+    throw error;
   }
+  if (
+    result.status !== 200 ||
+    !result.body ||
+    typeof result.body !== "object" ||
+    Array.isArray(result.body) ||
+    Object.keys(result.body).length !== 1
+  ) throw new StaffApiFailure("invalid-response");
+  const { scope } = result.body as { scope?: unknown };
+  if (typeof scope !== "string" || !RECOVERY_SCOPE.test(scope))
+    throw new StaffApiFailure("invalid-response");
+  return scope;
 }
 
 type StaffRecoveryStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
