@@ -10,6 +10,7 @@
     recoverRealStaffCreate,
     readRealStaffRecoveryScope,
     readStaffPendingMarker,
+    hasUnmatchedStaffPendingMarkers,
     writeStaffPendingMarker,
     clearStaffPendingMarker,
     retainStaffCreateKey,
@@ -244,13 +245,21 @@
         Date.now() / 1000 >= current.expiresAtUnixSeconds
       ) return;
       recoveryScope = scope ?? "";
-      if (!scope) return;
-      // Only a verified tenant+actor namespace can read its tab-local marker.
+      // Only a server-verified actor scope may select a stored marker. If the
+      // tab contains any other scope (including after secret rotation or a
+      // disabled route), do not silently issue another create POST.
       const storage = tabStorage();
-      const key = storage ? readStaffPendingMarker(storage, scope) : null;
+      const unmatched = storage
+        ? hasUnmatchedStaffPendingMarkers(storage, scope)
+        : false;
+      const key = scope && storage ? readStaffPendingMarker(storage, scope) : null;
       if (key && !pendingKey) {
         pendingKey = key;
         writeError = "Найден незавершённый запрос создания. Проверьте, сохранил ли сервер профиль.";
+      }
+      if (unmatched) {
+        recoveryScopeError = true;
+        writeError = "В этой вкладке есть незавершённая операция другого контекста или до смены ключа сервера. Новое создание заблокировано до безопасного восстановления.";
       }
     } catch {
       if (mounted && current.accessToken === session.accessToken) {
