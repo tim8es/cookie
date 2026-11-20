@@ -71,6 +71,5 @@ export type {
   OwnerWorkspaceProvisionResult,
 } from "./provision-owner-workspace.js";
 
-
 /** Trusted transaction-scoped policy port for manual outbox replay. */
 export { authorizeOutboxReplay } from "./outbox-replay-policy.js";
