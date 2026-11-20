@@ -4,6 +4,7 @@ import type { Pool } from "pg";
 import {
   AppearanceAssetNotVerified,
   AppearanceRevisionConflict,
+  readPublishedTenantBrand,
   readTenantBrandDraft,
   readAppearanceRevisionState,
   saveTenantBrandDraft,
@@ -133,6 +134,36 @@ export function registerRealAppearanceRoutes(
           (client) => readTenantBrandDraft(client, verified.actor!.tenantId),
         );
         return reply.send({ draft: result });
+      } catch (error) {
+        const result = failure(error);
+        return reply.code(result.status).send({ error: result.error });
+      }
+    },
+  );
+
+  // Owner-only snapshot of the actual published theme, not the draft.
+  // Publication and public-salon URL authorization remain separate gates.
+  app.get<{ Params: TenantParams }>(
+    "/v1/organizations/:tenantId/appearance/published",
+    async (request, reply) => {
+      const verified = await authenticated(
+        request.headers.authorization,
+        request.params.tenantId,
+      );
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
+      if (Object.keys(request.query as object).length !== 0)
+        return reply.code(400).send({ error: "invalid-request" });
+      try {
+        const published = await withTenantPermission(
+          pool,
+          verified.actor,
+          "appearance.read",
+          (client) =>
+            readPublishedTenantBrand(client, verified.actor!.tenantId),
+        );
+        if (!published) return reply.code(404).send({ error: "not-found" });
+        return reply.send({ published });
       } catch (error) {
         const result = failure(error);
         return reply.code(result.status).send({ error: result.error });
