@@ -40,7 +40,9 @@ export function registerRealStaffRoutes(
     recoveryScopeSecret &&
     (!Buffer.isBuffer(recoveryScopeSecret) || recoveryScopeSecret.length < 32)
   ) {
-    throw new Error("Staff recovery scope requires a server-only 256-bit secret");
+    throw new Error(
+      "Staff recovery scope requires a server-only 256-bit secret",
+    );
   }
   app.addHook("onRequest", async (request, reply) => {
     if (!/^\/v1\/organizations\/[^/]+\/staff(?:\?|$)/.test(request.url)) return;
