@@ -3,13 +3,11 @@ import { randomUUID } from "node:crypto";
 import type { Pool, QueryResultRow } from "pg";
 
 import {
-  requireSensitiveAuthorization,
+  authorizeOutboxReplay,
   type TrustedActor,
-} from "../../platform-identity/src/authorization.js";
-import {
-  loadPolicySnapshot,
-  PostgresPolicyAudit,
-} from "../../platform-identity/src/postgres.js";
+} from "../../platform-identity/src/index.js";
+
+import { runSqlTransaction } from "./transaction.js";
 
 interface DeadRow extends QueryResultRow {
   status: string;
@@ -54,69 +52,56 @@ export async function replayDeadOutbox(
     throw new Error("Invalid trusted replay metadata");
   }
 
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
-    const snapshot = await loadPolicySnapshot(client, actor);
-    await requireSensitiveAuthorization(
-      {
-        actor,
-        resource: { kind: "organization", tenantId: actor.tenantId },
-        permission: "outbox.replay",
-        ownerProtected: true,
-      },
-      snapshot,
-      new PostgresPolicyAudit(client),
-    );
+    return await runSqlTransaction(pool, async (client) => {
+      // PostgreSQL requires this before the first snapshot-taking statement.
+      await client.query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
+      await authorizeOutboxReplay(client, actor);
 
-    const selected = await client.query<DeadRow>(
-      `SELECT status, attempts, manual_replay_count
-       FROM cookie_jobs.outbox_events
-       WHERE id = $1::uuid AND tenant_id = $2::uuid
-       FOR UPDATE`,
-      [eventId, actor.tenantId],
-    );
-    const row = selected.rows[0];
-    if (!row || row.status !== "dead" || row.manual_replay_count >= 3) {
-      await client.query("COMMIT");
-      return {
-        requeued: false,
-        replayCount: row?.manual_replay_count ?? null,
-      };
-    }
+      const selected = await client.query<DeadRow>(
+        `SELECT status, attempts, manual_replay_count
+         FROM cookie_jobs.outbox_events
+         WHERE id = $1::uuid AND tenant_id = $2::uuid
+         FOR UPDATE`,
+        [eventId, actor.tenantId],
+      );
+      const row = selected.rows[0];
+      if (!row || row.status !== "dead" || row.manual_replay_count >= 3) {
+        return {
+          requeued: false,
+          replayCount: row?.manual_replay_count ?? null,
+        };
+      }
 
-    const replayCount = row.manual_replay_count + 1;
-    await client.query(
-      `UPDATE cookie_jobs.outbox_events
-       SET status = 'pending', attempts = 0,
-           available_at = clock_timestamp(), lease_token = NULL,
-           lease_until = NULL, delivered_at = NULL,
-           last_failure_code = NULL, manual_replay_count = $3
-       WHERE id = $1::uuid AND tenant_id = $2::uuid AND status = 'dead'`,
-      [eventId, actor.tenantId, replayCount],
-    );
-    await client.query(
-      `INSERT INTO cookie_jobs.outbox_replay_audit
-         (id, tenant_id, event_id, actor_identity_id, correlation_id,
-          replay_number, previous_attempts)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7)`,
-      [
-        randomUUID(),
-        actor.tenantId,
-        eventId,
-        actor.identityId,
-        actor.correlationId,
-        replayCount,
-        row.attempts,
-      ],
-    );
-    await client.query("COMMIT");
-    return { requeued: true, replayCount };
+      const replayCount = row.manual_replay_count + 1;
+      await client.query(
+        `UPDATE cookie_jobs.outbox_events
+         SET status = 'pending', attempts = 0,
+             available_at = clock_timestamp(), lease_token = NULL,
+             lease_until = NULL, delivered_at = NULL,
+             last_failure_code = NULL, manual_replay_count = $3
+         WHERE id = $1::uuid AND tenant_id = $2::uuid AND status = 'dead'`,
+        [eventId, actor.tenantId, replayCount],
+      );
+      await client.query(
+        `INSERT INTO cookie_jobs.outbox_replay_audit
+           (id, tenant_id, event_id, actor_identity_id, correlation_id,
+            replay_number, previous_attempts)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7)`,
+        [
+          randomUUID(),
+          actor.tenantId,
+          eventId,
+          actor.identityId,
+          actor.correlationId,
+          replayCount,
+          row.attempts,
+        ],
+      );
+      return { requeued: true, replayCount };
+    });
   } catch {
-    await client.query("ROLLBACK").catch(() => undefined);
     // Do not surface driver SQL details, payloads, or auth-specific metadata.
     throw new Error("Outbox dead-letter replay refused");
-  } finally {
-    client.release();
   }
 }

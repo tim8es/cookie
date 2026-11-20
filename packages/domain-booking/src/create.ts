@@ -4,14 +4,17 @@ import type { Pool, PoolClient, QueryResultRow } from "pg";
 
 import {
   evaluateAvailableStart,
+  lockActiveShiftWindows,
+  lockActiveBlockedWindows,
   type StaffOccupancy,
-  type UtcInterval,
 } from "../../domain-scheduling/src/index.js";
 import {
   enqueueOutbox,
   runSqlTransaction,
 } from "../../platform-db/src/index.js";
 import { requireTenantPermission } from "../../platform-identity/src/index.js";
+import { readStagingCustomerContext } from "../../domain-customers/src/index.js";
+import { lockLiveStagingGrant } from "../../domain-entitlement/src/index.js";
 import type { TrustedActor } from "../../platform-identity/src/index.js";
 
 const UUID =
@@ -68,10 +71,6 @@ interface ServiceRow extends QueryResultRow {
   post_service_buffer_minutes: number;
   base_price_kopecks: string;
   time_zone: string | null;
-}
-interface WindowRow extends QueryResultRow {
-  start_at: Date;
-  end_at: Date;
 }
 interface OccupiedRow extends QueryResultRow {
   location_id: string;
@@ -134,13 +133,6 @@ function localDateAt(instant: string, timeZone: string): string {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-function toIntervals(rows: readonly WindowRow[]): UtcInterval[] {
-  return rows.map((row) => ({
-    startAt: row.start_at.toISOString(),
-    endAt: row.end_at.toISOString(),
-  }));
-}
-
 async function loadService(
   client: PoolClient,
   input: InternalCreateBooking,
@@ -183,27 +175,21 @@ async function checkSlot(
   input: InternalCreateBooking,
   startAt: string,
   service: ServiceRow,
+  stepMinutes = 1,
 ): Promise<{ endAt: string; occupiedUntil: string }> {
   const now = await client.query<ClockRow>("SELECT clock_timestamp() AS now");
   if (new Date(startAt).getTime() <= (now.rows[0]?.now.getTime() ?? Infinity)) {
     throw new CreateBookingFailure("BOOKING_NOT_AVAILABLE");
   }
 
-  const [shiftResult, blockResult, occupiedResult] = await Promise.all([
-    client.query<WindowRow>(
-      `SELECT start_at, end_at FROM cookie_scheduling.shift_windows
-        WHERE tenant_id=$1::uuid AND staff_id=$2::uuid
-          AND location_id=$3::uuid AND active
-        FOR SHARE`,
-      [input.actor.tenantId, input.staffId, input.locationId],
-    ),
-    client.query<WindowRow & { kind: "break" | "exception" }>(
-      `SELECT start_at, end_at, kind FROM cookie_scheduling.blocked_windows
-        WHERE tenant_id=$1::uuid AND staff_id=$2::uuid
-          AND location_id=$3::uuid AND active
-        FOR SHARE`,
-      [input.actor.tenantId, input.staffId, input.locationId],
-    ),
+  const scope = {
+    tenantId: input.actor.tenantId,
+    staffId: input.staffId,
+    locationId: input.locationId,
+  };
+  const [shifts, blocked, occupiedResult] = await Promise.all([
+    lockActiveShiftWindows(client, scope),
+    lockActiveBlockedWindows(client, scope),
     client.query<OccupiedRow>(
       `SELECT location_id::text, start_at, occupied_until
          FROM cookie_booking.bookings
@@ -213,7 +199,6 @@ async function checkSlot(
     ),
   ]);
 
-  const blocked = blockResult.rows;
   const occupied: StaffOccupancy[] = occupiedResult.rows.map((row) => ({
     organizationId: input.actor.tenantId,
     staffId: input.staffId,
@@ -230,12 +215,10 @@ async function checkSlot(
       timeZone: service.time_zone!,
       serviceDurationMinutes: service.duration_minutes,
       postServiceBufferMinutes: service.post_service_buffer_minutes,
-      stepMinutes: 1,
-      shifts: toIntervals(shiftResult.rows),
-      breaks: toIntervals(blocked.filter((row) => row.kind === "break")),
-      exceptions: toIntervals(
-        blocked.filter((row) => row.kind === "exception"),
-      ),
+      stepMinutes,
+      shifts,
+      breaks: blocked.filter((row) => row.kind === "break"),
+      exceptions: blocked.filter((row) => row.kind === "exception"),
       occupied,
     },
     startAt,
@@ -259,33 +242,91 @@ export async function createBookingInternal(
   assertEntitled: AssertBookingEntitlement,
 ): Promise<ConfirmedBookingReceipt> {
   if (typeof assertEntitled !== "function") return invalid();
-  const startAt = assertInput(input);
-  const tenantId = input.actor.tenantId;
-  const actorId = input.actor.identityId;
-  const keyHash = sha256(input.idempotencyKey);
-  const requestHash = sha256(
-    JSON.stringify([
-      input.customerId,
-      input.locationId,
-      input.staffId,
-      input.serviceId,
-      startAt,
-    ]),
-  );
+  return createBooking(pool, input, { kind: "internal", assertEntitled });
+}
+
+type CustomerSelection = Omit<InternalCreateBooking, "customerId">;
+export type StagingCustomerCreateBooking = CustomerSelection;
+
+/** Controlled staging only: resolve Customer from the verified bearer
+ * inside the very transaction that commits the booking, never from JSON.
+ */
+export async function createStagingCustomerBooking(
+  pool: Pool,
+  input: StagingCustomerCreateBooking,
+): Promise<ConfirmedBookingReceipt> {
+  return createBooking(pool, input, { kind: "staging" });
+}
+
+async function createBooking(
+  pool: Pool,
+  request: InternalCreateBooking | StagingCustomerCreateBooking,
+  mode:
+    | { kind: "internal"; assertEntitled: AssertBookingEntitlement }
+    | { kind: "staging" },
+): Promise<ConfirmedBookingReceipt> {
+  const tenantId = request.actor.tenantId;
+  const actorId = request.actor.identityId;
+  // Validate the selection before touching the database. The resolved
+  // Customer ID is validated again before hashing or writing.
+  assertInput({
+    ...request,
+    customerId: "customerId" in request ? request.customerId : actorId,
+  });
+  const keyHash = sha256(request.idempotencyKey);
   try {
     return await runSqlTransaction(pool, async (client) => {
-      // A location-scoped permission is checked even on idempotent replay.
-      // Client/customer roles cannot pass without verified customer binding.
-      await requireTenantPermission(
-        client,
-        input.actor,
-        {
-          kind: "booking",
-          tenantId,
-          locationId: input.locationId,
-          staffProfileId: input.staffId,
-        },
-        "booking.create",
+      // Staging publication takes Staff before policy and the grant. Match
+      // that order for this new path; keep the existing internal path intact.
+      let staffExists = false;
+      if (mode.kind === "staging") {
+        const profile = await client.query(
+          `SELECT id FROM cookie_staff.staff_profiles
+            WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
+          [tenantId, request.staffId],
+        );
+        staffExists = profile.rowCount === 1;
+      }
+      let customerId: string;
+      if (mode.kind === "staging") {
+        const actor = request.actor;
+        const context = await readStagingCustomerContext(client, actor);
+        await requireTenantPermission(
+          client,
+          request.actor,
+          {
+            kind: "customer-self",
+            tenantId,
+            clientIdentityId: actorId,
+          },
+          "staging.customer.booking.create",
+        );
+        customerId = context.customerId;
+      } else {
+        if (!("customerId" in request)) return invalid();
+        customerId = request.customerId;
+        await requireTenantPermission(
+          client,
+          request.actor,
+          {
+            kind: "booking",
+            tenantId,
+            locationId: request.locationId,
+            staffProfileId: request.staffId,
+          },
+          "booking.create",
+        );
+      }
+      const input: InternalCreateBooking = { ...request, customerId };
+      const startAt = assertInput(input);
+      const requestHash = sha256(
+        JSON.stringify([
+          input.customerId,
+          input.locationId,
+          input.staffId,
+          input.serviceId,
+          startAt,
+        ]),
       );
 
       // Hash collisions only cause unnecessary serialization, never a false
@@ -311,13 +352,35 @@ export async function createBookingInternal(
 
       // All CreateBooking and protected ScheduleChange handlers must share
       // this staff lock order; the latter is still an open F1 requirement.
-      const locked = await client.query(
-        `SELECT id FROM cookie_staff.staff_profiles
-          WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
-        [tenantId, input.staffId],
-      );
-      if (locked.rowCount !== 1) {
+      if (mode.kind === "internal") {
+        const profile = await client.query(
+          `SELECT id FROM cookie_staff.staff_profiles
+            WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
+          [tenantId, input.staffId],
+        );
+        staffExists = profile.rowCount === 1;
+      }
+      if (!staffExists) {
         throw new CreateBookingFailure("BOOKING_NOT_AVAILABLE");
+      }
+      if (mode.kind === "staging") {
+        const grant = await lockLiveStagingGrant(client, tenantId);
+        const placement = await client.query(
+          `SELECT 1 FROM cookie_staff.staging_publication_receipts
+            WHERE tenant_id=$1::uuid AND staff_id=$2::uuid
+              AND location_id=$3::uuid AND service_id=$4::uuid
+              AND grant_id=$5::uuid LIMIT 1 FOR SHARE`,
+          [
+            tenantId,
+            input.staffId,
+            input.locationId,
+            input.serviceId,
+            grant.id,
+          ],
+        );
+        if (placement.rowCount !== 1) {
+          throw new CreateBookingFailure("BOOKING_NOT_AVAILABLE");
+        }
       }
       const service = await loadService(client, input);
       const customer = await client.query(
@@ -331,8 +394,16 @@ export async function createBookingInternal(
 
       // Mandatory callback has no default implementation and must fail closed
       // until trial/paid entitlements are implemented and verified.
-      await assertEntitled(client, tenantId);
-      const slot = await checkSlot(client, input, startAt, service);
+      if (mode.kind === "internal") {
+        await mode.assertEntitled(client, tenantId);
+      }
+      const slot = await checkSlot(
+        client,
+        input,
+        startAt,
+        service,
+        mode.kind === "staging" ? 15 : 1,
+      );
       const bookingId = randomUUID();
       const result: ConfirmedBookingReceipt = {
         bookingId,
@@ -389,6 +460,12 @@ export async function createBookingInternal(
         ],
       );
 
+      if (mode.kind === "staging") {
+        // Recheck clock-sensitive authority after all business writes. Grant
+        // and exact session/link locks are still held until acknowledged COMMIT.
+        await lockLiveStagingGrant(client, tenantId);
+        await readStagingCustomerContext(client, input.actor);
+      }
       return result;
     });
   } catch (error) {

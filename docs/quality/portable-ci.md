@@ -33,7 +33,7 @@ No public repository or shared project source is an acceptable evidence sink.
 Controller environment:
 - CI_REGISTRY_REPO and CI_REGISTRY_REF (default main)
 - CI_REGISTRY_WRITE_TOKEN: Contents write, registry only
-- CI_EXECUTION_REPO and CI_RUNNER_DISPATCH_TOKEN: Actions read/write, executor only
+- CI_EXECUTION_REPO, CI_EXECUTION_SHA (reviewed full 40-character executor main commit), and CI_RUNNER_DISPATCH_TOKEN: Actions read/write and Contents read, executor only
 - CI_EVIDENCE_REPO and CI_EVIDENCE_READ_TOKEN: Contents read, evidence repo only
 - CI_SOURCE_STATUS_TOKEN: Contents read, Pull requests read and Commit statuses write, source only
 - EXTERNAL_CI_APPROVED=1: explicit opt-in only after provider-policy and security review
@@ -134,12 +134,21 @@ ephemeral self-hosted runner in the private source repository, retaining native
 F1 checks. Never attach a privileged persistent runner to a public repository.
 
 
-The native F1 workflow routes every private-repository job to the self-hosted
-`cookie-ci-private` runner; public repositories use `ubuntu-latest`. This is
-automatic and has no variable override. If Cookie is private and no matching
-runner is registered, jobs stay queued and never fall back to a public hosted
-runner. Register a dedicated, ephemeral Linux x64 runner with Docker/Compose,
-Chromium/Chrome and the dependencies required by the pinned actions before
-switching Cookie to private. Do not share it with other projects or untrusted
-workflows. GitHub-hosted fees and self-hosted infrastructure costs are
-separate; no free compute is assumed.
+The native F1 workflow stays on GitHub-hosted runners by default, even when
+the source becomes private (subject to private compute quota). Only the
+explicit repository variable F1_EXECUTION_BACKEND=self-hosted, in a private
+repository, selects the dedicated cookie-ci-private runner. Register and
+validate an ephemeral Linux runner before setting that variable. Removing
+the variable restores hosted routing; do not assume unlimited free compute.
+
+Executor provenance: the controller checks the reviewed executor main SHA
+before publishing/dispatching a job and stores it in the journal; both
+manual and scheduled paths reject run metadata that differs (including
+reruns). The API returns the run identity explicitly. Dispatch still uses
+main because the generic executor requires that branch: a ref change
+between verification and dispatch is possible. The post-run check prevents
+false green but cannot prevent unreviewed code from running. Protect and
+freeze executor main during pilots; require independent review and a trusted,
+immutable invocation mechanism or equivalent operator-controlled runner
+before routine execution with private credentials. No external activation is
+authorized by this change; native checks remain authoritative.

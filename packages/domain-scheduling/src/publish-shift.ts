@@ -2,9 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
-import { enqueueOutbox } from "../../platform-db/src/outbox.js";
-import type { TrustedActor } from "../../platform-identity/src/authorization.js";
-import { requireTenantPermission } from "../../platform-identity/src/postgres.js";
+import {
+  enqueueOutbox,
+  runSqlTransaction,
+} from "../../platform-db/src/index.js";
+import {
+  requireTenantPermission,
+  type TrustedActor,
+} from "../../platform-identity/src/index.js";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -18,7 +23,8 @@ export type PublishShiftFailureCode =
   | "SHIFT_CROSS_LOCATION_CONFLICT"
   | "SHIFT_REACTIVATION_REQUIRES_REVIEW"
   | "SHIFT_POLICY_DENIED"
-  | "SHIFT_KEY_REUSED";
+  | "SHIFT_KEY_REUSED"
+  | "SHIFT_STALE_REVISION";
 
 export class PublishShiftFailure extends Error {
   constructor(readonly code: PublishShiftFailureCode) {
@@ -64,6 +70,7 @@ interface ShiftRow extends QueryResultRow {
   start_at: Date;
   end_at: Date;
   active: boolean;
+  draft_revision: number;
 }
 
 interface TargetRow extends QueryResultRow {
@@ -116,6 +123,8 @@ export async function publishShiftInternal(
   assertMayPublish: AssertMayPublishShift,
   /** For trusted internal approval composition; caller manages SQL transaction. */
   transactionClient?: PoolClient,
+  /** Explicit controlled-staging path; default internal policy is unchanged. */
+  staging?: { readonly expectedRevision: number },
 ): Promise<PublishedShiftReceipt> {
   validate(input);
   if (typeof assertMayPublish !== "function") {
@@ -124,14 +133,22 @@ export async function publishShiftInternal(
   const tenantId = input.actor.tenantId;
   const actorId = input.actor.identityId;
   const keyHash = digest(input.idempotencyKey);
-  const requestHash = digest(JSON.stringify([input.shiftId]));
-  const client = transactionClient ?? (await pool.connect());
-  const ownsTransaction = transactionClient === undefined;
-  let active = false;
-  try {
-    if (ownsTransaction) await client.query("BEGIN");
-    active = true;
-
+  if (
+    staging &&
+    (!transactionClient ||
+      !Number.isSafeInteger(staging.expectedRevision) ||
+      staging.expectedRevision < 0)
+  ) {
+    reject("INVALID_SHIFT_PUBLISH");
+  }
+  const requestHash = digest(
+    JSON.stringify(
+      staging
+        ? ["staging", input.shiftId, staging.expectedRevision]
+        : [input.shiftId],
+    ),
+  );
+  const work = async (client: PoolClient): Promise<PublishedShiftReceipt> => {
     // Never let a request supply or override the authoritative staff/branch.
     const initial = await client.query<ShiftRow>(
       `SELECT staff_id::text, location_id::text
@@ -151,7 +168,7 @@ export async function publishShiftInternal(
 
     const current = await client.query<ShiftRow>(
       `SELECT id::text, staff_id::text, location_id::text,
-              start_at, end_at, active
+              start_at, end_at, active, draft_revision
          FROM cookie_scheduling.shift_windows
         WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE`,
       [tenantId, input.shiftId],
@@ -174,8 +191,30 @@ export async function publishShiftInternal(
         staffProfileId: shift.staff_id,
         locationId: shift.location_id,
       },
-      "schedule.manage",
+      staging ? "staging.shift.publish" : "schedule.manage",
     );
+
+    // Staging has its own non-delegable owner permission, revision and
+    // live grant check. Check BEFORE receipt replay, including current target.
+    if (staging) {
+      if (shift.draft_revision !== staging.expectedRevision)
+        reject("SHIFT_STALE_REVISION");
+      const lineage = await client.query(
+        `SELECT 1 FROM cookie_scheduling.shift_draft_audit
+          WHERE tenant_id=$1::uuid AND shift_id=$2::uuid AND operation='create'`,
+        [tenantId, shift.id],
+      );
+      if (lineage.rowCount !== 1) reject("SHIFT_TARGET_UNAVAILABLE");
+      await assertMayPublish(client, {
+        tenantId,
+        shiftId: shift.id,
+        staffId: shift.staff_id,
+        locationId: shift.location_id,
+        startAt: shift.start_at.toISOString(),
+        endAt: shift.end_at.toISOString(),
+        actor: input.actor,
+      });
+    }
 
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
@@ -191,8 +230,7 @@ export async function publishShiftInternal(
     const previous = old.rows[0];
     if (previous) {
       if (previous.request_sha256 !== requestHash) reject("SHIFT_KEY_REUSED");
-      if (ownsTransaction) await client.query("COMMIT");
-      active = false;
+      if (staging && !shift.active) reject("SHIFT_TARGET_UNAVAILABLE");
       return previous.result;
     }
 
@@ -332,15 +370,8 @@ export async function publishShiftInternal(
       ],
     );
 
-    if (ownsTransaction) await client.query("COMMIT");
-    active = false;
     return receipt;
-  } catch (error) {
-    if (active && ownsTransaction) {
-      await client.query("ROLLBACK").catch(() => undefined);
-    }
-    throw error;
-  } finally {
-    if (ownsTransaction) client.release();
-  }
+  };
+  if (transactionClient) return work(transactionClient);
+  return runSqlTransaction(pool, work);
 }

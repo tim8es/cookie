@@ -1,516 +1,284 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { createCookieUiApi } from "./lib/api";
-  import { defaultSalonAppearance } from "./lib/appearance";
-  import { localDay, upcomingWeekday } from "./lib/dates";
-  import { UiFailure } from "./lib/model";
-  import type { BookingView, DemoSnapshot, SalonTheme, SlotView, ViewState } from "./lib/model";
-  import type { Screen } from "./lib/navigation";
+  import type { ViewState } from "./lib/model";
+  import { defaultOwnerScreen, ownerRouteHref, ownerScreenFromPath, type Screen } from "./lib/navigation";
   import Sidebar from "./lib/ui/Sidebar.svelte";
   import Topbar from "./lib/ui/Topbar.svelte";
-  import PublicHeader from "./lib/ui/PublicHeader.svelte";
-  import PublicAttribution from "./lib/ui/PublicAttribution.svelte";
   import OnboardingHeader from "./lib/ui/OnboardingHeader.svelte";
-  import OnboardingScreen from "./lib/ui/OnboardingScreen.svelte";
-  import OwnerOverview from "./lib/ui/OwnerOverview.svelte";
-  import OwnerServicesPage from "./lib/ui/OwnerServicesPage.svelte";
-  import OwnerStaffPage from "./lib/ui/OwnerStaffPage.svelte";
-  import OwnerSchedulePage from "./lib/ui/OwnerSchedulePage.svelte";
-  import OwnerLocationsPage from "./lib/ui/OwnerLocationsPage.svelte";
-  import OwnerAppearancePage from "./lib/ui/OwnerAppearancePage.svelte";
-  import BookingConfirmation from "./lib/ui/BookingConfirmation.svelte";
-  import PublicBookingHero from "./lib/ui/PublicBookingHero.svelte";
-  import DemoFooter from "./lib/ui/DemoFooter.svelte";
-  import DemoNotices from "./lib/ui/DemoNotices.svelte";
-  import BookingSetupHint from "./lib/ui/BookingSetupHint.svelte";
-  import DemoState from "./lib/ui/DemoState.svelte";
-  import OwnerAuthGate from "./lib/ui/OwnerAuthGate.svelte";
+  import IdentityAuthGate from "./lib/ui/IdentityAuthGate.svelte";
+  import StagingCustomerGate from "./lib/ui/StagingCustomerGate.svelte";
   import RealOwnerWorkspace from "./lib/ui/RealOwnerWorkspace.svelte";
   import {
-    authenticateTelegramOwner,
-    loadTelegramInitData,
     revokeTelegramOwnerSession,
     watchOwnerSessionExpiry,
+    type VerifiedCustomerSession,
     type VerifiedOwnerSession,
   } from "./lib/owner-auth";
-  import CalendarView from "./lib/ui/CalendarView.svelte";
-  import BookingForm from "./lib/ui/BookingForm.svelte";
+  import { canRetainGlobalIdentity, watchBrowserIdentitySession, type IdentityAuthSession } from "./lib/identity-auth";
+  import { writeLogoutPending, writeWorkspaceHint } from "./lib/workspace-hint";
   import "./styles.css";
   import "./visual-system.css";
 
-  const api = createCookieUiApi();
-  // Presentation-only Telegram-sized preview; no Telegram API, initData or auth.
-  const telegramPreview = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "telegram-preview";
-  const blank: DemoSnapshot = { organization: null, appearance: { ...defaultSalonAppearance }, locations: [], services: [], staff: [], schedules: [], bookings: [] };
-
-  let screen: Screen = "home";
-  let data: DemoSnapshot = blank;
-  let initializing = true;
-  let apiDisconnected = false;
-  let ownerSession: VerifiedOwnerSession | null = null;
-  let ownerAuthPhase: "unavailable" | "loading" | "verified" | "error" | "signing-out" | "signed-out" | "logout-failed" | "expired" = "unavailable";
-  let stopOwnerExpiry: (() => void) | null = null;
-  let ownerMounted = false;
-  let busy = false;
-  let busySlots = false;
-  let error = "";
-  let notice = "";
+  // URL selects a customer presentation only; all access is checked by the API.
+  let customerSurface = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "customer-staging";
+  let customerTenantId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tenantId") ?? "" : "";
+  let screen: Screen = typeof window === "undefined"
+    ? defaultOwnerScreen
+    : ownerScreenFromPath(window.location.pathname) ?? defaultOwnerScreen;
   let preview: ViewState = "normal";
-  let organizationName = "Студия Cookie (тест)";
-  let serviceName = "Женская стрижка";
-  let serviceDuration = 60;
-  let servicePrice = 1500;
-  let staffName = "Алекс Демо";
-  let staffTitle = "Стилист";
-  let staffService = "";
-  let locationName = "Второй филиал (демо)";
-  let locationAddress = "Тестовый адрес";
-  let appearanceTheme: SalonTheme = defaultSalonAppearance.theme;
-  let appearanceIntroduction = defaultSalonAppearance.introduction;
-  let scheduleStaff = "";
-  let scheduleLocation = "";
-  let scheduleDays: number[] = [1, 2, 3, 4, 5, 6];
-  let scheduleStart = "09:00";
-  let scheduleEnd = "18:00";
-  let bookingService = "";
-  let bookingStaff = "";
-  let bookingLocation = "";
-  let bookingDate = localDay(new Date());
-  let bookingTime = "";
-  let clientAlias = "Тестовый клиент";
-  let slotSuggestions: SlotView[] = [];
-  let slotLoadError = "";
-  let createdBooking: BookingView | null = null;
-  let calendarDate = localDay(new Date());
-  let calendarMode: "day" | "week" = typeof window !== "undefined" && window.innerWidth <= 900 ? "day" : "week";
+  let ownerSession: VerifiedOwnerSession | null = null;
+  let customerSession: VerifiedCustomerSession | null = null;
+  let customerAuthNotice = "";
+  let ownerAuthPhase: "unavailable" | "verified" | "signing-out" | "signed-out" | "logout-failed" | "expired" | "denied" = "unavailable";
+  let stopOwnerExpiry: (() => void) | null = null;
+  let stopBrowserWatch: (() => void) | null = null;
+  let identityForSwitch: IdentityAuthSession | null = null;
+  let restoreAllowed = true;
 
-  $: org = data.organization;
-  $: hasUnsavedAppearance = appearanceTheme !== data.appearance.theme ||
-    appearanceIntroduction.trim() !== data.appearance.introduction;
-  $: stepCount = Number(!!org) + Number(data.services.length > 0) +
-    Number(data.staff.length > 0) + Number(data.schedules.length > 0) +
-    Number(data.bookings.length > 0);
-  $: dayBookings = data.bookings.filter(item => item.date === calendarDate && item.status === "demo-confirmed");
-  $: bookingStaffOptions = data.staff.filter(item => !bookingService || item.serviceIds.includes(bookingService));
-  $: canBook = Boolean(bookingService && bookingStaff && bookingLocation && bookingDate && bookingTime && clientAlias.trim());
-  $: currentOnboardingStep = !org ? "organization" : !data.services.length ? "services" :
-    !data.staff.length ? "staff" : !data.schedules.length ? "schedule" :
-    !data.bookings.length ? "booking" : "complete";
+  $: customerMode = customerSurface || customerSession !== null;
+  $: verifiedOwner = !customerMode && ownerAuthPhase === "verified" && ownerSession !== null;
+  $: ownerAuthNotice = ownerAuthPhase === "signed-out"
+    ? "Вы вышли. Серверная сессия отозвана."
+    : ownerAuthPhase === "logout-failed"
+      ? "Локальный вход закрыт, но сервер не подтвердил отзыв. Старая сессия может действовать до истечения срока."
+      : ownerAuthPhase === "expired"
+        ? "Срок действия сеанса истёк. Войдите снова."
+        : ownerAuthPhase === "denied"
+          ? "Доступ к кабинету не подтверждён сервером. Войдите снова или выберите другой кабинет."
+          : "";
+
+  function syncOwnerLocation(canonicalize: boolean): void {
+    screen = ownerScreenFromPath(window.location.pathname) ?? defaultOwnerScreen;
+    if (!canonicalize || customerSurface) return;
+    const target = ownerRouteHref(screen, window.location);
+    if (target !== window.location.pathname + window.location.search + window.location.hash) {
+      window.history.replaceState(window.history.state, "", target);
+    }
+  }
+
+  function rememberVerifiedOwner(): void {
+    if (!verifiedOwner || !ownerSession) return;
+    writeWorkspaceHint(window.history, ownerSession.browserBound
+      ? { role: "business", tenantId: ownerSession.tenantId }
+      : null);
+  }
+
+  function navigateOwner(next: Screen): void {
+    if (!verifiedOwner) return;
+    const target = ownerRouteHref(next, window.location);
+    if (target !== window.location.pathname + window.location.search + window.location.hash) {
+      window.history.pushState(null, "", target);
+      rememberVerifiedOwner();
+    }
+    screen = next;
+  }
 
   onMount(() => {
-    ownerMounted = true;
-    void reload();
-    if (api.mode === "api") void authenticateOwner();
+    const onPopState = () => {
+      syncOwnerLocation(verifiedOwner);
+      rememberVerifiedOwner();
+    };
+    window.addEventListener("popstate", onPopState);
     return () => {
-      ownerMounted = false;
+      window.removeEventListener("popstate", onPopState);
       stopOwnerExpiry?.();
+      stopBrowserWatch?.();
       ownerSession = null;
+      customerSession = null;
     };
   });
 
-  async function authenticateOwner(): Promise<void> {
-    ownerAuthPhase = "loading";
-    try {
-      const initData = await loadTelegramInitData(window, document);
-      if (!ownerMounted) return;
-      if (!initData) {
-        ownerAuthPhase = "unavailable";
-        return;
-      }
-      const session = await authenticateTelegramOwner(initData);
-      if (!ownerMounted) {
-        await revokeTelegramOwnerSession(session).catch(() => undefined);
-        return;
-      }
+  function watchWorkspace(session: VerifiedOwnerSession): void {
+    stopBrowserWatch?.();
+    stopBrowserWatch = watchBrowserIdentitySession(session, () => {
+      if (ownerSession !== session && customerSession !== session) return;
       stopOwnerExpiry?.();
-      ownerSession = session;
-      ownerAuthPhase = "verified";
-      stopOwnerExpiry = watchOwnerSessionExpiry(
-        session.expiresAtUnixSeconds,
-        () => {
-          if (ownerSession !== session) return;
-          ownerSession = null;
-          ownerAuthPhase = "expired";
-        },
-        window,
-        document,
-      );
-    } catch {
-      if (!ownerMounted) return;
+      stopOwnerExpiry = null;
+      identityForSwitch = null;
+      writeWorkspaceHint(window.history, null);
+      restoreAllowed = false;
       ownerSession = null;
-      ownerAuthPhase = "error";
+      customerSession = null;
+      ownerAuthPhase = "unavailable";
+      customerAuthNotice = "Сессия в браузере изменилась или завершилась. Войдите снова.";
+    }, window, document);
+  }
+
+  function acceptOwnerSession(session: VerifiedOwnerSession): void {
+    identityForSwitch = null;
+    customerSession = null;
+    customerAuthNotice = "";
+    stopOwnerExpiry?.();
+    ownerSession = session;
+    ownerAuthPhase = "verified";
+    syncOwnerLocation(true);
+    writeWorkspaceHint(window.history, session.browserBound ? { role: "business", tenantId: session.tenantId } : null);
+    watchWorkspace(session);
+    stopOwnerExpiry = watchOwnerSessionExpiry(
+      session.expiresAtUnixSeconds,
+      () => {
+        if (ownerSession !== session) return;
+        ownerSession = null;
+        writeWorkspaceHint(window.history, null);
+        stopBrowserWatch?.();
+        restoreAllowed = false;
+        ownerAuthPhase = "expired";
+      },
+      window,
+      document,
+    );
+  }
+
+  function denyOwnerSession(session: VerifiedOwnerSession): void {
+    if (ownerSession !== session) return;
+    stopBrowserWatch?.();
+    stopBrowserWatch = null;
+    stopOwnerExpiry?.();
+    stopOwnerExpiry = null;
+    identityForSwitch = session.accessToken.startsWith("is_")
+      ? {
+          accessToken: session.accessToken,
+          expiresAtUnixSeconds: session.expiresAtUnixSeconds,
+          browserBound: session.browserBound,
+        }
+      : null;
+    writeWorkspaceHint(window.history, null);
+    restoreAllowed = identityForSwitch !== null;
+    ownerSession = null;
+    ownerAuthPhase = "denied";
+  }
+
+  function acceptCustomerSession(session: VerifiedCustomerSession): void {
+    identityForSwitch = null;
+    stopOwnerExpiry?.();
+    stopOwnerExpiry = null;
+    ownerSession = null;
+    ownerAuthPhase = "unavailable";
+    customerAuthNotice = "";
+    customerSession = session;
+    writeWorkspaceHint(window.history, session.browserBound ? { role: "customer", tenantId: session.tenantId } : null);
+    watchWorkspace(session);
+  }
+
+  async function leaveDeniedCustomerContext(): Promise<void> {
+    const current = customerSession;
+    if (!current) return;
+    // The child has already hidden all customer data. Only re-enter the
+    // chooser if this exact account is still authenticated independently.
+    const retain = await canRetainGlobalIdentity(current);
+    if (customerSession !== current) return;
+    if (retain && current.expiresAtUnixSeconds > Math.floor(Date.now() / 1000)) {
+      switchAccountContext();
+      customerAuthNotice = "Доступ к клиентскому кабинету не подтверждён. Выберите доступный кабинет.";
+      return;
     }
+    clearCustomerSession("expired");
+  }
+
+  function clearCustomerSession(reason: "expired" | "signed-out" | "logout-failed"): void {
+    stopBrowserWatch?.();
+    writeWorkspaceHint(window.history, null);
+    restoreAllowed = false;
+    identityForSwitch = null;
+    customerSession = null;
+    customerAuthNotice = reason === "signed-out"
+      ? "Вы вышли. Серверная сессия отозвана."
+      : reason === "logout-failed"
+        ? "Локальный клиентский вход закрыт, но сервер не подтвердил отзыв. Не используйте эту сессию."
+        : "Клиентская сессия завершена или отозвана. Войдите снова.";
+  }
+
+  function switchAccountContext(): void {
+    const current = customerSession ?? ownerSession;
+    if (!current?.accessToken.startsWith("is_")) return;
+    if (current.expiresAtUnixSeconds <= Math.floor(Date.now() / 1000)) return;
+    identityForSwitch = {
+      accessToken: current.accessToken,
+      expiresAtUnixSeconds: current.expiresAtUnixSeconds,
+      browserBound: current.browserBound,
+    };
+    writeWorkspaceHint(window.history, null);
+    restoreAllowed = true;
+    stopBrowserWatch?.();
+    stopOwnerExpiry?.();
+    stopOwnerExpiry = null;
+    ownerSession = null;
+    customerSession = null;
+    ownerAuthPhase = "unavailable";
+    customerAuthNotice = "";
+    screen = "services";
+    // Explicitly leave the customer-only presentation, not its permissions.
+    customerSurface = false;
+    customerTenantId = "";
+    const url = new URL(window.location.href);
+    url.searchParams.delete("surface");
+    url.searchParams.delete("tenantId");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      ownerRouteHref("services", url),
+    );
   }
 
   async function logoutOwner(): Promise<void> {
     const session = ownerSession;
     if (!session || ownerAuthPhase !== "verified") return;
-    // Discard the bearer immediately; even failed remote revocation cannot
-    // restore any owner permissions in the current browser session.
+    if (session.accessToken.startsWith("is_")) writeLogoutPending(window.history, true);
+    else writeWorkspaceHint(window.history, null);
+    stopBrowserWatch?.();
     stopOwnerExpiry?.();
     stopOwnerExpiry = null;
+    restoreAllowed = false;
+    identityForSwitch = null;
     ownerSession = null;
     ownerAuthPhase = "signing-out";
     try {
       await revokeTelegramOwnerSession(session);
+      if (session.accessToken.startsWith("is_")) writeLogoutPending(window.history, false);
       ownerAuthPhase = "signed-out";
     } catch {
       ownerAuthPhase = "logout-failed";
     }
   }
-
-  function describe(errorValue: unknown): string {
-    return errorValue instanceof Error ? errorValue.message : "Не удалось выполнить действие. Повторите попытку.";
-  }
-  async function reload(): Promise<void> {
-    try {
-      data = await api.getSnapshot();
-      appearanceTheme = data.appearance.theme;
-      appearanceIntroduction = data.appearance.introduction;
-      apiDisconnected = false;
-      if (!staffService) staffService = data.services[0]?.id ?? "";
-      if (!scheduleStaff) scheduleStaff = data.staff[0]?.id ?? "";
-      if (!scheduleLocation) scheduleLocation = data.locations[0]?.id ?? "";
-      if (!bookingService) bookingService = data.services[0]?.id ?? "";
-      if (!bookingLocation) bookingLocation = data.locations[0]?.id ?? "";
-      if (!bookingStaff) bookingStaff = data.staff[0]?.id ?? "";
-    } catch (reason) {
-      if (api.mode === "api" && reason instanceof UiFailure && reason.code === "NOT_CONNECTED") {
-        apiDisconnected = true;
-        error = "";
-      } else {
-        error = describe(reason);
-      }
-    } finally {
-      initializing = false;
-    }
-  }
-  async function transact(work: () => Promise<unknown>, next: Screen | undefined, message = "Демо-данные изменены только в этой вкладке."): Promise<void> {
-    busy = true;
-    error = "";
-    notice = "";
-    try {
-      await work();
-      await reload();
-      notice = message;
-      if (next) goto(next);
-    } catch (reason) {
-      error = describe(reason);
-      if (reason instanceof UiFailure && reason.code === "SLOT_CONFLICT") {
-        notice = "Выберите другое тестовое время. Настоящая проверка слотов должна выполняться сервером.";
-        await loadSlots();
-      }
-    } finally {
-      busy = false;
-    }
-  }
-  function goto(next: Screen): void {
-    screen = next;
-    if (next === "booking") notice = "";
-    error = "";
-    createdBooking = null;
-    if (next === "booking") {
-      const current = data.schedules.find(item =>
-        data.staff.some(staff => staff.id === item.staffId && staff.serviceIds.includes(bookingService))
-      ) ?? data.schedules[0];
-      if (current) {
-        const assignedStaff = data.staff.find(item => item.id === current.staffId);
-        if (assignedStaff && !assignedStaff.serviceIds.includes(bookingService)) {
-          bookingService = assignedStaff.serviceIds[0] ?? "";
-        }
-        bookingStaff = current.staffId;
-        bookingLocation = current.locationId;
-        bookingDate = upcomingWeekday(localDay(new Date()), current.weekdays);
-      }
-      void loadSlots();
-    }
-  }
-  let slotRequestVersion = 0;
-  async function loadSlots(): Promise<void> {
-    const version = ++slotRequestVersion;
-    bookingTime = "";
-    slotSuggestions = [];
-    slotLoadError = "";
-    busySlots = false;
-    if (!bookingStaff || !bookingLocation || !bookingDate) return;
-    busySlots = true;
-    const staffId = bookingStaff;
-    const locationId = bookingLocation;
-    const date = bookingDate;
-    try {
-      const suggested = await api.getSlotSuggestions(staffId, locationId, date);
-      if (version === slotRequestVersion) slotSuggestions = suggested;
-    } catch (reason) {
-      if (version === slotRequestVersion) slotLoadError = describe(reason);
-    } finally {
-      if (version === slotRequestVersion) busySlots = false;
-    }
-  }
-  function toggleWeekday(day: number): void {
-    scheduleDays = scheduleDays.includes(day) ? scheduleDays.filter(value => value !== day) : [...scheduleDays, day];
-  }
-  function syncStaffSelection(serviceId: string): void {
-    // Read the new option value directly rather than relying on bind timing.
-    bookingService = serviceId;
-    const eligible = data.staff.filter(staff => staff.serviceIds.includes(serviceId));
-    if (!eligible.some(staff => staff.id === bookingStaff)) {
-      bookingStaff = eligible[0]?.id ?? "";
-    }
-    void loadSlots();
-  }
-  function getService(id: string): string { return data.services.find(item => item.id === id)?.name ?? "Неизвестная услуга"; }
-  function getStaff(id: string): string { return data.staff.find(item => item.id === id)?.displayName ?? "Неизвестный мастер"; }
-  function getLocation(id: string): string { return data.locations.find(item => item.id === id)?.name ?? "Филиал"; }
-  async function createOrganization(): Promise<void> {
-    await transact(() => api.createOrganization(organizationName), "services", "Тестовая организация создана в браузерной сессии.");
-  }
-  async function createService(): Promise<void> {
-    await transact(async () => {
-      const result = await api.addService(serviceName, serviceDuration, servicePrice);
-      staffService = result.id;
-      bookingService = result.id;
-    }, "staff");
-  }
-  async function createStaff(): Promise<void> {
-    await transact(async () => {
-      const result = await api.addStaff(staffName, staffTitle, staffService ? [staffService] : []);
-      scheduleStaff = result.id;
-      bookingStaff = result.id;
-    }, "schedule");
-  }
-  async function saveSchedule(): Promise<void> {
-    await transact(() => api.saveSchedule({
-      staffId: scheduleStaff, locationId: scheduleLocation, weekdays: scheduleDays,
-      startsAt: scheduleStart, endsAt: scheduleEnd,
-    }), "booking", "Демо-график сохранён. Далее можно создать тестовую запись.");
-  }
-  async function createLocation(): Promise<void> {
-    await transact(() => api.addLocation(locationName, locationAddress), "locations");
-  }
-  async function saveAppearance(): Promise<void> {
-    await transact(
-      () => api.saveAppearance({ theme: appearanceTheme, introduction: appearanceIntroduction }),
-      "appearance",
-      "Демо-оформление сохранено в этой вкладке. Сервер и реальные страницы не изменены.",
-    );
-  }
-  async function submitBooking(): Promise<void> {
-    if (!canBook) return;
-    await transact(async () => {
-      if (preview === "conflict") throw new UiFailure("SLOT_CONFLICT", "Демо-конфликт: выбранное время больше не доступно.");
-      createdBooking = await api.createBooking({
-        locationId: bookingLocation, serviceId: bookingService, staffId: bookingStaff,
-        date: bookingDate, time: bookingTime, clientAlias,
-      });
-      calendarDate = bookingDate;
-    }, undefined, "Создана только демо-запись в sessionStorage. Backend ничего не подтверждал.");
-  }
-  async function readDemoRescheduleSlots(id: string, date: string): Promise<SlotView[]> {
-    const booking = data.bookings.find((item) => item.id === id);
-    if (!booking || booking.status !== "demo-confirmed") {
-      throw new UiFailure("NOT_FOUND", "Демо-запись недоступна.");
-    }
-    const slots = await api.getSlotSuggestions(booking.staffId, booking.locationId, date);
-    return slots.filter((slot) => !data.bookings.some(
-      (item) =>
-        item.id !== id &&
-        item.status === "demo-confirmed" &&
-        item.staffId === booking.staffId &&
-        item.date === date &&
-        item.time === slot.time,
-    ));
-  }
-  async function rescheduleDemoBooking(id: string, date: string, time: string): Promise<void> {
-    await api.rescheduleBooking(id, date, time);
-    calendarDate = date;
-    await reload();
-    notice = "Демо-запись перенесена только в этой вкладке. Backend не изменялся.";
-  }
-  async function cancelDemoBooking(id: string): Promise<void> {
-    await api.cancelBooking(id);
-    await reload();
-    notice = "Демо-запись отменена локально; запись сохранена в истории.";
-  }
-  async function resetDemo(): Promise<void> {
-    await transact(() => api.resetDemo(), "home", "Тестовые данные этой вкладки удалены.");
-    data = blank;
-    bookingService = ""; bookingStaff = ""; bookingLocation = "";
-    scheduleStaff = ""; scheduleLocation = ""; staffService = "";
-    createdBooking = null;
-  }
 </script>
 
 <svelte:head>
-  <title>{api.mode === "api" ? "Cookie — кабинет салона" : screen === "booking" ? `${org?.name ?? "Салон"} — онлайн-запись · демо` : "Cookie — кабинет салона · демо"}</title>
-  <meta name="description" content={api.mode === "api" ? "Cookie: защищённый кабинет услуг и мастеров." : "Cookie: интерактивный демонстрационный интерфейс салона с синтетическими данными."} />
+  <title>{customerMode ? "kuki — вход клиента (staging)" : verifiedOwner ? "kuki — кабинет салона" : "kuki — вход и регистрация"}</title>
+  <meta name="description" content="kuki: защищённый кабинет услуг и мастеров." />
 </svelte:head>
 
-<div class="app-shell" class:real-owner-shell={api.mode === "api"} class:public-shell={api.mode !== "api" && screen === "booking"} class:onboarding-shell={screen === "home" && !org && api.mode === "mock"} class:telegramPreview={api.mode !== "api" && telegramPreview && screen === "booking"} class:salonThemeForest={data.appearance.theme === "forest"} class:salonThemeOcean={data.appearance.theme === "ocean"} class:salonThemeClay={data.appearance.theme === "clay"}>
-  {#if api.mode !== "api" && screen !== "booking" && !(screen === "home" && !org)}
-    <Sidebar {screen} {stepCount} onNavigate={goto} />
+<div class="app-shell real-owner-shell" data-cookie-mode="api" class:verified-owner-shell={verifiedOwner}>
+  {#if verifiedOwner}
+    <Sidebar {screen} stepCount={0} realOwner={true} onNavigate={navigateOwner} />
   {/if}
-
   <div class="main-area">
-    {#if api.mode === "api"}
-      <OnboardingHeader apiMode={true} />
-    {:else if screen === "booking"}
-      <PublicHeader organizationName={org?.name ?? "Тестовый салон"} {telegramPreview} demoMode={api.mode === "mock"} onBack={() => goto("home")} />
-    {:else if screen === "home" && !org}
-      <OnboardingHeader apiMode={false} />
+    {#if verifiedOwner}
+      <Topbar {screen} bind:preview canCreateBooking={false} demoMode={false} onNavigate={navigateOwner} onLogout={() => void logoutOwner()} onSwitchAccount={ownerSession?.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
     {:else}
-      <Topbar {screen} bind:preview canCreateBooking={!!org} onNavigate={goto} />
+      <OnboardingHeader apiMode={true} label={customerMode ? "Клиентский staging" : "Вход и регистрация"} />
     {/if}
-
-    <main class="content" class:public-content={api.mode !== "api" && screen === "booking"}>
-      <DemoNotices
-        {error} {notice}
-        onDismissError={() => error = ""}
-        onDismissNotice={() => notice = ""}
-      />
-      {#if api.mode === "api"}
-        {#if ownerAuthPhase === "verified" && ownerSession}
-          <RealOwnerWorkspace session={ownerSession} onLogout={() => void logoutOwner()} />
-        {:else}
-          <OwnerAuthGate phase={ownerAuthPhase} onLogout={() => void logoutOwner()} />
-        {/if}
-      {:else if initializing || busy}
-        <div class="loading-card" role="status"><div class="spinner"></div><span>{initializing ? "Загружаем демо-пространство…" : "Обновляем данные в браузерной сессии…"}</span></div>
-      {:else if preview === "error"}
-        <DemoState kind="error" onPrimary={() => preview = "normal"} />
-      {:else if preview === "forbidden"}
-        <DemoState kind="forbidden" onPrimary={() => preview = "normal"} />
-      {:else if preview === "empty"}
-        <DemoState kind="empty" onPrimary={() => preview = "normal"} />
-      {:else if screen === "home"}
-        {#if !org}
-          <OnboardingScreen
-            {organizationName}
-            onOrganizationNameChange={(value) => organizationName = value}
-            onCreateOrganization={() => void createOrganization()}
-          />
-        {:else}
-          <OwnerOverview
-            organizationName={org.name}
-            {data}
-            {stepCount}
-            {calendarDate}
-            {dayBookings}
-            getService={getService}
-            getStaff={getStaff}
-            onNavigate={goto}
-          />
-        {/if}
-      {:else if !org}
-        <DemoState kind="setup" onPrimary={() => goto("home")} />
-      {:else if screen === "services"}
-        <OwnerServicesPage
-          {data} {serviceName} {serviceDuration} {servicePrice}
-          onNameChange={(value) => serviceName = value}
-          onDurationChange={(value) => serviceDuration = value}
-          onPriceChange={(value) => servicePrice = value}
-          onSubmit={() => void createService()}
+    <main class="content">
+      {#if customerSession}
+        <StagingCustomerGate initialSession={customerSession} onContextDenied={() => void leaveDeniedCustomerContext()} onSessionCleared={clearCustomerSession} onSwitchAccount={customerSession.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
+      {:else if verifiedOwner && ownerSession}
+        {#key ownerSession}
+          <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={navigateOwner} onAccessDenied={denyOwnerSession} />
+        {/key}
+      {:else if ownerAuthPhase === "signing-out"}
+        <section class="state-card feedback-state" aria-label="Завершение сеанса">
+          <h1>Завершаем сеанс</h1>
+          <p role="status">Ожидаем подтверждение выхода от сервера.</p>
+        </section>
+      {:else}
+        <IdentityAuthGate
+          customerSurface={customerSurface}
+          {customerTenantId}
+          authNotice={customerAuthNotice || ownerAuthNotice}
+          initialIdentitySession={identityForSwitch}
+          {restoreAllowed}
+          onOwnerSession={acceptOwnerSession}
+          onCustomerSession={acceptCustomerSession}
         />
-      {:else if screen === "staff"}
-        <OwnerStaffPage
-          {data} {staffName} {staffTitle} {staffService}
-          getService={getService}
-          onNameChange={(value) => staffName = value}
-          onTitleChange={(value) => staffTitle = value}
-          onServiceChange={(value) => staffService = value}
-          onOpenServices={() => goto("services")}
-          onSubmit={() => void createStaff()}
-        />
-      {:else if screen === "schedule"}
-        <OwnerSchedulePage
-          {data} {scheduleStaff} {scheduleLocation} {scheduleDays} {scheduleStart} {scheduleEnd}
-          getStaff={getStaff} getLocation={getLocation}
-          onStaffChange={(value) => scheduleStaff = value}
-          onLocationChange={(value) => scheduleLocation = value}
-          onToggleWeekday={toggleWeekday}
-          onStartChange={(value) => scheduleStart = value}
-          onEndChange={(value) => scheduleEnd = value}
-          onOpenStaff={() => goto("staff")}
-          onSubmit={() => void saveSchedule()}
-        />
-      {:else if screen === "locations"}
-        <OwnerLocationsPage
-          {data} {locationName} {locationAddress}
-          onNameChange={(value) => locationName = value}
-          onAddressChange={(value) => locationAddress = value}
-          onSubmit={() => void createLocation()}
-        />
-      {:else if screen === "appearance"}
-        <OwnerAppearancePage
-          organizationName={org.name}
-          theme={appearanceTheme}
-          introduction={appearanceIntroduction}
-          {hasUnsavedAppearance}
-          onThemeChange={(value) => appearanceTheme = value}
-          onIntroductionChange={(value) => appearanceIntroduction = value}
-          onSave={() => void saveAppearance()}
-          onOpenBooking={() => goto("booking")}
-        />
-      {:else if screen === "calendar"}
-        <CalendarView
-          bookings={data.bookings}
-          services={data.services}
-          staff={data.staff}
-          bind:calendarDate
-          bind:calendarMode
-          serviceName={getService}
-          staffName={getStaff}
-          locationName={getLocation}
-          onCreateBooking={() => goto("booking")}
-          onReadRescheduleSlots={readDemoRescheduleSlots}
-          onRescheduleBooking={rescheduleDemoBooking}
-          onCancelBooking={cancelDemoBooking}
-        />
-      {:else if screen === "booking"}
-        {#if createdBooking}
-          <BookingConfirmation
-            booking={createdBooking}
-            organizationName={org.name}
-            location={data.locations.find((item) => item.id === createdBooking?.locationId)}
-            serviceName={getService}
-            staffName={getStaff}
-            onCreateAnother={() => goto("booking")}
-          />
-        {:else}
-          <PublicBookingHero organizationName={org.name} introduction={data.appearance.introduction} />
-          {#if data.services.length === 0 || data.staff.length === 0 || data.schedules.length === 0}
-            <BookingSetupHint />
-          {:else}
-          <BookingForm
-            {data}
-            staffOptions={bookingStaffOptions}
-            {bookingService}
-            {bookingStaff}
-            {bookingLocation}
-            {bookingDate}
-            {bookingTime}
-            {clientAlias}
-            {busySlots}
-            {slotSuggestions}
-            {slotLoadError}
-            {canBook}
-            staffName={getStaff}
-            onServiceChange={syncStaffSelection}
-            onLocationChange={(value) => { bookingLocation = value; void loadSlots(); }}
-            onStaffChange={(value) => { bookingStaff = value; void loadSlots(); }}
-            onDateChange={(value) => { bookingDate = value; void loadSlots(); }}
-            onTimeChange={(value) => bookingTime = value}
-            onRetrySlots={() => void loadSlots()}
-            onAliasChange={(value) => clientAlias = value}
-            onSubmit={() => void submitBooking()}
-          />
-          {/if}
-        {/if}
-      {/if}
-
-      {#if screen === "booking"}
-        <PublicAttribution />
-      {:else if !initializing && api.mode === "mock"}
-        <DemoFooter showReset={true} {busy} onReset={() => void resetDemo()} />
       {/if}
     </main>
   </div>

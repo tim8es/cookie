@@ -23,6 +23,7 @@ test("Appearance owner HTTP boundary fails closed without real authorization", a
 
   registerRealAppearanceRoutes(app, {
     pool,
+    stagingPublicationEnabled: true,
     verifier: {
       async verifyBearerToken(token) {
         if (token !== "test-session") return null;
@@ -57,6 +58,29 @@ test("Appearance owner HTTP boundary fails closed without real authorization", a
     });
     assert.equal(foreign.statusCode, 403);
     assert.equal(foreign.headers["vary"], "Authorization");
+
+    const publishedUrl =
+      "/v1/organizations/" + tenantId + "/appearance/published";
+    const anonymousPublished = await app.inject({
+      method: "GET",
+      url: publishedUrl,
+    });
+    assert.equal(anonymousPublished.statusCode, 401);
+    assert.equal(anonymousPublished.headers["cache-control"], "no-store");
+    const foreignPublished = await app.inject({
+      method: "GET",
+      url: "/v1/organizations/" + foreignId + "/appearance/published",
+      headers: { authorization: "Bearer test-session" },
+    });
+    assert.equal(foreignPublished.statusCode, 403);
+    assert.equal(foreignPublished.headers["vary"], "Authorization");
+    const unexpectedQuery = await app.inject({
+      method: "GET",
+      url: publishedUrl + "?tenantId=" + foreignId,
+      headers: { authorization: "Bearer test-session" },
+    });
+    assert.equal(unexpectedQuery.statusCode, 400);
+    assert.deepEqual(unexpectedQuery.json(), { error: "invalid-request" });
 
     const oversizedRevision = await app.inject({
       method: "PUT",
@@ -106,6 +130,15 @@ test("Appearance owner HTTP boundary fails closed without real authorization", a
     assert.equal(unavailable.statusCode, 503);
     assert.deepEqual(unavailable.json(), { error: "unavailable" });
     assert.equal(dbConnections, 1);
+    const unavailablePublished = await app.inject({
+      method: "GET",
+      url: publishedUrl,
+      headers: { authorization: "Bearer test-session" },
+    });
+    assert.equal(unavailablePublished.statusCode, 503);
+    assert.deepEqual(unavailablePublished.json(), { error: "unavailable" });
+    assert.equal(unavailablePublished.headers["cache-control"], "no-store");
+    assert.equal(dbConnections, 2);
   } finally {
     await app.close();
   }

@@ -1,0 +1,9 @@
+# Server Appearance image codec (F1 candidate)
+
+Refs #223/#203, depends on #288. The codec uses pinned sharp 0.35.5/libvips packages resolved using pnpm 10.24.0 from the public package registry (lock-only diagnostic run 44105250944; original resolved patch applied with exact context). No shared workflow is changed. The vendor advisory GHSA-wq5f-xc86-pv6w recommends this version; pinning is not a full dependency audit.
+
+Only PNG, JPEG and WebP input with matching declared MIME and magic bytes are admitted; SVG, other loaders, animated PNG/WebP, malformed lengths and oversized inputs are rejected. Native decoding validates pixels with failOn warning and bounded input pixels; EXIF orientation is applied; output is a fresh static sRGB RGBA PNG with no opted-in metadata preservation. Technical limits: 2 MiB input/output, 4096 px per axis, 4 Mi pixels, native processing timeout 5 seconds, one active normalization per process, no waiting queue. They are resource guards, not hardcoded tenant business settings (#285).
+
+The capability accepts bytes only. Original bytes/filename/metadata are not stored or rendered. It is not mounted as HTTP; a future private upload route needs verified same-transaction tenant policy, quotas and audit, bounded aggregate HTTP body buffering/rate limiting, and a native codec process/RSS isolation review. The native processing timeout is not a hard wall-clock/RSS security guarantee. Windows and Altare native package availability require actual runtime verification; Linux exact-head CI and compiled Docker smoke are necessary but not equivalent. No production deployment or public assets.
+
+Tests generate actual raster bytes with the pinned codec, decode normalized pixels and assert dimensions, alpha and stripped metadata; malformed input, MIME mismatch, oversized/decompression limit, APNG and concurrent admission are negative cases. JPEG/WebP support is not a success claim until exact-head full CI passes.

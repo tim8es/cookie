@@ -10,6 +10,7 @@
   } from "../staging-publication-api";
 
   export let session: VerifiedOwnerSession;
+  export let fetcher: typeof fetch;
   export let staff: readonly RealStaff[];
   export let locations: readonly RealStaffLocation[];
   export let services: readonly RealService[];
@@ -67,7 +68,7 @@
     loading = true;
     readError = "";
     capacity = null;
-    try { capacity = await readStagingPublicationCapacity(session); }
+    try { capacity = await readStagingPublicationCapacity(session, fetcher); }
     catch (reason) { readError = describe(reason); }
     finally { loading = false; }
   }
@@ -81,7 +82,7 @@
     writeError = "";
     notice = "";
     try {
-      await publishStagingStaff(session, retry.input, retry.key);
+      await publishStagingStaff(session, retry.input, retry.key, fetcher);
       retry = null;
       selection = "";
       confirmed = false;

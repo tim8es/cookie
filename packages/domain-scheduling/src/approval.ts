@@ -2,9 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
-import { enqueueOutbox } from "../../platform-db/src/outbox.js";
-import type { TrustedActor } from "../../platform-identity/src/authorization.js";
-import { requireTenantPermission } from "../../platform-identity/src/postgres.js";
+import {
+  enqueueOutbox,
+  runSqlTransaction,
+} from "../../platform-db/src/index.js";
+import type { TrustedActor } from "../../platform-identity/src/index.js";
+import { requireTenantPermission } from "../../platform-identity/src/index.js";
 import {
   editPublishedShiftInternal,
   type AssertMayEditPublishedShift,
@@ -262,9 +265,7 @@ export async function setScheduleEditPolicyInternal(
   ) {
     fail("SCHEDULE_APPROVAL_INVALID");
   }
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
+  return runSqlTransaction<SchedulePolicyReceipt>(pool, async (client) => {
     // Owner modification takes Organization FOR UPDATE, and all execution
     // and request paths take its FOR SHARE lock.
     const org = await client.query(
@@ -319,14 +320,8 @@ export async function setScheduleEditPolicyInternal(
       dedupeKey: `schedule.edit.mode.changed:${next}`,
       payload: { mode: input.mode, revision: next },
     });
-    await client.query("COMMIT");
     return { tenantId: input.actor.tenantId, mode: input.mode, revision: next };
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 /**
@@ -380,10 +375,7 @@ export async function requestPublishedShiftEditInternal(
       endAt,
     ]),
   );
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
+  return runSqlTransaction<ScheduleEditRequestReceipt>(pool, async (client) => {
     const reference = await client.query<ShiftRow>(
       `SELECT staff_id::text, location_id::text
          FROM cookie_scheduling.shift_windows
@@ -432,7 +424,6 @@ export async function requestPublishedShiftEditInternal(
       if (old.request_sha256 !== requestHash) {
         fail("SCHEDULE_APPROVAL_KEY_REUSED");
       }
-      await client.query("COMMIT");
       return {
         requestId: old.id,
         shiftId: old.shift_id,
@@ -503,7 +494,6 @@ export async function requestPublishedShiftEditInternal(
       dedupeKey: `schedule.edit.requested:${requestId}`,
       payload: { requestId, shiftId: shift.id, locationId },
     });
-    await client.query("COMMIT");
     return {
       requestId,
       shiftId: shift.id,
@@ -515,12 +505,7 @@ export async function requestPublishedShiftEditInternal(
       policyRevision: policy.revision,
       status: "pending",
     };
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 /**
@@ -547,10 +532,7 @@ export async function reviewScheduleEditRequestInternal(
   const tenantId = input.actor.tenantId;
   const reviewer = input.actor.identityId;
   const decisionHash = digest(input.idempotencyKey);
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
+  return runSqlTransaction<ScheduleReviewReceipt>(pool, async (client) => {
     const meta = await client.query<RequestRow>(
       `SELECT staff_id::text,location_id::text,shift_id::text
          FROM cookie_scheduling.schedule_edit_requests
@@ -601,7 +583,6 @@ export async function reviewScheduleEditRequestInternal(
       ) {
         fail("SCHEDULE_APPROVAL_ALREADY_DECIDED");
       }
-      await client.query("COMMIT");
       return request.status === "applied"
         ? {
             requestId: request.id,
@@ -668,7 +649,6 @@ export async function reviewScheduleEditRequestInternal(
         dedupeKey: `schedule.edit.applied:${request.id}`,
         payload: { requestId: request.id, shiftId: request.shift_id },
       });
-      await client.query("COMMIT");
       return { requestId: request.id, status: "applied", editedShift: changed };
     }
 
@@ -685,12 +665,6 @@ export async function reviewScheduleEditRequestInternal(
       dedupeKey: `schedule.edit.rejected:${request.id}`,
       payload: { requestId: request.id, shiftId: request.shift_id },
     });
-    await client.query("COMMIT");
     return { requestId: request.id, status: "rejected" };
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }

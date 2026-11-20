@@ -1,5 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 
+import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
+
 import {
   AuthorizationDeniedError,
   requireTenantPermission,
@@ -12,58 +14,60 @@ export async function runProtectedTransaction<T>(
   authorize: (client: PoolClient) => Promise<void>,
   work: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
-  const client = await pool.connect();
-  let state: "starting" | "open" | "committing" | "finished" = "starting";
-  let discard = false;
-
-  async function commit(): Promise<void> {
-    const result = await client.query("COMMIT");
-    if (result.command !== "COMMIT") {
-      throw new Error("Protected transaction did not commit");
-    }
-  }
-
-  try {
-    await client.query("BEGIN");
-    state = "open";
-    try {
-      await authorize(client);
-    } catch (reason) {
-      if (reason instanceof AuthorizationDeniedError) {
-        // The policy writes a sanitized denial audit. Commit ONLY before
-        // executing business work. A failed audit commit is unavailable.
-        state = "committing";
-        await commit();
-        state = "finished";
-      }
-      throw reason;
-    }
-    const result = await work(client);
-    state = "committing";
-    await commit();
-    state = "finished";
-    return result;
-  } catch (reason) {
-    if (state === "open") {
+  const outcome = await runSqlTransaction(
+    pool,
+    async (
+      client,
+    ): Promise<
+      | { allowed: true; value: T }
+      | { allowed: false; reason: AuthorizationDeniedError }
+    > => {
       try {
-        const rolledBack = await client.query("ROLLBACK");
-        if (rolledBack.command !== "ROLLBACK") {
-          throw new Error("Protected transaction did not roll back");
+        await authorize(client);
+      } catch (reason) {
+        if (reason instanceof AuthorizationDeniedError) {
+          // Commit the policy audit, but never execute business work.
+          // Return the denial only after an acknowledged COMMIT.
+          return { allowed: false, reason };
         }
-        state = "finished";
-      } catch {
-        discard = true;
-        throw new Error("Protected transaction cleanup failed");
+        throw reason;
       }
-    } else if (state !== "finished") {
-      // BEGIN or COMMIT failed: the server-side state/outcome is uncertain.
-      // Do not retry the write or reuse its connection.
-      discard = true;
-    }
-    throw reason;
-  } finally {
-    client.release(discard);
-  }
+      return { allowed: true, value: await work(client) };
+    },
+  );
+  if (!outcome.allowed) throw outcome.reason;
+  return outcome.value;
+}
+
+/**
+ * Only for protected SELECT projections whose sole writes are policy audit
+ * records. A denied read must retain those records, without returning data;
+ * unexpected failures still roll back. Never use for mutation commands.
+ */
+export async function runAuditedRead<T>(
+  pool: Pool,
+  read: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const result = await runSqlTransaction(
+    pool,
+    async (
+      client,
+    ): Promise<
+      | { allowed: true; value: T }
+      | { allowed: false; reason: AuthorizationDeniedError }
+    > => {
+      try {
+        return { allowed: true, value: await read(client) };
+      } catch (reason) {
+        if (reason instanceof AuthorizationDeniedError) {
+          return { allowed: false, reason };
+        }
+        throw reason;
+      }
+    },
+  );
+  if (!result.allowed) throw result.reason;
+  return result.value;
 }
 
 /**

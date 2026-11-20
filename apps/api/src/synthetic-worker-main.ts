@@ -1,7 +1,6 @@
 import { Pool } from "pg";
 
-import { idempotentProviderHandler } from "../../../packages/platform-db/src/delivery-port.js";
-import { runTrustedPostgresOutboxWorker } from "../../../packages/platform-db/src/worker.js";
+import { runSyntheticPostgresOutboxWorker } from "../../../packages/platform-db/src/index.js";
 
 import { parseSyntheticWorkerConfig } from "./synthetic-worker-config.js";
 
@@ -17,30 +16,20 @@ const pool = new Pool({
   connectionTimeoutMillis: 3_000,
 });
 
+// pg reports idle-client failures on the pool. Losing an existing DB
+// connection must not bypass the worker's bounded polling error policy.
+pool.on("error", () => {
+  process.stderr.write("Synthetic outbox worker idle connection lost\n");
+});
+
 const signal = new AbortController();
 for (const event of ["SIGINT", "SIGTERM"] as const) {
   process.once(event, () => signal.abort());
 }
 
-const syntheticHandler = idempotentProviderHandler({
-  supportsIdempotencyKey: true,
-  async send(event) {
-    if (event.topic !== "test.synthetic" || event.payload.synthetic !== true) {
-      throw new Error("Synthetic worker refuses non-synthetic event");
-    }
-    // No external side effect. Future real adapters require separate approval.
-    void event.idempotencyKey;
-  },
-});
-
 try {
-  await runTrustedPostgresOutboxWorker(pool, syntheticHandler, {
+  await runSyntheticPostgresOutboxWorker(pool, {
     signal: signal.signal,
-    topic: "test.synthetic",
-    leaseMs: 30_000,
-    handlerTimeoutMs: 20_000,
-    idleDelayMs: 1000,
-    busyDelayMs: 50,
     observe(snapshot) {
       // Counters only. No tokens, tenant IDs, messages or payload.
       if (snapshot.kind !== "batch" || snapshot.totals.claimed > 0) {

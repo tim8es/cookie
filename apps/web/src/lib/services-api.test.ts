@@ -22,6 +22,7 @@ const record = {
   displayName: "Synthetic haircut",
   durationMinutes: 60,
   basePriceKopecks: 150000,
+  postServiceBufferMinutes: 15,
   active: false,
   revision: 0,
   createdAt: "2026-11-16T20:00:00.000Z",
@@ -60,6 +61,7 @@ test("draft service creation includes an explicit stable replay key", async () =
     displayName: "Synthetic haircut",
     durationMinutes: 60,
     basePriceKopecks: 150000,
+    postServiceBufferMinutes: 15,
   };
   const returned = await createRealService(
     session,
@@ -80,6 +82,9 @@ test("malformed, foreign, oversize or non-json catalog receipts fail closed", as
   const cases = [
     { services: [record, record] },
     { services: [{ ...record, basePriceKopecks: 12.25 }] },
+    { services: [{ ...record, postServiceBufferMinutes: -1 }] },
+    { services: [{ ...record, postServiceBufferMinutes: 1441 }] },
+    { services: [{ ...record, postServiceBufferMinutes: undefined }] },
     { services: [{ ...record, id: "foreign" }] },
     { services: { success: true } },
     { services: [{ ...record, createdAt: "not-an-instant" }] },
@@ -99,6 +104,7 @@ test("401/403/409/503 and offline cannot become successful mutations", async () 
     displayName: "Synthetic haircut",
     durationMinutes: 60,
     basePriceKopecks: 150000,
+    postServiceBufferMinutes: 15,
   };
   for (const [status, expected] of [
     [401, "unauthorized"],
@@ -146,6 +152,7 @@ test("edit sends an expected revision and key, accepts only exact inactive recei
     displayName: "Updated synthetic haircut",
     durationMinutes: 45,
     basePriceKopecks: 120050,
+    postServiceBufferMinutes: 0,
     expectedRevision: 0,
   };
   const updated = {
@@ -153,6 +160,7 @@ test("edit sends an expected revision and key, accepts only exact inactive recei
     displayName: draft.displayName,
     durationMinutes: 45,
     basePriceKopecks: 120050,
+    postServiceBufferMinutes: 0,
     revision: 1,
   };
   assert.deepEqual(
@@ -180,6 +188,8 @@ test("edit sends an expected revision and key, accepts only exact inactive recei
     { ...updated, active: true },
     { ...updated, revision: 2 },
     { ...updated, basePriceKopecks: 120051 },
+    { ...updated, postServiceBufferMinutes: 15 },
+    { ...updated, postServiceBufferMinutes: undefined },
   ]) {
     await assert.rejects(
       editRealService(
@@ -201,6 +211,7 @@ test("stale edit and unavailable draft cannot overwrite current data", async () 
     displayName: record.displayName,
     durationMinutes: 45,
     basePriceKopecks: 100000,
+    postServiceBufferMinutes: 15,
     expectedRevision: 0,
   };
   for (const [status, code, reason] of [
@@ -228,6 +239,7 @@ test("catalog cap remains distinct from replay conflict", async () => {
     displayName: "Synthetic haircut",
     durationMinutes: 60,
     basePriceKopecks: 150000,
+    postServiceBufferMinutes: 15,
   };
   const body = { error: "catalog-capacity-reached" };
   const response = Response.json(body, { status: 409 });
@@ -236,4 +248,31 @@ test("catalog cap remains distinct from replay conflict", async () => {
     (reason: unknown) =>
       reason instanceof ServiceApiFailure && reason.reason === "capacity",
   );
+});
+
+test("creation cannot accept a mismatched or absent buffer receipt", async () => {
+  const draft = {
+    displayName: record.displayName,
+    durationMinutes: record.durationMinutes,
+    basePriceKopecks: record.basePriceKopecks,
+    postServiceBufferMinutes: 15,
+  };
+  for (const returnedBuffer of [undefined, 0, 16, -1]) {
+    await assert.rejects(
+      createRealService(
+        session,
+        draft,
+        KEY,
+        mock(
+          Response.json({
+            service: { ...record, postServiceBufferMinutes: returnedBuffer },
+          }),
+          [],
+        ),
+      ),
+      (error: unknown) =>
+        error instanceof ServiceApiFailure &&
+        error.reason === "invalid-response",
+    );
+  }
 });

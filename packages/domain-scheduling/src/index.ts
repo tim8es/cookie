@@ -251,6 +251,20 @@ export function evaluateAvailableStart(
   return availableAt(prepared, parseInstant(startAt));
 }
 
+/** Branch-local civil time conversion; rejects gaps and folds. */
+export { resolveLocalMinute } from "./local-minute.js";
+export { validateLocalMinute } from "./local-minute.js";
+export { PublishShiftFailure } from "./publish-shift.js";
+export {
+  listStagingPublishedShifts,
+  publishStagingShift,
+} from "./staging-shift-publication.js";
+export {
+  previewStagingAvailability,
+  PreviewUnavailable,
+  type AvailabilitySelection,
+} from "./staging-availability.js";
+
 /** Protected owner planning commands; never publish or enable booking. */
 export {
   createOwnerShiftPlan,
@@ -258,3 +272,9 @@ export {
   type OwnerShiftPlanInput,
 } from "./draft-shift.js";
 export { listOwnerShiftPlans } from "./owner-shift-plans.js";
+
+/** Trusted Booking consistency reads; locks belong to the caller transaction. */
+export {
+  lockActiveShiftWindows,
+  lockActiveBlockedWindows,
+} from "./booking-windows.js";

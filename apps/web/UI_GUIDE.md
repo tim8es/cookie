@@ -1,4 +1,4 @@
-# Cookie UI: how to change the design safely
+# kuki UI: how to change the design safely
 
 ## Approved direction
 **Studio Appointment Journal** is approved as the current visual direction, not as final screen sign-off. Do not independently replace it with a new color theme or generic dashboard design. [DESIGN.md](./DESIGN.md) describes the visual intent.
@@ -11,6 +11,7 @@
 | Public appointment layout and appointment-pass style | `src/styles/booking.css`; `src/lib/ui/BookingForm.svelte`, `BookingSummary.svelte`, `PublicHeader.svelte` |
 | First-run split hero and form | `src/styles/onboarding.css`, `src/styles/first-run.css`, `src/lib/ui/OnboardingScreen.svelte` |
 | Owner shell, sidebar, topbar, shared UI helpers | `src/styles/foundation.css`; `src/lib/ui/Sidebar.svelte`, `Topbar.svelte` |
+| Identity sign-in, provider linking and staging role setup | `src/styles/identity-auth.css`; `src/lib/ui/IdentityAuthGate.svelte` |
 | Owner page composition (lists + editor) | `src/lib/ui/OwnerServicesPage.svelte`, `OwnerStaffPage.svelte`, `OwnerSchedulePage.svelte`, `OwnerLocationsPage.svelte`; form styles in `styles/owner-forms.css` |
 | Public booking masthead, setup hint | `src/lib/ui/PublicBookingHero.svelte`, `BookingSetupHint.svelte`; styles in `src/styles/booking.css` |
 | Global notices and footer | `src/lib/ui/DemoNotices.svelte`, `DemoFooter.svelte`; structural legacy rules in compat until migrated |
@@ -36,6 +37,7 @@
 - `OwnerFormHeader.svelte`: shared presentational heading for the four owner editor forms. `ServiceForm`, `StaffForm`, `ScheduleForm`, `LocationForm` reuse Card/Button/Input where appropriate and keep native select controls for keyboard/mobile affordances.
 - `BookingSummary.svelte`: presentation only, uses catalog base price **not** a price quote.
 - `CalendarView.svelte`: week/day selection, period navigation and local booking details through Button/Card/Badge. The week region scrolls horizontally and is keyboard-focusable on narrow screens.
+- `IdentityAuthGate.svelte`: selects an enabled email/Telegram provider, keeps identity bearers in memory, and hands server-verified owner or consented staging-customer sessions to `App.svelte`. It does not grant tenant or customer permissions in the browser.
 - `BookingDetail.svelte`: shared Card/Button/Badge in a contained synthetic details panel. Its existing two-action focus trap, Escape close and focus return remain verified by Chromium; a future full Bits UI dialog migration requires dedicated screen-reader QA.
 - `src/lib/components/ui`: reusable component primitives from a maintained source registry. Prefer reusing their props and classes to adding one-off buttons/cards. Review generated code and keep the lockfile frozen.
 
@@ -51,7 +53,7 @@ Use explicit, typed props and callbacks across screen boundaries. Do not import 
 6. Add an isolated Draft PR, stacked on the previous frontend feature branch. **No merging without owner approval.**
 
 ### Non-negotiable product boundaries
-All demo data is synthetic and browser-local. "Demo-confirmed" is not a real server reservation, catalog base price is not a final quote, and there is no production auth/permission enforcement. Backend contracts are reviewed separately; never invent them in UI.
+Mock mode keeps synthetic data in the browser. API-mode authentication calls real server-side identity routes; staging customer enrollment still requires explicit consent and an active staging publication grant. This implementation does not pass the production, public-pilot or real-customer-data gates. "Demo-confirmed" is not a real server reservation, and catalog base price is not a final quote.
 
 ## UX iteration branch: public booking, mobile owner, and time/resource calendar
 

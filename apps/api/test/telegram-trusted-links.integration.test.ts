@@ -68,6 +68,7 @@ test(
     });
     const sessions = new PostgresOpaqueTelegramSessions({
       pool,
+      fingerprintSecret: SECRET,
       telegramProofVerifier: proofVerifier,
       resolveVerifiedTelegramLink: resolver,
       issuer: "cookie-qa-trusted-link",

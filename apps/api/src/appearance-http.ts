@@ -4,12 +4,17 @@ import type { Pool } from "pg";
 import {
   AppearanceAssetNotVerified,
   AppearanceRevisionConflict,
-  publishTenantBrandDraft,
+  readPublishedTenantBrand,
   readTenantBrandDraft,
+  readAppearanceRevisionState,
   saveTenantBrandDraft,
   validateBrandConfig,
   type TenantAssetOwnership,
 } from "../../../packages/domain-appearance/src/index.js";
+import {
+  AppearancePublicationDenied,
+  lockLiveStagingAppearanceGrant,
+} from "../../../packages/domain-entitlement/src/index.js";
 import {
   AuthorizationDeniedError,
   type TrustedActor,
@@ -19,6 +24,7 @@ import {
   verifyTenantActor,
 } from "./session-context.js";
 import { withTenantPermission } from "./protected-tenant-transaction.js";
+import { publishAppearanceWithStagingGrant } from "./appearance-publication.js";
 
 type TenantParams = { tenantId: string };
 type DraftBody = { expectedRevision: number; config: unknown };
@@ -28,6 +34,8 @@ export interface RealAppearanceRouteDependencies {
   readonly pool: Pool;
   readonly verifier: BearerSessionVerifier;
   readonly assets?: TenantAssetOwnership;
+  readonly draftOnly?: boolean;
+  readonly stagingPublicationEnabled?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -49,7 +57,13 @@ function revision(value: unknown, allowZero: boolean): value is number {
  */
 export function registerRealAppearanceRoutes(
   app: FastifyInstance,
-  { pool, verifier, assets }: RealAppearanceRouteDependencies,
+  {
+    pool,
+    verifier,
+    assets,
+    draftOnly = false,
+    stagingPublicationEnabled = false,
+  }: RealAppearanceRouteDependencies,
 ): void {
   async function authenticated(
     authorization: string | undefined,
@@ -89,6 +103,9 @@ export function registerRealAppearanceRoutes(
     if (error instanceof AppearanceAssetNotVerified) {
       return { status: 409, error: "asset-not-verified" };
     }
+    if (error instanceof AppearancePublicationDenied) {
+      return { status: 409, error: "appearance-grant-unavailable" };
+    }
     // SQL messages and asset provider details must never reach clients.
     return { status: 503, error: "unavailable" };
   }
@@ -117,6 +134,36 @@ export function registerRealAppearanceRoutes(
           (client) => readTenantBrandDraft(client, verified.actor!.tenantId),
         );
         return reply.send({ draft: result });
+      } catch (error) {
+        const result = failure(error);
+        return reply.code(result.status).send({ error: result.error });
+      }
+    },
+  );
+
+  // Owner-only snapshot of the actual published theme, not the draft.
+  // Publication and public-salon URL authorization remain separate gates.
+  app.get<{ Params: TenantParams }>(
+    "/v1/organizations/:tenantId/appearance/published",
+    async (request, reply) => {
+      const verified = await authenticated(
+        request.headers.authorization,
+        request.params.tenantId,
+      );
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
+      if (Object.keys(request.query as object).length !== 0)
+        return reply.code(400).send({ error: "invalid-request" });
+      try {
+        const published = await withTenantPermission(
+          pool,
+          verified.actor,
+          "appearance.read",
+          (client) =>
+            readPublishedTenantBrand(client, verified.actor!.tenantId),
+        );
+        if (!published) return reply.code(404).send({ error: "not-found" });
+        return reply.send({ published });
       } catch (error) {
         const result = failure(error);
         return reply.code(result.status).send({ error: result.error });
@@ -171,6 +218,57 @@ export function registerRealAppearanceRoutes(
     },
   );
 
+  // Runtime draft editing does not confer the publication entitlement.
+  if (draftOnly || !stagingPublicationEnabled) return;
+
+  app.get<{ Params: TenantParams }>(
+    "/v1/organizations/:tenantId/appearance/publication",
+    async (request, reply) => {
+      const verified = await authenticated(
+        request.headers.authorization,
+        request.params.tenantId,
+      );
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
+      const actor = verified.actor;
+      if (!actor.opaqueSessionAuthority)
+        return reply.code(403).send({ error: "forbidden" });
+      if (Object.keys(request.query as object).length !== 0)
+        return reply.code(400).send({ error: "invalid-request" });
+      try {
+        const state = await withTenantPermission(
+          pool,
+          actor,
+          "appearance.read",
+          (client) => readAppearanceRevisionState(client, actor.tenantId),
+        );
+        let canPublish = false;
+        try {
+          await withTenantPermission(
+            pool,
+            actor,
+            "appearance.publish",
+            async (client) => {
+              await lockLiveStagingAppearanceGrant(client, actor.tenantId);
+            },
+          );
+          canPublish = true;
+        } catch (error) {
+          if (
+            !(error instanceof AuthorizationDeniedError) &&
+            !(error instanceof AppearancePublicationDenied)
+          )
+            throw error;
+        }
+        // Capability is advisory. POST repeats all checks with the mutation.
+        return reply.send({ ...state, canPublish });
+      } catch (error) {
+        const result = failure(error);
+        return reply.code(result.status).send({ error: result.error });
+      }
+    },
+  );
+
   app.post<{ Params: TenantParams; Body: PublishBody }>(
     "/v1/organizations/:tenantId/appearance/publish",
     async (request, reply) => {
@@ -195,9 +293,9 @@ export function registerRealAppearanceRoutes(
           verified.actor,
           "appearance.publish",
           (client) =>
-            publishTenantBrandDraft(
+            publishAppearanceWithStagingGrant(
               client,
-              verified.actor!.tenantId,
+              verified.actor!,
               body.expectedRevision as number,
               assets,
             ),

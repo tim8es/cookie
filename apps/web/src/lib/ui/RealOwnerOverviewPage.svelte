@@ -1,14 +1,17 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import type { OwnerReads } from "../owner-reads";
+  import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import { Button } from "../components/ui/button/index.js";
+  import { discoverAuthMethods } from "../identity-auth.js";
   import type { VerifiedOwnerSession } from "../owner-auth";
   import {
     WorkspaceOverviewFailure,
-    readRealWorkspaceOverview,
     type RealWorkspaceOverview,
   } from "../workspace-overview-api";
 
   export let session: VerifiedOwnerSession;
+  export let reads: OwnerReads;
   export let onOpenLocations: () => void;
   export let onOpenServices: () => void;
   export let onOpenStaff: () => void;
@@ -16,8 +19,16 @@
   let overview: RealWorkspaceOverview | null = null;
   let loading = true;
   let error = "";
-  let activeRequest: AbortController | null = null;
+  let requestNumber = 0;
   let expired = false;
+  let stagingCustomerEnabled = false;
+
+  function customerStagingPath(): string {
+    const url = new URL("/", window.location.origin);
+    url.searchParams.set("surface", "customer-staging");
+    url.searchParams.set("tenantId", session.tenantId);
+    return url.pathname + url.search;
+  }
 
   function description(reason: unknown): string {
     if (reason instanceof WorkspaceOverviewFailure) {
@@ -31,8 +42,7 @@
 
   function expire(): void {
     expired = true;
-    activeRequest?.abort();
-    activeRequest = null;
+    requestNumber++;
     overview = null;
     loading = false;
     error = "Срок действия сеанса истёк. Войдите заново.";
@@ -43,28 +53,22 @@
       expire();
       return;
     }
-    activeRequest?.abort();
-    const request = new AbortController();
-    activeRequest = request;
+    const request = ++requestNumber;
     overview = null;
     loading = true;
     error = "";
     try {
-      const result = await readRealWorkspaceOverview(
-        session,
-        globalThis.fetch,
-        request.signal,
-      );
-      if (activeRequest === request && !request.signal.aborted) {
+      const result = await reads.overview.load();
+      if (requestNumber === request) {
         overview = result;
       }
     } catch (reason) {
-      if (activeRequest === request && !request.signal.aborted) {
+      if (requestNumber === request) {
+        overview = null;
         error = description(reason);
       }
     } finally {
-      if (activeRequest === request) {
-        activeRequest = null;
+      if (requestNumber === request) {
         loading = false;
       }
     }
@@ -72,16 +76,18 @@
 
   onMount(() => {
     void refresh();
+    void discoverAuthMethods()
+      .then((methods) => (stagingCustomerEnabled = methods.stagingCustomerEnrollment))
+      .catch(() => undefined);
     return () => {
-      activeRequest?.abort();
-      activeRequest = null;
+      requestNumber++;
     };
   });
 </script>
 
 <div class="section-head">
   <div>
-    <span class="eyebrow">COOKIE / ОРГАНИЗАЦИЯ</span>
+    <span class="eyebrow">kuki / ОРГАНИЗАЦИЯ</span>
     <h1>{overview?.organization.displayName ?? "Обзор салона"}</h1>
     <p>Сведения об организации и филиалах из защищённого кабинета.</p>
   </div>
@@ -90,8 +96,8 @@
   </Button>
 </div>
 
-{#if loading}
-  <div class="card" role="status"><p>Загружаем данные организации…</p></div>
+{#if loading && !overview}
+  <div class="card"><OwnerReadPlaceholder label="Загружаем данные организации…" /></div>
 {:else if error}
   <div class="alert-error" role="alert"><p>{error}</p></div>
 {:else if overview}
@@ -126,5 +132,13 @@
         <Button type="button" variant="outline" onclick={onOpenStaff}>Мастера</Button>
       </div>
     </section>
+    {#if stagingCustomerEnabled}
+      <section class="card" aria-label="Клиентский тест staging">
+        <span class="eyebrow">PRIVATE STAGING</span>
+        <h2>Проверить вход клиента</h2>
+        <p>Откройте тестовую страницу для этой организации. Сервер создаст клиентскую роль только после явного согласия и проверки staging-разрешения.</p>
+        <Button variant="outline" href={customerStagingPath()}>Открыть клиентский staging</Button>
+      </section>
+    {/if}
   </div>
 {/if}

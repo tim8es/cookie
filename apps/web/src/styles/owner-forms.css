@@ -116,23 +116,11 @@
   .owner-form .weekday-select button[data-slot=button] { height: 37px; min-height: 37px; font-size: 10px; }
 }
 
-/* Real-mode owner workspace: no synthetic sidebar or misleading demo navigation. */
-.app-shell.real-owner-shell:not(.public-shell) {
+/* Auth gate and customer surfaces are standalone; verified owners share the normal rail. */
+.app-shell.real-owner-shell:not(.verified-owner-shell):not(.public-shell) {
   grid-template-columns: minmax(0, 1fr);
 }
 .real-owner-shell .main-area { min-width: 0; }
-.real-owner-nav {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 26px;
-}
-.real-owner-nav button[data-slot=button] {
-  min-height: 42px;
-  border-radius: var(--cookie-radius-control);
-}
 @media (max-width: 680px) {
-  .real-owner-nav { gap: 8px; }
-  .real-owner-nav button[data-slot=button] { flex: 1; }
+  .app-shell.verified-owner-shell:not(.public-shell) .topbar { display: flex; }
 }

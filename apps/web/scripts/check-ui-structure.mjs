@@ -19,6 +19,7 @@ const paths = [
   "styles/appearance.css",
   "styles/calendar.css",
   "styles/feedback.css",
+  "styles/identity-auth.css",
 ];
 
 for (const path of paths) {
@@ -46,7 +47,8 @@ for (const path of compatPaths) {
 }
 const compatibility = compatPaths.map(read).join("");
 assert.ok(
-  compatibility.length <= 35591,
+  // Count canonical LF so a Windows checkout does not inflate the CSS budget.
+  compatibility.replace(/\r\n/g, "\n").length <= 35591,
   "Compatibility CSS must shrink from its 2026-11-16 baseline. Add new styles to src/styles/<screen>.css",
 );
 assert.ok(!compatibility.includes("--green: #"), "Obsolete green palettes must not be reintroduced");
@@ -64,10 +66,15 @@ for (const name of [
   assert.ok(tokens.includes(name + ":"), `Missing design token ${name}`);
 }
 
-for (const path of ["OnboardingScreen.svelte", "OwnerOverview.svelte", "BookingForm.svelte", "BookingSummary.svelte", "ServiceForm.svelte", "StaffForm.svelte", "ScheduleForm.svelte", "LocationForm.svelte", "OwnerFormHeader.svelte", "CalendarView.svelte", "BookingDetail.svelte", "OwnerServicesPage.svelte", "OwnerStaffPage.svelte", "OwnerSchedulePage.svelte", "OwnerLocationsPage.svelte", "BookingConfirmation.svelte", "DemoState.svelte", "PublicBookingHero.svelte", "DemoFooter.svelte", "DemoNotices.svelte", "BookingSetupHint.svelte"]) {
+for (const path of ["OnboardingScreen.svelte", "OwnerOverview.svelte", "BookingForm.svelte", "BookingSummary.svelte", "ServiceForm.svelte", "StaffForm.svelte", "ScheduleForm.svelte", "LocationForm.svelte", "OwnerFormHeader.svelte", "CalendarView.svelte", "BookingDetail.svelte", "OwnerServicesPage.svelte", "OwnerStaffPage.svelte", "OwnerSchedulePage.svelte", "OwnerLocationsPage.svelte", "BookingConfirmation.svelte", "DemoState.svelte", "PublicBookingHero.svelte", "DemoFooter.svelte", "DemoNotices.svelte", "BookingSetupHint.svelte", "IdentityAuthGate.svelte"]) {
   assert.ok(existsSync(join(root, "lib/ui", path)), `Missing presentational screen: ${path}`);
 }
-const app = read("App.svelte");
+const runtime = read("App.svelte");
+assert.match(runtime, /<RealOwnerWorkspace\b/, "Runtime must compose the real owner workspace");
+assert.match(runtime, /<StagingCustomerGate\b/, "Runtime must compose the real customer workspace");
+assert.match(runtime, /<IdentityAuthGate\b/, "Runtime must compose the self-service identity gate");
+assert.doesNotMatch(runtime, /createCookieUiApi|LegacyFixture|MockCookieApi|<DemoFooter\b/, "Runtime must not orchestrate the old mock");
+const app = read("LegacyFixture.svelte");
 assert.match(app, /<OnboardingScreen\b/, "App must compose the onboarding screen");
 assert.match(app, /<OwnerOverview\b/, "App must compose the owner overview");
 assert.match(app, /<BookingForm\b/, "App must compose the booking form");

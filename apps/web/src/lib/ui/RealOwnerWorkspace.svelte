@@ -1,64 +1,63 @@
 <script lang="ts">
-  import { Button } from "../components/ui/button/index.js";
+  import { onDestroy } from "svelte";
+  import { createOwnerReads } from "../owner-reads";
   import type { VerifiedOwnerSession } from "../owner-auth";
+  import type { Screen } from "../navigation";
   import RealOwnerServicesPage from "./RealOwnerServicesPage.svelte";
   import RealOwnerStaffPage from "./RealOwnerStaffPage.svelte";
   import RealOwnerLocationsPage from "./RealOwnerLocationsPage.svelte";
   import RealOwnerSchedulePage from "./RealOwnerSchedulePage.svelte";
+  import RealOwnerCalendarPage from "./RealOwnerCalendarPage.svelte";
   import RealOwnerOverviewPage from "./RealOwnerOverviewPage.svelte";
+  import RealOwnerUnavailablePage from "./RealOwnerUnavailablePage.svelte";
+  import { Button } from "../components/ui/button/index.js";
 
   export let session: VerifiedOwnerSession;
-  export let onLogout: () => void;
+  export let screen: Screen;
+  export let onNavigate: (next: Screen) => void;
+  export let onAccessDenied: (session: VerifiedOwnerSession) => void;
 
-  let section: "overview" | "services" | "staff" | "locations" | "schedule" = "services";
+  const currentSession = session;
+  const reads = createOwnerReads(
+    currentSession,
+    () => onAccessDenied(currentSession),
+  );
+  onDestroy(reads.close);
 </script>
 
-<nav class="real-owner-nav" aria-label="Разделы кабинета владельца">
-  <Button
-    type="button"
-    variant={section === "overview" ? "default" : "outline"}
-    aria-current={section === "overview" ? "page" : undefined}
-    onclick={() => (section = "overview")}
-  >Обзор</Button>
-  <Button
-    type="button"
-    variant={section === "services" ? "default" : "outline"}
-    aria-current={section === "services" ? "page" : undefined}
-    onclick={() => (section = "services")}
-  >Услуги</Button>
-  <Button
-    type="button"
-    variant={section === "staff" ? "default" : "outline"}
-    aria-current={section === "staff" ? "page" : undefined}
-    onclick={() => (section = "staff")}
-  >Мастера</Button>
-  <Button
-    type="button"
-    variant={section === "locations" ? "default" : "outline"}
-    aria-current={section === "locations" ? "page" : undefined}
-    onclick={() => (section = "locations")}
-  >Филиалы</Button>
-  <Button
-    type="button"
-    variant={section === "schedule" ? "default" : "outline"}
-    aria-current={section === "schedule" ? "page" : undefined}
-    onclick={() => (section = "schedule")}
-  >Расписание</Button>
-  <Button type="button" variant="outline" onclick={onLogout}>Выйти</Button>
-</nav>
-{#if section === "overview"}
+{#if screen === "home"}
   <RealOwnerOverviewPage
     {session}
-    onOpenLocations={() => (section = "locations")}
-    onOpenServices={() => (section = "services")}
-    onOpenStaff={() => (section = "staff")}
+    {reads}
+    onOpenLocations={() => onNavigate("locations")}
+    onOpenServices={() => onNavigate("services")}
+    onOpenStaff={() => onNavigate("staff")}
   />
-{:else if section === "services"}
-  <RealOwnerServicesPage {session} {onLogout} />
-{:else if section === "staff"}
-  <RealOwnerStaffPage {session} onOpenServices={() => (section = "services")} />
-{:else if section === "locations"}
-  <RealOwnerLocationsPage {session} />
-{:else}
-  <RealOwnerSchedulePage {session} onOpenStaff={() => (section = "staff")} />
+{:else if screen === "services"}
+  <RealOwnerServicesPage {session} {reads} />
+{:else if screen === "staff"}
+  <RealOwnerStaffPage {session} {reads} onOpenServices={() => onNavigate("services")} />
+{:else if screen === "locations"}
+  <RealOwnerLocationsPage {session} {reads} />
+{:else if screen === "calendar"}
+  <RealOwnerCalendarPage {session} {reads} />
+{:else if screen === "schedule"}
+  <RealOwnerSchedulePage {session} {reads} onOpenStaff={() => onNavigate("staff")} />
+{:else if screen === "appearance"}
+  {#key session.accessToken}
+    {#await import("./RealOwnerAppearancePage.svelte")}
+      <div class="section-head"><h1>Оформление</h1></div>
+      <section class="card" role="status">Загружаем редактор оформления…</section>
+    {:then module}
+      <svelte:component this={module.default} {session} {reads} />
+    {:catch}
+      <div class="section-head"><h1>Оформление</h1></div>
+      <section class="card">
+        <p role="alert">Не удалось загрузить редактор оформления. Проверьте соединение и перезагрузите страницу.</p>
+        <Button type="button" variant="outline" onclick={() => window.location.reload()}>Перезагрузить страницу</Button>
+      </section>
+    {/await}
+  {/key}
+{:else if screen === "booking"}
+  <RealOwnerUnavailablePage {screen} onReturn={() => onNavigate("home")} />
 {/if}

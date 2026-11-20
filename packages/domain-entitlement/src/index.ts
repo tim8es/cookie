@@ -7,3 +7,8 @@ export {
   StagingPublicationDenied,
   type StagingCapacity,
 } from "./staging.js";
+
+export {
+  AppearancePublicationDenied,
+  lockLiveStagingAppearanceGrant,
+} from "./appearance-staging.js";

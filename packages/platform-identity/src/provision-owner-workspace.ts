@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { Pool, QueryResultRow } from "pg";
+import type { Pool, PoolClient, QueryResultRow } from "pg";
 
 /**
  * Server-side Organization provisioning for an ALREADY VERIFIED Identity.
@@ -67,6 +67,8 @@ const OWNER_PERMISSIONS = [
   "schedule.shift.plan.create",
   "staging.entitlement.read",
   "staging.staff.publish",
+  "staging.shift.publish",
+  "staging.availability.read",
   "appearance.read",
   "appearance.manage",
   "appearance.publish",
@@ -111,8 +113,8 @@ function canonicalZone(value: unknown): string {
  * attempts sharing a key, without a global lock on unrelated organizations.
  * A new key intentionally permits a second Organization for the same Identity.
  */
-export async function provisionOwnerWorkspace(
-  pool: Pool,
+export async function provisionOwnerWorkspaceInTransaction(
+  client: PoolClient,
   input: OwnerWorkspaceProvisionInput,
 ): Promise<OwnerWorkspaceProvisionResult> {
   if (
@@ -131,91 +133,98 @@ export async function provisionOwnerWorkspace(
     .update(JSON.stringify([1, organizationName, locationName, timeZone]))
     .digest("hex");
 
+  const identity = await client.query(
+    "SELECT id FROM cookie_identity.identities WHERE id=$1::uuid FOR UPDATE",
+    [input.ownerIdentityId],
+  );
+  if (identity.rowCount !== 1) {
+    throw new OwnerWorkspaceProvisionError("IDENTITY_NOT_FOUND");
+  }
+  const existing = await client.query<ReceiptRow>(
+    `SELECT request_sha256, tenant_id::text, location_id::text,
+            role_id::text, assignment_id::text
+       FROM cookie_tenancy.owner_setup_receipts
+      WHERE owner_identity_id=$1::uuid AND idempotency_key=$2`,
+    [input.ownerIdentityId, input.idempotencyKey],
+  );
+  const receipt = existing.rows[0];
+  if (receipt) {
+    if (receipt.request_sha256 !== sha256) {
+      throw new OwnerWorkspaceProvisionError("IDEMPOTENCY_KEY_REUSED");
+    }
+    return {
+      tenantId: receipt.tenant_id,
+      locationId: receipt.location_id,
+      roleId: receipt.role_id,
+      assignmentId: receipt.assignment_id,
+      replayed: true,
+    };
+  }
+
+  const tenantId = randomUUID();
+  const locationId = randomUUID();
+  const roleId = randomUUID();
+  const assignmentId = randomUUID();
+
+  await client.query(
+    `INSERT INTO cookie_tenancy.organizations(id,owner_identity_id,display_name)
+     VALUES ($1::uuid,$2::uuid,$3)`,
+    [tenantId, input.ownerIdentityId, organizationName],
+  );
+  await client.query(
+    `INSERT INTO cookie_tenancy.locations(id,tenant_id,display_name,time_zone)
+     VALUES ($1::uuid,$2::uuid,$3,$4)`,
+    [locationId, tenantId, locationName, timeZone],
+  );
+  await client.query(
+    `INSERT INTO cookie_identity.memberships(tenant_id,identity_id,active)
+     VALUES ($1::uuid,$2::uuid,true)`,
+    [tenantId, input.ownerIdentityId],
+  );
+  await client.query(
+    `INSERT INTO cookie_identity.roles
+         (tenant_id,id,base_type,display_name,permissions,active)
+       VALUES ($1::uuid,$2::uuid,'owner','Owner',$3::text[],true)`,
+    [tenantId, roleId, [...OWNER_PERMISSIONS]],
+  );
+  await client.query(
+    `INSERT INTO cookie_identity.role_assignments
+         (tenant_id,id,identity_id,role_id,location_id,active)
+       VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,NULL,true)`,
+    [tenantId, assignmentId, input.ownerIdentityId, roleId],
+  );
+  await client.query(
+    `INSERT INTO cookie_tenancy.owner_setup_receipts
+         (owner_identity_id,idempotency_key,request_sha256,
+          tenant_id,location_id,role_id,assignment_id)
+       VALUES ($1::uuid,$2,$3,$4::uuid,$5::uuid,$6::uuid,$7::uuid)`,
+    [
+      input.ownerIdentityId,
+      input.idempotencyKey,
+      sha256,
+      tenantId,
+      locationId,
+      roleId,
+      assignmentId,
+    ],
+  );
+  return { tenantId, locationId, roleId, assignmentId, replayed: false };
+}
+
+/** CLI and existing fixtures retain their owned transaction boundary. */
+export async function provisionOwnerWorkspace(
+  pool: Pool,
+  input: OwnerWorkspaceProvisionInput,
+): Promise<OwnerWorkspaceProvisionResult> {
   const client = await pool.connect();
   let inTransaction = false;
   try {
     await client.query("BEGIN");
     inTransaction = true;
-    const identity = await client.query(
-      "SELECT id FROM cookie_identity.identities WHERE id=$1::uuid FOR UPDATE",
-      [input.ownerIdentityId],
-    );
-    if (identity.rowCount !== 1) {
-      throw new OwnerWorkspaceProvisionError("IDENTITY_NOT_FOUND");
-    }
-    const existing = await client.query<ReceiptRow>(
-      `SELECT request_sha256, tenant_id::text, location_id::text,
-              role_id::text, assignment_id::text
-         FROM cookie_tenancy.owner_setup_receipts
-        WHERE owner_identity_id=$1::uuid AND idempotency_key=$2`,
-      [input.ownerIdentityId, input.idempotencyKey],
-    );
-    const receipt = existing.rows[0];
-    if (receipt) {
-      if (receipt.request_sha256 !== sha256) {
-        throw new OwnerWorkspaceProvisionError("IDEMPOTENCY_KEY_REUSED");
-      }
-      await client.query("COMMIT");
-      inTransaction = false;
-      return {
-        tenantId: receipt.tenant_id,
-        locationId: receipt.location_id,
-        roleId: receipt.role_id,
-        assignmentId: receipt.assignment_id,
-        replayed: true,
-      };
-    }
-
-    const tenantId = randomUUID();
-    const locationId = randomUUID();
-    const roleId = randomUUID();
-    const assignmentId = randomUUID();
-
-    await client.query(
-      `INSERT INTO cookie_tenancy.organizations(id,owner_identity_id,display_name)
-       VALUES ($1::uuid,$2::uuid,$3)`,
-      [tenantId, input.ownerIdentityId, organizationName],
-    );
-    await client.query(
-      `INSERT INTO cookie_tenancy.locations(id,tenant_id,display_name,time_zone)
-       VALUES ($1::uuid,$2::uuid,$3,$4)`,
-      [locationId, tenantId, locationName, timeZone],
-    );
-    await client.query(
-      `INSERT INTO cookie_identity.memberships(tenant_id,identity_id,active)
-       VALUES ($1::uuid,$2::uuid,true)`,
-      [tenantId, input.ownerIdentityId],
-    );
-    await client.query(
-      `INSERT INTO cookie_identity.roles
-         (tenant_id,id,base_type,display_name,permissions,active)
-       VALUES ($1::uuid,$2::uuid,'owner','Owner',$3::text[],true)`,
-      [tenantId, roleId, [...OWNER_PERMISSIONS]],
-    );
-    await client.query(
-      `INSERT INTO cookie_identity.role_assignments
-         (tenant_id,id,identity_id,role_id,location_id,active)
-       VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,NULL,true)`,
-      [tenantId, assignmentId, input.ownerIdentityId, roleId],
-    );
-    await client.query(
-      `INSERT INTO cookie_tenancy.owner_setup_receipts
-         (owner_identity_id,idempotency_key,request_sha256,
-          tenant_id,location_id,role_id,assignment_id)
-       VALUES ($1::uuid,$2,$3,$4::uuid,$5::uuid,$6::uuid,$7::uuid)`,
-      [
-        input.ownerIdentityId,
-        input.idempotencyKey,
-        sha256,
-        tenantId,
-        locationId,
-        roleId,
-        assignmentId,
-      ],
-    );
+    const result = await provisionOwnerWorkspaceInTransaction(client, input);
     await client.query("COMMIT");
     inTransaction = false;
-    return { tenantId, locationId, roleId, assignmentId, replayed: false };
+    return result;
   } catch (error) {
     if (inTransaction) await client.query("ROLLBACK").catch(() => undefined);
     throw error;

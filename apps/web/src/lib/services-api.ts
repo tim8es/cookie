@@ -5,6 +5,7 @@ export interface RealService {
   readonly displayName: string;
   readonly durationMinutes: number;
   readonly basePriceKopecks: number;
+  readonly postServiceBufferMinutes: number;
   readonly active: boolean;
   readonly createdAt: string;
   readonly revision: number;
@@ -43,6 +44,9 @@ function isRealService(value: unknown): value is RealService {
     Number.isSafeInteger(s.basePriceKopecks) &&
     s.basePriceKopecks! >= 0 &&
     s.basePriceKopecks! <= 999_999_999_999 &&
+    Number.isInteger(s.postServiceBufferMinutes) &&
+    s.postServiceBufferMinutes! >= 0 &&
+    s.postServiceBufferMinutes! <= 1440 &&
     typeof s.active === "boolean" &&
     typeof s.createdAt === "string" &&
     Number.isFinite(Date.parse(s.createdAt)) &&
@@ -144,6 +148,7 @@ export interface RealServiceDraft {
   readonly displayName: string;
   readonly durationMinutes: number;
   readonly basePriceKopecks: number;
+  readonly postServiceBufferMinutes: number;
 }
 
 export async function createRealService(
@@ -166,12 +171,23 @@ export async function createRealService(
   if (
     (result.status !== 200 && result.status !== 201) ||
     !result.body ||
-    typeof result.body !== "object" ||
-    !isRealService((result.body as { service?: unknown }).service)
+    typeof result.body !== "object"
   ) {
     throw new ServiceApiFailure("invalid-response");
   }
-  return (result.body as { service: RealService }).service;
+  const service = (result.body as { service?: unknown }).service;
+  if (
+    !isRealService(service) ||
+    service.active ||
+    service.revision !== 0 ||
+    service.displayName !== draft.displayName.normalize("NFC").trim() ||
+    service.durationMinutes !== draft.durationMinutes ||
+    service.basePriceKopecks !== draft.basePriceKopecks ||
+    service.postServiceBufferMinutes !== draft.postServiceBufferMinutes
+  ) {
+    throw new ServiceApiFailure("invalid-response");
+  }
+  return service;
 }
 
 export interface RealServiceEdit extends RealServiceDraft {
@@ -216,7 +232,8 @@ export async function editRealService(
     service.revision !== draft.expectedRevision + 1 ||
     service.displayName !== draft.displayName.normalize("NFC").trim() ||
     service.durationMinutes !== draft.durationMinutes ||
-    service.basePriceKopecks !== draft.basePriceKopecks
+    service.basePriceKopecks !== draft.basePriceKopecks ||
+    service.postServiceBufferMinutes !== draft.postServiceBufferMinutes
   )
     throw new ServiceApiFailure("invalid-response");
   return service;

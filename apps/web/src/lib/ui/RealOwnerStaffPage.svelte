@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import type { OwnerReads } from "../owner-reads";
+  import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import { Button } from "../components/ui/button/index.js";
   import type { VerifiedOwnerSession } from "../owner-auth";
-  import { readRealServices, type RealService } from "../services-api";
+  import { ServiceApiFailure, type RealService } from "../services-api";
   import {
     createRealStaff,
-    readRealStaff,
+    retainStaffCreateKey,
     StaffApiFailure,
     type RealStaff,
     type RealStaffLocation,
@@ -14,6 +16,7 @@
   import StagingPublicationPanel from "./StagingPublicationPanel.svelte";
 
   export let session: VerifiedOwnerSession;
+  export let reads: OwnerReads;
   export let onOpenServices: () => void;
 
   let staff: readonly RealStaff[] = [];
@@ -34,6 +37,9 @@
   let publicationPending = false;
 
   function message(error: unknown): string {
+    if (error instanceof ServiceApiFailure && error.reason === "unauthorized") {
+      return "Сеанс или права изменились. Выполните вход заново.";
+    }
     if (error instanceof StaffApiFailure) {
       if (error.reason === "unauthorized") return "Сеанс или права изменились. Выполните вход заново.";
       if (error.reason === "missing-reference") return "Филиал или услуга больше не существуют. Обновите страницу.";
@@ -45,33 +51,34 @@
   }
 
   function editName(value: string): void {
+    if (pendingKey) return;
     staffName = value;
-    pendingKey = "";
     writeError = "";
   }
   function editTitle(value: string): void {
+    if (pendingKey) return;
     staffTitle = value;
-    pendingKey = "";
     writeError = "";
   }
   function editLocation(value: string): void {
+    if (pendingKey) return;
     staffLocation = value;
-    pendingKey = "";
     writeError = "";
   }
   function editService(value: string): void {
+    if (pendingKey) return;
     staffService = value;
-    pendingKey = "";
     writeError = "";
   }
 
   async function refresh(): Promise<void> {
+    if (pendingKey) return;
     loading = true;
     readError = "";
     try {
       const [directory, catalog] = await Promise.all([
-        readRealStaff(session),
-        readRealServices(session),
+        reads.staff.load(),
+        reads.services.load(),
       ]);
       staff = directory.staff;
       locations = directory.locations;
@@ -109,6 +116,7 @@
     saving = true;
     writeError = "";
     notice = "";
+    const retrying = Boolean(pendingKey);
     pendingKey ||= crypto.randomUUID();
     try {
       const created = await createRealStaff(
@@ -120,15 +128,25 @@
           serviceId: staffService,
         },
         pendingKey,
+        reads.fetch,
       );
       staff = [...staff.filter((member) => member.id !== created.id), created];
       pendingKey = "";
       staffName = "";
       staffTitle = "";
-      notice = "Профиль и назначения сохранены. Для записи клиентов мастер пока недоступен.";
+      notice = created.bookable
+        ? "Профиль и назначения подтверждены. Мастер доступен для записи."
+        : "Профиль и назначения сохранены. Для записи клиентов мастер пока недоступен.";
+      reads.staff.invalidate();
+      reads.invalidateCalendars();
       await refresh();
     } catch (reason) {
-      writeError = message(reason);
+      if (!retainStaffCreateKey(retrying, reason)) pendingKey = "";
+      reads.staff.invalidate();
+      reads.invalidateCalendars();
+      writeError = pendingKey
+        ? "Сервер не подтвердил результат создания профиля."
+        : message(reason);
     } finally {
       saving = false;
     }
@@ -152,7 +170,7 @@
 
 <div class="section-head">
   <div>
-    <span class="eyebrow">COOKIE / КОМАНДА</span>
+    <span class="eyebrow">kuki / КОМАНДА</span>
     <h1>Мастера</h1>
     <p>Один профиль на организацию. Услуги и филиалы привязываются как черновики.</p>
   </div>
@@ -165,7 +183,9 @@
   </div>
 {/if}
 {#if writeError}
-  <div class="alert-error" role="alert"><p>{writeError}</p></div>
+  <div class="alert-error" role="alert"><p>{writeError}</p>
+    {#if pendingKey}<p>Результат создания неизвестен. Повторите сохранение с теми же данными и не покидайте страницу до подтверждения.</p>{/if}
+  </div>
 {/if}
 {#if notice}
   <div class="alert-ok" role="status"><p>{notice}</p></div>
@@ -175,10 +195,10 @@
   <section class="card">
     <div class="card-title">
       <div><span class="eyebrow">КОМАНДА</span><h2>Профили мастеров</h2></div>
-      <Button variant="outline" type="button" onclick={() => void refresh()} disabled={loading || saving || publicationPending}>Обновить</Button>
+      <Button variant="outline" type="button" onclick={() => void refresh()} disabled={loading || saving || publicationPending || !!pendingKey}>Обновить</Button>
     </div>
-    {#if loading}
-      <p role="status">Загружаем профили…</p>
+    {#if loading && !loaded}
+      <OwnerReadPlaceholder label="Загружаем профили…" />
     {:else if loaded && staff.length === 0}
       <div class="empty-mini"><strong>Профилей пока нет</strong><p>Добавьте первого мастера.</p></div>
     {:else if loaded}
@@ -212,12 +232,19 @@
       onSubmit={() => void save()}
       apiMode={true}
       busy={saving || loading || publicationPending}
+      locked={!!pendingKey}
     />
   {/if}
 </div>
 
 {#if loaded}
-  <StagingPublicationPanel {session} {staff} {locations} {services}
-    disabled={loading || saving} bind:pending={publicationPending}
-    onPublished={refresh} />
+  <StagingPublicationPanel {session} {staff} {locations} {services} fetcher={reads.fetch}
+    disabled={loading || saving || !!pendingKey} bind:pending={publicationPending}
+    onPublished={async () => {
+      reads.staff.invalidate();
+      reads.services.invalidate();
+      reads.shifts.invalidate();
+      reads.invalidateCalendars();
+      await refresh();
+    }} />
 {/if}

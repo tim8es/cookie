@@ -8,10 +8,11 @@ import type {
   TelegramMiniAppProofVerifier,
   VerifiedTelegramMiniAppProof,
 } from "./telegram-init-data.js";
+import { lockTelegramUser } from "./telegram-links.js";
 
 /**
- * Internal F1 session store: Telegram proof ≠ Identity ≠ Cookie session.
- * This module is NOT registered by the production API bootstrap.
+ * Tenant-scoped F1 session store: Telegram proof ≠ Identity ≠ Cookie session.
+ * Runtime registration is explicit and remains separate from global Identity auth.
  */
 export interface LinkedIdentity {
   readonly tenantId: string;
@@ -33,6 +34,8 @@ export type ResolveVerifiedTelegramLink = (
 export interface OpaqueTelegramSessionDependencies {
   readonly pool: Pool;
   readonly telegramProofVerifier: TelegramMiniAppProofVerifier;
+  /** Shared HMAC key for serializing legacy and global Telegram auth paths. */
+  readonly fingerprintSecret: Buffer;
   readonly resolveVerifiedTelegramLink: ResolveVerifiedTelegramLink;
   /** Exact server-authenticated values, not values from browser requests. */
   readonly issuer: string;
@@ -71,10 +74,14 @@ function tokenDigest(token: string): Buffer {
 }
 
 export class PostgresOpaqueTelegramSessions {
+  private readonly fingerprintSecret: Buffer;
+
   constructor(private readonly deps: OpaqueTelegramSessionDependencies) {
     if (
       !deps?.pool ||
       typeof deps.telegramProofVerifier?.verify !== "function" ||
+      !Buffer.isBuffer(deps.fingerprintSecret) ||
+      deps.fingerprintSecret.byteLength < 32 ||
       typeof deps.resolveVerifiedTelegramLink !== "function" ||
       !LABEL.test(deps.issuer) ||
       !LABEL.test(deps.audience) ||
@@ -84,6 +91,7 @@ export class PostgresOpaqueTelegramSessions {
     ) {
       throw new Error("Invalid opaque session provider configuration");
     }
+    this.fingerprintSecret = Buffer.from(deps.fingerprintSecret);
   }
 
   /**
@@ -116,7 +124,41 @@ export class PostgresOpaqueTelegramSessions {
     try {
       await client.query("BEGIN");
       active = true;
-      const linked = await this.deps.resolveVerifiedTelegramLink(client, proof);
+      const telegramFingerprint = await lockTelegramUser(
+        client,
+        this.fingerprintSecret,
+        proof.telegramUserId,
+      );
+      const currentProof = this.deps.telegramProofVerifier.verify(rawInitData);
+      if (
+        !currentProof ||
+        currentProof.channel !== proof.channel ||
+        currentProof.telegramUserId !== proof.telegramUserId ||
+        currentProof.authDateUnixSeconds !== proof.authDateUnixSeconds
+      ) {
+        await client.query("ROLLBACK");
+        active = false;
+        return null;
+      }
+      const globalIdentity = await client.query(
+        `SELECT 1 FROM cookie_identity.global_telegram_identities
+         WHERE telegram_user_hmac_sha256=$1::bytea FOR SHARE`,
+        [telegramFingerprint],
+      );
+      const globalExchange = await client.query(
+        `SELECT 1 FROM cookie_identity.global_telegram_exchanges
+         WHERE proof_sha256=$1::bytea FOR SHARE`,
+        [exchangeDigest],
+      );
+      if (globalIdentity.rowCount || globalExchange.rowCount) {
+        await client.query("ROLLBACK");
+        active = false;
+        return null;
+      }
+      const linked = await this.deps.resolveVerifiedTelegramLink(
+        client,
+        currentProof,
+      );
       if (
         !linked ||
         !UUID.test(linked.tenantId) ||

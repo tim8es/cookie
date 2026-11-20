@@ -17,15 +17,10 @@ interface Migration {
   readonly sha256: string;
 }
 
-/**
- * Only trusted version-controlled SQL is executed. Each migration and its
- * checksum record commit atomically; a session advisory lock serializes
- * concurrent deploys using the same PostgreSQL database.
- */
-export async function runMigrations(
-  pool: Pool,
+/** Load the exact sorted, checksummed SQL manifest used by the migrator. */
+export async function loadMigrationManifest(
   directory: string,
-): Promise<string[]> {
+): Promise<Migration[]> {
   const sqlFiles = (await readdir(directory))
     .filter((name) => name.endsWith(".sql"))
     .sort();
@@ -45,7 +40,7 @@ export async function runMigrations(
     ordinals.add(ordinal);
   }
 
-  const migrations: Migration[] = await Promise.all(
+  return Promise.all(
     sqlFiles.map(async (filename) => {
       const sql = await readFile(join(directory, filename), "utf8");
       return {
@@ -55,14 +50,27 @@ export async function runMigrations(
       };
     }),
   );
+}
+
+/**
+ * Only trusted version-controlled SQL is executed. Each migration and its
+ * checksum record commit atomically; a session advisory lock serializes
+ * concurrent deploys using the same PostgreSQL database.
+ */
+export async function runMigrations(
+  pool: Pool,
+  directory: string,
+): Promise<string[]> {
+  const migrations = await loadMigrationManifest(directory);
 
   const client = await pool.connect();
-  let locked = false;
+  // A session-level advisory lock may survive an uncertain driver response.
+  // Reuse this connection only after all work and unlock are acknowledged.
+  let safeToReuse = false;
   const executed: string[] = [];
 
   try {
     await client.query("SELECT pg_advisory_lock($1::bigint)", [LOCK_KEY]);
-    locked = true;
     await client.query(`
       CREATE TABLE IF NOT EXISTS public.cookie_schema_migrations (
         filename text PRIMARY KEY,
@@ -95,28 +103,49 @@ export async function runMigrations(
     for (const migration of migrations) {
       if (known.has(migration.filename)) continue;
 
-      await client.query("BEGIN");
+      const begun = await client.query("BEGIN");
+      if (begun.command !== "BEGIN") {
+        throw new Error("Migration transaction did not begin");
+      }
       try {
         await client.query(migration.sql);
         await client.query(
           "INSERT INTO public.cookie_schema_migrations (filename, sha256) VALUES ($1, $2)",
           [migration.filename, migration.sha256],
         );
-        await client.query("COMMIT");
-        executed.push(migration.filename);
       } catch (error) {
-        await client.query("ROLLBACK");
+        try {
+          const rolledBack = await client.query("ROLLBACK");
+          if (rolledBack.command !== "ROLLBACK") {
+            throw new Error("Migration transaction did not roll back");
+          }
+        } catch {
+          throw new Error("Migration transaction cleanup failed");
+        }
         throw error;
       }
+
+      // Do not attempt ROLLBACK or unlock after an uncertain COMMIT.
+      // An explicit rerun will check the durable migration history again.
+      const committed = await client.query("COMMIT");
+      if (committed.command !== "COMMIT") {
+        throw new Error("Migration transaction did not commit");
+      }
+      executed.push(migration.filename);
     }
+
+    const unlocked = await client.query<{ unlocked: boolean }>(
+      "SELECT pg_advisory_unlock($1::bigint) AS unlocked",
+      [LOCK_KEY],
+    );
+    if (unlocked.rows[0]?.unlocked !== true) {
+      throw new Error("Migration advisory lock was not released");
+    }
+    safeToReuse = true;
     return executed;
   } finally {
-    try {
-      if (locked) {
-        await client.query("SELECT pg_advisory_unlock($1::bigint)", [LOCK_KEY]);
-      }
-    } finally {
-      client.release();
-    }
+    // Destroying a failed session also releases its session-level lock and
+    // rolls back any open transaction. Never return it to the idle pool.
+    client.release(!safeToReuse);
   }
 }

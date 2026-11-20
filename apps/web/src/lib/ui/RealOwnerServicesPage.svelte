@@ -1,19 +1,21 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import type { OwnerReads } from "../owner-reads";
+  import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import { Button } from "../components/ui/button/index.js";
 
   import type { VerifiedOwnerSession } from "../owner-auth";
   import {
     createRealService,
     editRealService,
-    readRealServices,
     ServiceApiFailure,
     type RealService,
   } from "../services-api";
   import ServiceForm from "./ServiceForm.svelte";
+  import { emptyRealServiceForm, realServiceDraftFromForm } from "../real-service-form";
 
   export let session: VerifiedOwnerSession;
-  export let onLogout: () => void;
+  export let reads: OwnerReads;
 
   let services: RealService[] = [];
   let loading = true;
@@ -22,9 +24,7 @@
   let readError = "";
   let saveError = "";
   let notice = "";
-  let serviceName = "";
-  let serviceDuration = 60;
-  let servicePrice = 0;
+  let form = emptyRealServiceForm();
   // Keep the same key when an uncertain HTTP response is retried.
   let pendingKey = "";
   let editing: RealService | null = null;
@@ -55,19 +55,26 @@
 
   function editName(value: string): void {
     if (saving || uncertain || stale) return;
-    serviceName = value;
+    form.serviceName = value;
     pendingKey = "";
     saveError = "";
   }
   function editDuration(value: number): void {
     if (saving || uncertain || stale) return;
-    serviceDuration = value;
+    form.serviceDuration = Number.isNaN(value) ? undefined : value;
     pendingKey = "";
     saveError = "";
   }
   function editPrice(value: number): void {
     if (saving || uncertain || stale) return;
-    servicePrice = value;
+    form.servicePrice = Number.isNaN(value) ? undefined : value;
+    pendingKey = "";
+    saveError = "";
+  }
+
+  function editBuffer(value: number): void {
+    if (saving || uncertain || stale) return;
+    form.serviceBuffer = Number.isNaN(value) ? undefined : value;
     pendingKey = "";
     saveError = "";
   }
@@ -75,9 +82,12 @@
   function startEdit(service: RealService): void {
     if (saving || loading || uncertain || service.active) return;
     editing = service;
-    serviceName = service.displayName;
-    serviceDuration = service.durationMinutes;
-    servicePrice = service.basePriceKopecks / 100;
+    form = {
+      serviceName: service.displayName,
+      serviceDuration: service.durationMinutes,
+      servicePrice: service.basePriceKopecks / 100,
+      serviceBuffer: service.postServiceBufferMinutes,
+    };
     pendingKey = "";
     stale = false;
     saveError = "";
@@ -86,9 +96,7 @@
 
   function resetForm(): void {
     editing = null;
-    serviceName = "";
-    serviceDuration = 60;
-    servicePrice = 0;
+    form = emptyRealServiceForm();
     pendingKey = "";
     stale = false;
     uncertain = false;
@@ -99,7 +107,7 @@
     loading = true;
     readError = "";
     try {
-      services = await readRealServices(session);
+      services = await reads.services.load();
       loaded = true;
     } catch (reason) {
       loaded = false;
@@ -112,14 +120,9 @@
 
   async function save(): Promise<void> {
     if (saving || loading || !loaded || stale) return;
-    if (
-      !serviceName.trim() || [...serviceName.trim()].length > 200 ||
-      !Number.isInteger(serviceDuration) || serviceDuration < 1 ||
-      serviceDuration > 1440 ||
-      !Number.isFinite(servicePrice) || servicePrice !== Number(servicePrice.toFixed(2)) ||
-      servicePrice < 0 || servicePrice > 9_999_999_999.99
-    ) {
-      saveError = "Проверьте название, длительность и цену с точностью до копеек.";
+    const draft = realServiceDraftFromForm(form);
+    if (!draft) {
+      saveError = "Укажите название, длительность, цену и буфер. Введите 0, если услуга бесплатная или не требует буфера.";
       return;
     }
 
@@ -129,21 +132,24 @@
     const key = pendingKey || crypto.randomUUID();
     pendingKey = key;
     try {
-      const draft = {
-        displayName: serviceName.trim().normalize("NFC"),
-        durationMinutes: serviceDuration,
-        basePriceKopecks: Math.round(servicePrice * 100),
-      };
       const wasEditing = editing !== null;
       if (editing) await editRealService(session, editing.id,
-        { ...draft, expectedRevision: editing.revision }, key);
-      else await createRealService(session, draft, key);
+        { ...draft, expectedRevision: editing.revision }, key, reads.fetch);
+      else await createRealService(session, draft, key, reads.fetch);
       // Receipt proves the command committed, not that its snapshot is
       // still current. Always re-read after both initial write and replay.
       resetForm();
       notice = wasEditing ? "Изменения черновика сохранены." : "Черновик услуги сохранён на сервере. Для записи клиентов он пока недоступен.";
+      reads.services.invalidate();
+      reads.staff.invalidate();
+      reads.invalidateCalendars();
+      reads.shifts.invalidate();
       await refresh();
     } catch (reason) {
+      reads.services.invalidate();
+      reads.staff.invalidate();
+      reads.invalidateCalendars();
+      reads.shifts.invalidate();
       saveError = description(reason);
       stale = reason instanceof ServiceApiFailure &&
         (reason.reason === "stale-revision" || reason.reason === "draft-unavailable");
@@ -161,11 +167,10 @@
 
 <div class="section-head">
   <div>
-    <span class="eyebrow">COOKIE / ЗАЩИЩЁННЫЙ КАБИНЕТ</span>
+    <span class="eyebrow">kuki / ЗАЩИЩЁННЫЙ КАБИНЕТ</span>
     <h1>Услуги салона</h1>
     <p>Изменения сохраняются в PostgreSQL. Новые услуги — черновики до публикации.</p>
   </div>
-  <Button type="button" variant="outline" onclick={onLogout}>Выйти</Button>
 </div>
 
 {#if readError}
@@ -187,8 +192,8 @@
       <div><span class="eyebrow">КАТАЛОГ</span><h2>Сохранённые услуги</h2></div>
       <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || saving}>Обновить</Button>
     </div>
-    {#if loading}
-      <p role="status">Загружаем услуги с сервера…</p>
+    {#if loading && !loaded}
+      <OwnerReadPlaceholder label="Загружаем услуги с сервера…" />
     {:else if loaded && services.length === 0}
       <div class="empty-mini"><strong>Услуг пока нет</strong><p>Создайте первый черновик.</p></div>
     {:else if loaded}
@@ -199,6 +204,7 @@
             <div class="entity-text">
               <strong>{service.displayName}</strong>
               <small>{service.durationMinutes} мин · {service.active ? "Активна" : "Черновик"}</small>
+              <small>Буфер: {service.postServiceBufferMinutes} мин</small>
             </div>
             <strong class="price-label">{catalogPrice(service.basePriceKopecks)}</strong>
             {#if !service.active}
@@ -211,12 +217,14 @@
   </section>
   {#if loaded}
     <ServiceForm
-      {serviceName}
-      {serviceDuration}
-      {servicePrice}
+      serviceName={form.serviceName}
+      serviceDuration={form.serviceDuration}
+      servicePrice={form.servicePrice}
+      serviceBuffer={form.serviceBuffer}
       onNameChange={editName}
       onDurationChange={editDuration}
       onPriceChange={editPrice}
+      onBufferChange={editBuffer}
       onSubmit={() => void save()}
       apiMode={true}
       busy={saving || loading || stale}

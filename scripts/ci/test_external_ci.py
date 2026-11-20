@@ -81,6 +81,32 @@ class ExternalCIContract(unittest.TestCase):
                                     "TASK_RUNNER_RUN_ATTEMPT": "2"}, clear=True):
             self.assertEqual(ci.worker_env(), {"PATH": "/usr/bin", "CI": "true"})
 
+    def test_executor_sha_must_be_explicit_and_full(self):
+        for value in ("", "main", "a" * 39):
+            with patch.dict(os.environ, {"CI_EXECUTION_SHA": value}, clear=True):
+                with self.assertRaises(ValueError):
+                    ci.executor_sha()
+        with patch.dict(os.environ, {"CI_EXECUTION_SHA": self.commit}, clear=True):
+            self.assertEqual(ci.executor_sha(), self.commit)
+
+    def test_executor_main_must_match_reviewed_ref(self):
+        with patch.object(ci, "api", return_value={"object": {"sha": self.commit}}):
+            ci.verify_executor_ref("fake", "example/executor", self.commit)
+        with patch.object(ci, "api", return_value={"object": {"sha": "d" * 40}}):
+            with self.assertRaises(ValueError):
+                ci.verify_executor_ref("fake", "example/executor", self.commit)
+
+    def test_run_rejects_wrong_executor_revision_and_attempt(self):
+        run = {"id": 42, "event": "workflow_dispatch", "head_branch": "main",
+               "path": ".github/workflows/universal.yml", "head_sha": self.commit,
+               "run_attempt": 1}
+        self.assertTrue(ci.valid_run(run, 42, self.commit))
+        for key, value in (("head_sha", "d" * 40), ("run_attempt", 2),
+                           ("head_branch", "other"), ("path", "other.yml"),
+                           ("id", 43), ("event", "push")):
+            self.assertFalse(ci.valid_run(dict(run, **{key: value}), 42, self.commit))
+        self.assertFalse(ci.valid_run(run, 42, None))
+
     def test_dispatch_is_off_by_default(self):
         with patch.dict(os.environ, {}, clear=True), patch.object(ci, "api") as api:
             with self.assertRaises(ValueError):
