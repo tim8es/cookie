@@ -91,7 +91,10 @@
   }
 
   async function refresh(): Promise<void> {
-    if (pendingKey) return;
+    // On a fresh reload, scope/marker may arrive before the initial Staff
+    // directory. Do not let the pending marker prevent the *first* read.
+    // Once loaded, keep the original uncertain attempt immutable.
+    if (pendingKey && loaded) return;
     loading = true;
     readError = "";
     try {
