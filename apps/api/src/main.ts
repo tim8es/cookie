@@ -6,6 +6,7 @@ import { parseStagingPublicationMode } from "../../../packages/domain-entitlemen
 
 import { createApp } from "./app.js";
 import { parseStagingCancellationCutoff } from "./staging-customer-cancellation-http.js";
+import { parseControlledAppearanceMode } from "./staging-appearance-mode.js";
 import { parseConfig } from "./config.js";
 import { registerCompiledWeb } from "./static-web.js";
 import {
@@ -23,6 +24,12 @@ import { createTenantSessionVerifier } from "./tenant-session-verifier.js";
 const config = parseConfig(process.env);
 const stagingPublicationEnabled = parseStagingPublicationMode(
   process.env.COOKIE_STAGING_PUBLICATION_MODE,
+);
+// Independent Appearance publication opt-in; the general staging mode alone
+// never activates this protected owner write endpoint.
+const stagingAppearanceEnabled = parseControlledAppearanceMode(
+  process.env.COOKIE_STAGING_APPEARANCE_MODE,
+  stagingPublicationEnabled,
 );
 // Customer mutations require a second explicit controlled-staging opt-in.
 const stagingCustomerBookingEnabled = parseStagingPublicationMode(
@@ -87,7 +94,11 @@ const app = createApp(pool, {
           : {}),
         liveWorkspaceReads: { pool, verifier: tenantSessionVerifier },
         catalogRoutes: { pool, verifier: tenantSessionVerifier },
-        appearanceDraftRoutes: { pool, verifier: tenantSessionVerifier },
+        appearanceDraftRoutes: {
+          pool,
+          verifier: tenantSessionVerifier,
+          stagingPublicationEnabled: stagingAppearanceEnabled,
+        },
         ownerCalendar: { pool, verifier: tenantSessionVerifier },
         staffRoutes: { pool, verifier: tenantSessionVerifier },
         locationRoutes: { pool, verifier: tenantSessionVerifier },
