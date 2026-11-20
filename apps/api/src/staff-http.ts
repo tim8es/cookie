@@ -1,3 +1,5 @@
+import { createHmac } from "node:crypto";
+
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 
@@ -20,17 +22,22 @@ import {
 
 type Params = { tenantId: string };
 const KEY = /^[A-Za-z0-9._:-]{16,128}$/;
+const RECOVERY_DOMAIN = "kuki-staff-create-recovery-v1\\0";
 
 export interface RealStaffRoutesDependencies {
   readonly pool: Pool;
   readonly verifier: BearerSessionVerifier;
+  /** Optional, separate server-only 256-bit secret; no recovery persistence without it. */
+  readonly recoveryScopeSecret?: Buffer;
 }
 
 /** Authenticated draft staff creation/list. No activation/booking/publish. */
 export function registerRealStaffRoutes(
   app: FastifyInstance,
-  { pool, verifier }: RealStaffRoutesDependencies,
+  { pool, verifier, recoveryScopeSecret }: RealStaffRoutesDependencies,
 ): void {
+  if (recoveryScopeSecret && (!Buffer.isBuffer(recoveryScopeSecret) || recoveryScopeSecret.length < 32))
+    throw new Error("Staff recovery scope requires a server-only 256-bit secret");
   app.addHook("onRequest", async (request, reply) => {
     if (!/^\/v1\/organizations\/[^/]+\/staff(?:\?|$)/.test(request.url)) return;
     reply.header("Cache-Control", "no-store");
@@ -68,6 +75,56 @@ export function registerRealStaffRoutes(
       }
     },
   );
+
+  // A scope is only a browser storage namespace, never an access credential.
+  // No new endpoint is activated without an explicit independent server key.
+  if (recoveryScopeSecret) {
+    const secret = Buffer.from(recoveryScopeSecret);
+    app.get<{ Params: Params }>(
+      "/v1/organizations/:tenantId/staff/recovery-scope",
+      async (request, reply) => {
+        reply.header("Cache-Control", "no-store");
+        reply.header("Pragma", "no-cache");
+        reply.header("Vary", "Authorization");
+        const verified = await verifyTenantActor(
+          request.headers.authorization,
+          request.params.tenantId,
+          verifier,
+        );
+        const actor = verified.actor;
+        if (!actor) return reply.code(verified.status).send({ error: verified.error });
+        if (!actor.opaqueSessionAuthority)
+          return reply.code(403).send({ error: "forbidden" });
+        if (Object.keys(request.query as object).length !== 0)
+          return reply.code(400).send({ error: "invalid-request" });
+        try {
+          return await withTenantPermission(
+            pool,
+            actor,
+            "staff.profile.create",
+            async () => {
+              const scope = createHmac("sha256", secret)
+                .update(RECOVERY_DOMAIN, "utf8")
+                .update(actor.tenantId, "utf8")
+                .update("\\0", "utf8")
+                .update(actor.identityId, "utf8")
+                .digest("base64url");
+              return reply.send({ scope });
+            },
+          );
+        } catch (reason) {
+          return reply
+            .code(reason instanceof AuthorizationDeniedError ? 403 : 503)
+            .send({
+              error:
+                reason instanceof AuthorizationDeniedError
+                  ? "forbidden"
+                  : "unavailable",
+            });
+        }
+      },
+    );
+  }
 
   // The original key travels in a header, never in a URL or response.
   app.get<{ Params: Params }>(
