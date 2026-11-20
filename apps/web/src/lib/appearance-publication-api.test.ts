@@ -56,8 +56,15 @@ test("unpublished appearance is not a success receipt", async () => {
     { published: { ...published, revision: 0 } },
     { published: { ...published, revision: 1.5 } },
     { published: { ...published, publishedAt: "invalid" } },
-    { published: { ...published, config: createBrandConfig("ocean"), extra: 1 } },
-    { published: { ...published, config: { ...draft.config, backgroundColor: "url(evil)" } } },
+    {
+      published: { ...published, config: createBrandConfig("ocean"), extra: 1 },
+    },
+    {
+      published: {
+        ...published,
+        config: { ...draft.config, backgroundColor: "url(evil)" },
+      },
+    },
   ]) {
     await assert.rejects(
       readPublishedAppearanceSnapshot(session, async () =>
@@ -68,7 +75,7 @@ test("unpublished appearance is not a success receipt", async () => {
   }
 });
 
-test("owner published read fails closed on revoked or unavailable authority", async () => {
+test("published read rejects revoked and expired access", async () => {
   let requests = 0;
   const fetcher: typeof fetch = async () => {
     requests++;
