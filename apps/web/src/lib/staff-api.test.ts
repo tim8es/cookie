@@ -8,6 +8,7 @@ import {
   recoverRealStaffCreate,
   readRealStaffRecoveryScope,
   readStaffPendingMarker,
+  hasUnmatchedStaffPendingMarkers,
   writeStaffPendingMarker,
   clearStaffPendingMarker,
   StaffApiFailure,
@@ -470,4 +471,30 @@ test("tab marker stores only UUID under an actor-scoped namespace", () => {
     },
     ownerScope,
   );
+});
+
+test("unmatched actor or rotated server namespace cannot silently create", () => {
+  const priorScope = "A".repeat(43);
+  const currentScope = "B".repeat(43);
+  const data = new Map<string, string>();
+  const storage = {
+    get length() { return data.size; },
+    key(index: number) { return [...data.keys()][index] ?? null; },
+    getItem(key: string) { return data.get(key) ?? null; },
+    setItem(key: string, value: string) { data.set(key, value); },
+    removeItem(key: string) { data.delete(key); },
+  };
+  assert.equal(hasUnmatchedStaffPendingMarkers(storage, currentScope), false);
+  assert.equal(writeStaffPendingMarker(storage, priorScope, KEY), true);
+  assert.equal(hasUnmatchedStaffPendingMarkers(storage, currentScope), true);
+  assert.equal(hasUnmatchedStaffPendingMarkers(storage, null), true);
+  assert.equal(hasUnmatchedStaffPendingMarkers(storage, priorScope), false);
+  data.set([...data.keys()][0]!, "{corrupted}");
+  assert.equal(hasUnmatchedStaffPendingMarkers(storage, priorScope), true);
+  clearStaffPendingMarker(storage, priorScope);
+  assert.equal(hasUnmatchedStaffPendingMarkers(storage, currentScope), false);
+  assert.equal(hasUnmatchedStaffPendingMarkers({
+    ...storage,
+    get length() { throw new Error("storage disabled"); },
+  }, currentScope), true);
 });
