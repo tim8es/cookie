@@ -134,7 +134,6 @@ test(
         (await draftOnly.inject({ method: "GET", url: publishedUrl, headers }))
           .statusCode,
         404,
-        "A draft-only runtime must not invent a published theme",
       );
       assert.equal(
         (await app.inject({ method: "GET", url: publishedUrl })).statusCode,
@@ -335,7 +334,6 @@ test(
         (await draftOnly.inject({ method: "GET", url: publishedUrl, headers }))
           .json(),
         published.json(),
-        "A draft-only runtime can read the persisted published version",
       );
       assert.deepEqual((await status()).json(), {
         draftRevision: 2,
@@ -357,11 +355,7 @@ test(
         payload: { expectedRevision: 2, config: createBrandConfig("ocean") },
       });
       assert.equal(newer.statusCode, 200);
-      assert.deepEqual(
-        (await publishedRead()).json(),
-        published.json(),
-        "A newer saved draft cannot change the published revision",
-      );
+      assert.deepEqual((await publishedRead()).json(), published.json());
       const publishNewer = () =>
         app.inject({
           method: "POST",
@@ -380,11 +374,7 @@ test(
         publishedRevision: 2,
         canPublish: false,
       });
-      assert.deepEqual(
-        (await publishedRead()).json(),
-        published.json(),
-        "A revoked publication entitlement cannot erase existing publish",
-      );
+      assert.deepEqual((await publishedRead()).json(), published.json());
       const persisted = await pool.query(
         `SELECT draft_revision::text,published_revision::text
            FROM cookie_appearance.organization_branding WHERE tenant_id=$1::uuid`,
