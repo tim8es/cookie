@@ -356,6 +356,32 @@ export function writeStaffPendingMarker(
   }
 }
 
+/** Fail closed if the tab contains a marker from another actor/tenant or
+ * from before a server-secret rotation. A 404-disabled route has no scope and
+ * must not silently enable a new create when an old marker remains.
+ * This reveals no actor, tenant or request data to the current UI. */
+export function hasUnmatchedStaffPendingMarkers(
+  storage: StaffRecoveryStorage & Pick<Storage, "length" | "key">,
+  scope: string | null,
+): boolean {
+  if (scope !== null && !RECOVERY_SCOPE.test(scope)) return true;
+  const current = scope === null ? null : MARKER_PREFIX + scope;
+  try {
+    for (let index = 0; index < storage.length; index++) {
+      const entry = storage.key(index);
+      if (entry?.startsWith(MARKER_PREFIX)) {
+        if (entry !== current) return true;
+        const value = storage.getItem(entry);
+        if (value === null || !UUID.test(value)) return true;
+      }
+    }
+    return false;
+  } catch {
+    // Inaccessible or corrupted storage must never authorize a new key.
+    return true;
+  }
+}
+
 export function clearStaffPendingMarker(
   storage: StaffRecoveryStorage,
   scope: string,
