@@ -46,7 +46,7 @@ function invalid(): never {
 
 async function request(
   session: VerifiedOwnerSession,
-  path: "publication" | "publish",
+  path: "publication" | "publish" | "published",
   body: string | undefined,
   fetcher: typeof fetch,
   signal?: AbortSignal,
@@ -122,6 +122,43 @@ export async function readAppearancePublicationState(
     publishedRevision: body.publishedRevision,
     canPublish: body.canPublish,
   };
+}
+
+/** Authenticated owner projection of persisted published data, never the draft. */
+export async function readPublishedAppearanceSnapshot(
+  session: VerifiedOwnerSession,
+  fetcher: typeof fetch = globalThis.fetch,
+  signal?: AbortSignal,
+): Promise<AppearancePublicationReceipt | null> {
+  const response = await request(
+    session,
+    "published",
+    undefined,
+    fetcher,
+    signal,
+  );
+  // The owner-only endpoint returns 404 until a revision has been published.
+  if (response.status === 404) return null;
+  const body = await responseBody(response);
+  if (
+    !record(body) ||
+    Object.keys(body).length !== 1 ||
+    !record(body.published) ||
+    Object.keys(body.published).length !== 3 ||
+    !revision(body.published.revision, 1) ||
+    typeof body.published.publishedAt !== "string" ||
+    !Number.isFinite(Date.parse(body.published.publishedAt))
+  )
+    return invalid();
+  try {
+    return {
+      revision: body.published.revision,
+      config: validateBrandConfig(body.published.config),
+      publishedAt: body.published.publishedAt,
+    };
+  } catch {
+    return invalid();
+  }
 }
 
 export async function publishAppearanceDraft(

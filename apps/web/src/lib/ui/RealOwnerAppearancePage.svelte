@@ -4,7 +4,7 @@
   import BrandingSettingsEditor from "./BrandingSettingsEditor.svelte";
   import type { VerifiedOwnerSession } from "../owner-auth";
   import type { OwnerReads } from "../owner-reads";
-  import type { BrandConfigV1 } from "../branding-config";
+  import { brandPresets, type BrandConfigV1 } from "../branding-config";
   import {
     AppearanceApiFailure,
     readRealAppearanceDraft,
@@ -21,7 +21,9 @@
   } from "../appearance-assets-api";
   import {
     readAppearancePublicationState,
+    readPublishedAppearanceSnapshot,
     publishAppearanceDraft,
+    type AppearancePublicationReceipt,
     type AppearancePublicationState,
   } from "../appearance-publication-api";
   import { readRealWorkspaceOverview } from "../workspace-overview-api";
@@ -42,6 +44,8 @@
   let publishing = false;
   let publication: AppearancePublicationState | null = null;
   let publicationError = "";
+  let publishedSnapshot: AppearancePublicationReceipt | null = null;
+  let publishedSnapshotError = "";
   let needsReload = false;
   let error = "";
   let notice = "";
@@ -49,10 +53,17 @@
 
   $: dirty = !!stored && !!draft && !sameBrandConfig(stored.config, draft);
 
+  $: publishedMismatch = !!publication &&
+    publication.publishedRevision !== (publishedSnapshot?.revision ?? null);
+  $: publishedPreset = publishedSnapshot
+    ? brandPresets.find((preset) => preset.id === publishedSnapshot?.config.presetId)?.label ?? ""
+    : "";
+
   $: canPublish = !!publication && !!stored && publication.canPublish
     && publication.draftRevision === stored.revision && stored.revision > 0
     && publication.publishedRevision !== stored.revision
-    && !loading && !dirty && !saving && !uploading && !publishing && !needsReload;
+    && !loading && !dirty && !saving && !uploading && !publishing && !needsReload
+    && !publishedMismatch && !publishedSnapshotError;
 
   async function refreshPublication(request: AbortController): Promise<AppearancePublicationState | null> {
     publication = null;
@@ -68,6 +79,25 @@
       return current;
     } catch {
       if (active === request) publicationError = "Не удалось проверить статус публикации.";
+      return null;
+    }
+  }
+
+  async function refreshPublished(request: AbortController): Promise<AppearancePublicationReceipt | null> {
+    publishedSnapshot = null;
+    publishedSnapshotError = "";
+    try {
+      const current = await readPublishedAppearanceSnapshot(session, reads.fetch, request.signal);
+      if (active !== request || request.signal.aborted) return null;
+      if (current && stored && current.revision > stored.revision) {
+        publishedSnapshotError = "Опубликованная версия новее загруженного черновика. Обновите данные.";
+        return null;
+      }
+      publishedSnapshot = current;
+      return current;
+    } catch {
+      if (active === request && !request.signal.aborted)
+        publishedSnapshotError = "Не удалось подтвердить опубликованную конфигурацию на сервере.";
       return null;
     }
   }
@@ -166,6 +196,8 @@
     assetsAvailable = false;
     publication = null;
     publicationError = "";
+    publishedSnapshot = null;
+    publishedSnapshotError = "";
     assetError = "";
     clearPreviews();
     try {
@@ -181,7 +213,11 @@
       needsReload = false;
       assetsAvailable = capability ?? false;
       if (capability === null) assetError = "Не удалось проверить доступность загрузки.";
-      await Promise.all([loadPreviews(result.config, request), refreshPublication(request)]);
+      await Promise.all([
+        loadPreviews(result.config, request),
+        refreshPublication(request),
+        refreshPublished(request),
+      ]);
     } catch (reason) {
       if (active === request) error = describe(reason);
     } finally {
@@ -211,7 +247,11 @@
       if (active !== request || request.signal.aborted) return;
       stored = current;
       draft = current.config;
-      await Promise.all([loadPreviews(current.config, request), refreshPublication(request)]);
+      await Promise.all([
+        loadPreviews(current.config, request),
+        refreshPublication(request),
+        refreshPublished(request),
+      ]);
       if (active !== request || request.signal.aborted) return;
       notice = "Черновик сохранён на сервере. Показана актуальная версия.";
     } catch (reason) {
@@ -235,6 +275,7 @@
     active = request;
     publishing = true;
     publication = null;
+    publishedSnapshot = null;
     notice = "";
     error = "";
     try {
@@ -243,15 +284,19 @@
       if (active !== request || request.signal.aborted) return;
       stored = current;
       draft = current.config;
-      const [, confirmed] = await Promise.all([
+      const [, confirmed, snapshot] = await Promise.all([
         loadPreviews(current.config, request),
         refreshPublication(request),
+        refreshPublished(request),
       ]);
       if (active !== request || request.signal.aborted) return;
-      if (confirmed && confirmed.publishedRevision === target.revision) {
+      if (confirmed && confirmed.publishedRevision === target.revision
+        && snapshot && snapshot.revision === target.revision
+        && sameBrandConfig(snapshot.config, target.config)) {
         notice = "Сервер подтвердил публикацию оформления версии " + target.revision + ". Публичная ссылка ещё не подключена.";
       } else {
         publication = null;
+        publishedSnapshot = null;
         publicationError = "Результат публикации не подтверждён актуальным состоянием сервера. Загрузите данные.";
       }
     } catch {
@@ -289,11 +334,16 @@
 {:else if stored && draft}
   {#if notice}<p role="status">{notice}</p>{/if}
   {#if assetError}<p role="alert">{assetError}</p>{/if}
-  {#if publicationError}
-    <p role="alert">{publicationError}</p>
+  {#if publicationError || publishedSnapshotError || publishedMismatch}
+    <p role="alert">{publicationError || publishedSnapshotError || "Состояние публикации и опубликованная версия не совпадают. Обновите данные."}</p>
     <Button type="button" variant="outline" disabled={saving || uploading || publishing || dirty} onclick={() => void reload()}>Обновить состояние</Button>
   {/if}
   <p>Версия черновика: {stored.revision}. Публичная страница пока не подключена.</p>
+  {#if publishedSnapshot}
+    <p role="status">На сервере опубликована версия {publishedSnapshot.revision} ({publishedPreset}) от {new Date(publishedSnapshot.publishedAt).toLocaleString("ru-RU")}. {stored.revision !== publishedSnapshot.revision ? "Текущий черновик ещё не опубликован." : "Черновик совпадает с опубликованной версией."}</p>
+  {:else if !publicationError && !publishedSnapshotError && !publishedMismatch}
+    <p>Опубликованная конфигурация не подтверждена. В этом кабинете показан черновик.</p>
+  {/if}
   {#if publication && !publication.canPublish}<p>Публикация недоступна: требуется разрешение организации и право пользователя.</p>{/if}
   <BrandingSettingsEditor
     {organizationName}
@@ -302,8 +352,8 @@
     {saving}
     {publishing}
     {canPublish}
-    publishedRevision={publication?.publishedRevision ?? null}
-    publishedStatusKnown={publication !== null}
+    publishedRevision={publishedSnapshot?.revision ?? null}
+    publishedStatusKnown={publishedSnapshot !== null || (publication !== null && publication.publishedRevision === null)}
     {assetsAvailable}
     {uploading}
     {logoPreviewUrl}
