@@ -281,3 +281,75 @@ export async function recoverRealStaffCreate(
     return null;
   }
 }
+
+/** A stable, server-issued namespace is NOT an authorization credential. */
+const RECOVERY_SCOPE = /^[A-Za-z0-9_-]{43}$/;
+const MARKER_PREFIX = "kuki.staff.create.pending.v1.";
+
+export async function readRealStaffRecoveryScope(
+  session: VerifiedOwnerSession,
+  fetcher: typeof fetch = globalThis.fetch,
+): Promise<string | null> {
+  try {
+    const result = await request(
+      session,
+      { method: "GET" },
+      fetcher,
+      "/recovery-scope",
+    );
+    if (
+      result.status !== 200 ||
+      !result.body ||
+      typeof result.body !== "object" ||
+      Array.isArray(result.body) ||
+      Object.keys(result.body).length !== 1
+    ) return null;
+    const { scope } = result.body as { scope?: unknown };
+    return typeof scope === "string" && RECOVERY_SCOPE.test(scope) ? scope : null;
+  } catch {
+    // Disabled server route, denied or unavailable: no unscoped fallback.
+    return null;
+  }
+}
+
+type StaffRecoveryStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+export function readStaffPendingMarker(
+  storage: StaffRecoveryStorage,
+  scope: string,
+): string | null {
+  if (!RECOVERY_SCOPE.test(scope)) return null;
+  try {
+    const value = storage.getItem(MARKER_PREFIX + scope);
+    return value !== null && UUID.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeStaffPendingMarker(
+  storage: StaffRecoveryStorage,
+  scope: string,
+  idempotencyKey: string,
+): boolean {
+  if (!RECOVERY_SCOPE.test(scope) || !UUID.test(idempotencyKey))
+    return false;
+  try {
+    storage.setItem(MARKER_PREFIX + scope, idempotencyKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearStaffPendingMarker(
+  storage: StaffRecoveryStorage,
+  scope: string,
+): void {
+  if (!RECOVERY_SCOPE.test(scope)) return;
+  try {
+    storage.removeItem(MARKER_PREFIX + scope);
+  } catch {
+    // A stale marker can only recheck an actor-scoped receipt, not mutate.
+  }
+}
