@@ -5,6 +5,7 @@ import {
   createRealStaff,
   readRealStaff,
   retainStaffCreateKey,
+  recoverRealStaffCreate,
   StaffApiFailure,
 } from "./staff-api";
 import type { VerifiedOwnerSession } from "./owner-auth";
@@ -281,4 +282,73 @@ test("unknown staff creation preserves key even after a subsequent denial", asyn
     retainStaffCreateKey(false, new StaffApiFailure("invalid-response")),
     true,
   );
+});
+
+test("staff receipt recovery is a scoped GET with the original key", async () => {
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const receipt = { staffId: STAFF };
+  assert.deepEqual(
+    await recoverRealStaffCreate(
+      session,
+      KEY,
+      mock(Response.json(receipt), calls),
+    ),
+    receipt,
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.url, "/v1/organizations/" + TENANT + "/staff/receipt");
+  assert.equal(calls[0]?.init.method, "GET");
+  assert.equal(calls[0]?.init.body, undefined);
+  assert.equal(calls[0]?.init.cache, "no-store");
+  assert.equal(calls[0]?.init.redirect, "error");
+  const headers = new Headers(calls[0]?.init.headers);
+  assert.equal(headers.get("authorization"), "Bearer " + session.accessToken);
+  assert.equal(headers.get("idempotency-key"), KEY);
+});
+
+test("staff receipt absence, denial and corruption do not resolve the attempt", async () => {
+  for (const status of [201, 400, 401, 403, 404, 409, 503]) {
+    assert.equal(
+      await recoverRealStaffCreate(
+        session,
+        KEY,
+        mock(Response.json({ staffId: STAFF }, { status }), []),
+      ),
+      null,
+    );
+  }
+  for (const body of [
+    null,
+    [],
+    {},
+    { staffId: "invalid" },
+    { staffId: STAFF, status: "unknown" },
+  ]) {
+    assert.equal(
+      await recoverRealStaffCreate(session, KEY, mock(Response.json(body), [])),
+      null,
+    );
+  }
+  const offline = (async () => {
+    throw new Error("offline");
+  }) as typeof fetch;
+  assert.equal(await recoverRealStaffCreate(session, KEY, offline), null);
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  assert.equal(
+    await recoverRealStaffCreate(
+      { ...session, expiresAtUnixSeconds: 0 },
+      KEY,
+      mock(Response.json({ staffId: STAFF }), calls),
+    ),
+    null,
+  );
+  assert.equal(
+    await recoverRealStaffCreate(
+      session,
+      "invalid",
+      mock(Response.json({ staffId: STAFF }), calls),
+    ),
+    null,
+  );
+  assert.equal(calls.length, 0);
 });

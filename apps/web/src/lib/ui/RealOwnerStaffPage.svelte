@@ -7,6 +7,7 @@
   import { ServiceApiFailure, type RealService } from "../services-api";
   import {
     createRealStaff,
+    recoverRealStaffCreate,
     retainStaffCreateKey,
     StaffApiFailure,
     type RealStaff,
@@ -35,6 +36,8 @@
   // A failed/unknown response must reuse its key with unchanged request values.
   let pendingKey = "";
   let publicationPending = false;
+  let recovering = false;
+  let mounted = false;
 
   function message(error: unknown): string {
     if (error instanceof ServiceApiFailure && error.reason === "unauthorized") {
@@ -102,7 +105,7 @@
   }
 
   async function save(): Promise<void> {
-    if (!loaded || loading || saving || publicationPending) return;
+    if (!loaded || loading || saving || recovering || publicationPending) return;
     if (
       !staffName.trim() ||
       [...staffName.trim()].length > 200 ||
@@ -152,6 +155,39 @@
     }
   }
 
+  /** Only a server-confirmed receipt resolves an uncertain creation. */
+  async function recoverPending(): Promise<void> {
+    if (!loaded || !pendingKey || saving || recovering || loading || publicationPending) return;
+    const key = pendingKey;
+    const activeSession = session;
+    recovering = true;
+    writeError = "";
+    try {
+      const receipt = await recoverRealStaffCreate(activeSession, key, reads.fetch);
+      if (
+        !mounted ||
+        session.accessToken !== activeSession.accessToken ||
+        session.tenantId !== activeSession.tenantId ||
+        Date.now() / 1000 >= activeSession.expiresAtUnixSeconds ||
+        pendingKey !== key
+      ) return;
+      if (!receipt) {
+        writeError = "Сервер не подтвердил исходную операцию. Не создавайте новый профиль с другим ключом.";
+        return;
+      }
+      // The receipt proves the committed identity, never a name-based match.
+      pendingKey = "";
+      staffName = "";
+      staffTitle = "";
+      reads.staff.invalidate();
+      reads.invalidateCalendars();
+      notice = "Исходное создание профиля подтверждено сервером. Обновляем список мастеров.";
+      await refresh();
+    } finally {
+      if (mounted) recovering = false;
+    }
+  }
+
   function namesFor(member: RealStaff): string {
     const refs = member.assignments.flatMap((assignment) => {
       const branch = locations.find((item) => item.id === assignment.locationId);
@@ -164,7 +200,9 @@
   }
 
   onMount(() => {
+    mounted = true;
     void refresh();
+    return () => { mounted = false; };
   });
 </script>
 
@@ -184,7 +222,16 @@
 {/if}
 {#if writeError}
   <div class="alert-error" role="alert"><p>{writeError}</p>
-    {#if pendingKey}<p>Результат создания неизвестен. Повторите сохранение с теми же данными и не покидайте страницу до подтверждения.</p>{/if}
+    {#if pendingKey}<p>Результат создания неизвестен. Проверьте исходную операцию или повторите сохранение с теми же данными.</p>{/if}
+  </div>
+{/if}
+{#if pendingKey}
+  <div class="owner-form-note">
+    <p>Не покидайте страницу до подтверждения результата.</p>
+    <Button variant="outline" type="button" disabled={saving || recovering || loading || publicationPending}
+      onclick={() => void recoverPending()}>
+      {recovering ? "Проверяем…" : "Проверить сохранение"}
+    </Button>
   </div>
 {/if}
 {#if notice}
@@ -231,7 +278,7 @@
       onOpenServices={onOpenServices}
       onSubmit={() => void save()}
       apiMode={true}
-      busy={saving || loading || publicationPending}
+      busy={saving || loading || publicationPending || recovering}
       locked={!!pendingKey}
     />
   {/if}
