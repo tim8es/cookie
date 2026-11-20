@@ -331,8 +331,9 @@ test(
       assert.equal(publishedSnapshot.headers["cache-control"], "no-store");
       assert.equal(publishedSnapshot.headers.vary, "Authorization");
       assert.deepEqual(
-        (await draftOnly.inject({ method: "GET", url: publishedUrl, headers }))
-          .json(),
+        (
+          await draftOnly.inject({ method: "GET", url: publishedUrl, headers })
+        ).json(),
         published.json(),
       );
       assert.deepEqual((await status()).json(), {
