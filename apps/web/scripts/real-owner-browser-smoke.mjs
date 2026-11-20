@@ -812,11 +812,14 @@ async function main() {
     )).rows[0].count,1);
     assert.equal(await evaluate(cdp, "sessionStorage.length"), 1,
       "only the scoped idempotency UUID marker survives a lost response");
-    const staffReloadStart = responses.length;
     await cdp.send("Page.reload", { ignoreCache: true });
-    await poll("Staff owner session restored after lost response", () =>
-      responses.slice(staffReloadStart).some(r=>r.path==="/v1/auth/browser-session"&&r.status===200));
-    await requireDom(cdp, "Staff workspace route restored after reload", "document.querySelector('.real-owner-nav')");
+    await requireDom(cdp, "legacy bearer is not persisted after Staff response loss",
+      "!document.querySelector('.real-owner-nav') && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Я представляю бизнес')");
+    // This owner uses a legacy cs_ proof, not a global browser-bound cookie.
+    // Reauthenticate the SAME verified actor with a NEW signed Telegram proof,
+    // preserving only tab-local, actor-scoped recovery marker across reload.
+    script = await loadAndEnterTelegram(cdp, origin + "staff", signedProof(botToken,userId), script, "business");
+    await requireDom(cdp, "same actor reauthenticated after Staff response loss", "document.querySelector('.real-owner-nav')");
     await button(cdp, "Мастера");
     await requireDom(cdp, "same actor pending Staff marker restored without PII or bearer",
       "document.body.innerText.includes('Найден незавершённый запрос создания.') && document.querySelector('.owner-form input')?.disabled && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Проверить сохранение')");
