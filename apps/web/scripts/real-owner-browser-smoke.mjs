@@ -1079,7 +1079,7 @@ async function main() {
     // The previous browser path proved default-off. Restart with the separate
     // write switch only in this isolated synthetic CI process.
     await stopServer(api);
-    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60" }, origin);
+    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60", COOKIE_STAGING_CUSTOMER_RESCHEDULE_CUTOFF_MINUTES: "30" }, origin);
     script = await loadAndEnterTelegram(cdp, origin+"?surface=customer-staging", signedProof(botToken,customerUserId), script, "customer");
     await requireDom(cdp,"write-enabled customer catalog","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
     for(let i=0;i<3;i++){
@@ -1112,6 +1112,48 @@ async function main() {
       await viewport(cdp,width,height);
       await checkWidth(cdp,"confirmed customer booking "+width+"px");
     }
+    // Independent real-browser customer reschedule path: the same Confirmed
+    // Booking changes only its UTC minute, not ID, service/staff/location,
+    // price snapshot, or customer. All evidence is from live PostgreSQL.
+    await requireDom(cdp, "real client move action", "Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Перенести запись'&&!b.disabled)");
+    const beforeMove = await pool.query(
+      "SELECT start_at,price_kopecks_snapshot::text AS price,service_id::text AS service,staff_id::text AS staff,location_id::text AS location FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+      [owner.tenantId, realBooking.rows[0].id],
+    );
+    assert.equal(beforeMove.rowCount, 1);
+    const moveAt = date + "T10:00:00.000Z";
+    assert.notEqual(beforeMove.rows[0].start_at.toISOString(), moveAt);
+    await button(cdp, "Перенести запись");
+    await requireDom(cdp, "UTC-only staging time selector", "document.querySelector('[aria-label=\"Мои записи\"] input[type=datetime-local]') && document.body.innerText.includes('Новое время в UTC')");
+    await fill(cdp, historyPanel + " input[type=datetime-local]", date + "T10:00", "input");
+    await button(cdp, "Проверить новое время");
+    await requireDom(cdp, "explicit move confirmation", "document.body.innerText.includes('Подтвердить перенос') && document.body.innerText.includes(" + JSON.stringify(moveAt) + ")");
+    await button(cdp, "Подтвердить перенос");
+    await requireDom(cdp, "confirmed time-only move in customer cabinet",
+      "document.querySelector(" + JSON.stringify(historyPanel) + ")?.innerText.includes('Перенос подтверждён сервером') && [...document.querySelectorAll('.customer-history li time')].some(t=>t.dateTime===" + JSON.stringify(moveAt) + ")");
+    const afterMove = await pool.query(
+      "SELECT start_at,price_kopecks_snapshot::text AS price,service_id::text AS service,staff_id::text AS staff,location_id::text AS location,status FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+      [owner.tenantId, realBooking.rows[0].id],
+    );
+    assert.equal(afterMove.rowCount, 1);
+    assert.equal(afterMove.rows[0].start_at.toISOString(), moveAt);
+    assert.equal(afterMove.rows[0].price, beforeMove.rows[0].price);
+    for (const field of ["service", "staff", "location"])
+      assert.equal(afterMove.rows[0][field], beforeMove.rows[0][field]);
+    assert.equal(afterMove.rows[0].status, "Confirmed");
+    const moveEvidence = await pool.query(
+      "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits, (SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts, (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2::text) AS events",
+      [owner.tenantId, realBooking.rows[0].id],
+    );
+    assert.deepEqual(moveEvidence.rows[0], { audits: 1, receipts: 1, events: 1 });
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-reschedule/"+realBooking.rows[0].id)));
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
+    for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"confirmed client move "+width+"px");
+      await checkLabeledControls(cdp,"confirmed client move "+width+"px");
+    }
+    console.log("PASS real customer browser time-only move: unchanged Booking ID, price, service, staff and location, one audit/receipt/outbox.");
     await requireDom(cdp,"real cancel action","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)");
     await button(cdp,"Отменить запись");
     await button(cdp,"Подтвердить отмену");
@@ -1212,7 +1254,7 @@ async function main() {
       "!document.querySelector('[aria-label=\\\"Мои записи\\\"]') && !document.querySelector('[aria-label=\\\"Клиентская витрина staging\\\"]') && !document.body.innerText.includes('Вход клиента подтверждён')",
     );
     await stopServer(api);
-    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60" }, origin);
+    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60", COOKIE_STAGING_CUSTOMER_RESCHEDULE_CUTOFF_MINUTES: "30" }, origin);
 
     const historyResponseStart = responses.length;
     script = await loadAndEnterTelegram(cdp, origin+"?surface=customer-staging", signedProof(botToken, customerUserId), script, "customer");
