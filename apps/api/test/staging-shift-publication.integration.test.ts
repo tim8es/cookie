@@ -82,10 +82,22 @@ test(
         enabled: true,
         cutoffMinutes: 60,
       },
+      stagingCustomerRescheduleRoutes: {
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 30,
+      },
     });
     const disabled = createApp(pool);
     const cutoffDenied = createApp(pool, {
       stagingCustomerCancellationRoutes: {
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 525600,
+      },
+      stagingCustomerRescheduleRoutes: {
         pool,
         verifier: sessions,
         enabled: true,
@@ -1276,6 +1288,125 @@ test(
       assert.equal(expiredBooking.json().error, "grant-unavailable");
       assert.deepEqual((await history()).json(), beforeExpiry.json());
       await revokeStagingGrant(pool, owner.tenantId);
+      // Existing bookings stay manageable even after the publication grant
+      // expires; a customer time-only move never creates a new booking.
+      const moveRoot = prefix + "/staging-customer-reschedule";
+      const movedBookingId: string = rebooked.json().bookingId;
+      const moveTarget = afterRace.find(
+        (s) => s.startAt !== bookingPayload.startAt,
+      )?.startAt;
+      assert.ok(
+        moveTarget,
+        "Expected another server-available start for the same shift",
+      );
+      const moveUrl = moveRoot + "/" + movedBookingId;
+      const moveKey = randomUUID();
+      const move = (
+        key = moveKey,
+        newStartAt = moveTarget!,
+        target = moveUrl,
+      ) =>
+        app.inject({
+          method: "POST",
+          url: target,
+          headers: { ...clientHeaders, "idempotency-key": key },
+          payload: { newStartAt },
+        });
+      assert.deepEqual(
+        (
+          await app.inject({
+            method: "GET",
+            url: moveRoot + "/capability",
+            headers: clientHeaders,
+          })
+        ).json(),
+        { cutoffMinutes: 30 },
+      );
+      assert.equal(
+        (
+          await disabled.inject({
+            method: "POST",
+            url: moveUrl,
+            headers: { ...clientHeaders, "idempotency-key": moveKey },
+            payload: { newStartAt: moveTarget },
+          })
+        ).statusCode,
+        404,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "POST",
+            url: moveUrl,
+            payload: { newStartAt: moveTarget },
+          })
+        ).statusCode,
+        401,
+      );
+      assert.equal(
+        (
+          await move(
+            randomUUID(),
+            moveTarget,
+            moveUrl.replace(owner.tenantId, randomUUID()),
+          )
+        ).statusCode,
+        403,
+      );
+      assert.equal(
+        (
+          await move(
+            randomUUID(),
+            moveTarget,
+            moveRoot + "/" + another.rows[0]!.id,
+          )
+        ).statusCode,
+        404,
+      );
+      const deniedMove = await cutoffDenied.inject({
+        method: "POST",
+        url: moveUrl,
+        headers: { ...clientHeaders, "idempotency-key": moveKey },
+        payload: { newStartAt: moveTarget },
+      });
+      assert.equal(deniedMove.statusCode, 409);
+      assert.equal(deniedMove.json().error, "RESCHEDULE_POLICY_DENIED");
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.booking.reschedule') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
+      assert.equal((await move()).statusCode, 403);
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.booking.reschedule') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
+      const [moved, sameKeyMove] = await Promise.all([move(), move()]);
+      assert.equal(moved.statusCode, 200, moved.body);
+      assert.deepEqual(sameKeyMove.json(), moved.json());
+      assert.equal(moved.json().bookingId, movedBookingId);
+      assert.equal(moved.json().status, "Confirmed");
+      assert.equal(moved.json().startAt, moveTarget);
+      assert.equal(moved.json().previousStartAt, bookingPayload.startAt);
+      assert.equal(moved.json().priceKopecks, rebooked.json().priceKopecks);
+      assert.equal((await move(moveKey, slots[10]!.startAt)).statusCode, 409);
+      const stateAfterMove = await pool.query(
+        "SELECT start_at,price_kopecks_snapshot::text AS price,service_id::text AS service,staff_id::text AS staff,location_id::text AS location FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [owner.tenantId, movedBookingId],
+      );
+      assert.equal(stateAfterMove.rows[0].start_at.toISOString(), moveTarget);
+      assert.equal(stateAfterMove.rows[0].price, "100000");
+      assert.equal(stateAfterMove.rows[0].service, serviceId);
+      assert.equal(stateAfterMove.rows[0].staff, staffId);
+      assert.equal(stateAfterMove.rows[0].location, owner.locationId);
+      const moveSideEffects = await pool.query(
+        "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits, (SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts, (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2::text) AS events",
+        [owner.tenantId, movedBookingId],
+      );
+      assert.deepEqual(moveSideEffects.rows[0], {
+        audits: 1,
+        receipts: 1,
+        events: 1,
+      });
       const afterGrant = await cancel(
         randomUUID(),
         cancellationRoot + "/" + rebooked.json().bookingId,
@@ -1321,7 +1452,7 @@ test(
         await app.close();
         if (tenantId) {
           await pool.query(
-            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic IN ('schedule.shift.draft.created','schedule.shift.published','booking.confirmed','booking.cancelled')",
+            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic IN ('schedule.shift.draft.created','schedule.shift.published','booking.confirmed','booking.cancelled','booking.rescheduled')",
             [tenantId],
           );
         }

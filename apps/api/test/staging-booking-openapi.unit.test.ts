@@ -65,6 +65,16 @@ const cases = [
     method: "POST",
     group: "cancel",
   },
+  {
+    route: "staging-customer-reschedule/capability",
+    method: "GET",
+    group: "reschedule",
+  },
+  {
+    route: "staging-customer-reschedule/{bookingId}",
+    method: "POST",
+    group: "reschedule",
+  },
 ] as const;
 
 type RouteCase = (typeof cases)[number];
@@ -87,9 +97,11 @@ function url(item: RouteCase, tenantId = tenant): string {
 
 function payload(item: RouteCase): object | undefined {
   if (item.method === "GET") return undefined;
-  return item.group === "create"
-    ? { ...uuidFields, startAt: "2027-05-01T10:00:00.000Z" }
-    : {};
+  if (item.group === "create")
+    return { ...uuidFields, startAt: "2027-05-01T10:00:00.000Z" };
+  if (item.group === "reschedule")
+    return { newStartAt: "2027-05-01T12:00:00.000Z" };
+  return {};
 }
 
 test("customer Booking routes are opt-in and fail closed", async () => {
@@ -124,6 +136,7 @@ test("customer Booking routes are opt-in and fail closed", async () => {
     stagingPublicationRoutes: dependencies,
     stagingCustomerBookingRoutes: dependencies,
     stagingCustomerCancellationRoutes: { ...dependencies, cutoffMinutes: 0 },
+    stagingCustomerRescheduleRoutes: { ...dependencies, cutoffMinutes: 0 },
   });
   const disabled = createApp(pool);
   try {
