@@ -471,8 +471,7 @@ test(
       // reschedule permission must still be checked on the mutation.
       const originalBookingId: string = successful.json().bookingId;
       const moveStart = date + "T11:00:00.000Z";
-      const moveUrl =
-        "/staging-customer-reschedule/" + originalBookingId;
+      const moveUrl = "/staging-customer-reschedule/" + originalBookingId;
       const move = (token: string, moveKey: string, newStartAt = moveStart) =>
         post(moveUrl, token, { newStartAt }, moveKey);
       const moveRole: Sql = {
