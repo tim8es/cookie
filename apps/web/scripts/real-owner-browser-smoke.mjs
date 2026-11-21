@@ -385,6 +385,7 @@ async function main() {
       COOKIE_TELEGRAM_OIDC_COOKIE_KEY: randomBytes(32).toString("hex"),
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
       COOKIE_STAGING_APPEARANCE_MODE: "enabled",
+      COOKIE_STAGING_OWNER_CANCEL_CUTOFF_MINUTES: "0",
       COOKIE_TELEGRAM_USER_HMAC_SECRET: userHashSecret.toString("hex"),
       COOKIE_TELEGRAM_BOT_TOKEN: botToken,
       COOKIE_PUBLIC_ORIGIN: "https://cookie-e2e.invalid",
@@ -1360,6 +1361,55 @@ async function main() {
     await button(cdp, "Мастера");
     await requireDom(cdp, "owner staff warmed before revocation",
       "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
+    // An existing, synthetic Confirmed Booking is cancelled by the current
+    // owner through the real compiled Calendar. Simulate a lost HTTP success:
+    // the UI must never claim commit, and same-key retry has one side effect.
+    await button(cdp,"Календарь");
+    await requireDom(cdp,"owner edit calendar branch selector",
+      "document.querySelector('.owner-calendar select')?.options.length===2");
+    await evaluate(cdp,"(()=>{const s=document.querySelector('.owner-calendar select');s.value="+JSON.stringify(locationId)+";s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await fill(cdp,".owner-calendar input[type=date]",date,"change");
+    const ownerEditScope=".owner-booking-detail[data-booking-id="+JSON.stringify(bookingId)+"]";
+    const ownerEditRoot="document.querySelector("+JSON.stringify(ownerEditScope)+")";
+    await requireDom(cdp,"owner edit target persisted record",
+      ownerEditRoot+"?.querySelector('button[aria-expanded=false]')?.disabled===false");
+    await evaluate(cdp,ownerEditRoot+".querySelector('button[aria-expanded=false]').click()");
+    await requireDom(cdp,"owner cancel capability is verified",
+      "(()=>{const root="+ownerEditRoot+";return !!root?.querySelector('dl')&&[...root.querySelectorAll('button')].some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)})()");
+    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Отменить запись').click();})()");
+    await requireDom(cdp,"owner cancellation needs explicit second click",
+      "(()=>{const root="+ownerEditRoot+";return root?.innerText.includes('Отменить подтверждённую запись для клиента?')&&[...root.querySelectorAll('button')].some(b=>b.textContent.trim()==='Подтвердить отмену'&&!b.disabled)})()");
+    const ownerCancelUrl="/v1/organizations/"+owner.tenantId+"/owner-calendar/"+bookingId+"/cancel";
+    let ownerCancellationRequests=0;
+    cdp.onEvent("Network.requestWillBeSent",({request})=>{
+      if(request.url.startsWith(origin)&&request.method==="POST"&&new URL(request.url).pathname===ownerCancelUrl)ownerCancellationRequests++;
+    });
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);window.fetch=async(input,init)=>{const reply=await send(input,init);if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(ownerCancelUrl)+")&&reply.status===200){window.fetch=send;throw new Error('synthetic lost owner cancellation response');}return reply;};})()");
+    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Подтвердить отмену').click();})()");
+    await requireDom(cdp,"owner unknown commit is not shown as success",
+      ownerEditRoot+"?.innerText.includes('Результат отмены неизвестен')&&[..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходную отмену'&&!b.disabled)");
+    const ownerCommitted=await pool.query(
+      "SELECT status,price_kopecks_snapshot::text AS price FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+      [owner.tenantId,bookingId],
+    );
+    assert.deepEqual(ownerCommitted.rows,[{status:"CancelledByBusiness",price:"125050"}]);
+    assert.equal(ownerCancellationRequests,1,"Unknown owner result may not spontaneously retry");
+    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Повторить исходную отмену').click();})()");
+    await requireDom(cdp,"owner calendar refreshed after acknowledged same-key receipt",
+      "(()=>{const rows=[...document.querySelectorAll('[aria-label=\"Записи за выбранный период\"] .schedule-summary')];return rows.some(r=>r.querySelector('.owner-booking-detail[data-booking-id="+JSON.stringify(bookingId)+"]')&&r.querySelector('.status-pill')?.textContent==='Отменена салоном')})()");
+    const ownerEffects=await pool.query(
+      "SELECT (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.cancel') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.cancelled' AND payload->>'bookingId'=$2::text) AS events",
+      [owner.tenantId,bookingId],
+    );
+    assert.deepEqual(ownerEffects.rows[0],{audits:1,receipts:1,events:1});
+    assert.equal(ownerCancellationRequests,2,"Explicit owner retry must use the original command key");
+    for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"owner calendar after cancel "+width+"px");
+      await checkLabeledControls(cdp,"owner calendar after cancel "+width+"px");
+    }
+    console.log("PASS owner Calendar real browser cancellation: unknown response, same-key recovery, immutable price and one audit/receipt/outbox.");
+
     const revokedOwner = await pool.query(
       "UPDATE cookie_identity.opaque_sessions SET revoked_at=clock_timestamp() WHERE tenant_id=$1::uuid AND revoked_at IS NULL",
       [owner.tenantId],
