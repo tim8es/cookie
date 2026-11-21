@@ -41,8 +41,10 @@ async function close(server: Server): Promise<void> {
   });
 }
 
-
-async function listenPrivate(server: Server, socketPath: string): Promise<void> {
+async function listenPrivate(
+  server: Server,
+  socketPath: string,
+): Promise<void> {
   const previous = process.umask(0o117);
   try {
     await new Promise<void>((resolve, reject) => {
@@ -268,7 +270,6 @@ test(
     );
   },
 );
-
 
 test(
   "client rejects a valid response with a delayed extra frame byte",
