@@ -284,6 +284,8 @@ test(
         socket.write(validFrame);
         setTimeout(() => socket.end(Buffer.from([0xff])), 30);
       });
+      // Drain the half-closed request so Node emits the peer EOF event.
+      socket.resume();
     });
     await listenPrivate(server, socketPath);
     t.after(() => close(server));
@@ -307,6 +309,8 @@ test(
         // Supply a valid success frame but never close the write-side.
         socket.write(validFrame);
       });
+      // Drain the half-closed request so Node emits the peer EOF event.
+      socket.resume();
     });
     await listenPrivate(server, socketPath);
     t.after(() => close(server));
@@ -361,6 +365,8 @@ test(
       socket.once("end", () => {
         socket.end(validFrame.subarray(0, validFrame.length - 1));
       });
+      // Drain the half-closed request so Node emits the peer EOF event.
+      socket.resume();
     });
     await listenPrivate(server, socketPath);
     t.after(() => close(server));
