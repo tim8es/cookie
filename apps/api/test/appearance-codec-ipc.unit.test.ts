@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { chmodSync, mkdtempSync, rmSync, statSync } from "node:fs";
-import { createConnection, createServer, type Server } from "node:net";
+import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -304,7 +304,9 @@ test(
     const jpeg = await jpegFixture();
     const image = await normalizeAppearanceImage(jpeg, "image/jpeg");
     const validFrame = codecIpcSuccessResponse(image);
+    let heldPeer: Socket | undefined;
     const server = createServer({ allowHalfOpen: true }, (socket) => {
+      heldPeer = socket;
       socket.once("end", () => {
         // Supply a valid success frame but never close the write-side.
         socket.write(validFrame);
@@ -313,7 +315,12 @@ test(
       socket.resume();
     });
     await listenPrivate(server, socketPath);
-    t.after(() => close(server));
+    t.after(async () => {
+      // A deliberately half-open Unix server is not closed by the client FIN.
+      // Destroy our synthetic peer before awaiting server.close().
+      heldPeer?.destroy();
+      await close(server);
+    });
     await assert.rejects(
       normalizeImageOverCodecIpc(jpeg, "image/jpeg", client(250)),
       /codec-timeout/,
