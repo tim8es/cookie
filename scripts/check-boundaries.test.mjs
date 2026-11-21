@@ -72,6 +72,17 @@ test("rejects cross-module imports through import type, dynamic import and requi
   assert.equal(report(source).failures.length, 3);
 });
 
+test("rejects nonliteral dynamic import and require to prevent untracked module edges", () => {
+  const source =
+    "const path = getPath(); const a = import(path); " +
+    "const b = require(`../../platform-db/src/${filename}.js`);";
+  const result = report(source);
+  assert.equal(result.failures.length, 2);
+  assert.ok(result.failures.some((line) => line.includes("computed import()")));
+  assert.ok(result.failures.some((line) => line.includes("computed require()")));
+  assert.deepEqual(report("void import(`./local.js`);").failures, []);
+});
+
 test("prevents production imports of sibling test folders or app source", () => {
   const result = report("import '../test/mocked-db.js'; import '../../../../apps/api/src/app.js';");
   assert.equal(result.failures.length, 2);
@@ -118,6 +129,27 @@ test("repository scan rejects a real two-package public-entrypoint cycle", async
       "Module dependency cycle: packages/first -> packages/second -> packages/first",
     ]);
     await writeFile(join(second, "index.ts"), "export const ready = true;\n");
+    assert.deepEqual((await checkRepository(sandbox)).failures, []);
+  } finally {
+    await rm(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("repository scanner rejects computed imports without baseline exceptions", async () => {
+  const sandbox = await mkdtemp(join(tmpdir(), "cookie-dynamic-import-"));
+  try {
+    const source = join(sandbox, "packages/domain-booking/src");
+    await Promise.all([
+      mkdir(source, { recursive: true }),
+      mkdir(join(sandbox, "scripts"), { recursive: true }),
+    ]);
+    const path = join(source, "index.ts");
+    await writeFile(path, "export const load = (name: string) => import(name);");
+    await writeFile(join(sandbox, "scripts/module-boundaries-legacy.json"), "{}");
+    const violations = (await checkRepository(sandbox)).failures;
+    assert.equal(violations.length, 1);
+    assert.match(violations[0], /computed import\(\) specifier cannot be audited/);
+    await writeFile(path, "export const load = () => import('./local.js');");
     assert.deepEqual((await checkRepository(sandbox)).failures, []);
   } finally {
     await rm(sandbox, { recursive: true, force: true });
