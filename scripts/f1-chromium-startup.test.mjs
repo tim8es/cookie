@@ -27,6 +27,11 @@ test("an early Chromium exit is reaped before the only startup retry", async () 
 
   assert.equal(outcome.attempt, 2);
   assert.equal(outcome.failures.length, 1);
+  assert.equal(outcome.startup.attempt, 2);
+  assert.ok(Number.isInteger(outcome.startup.elapsedMs) && outcome.startup.elapsedMs >= 0);
+  assert.equal(outcome.startup.stage, "not-probed");
+  assert.equal(outcome.startup.probes, 0);
+  assert.equal(outcome.startup.pid, null);
   assert.match(outcome.failures[0], /exit=1/);
   assert.deepEqual(launched, [1, 2]);
   assert.deepEqual(disposed, [1]);
@@ -51,6 +56,9 @@ test("successful initial CDP startup does not retry or destroy the live browser"
 
   assert.equal(outcome.attempt, 1);
   assert.deepEqual(outcome.failures, []);
+  assert.equal(outcome.startup.attempt, 1);
+  assert.equal(outcome.startup.executable, "unknown");
+  assert.ok(Number.isInteger(outcome.startup.elapsedMs) && outcome.startup.elapsedMs >= 0);
   assert.equal(launched, 1);
   assert.equal(disposed, 0);
 });
@@ -76,6 +84,8 @@ test("two failed probes abort with bounded diagnostics and clean each profile", 
       assert.match(error.message, /startup attempt 2\/2/);
       assert.match(error.message, /ECONNREFUSED/);
       assert.match(error.message, /only synthetic stderr/);
+      assert.match(error.message, /elapsedMs=\d+/);
+      assert.match(error.message, /pid=unavailable/);
       return true;
     },
   );
@@ -115,6 +125,38 @@ test("invalid or unbounded retries fail before spawning", async () => {
     /Invalid bounded Chromium startup retry configuration/,
   );
   assert.equal(launched, 0);
+});
+
+test("successful CDP readiness reports only bounded child metadata, never target payload", async () => {
+  const outcome = await startChromiumWithRetry({
+    attempts: 1,
+    startupTimeoutMs: 1000,
+    intervalMs: 1,
+    startAttempt: async () => ({
+      chrome: { ...running(), pid: 4321 },
+      executable: "chromium",
+      probeStage: "port-file",
+      probeCount: 1,
+    }),
+    probe: async (handle) => {
+      handle.probeStage = "page-target";
+      handle.probeCount++;
+      return { webSocketDebuggerUrl: "ws://127.0.0.1/synthetic-secret" };
+    },
+    disposeAttempt: async () => {
+      throw new Error("must not dispose ready browser");
+    },
+  });
+  assert.deepEqual(outcome.startup, {
+    attempt: 1,
+    elapsedMs: outcome.startup.elapsedMs,
+    executable: "chromium",
+    stage: "page-target",
+    probes: 2,
+    pid: 4321,
+  });
+  assert.ok(outcome.startup.elapsedMs >= 0);
+  assert.ok(!JSON.stringify(outcome.startup).includes("synthetic-secret"));
 });
 
 test("a page returned after child exit cannot be accepted as readiness", async () => {
