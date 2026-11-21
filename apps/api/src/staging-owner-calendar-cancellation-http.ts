@@ -7,7 +7,10 @@ import {
 } from "../../../packages/domain-booking/src/index.js";
 import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
 import { withTenantPermission } from "./protected-tenant-transaction.js";
-import { verifyTenantActor, type BearerSessionVerifier } from "./session-context.js";
+import {
+  verifyTenantActor,
+  type BearerSessionVerifier,
+} from "./session-context.js";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -37,11 +40,19 @@ function privacy(reply: FastifyReply): void {
 
 export function registerStagingOwnerCalendarCancellation(
   app: FastifyInstance,
-  { pool, verifier, cutoffMinutes, enabled }: StagingOwnerCancellationDependencies,
+  {
+    pool,
+    verifier,
+    cutoffMinutes,
+    enabled,
+  }: StagingOwnerCancellationDependencies,
 ): void {
   if (!enabled) return;
-  if (!Number.isSafeInteger(cutoffMinutes) || cutoffMinutes < 0 ||
-      cutoffMinutes > 525600) {
+  if (
+    !Number.isSafeInteger(cutoffMinutes) ||
+    cutoffMinutes < 0 ||
+    cutoffMinutes > 525600
+  ) {
     throw new Error("Invalid staging owner cancellation dependency");
   }
 
@@ -51,21 +62,26 @@ export function registerStagingOwnerCalendarCancellation(
     bookingId?: string,
   ): Promise<boolean> {
     if (!actor) throw new AuthorizationDeniedError();
-    return withTenantPermission(pool, actor, "booking.cancel", async (client) => {
-      const owner = await client.query(
-        `SELECT 1 FROM cookie_tenancy.organizations
+    return withTenantPermission(
+      pool,
+      actor,
+      "booking.cancel",
+      async (client) => {
+        const owner = await client.query(
+          `SELECT 1 FROM cookie_tenancy.organizations
           WHERE id=$1::uuid AND owner_identity_id=$2::uuid FOR SHARE`,
-        [actor.tenantId, actor.identityId],
-      );
-      if (owner.rowCount !== 1) throw new AuthorizationDeniedError();
-      if (!locationId || !bookingId) return true;
-      const matches = await client.query(
-        `SELECT 1 FROM cookie_booking.bookings
+          [actor.tenantId, actor.identityId],
+        );
+        if (owner.rowCount !== 1) throw new AuthorizationDeniedError();
+        if (!locationId || !bookingId) return true;
+        const matches = await client.query(
+          `SELECT 1 FROM cookie_booking.bookings
           WHERE tenant_id=$1::uuid AND location_id=$2::uuid AND id=$3::uuid`,
-        [actor.tenantId, locationId, bookingId],
-      );
-      return matches.rowCount === 1;
-    });
+          [actor.tenantId, locationId, bookingId],
+        );
+        return matches.rowCount === 1;
+      },
+    );
   }
 
   app.get<{ Params: { tenantId: string } }>(
@@ -73,7 +89,9 @@ export function registerStagingOwnerCalendarCancellation(
     async (request, reply) => {
       privacy(reply);
       const verified = await verifyTenantActor(
-        request.headers.authorization, request.params.tenantId, verifier,
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
       );
       if (!verified.actor)
         return reply.code(verified.status).send({ error: verified.error });
@@ -98,26 +116,32 @@ export function registerStagingOwnerCalendarCancellation(
     async (request, reply) => {
       privacy(reply);
       const verified = await verifyTenantActor(
-        request.headers.authorization, request.params.tenantId, verifier,
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
       );
       if (!verified.actor)
         return reply.code(verified.status).send({ error: verified.error });
       const key = request.headers["idempotency-key"];
       const { bookingId } = request.params;
       const q = request.query as Record<string, unknown>;
-      if (!UUID.test(bookingId) ||
-          Object.keys(q).length !== 1 ||
-          typeof q.locationId !== "string" ||
-          !UUID.test(q.locationId) ||
-          typeof key !== "string" || !KEY.test(key) ||
-          !request.body || typeof request.body !== "object" ||
-          Array.isArray(request.body) ||
-          Object.keys(request.body).length !== 0)
+      if (
+        !UUID.test(bookingId) ||
+        Object.keys(q).length !== 1 ||
+        typeof q.locationId !== "string" ||
+        !UUID.test(q.locationId) ||
+        typeof key !== "string" ||
+        !KEY.test(key) ||
+        !request.body ||
+        typeof request.body !== "object" ||
+        Array.isArray(request.body) ||
+        Object.keys(request.body).length !== 0
+      )
         return reply.code(400).send({ error: "invalid-request" });
       const actor = verified.actor;
       const locationId = q.locationId;
       try {
-        if (!await requireCurrentOwner(actor, locationId, bookingId))
+        if (!(await requireCurrentOwner(actor, locationId, bookingId)))
           return reply.code(404).send({ error: "booking-not-found" });
         const receipt = await cancelStagingOwnerBooking(
           pool,
@@ -146,8 +170,12 @@ export function registerStagingOwnerCalendarCancellation(
         if (error instanceof AuthorizationDeniedError)
           return reply.code(403).send({ error: "forbidden" });
         if (error instanceof CancelBookingFailure) {
-          const status = error.code === "INVALID_CANCELLATION_COMMAND"
-            ? 400 : error.code === "BOOKING_NOT_FOUND" ? 404 : 409;
+          const status =
+            error.code === "INVALID_CANCELLATION_COMMAND"
+              ? 400
+              : error.code === "BOOKING_NOT_FOUND"
+                ? 404
+                : 409;
           return reply.code(status).send({ error: error.code });
         }
         return reply.code(503).send({ error: "unavailable" });

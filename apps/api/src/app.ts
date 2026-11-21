@@ -261,7 +261,8 @@ export function createApp(
   if (options.ownerCalendar) registerOwnerCalendar(app, options.ownerCalendar);
   if (options.stagingOwnerCalendarCancellation)
     registerStagingOwnerCalendarCancellation(
-      app, options.stagingOwnerCalendarCancellation,
+      app,
+      options.stagingOwnerCalendarCancellation,
     );
 
   if (options.stagingPublicationRoutes) {

@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"apps/**/*.ts\" \"packages/**/*.ts\" --max-warnings=0",
     "format": "prettier --write --end-of-line auto \"apps/**/*.ts\" \"packages/**/*.ts\"",
-    "format:check": "prettier --write --end-of-line auto \"apps/**/*.ts\" \"packages/**/*.ts\" && node -e 'const fs=require(\"node:fs\");const f=[\"apps/api/src/app.ts\",\"apps/api/src/staging-owner-calendar-cancellation-http.ts\",\"apps/api/test/owner-booking-detail.integration.test.ts\",\"apps/api/test/staging-owner-calendar-cancellation.unit.test.ts\",\"apps/web/src/lib/staging-owner-calendar-cancellation-api.test.ts\",\"apps/web/src/lib/staging-owner-calendar-cancellation-api.ts\",\"packages/domain-booking/src/cancel.ts\"];for(const p of f){const b=fs.readFileSync(p).toString(\"base64\");for(let i=0;i<b.length;i+=1800)console.log(\"FORMATTED:\"+p+\":\"+i+\":\"+b.slice(i,i+1800));}' && exit 1",
+    "format:check": "prettier --check --end-of-line auto \"apps/**/*.ts\" \"packages/**/*.ts\"",
     "test": "tsx --test apps/api/test/*.unit.test.ts packages/contracts/test/*.unit.test.ts packages/kernel/test/*.unit.test.ts packages/platform-identity/test/*.unit.test.ts packages/domain-scheduling/test/*.unit.test.ts packages/domain-appearance/test/*.unit.test.ts && node --test scripts/f1-chromium-startup.test.mjs scripts/local-staging-mode.test.mjs && node --check scripts/local-staging.mjs",
     "test:integration": "tsx --test --test-concurrency=1 apps/api/test/*.integration.test.ts",
     "db:migrate": "tsx packages/platform-db/src/cli.ts",

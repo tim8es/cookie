@@ -73,13 +73,19 @@ test(
       staffRoutes: { pool, verifier: sessions },
       ownerCalendar: { pool, verifier: sessions },
       stagingOwnerCalendarCancellation: {
-        pool, verifier: sessions, enabled: true, cutoffMinutes: 0,
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 0,
       },
     });
     const disabled = createApp(pool);
     const cutoffDenied = createApp(pool, {
       stagingOwnerCalendarCancellation: {
-        pool, verifier: sessions, enabled: true, cutoffMinutes: 525600,
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 525600,
       },
     });
     try {
@@ -318,47 +324,130 @@ test(
       assert.equal(adminDenied.headers["cache-control"], "no-store");
       // Existing-Booking owner edit: no new publication grant, no default
       // business policy, and no customer PII in either capability or receipt.
-      const futureStart = new Date(Date.now() + 7 * 86400000)
-        .toISOString().slice(0, 16) + ":00Z";
+      const futureStart =
+        new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16) + ":00Z";
       const mutable = await seed(futureStart, "Confirmed");
-      const ownerCancel = calendarUrl + "/" + mutable + "/cancel?locationId=" + owner.locationId;
+      const ownerCancel =
+        calendarUrl + "/" + mutable + "/cancel?locationId=" + owner.locationId;
       const capability = calendarUrl + "/cancellation/capability";
       const key = randomUUID();
-      const cancel = (url = ownerCancel, currentKey = key, instance = app, currentHeaders = headers) =>
+      const cancel = (
+        url = ownerCancel,
+        currentKey = key,
+        instance = app,
+        currentHeaders = headers,
+      ) =>
         instance.inject({
-          method: "POST", url,
+          method: "POST",
+          url,
           headers: { ...currentHeaders, "idempotency-key": currentKey },
           payload: {},
         });
-      assert.equal((await disabled.inject({
-        method: "GET", url: capability, headers,
-      })).statusCode, 404);
-      assert.equal((await disabled.inject({
-        method: "POST", url: ownerCancel, headers, payload: {},
-      })).statusCode, 404);
-      assert.deepEqual((await app.inject({
-        method: "GET", url: capability, headers,
-      })).json(), { cutoffMinutes: 0 });
-      assert.equal((await app.inject({
-        method: "GET", url: capability,
-      })).statusCode, 401);
-      assert.equal((await app.inject({
-        method: "GET", url: capability, headers: adminHeaders,
-      })).statusCode, 403);
-      assert.equal((await cancel(ownerCancel, key, app, adminHeaders)).statusCode, 403);
-      assert.equal((await cancel(ownerCancel.replace(tenant, randomUUID()))).statusCode, 403);
-      assert.equal((await cancel(ownerCancel.replace(owner.locationId, otherBranch))).statusCode, 404);
-      assert.equal((await cancel(calendarUrl + "/" + randomUUID() + "/cancel?locationId=" + owner.locationId)).statusCode, 404);
-      assert.equal((await cancel(ownerCancel + "&customerId=" + customerId)).statusCode, 400);
-      assert.equal((await cancel(ownerCancel, key, cutoffDenied)).statusCode, 409);
-      assert.equal((await app.inject({
-        method: "POST", url: ownerCancel, headers,
-        payload: {},
-      })).statusCode, 400);
-      assert.equal((await app.inject({
-        method: "POST", url: ownerCancel,
-        headers: { "idempotency-key": key }, payload: {},
-      })).statusCode, 401);
+      assert.equal(
+        (
+          await disabled.inject({
+            method: "GET",
+            url: capability,
+            headers,
+          })
+        ).statusCode,
+        404,
+      );
+      assert.equal(
+        (
+          await disabled.inject({
+            method: "POST",
+            url: ownerCancel,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+        404,
+      );
+      assert.deepEqual(
+        (
+          await app.inject({
+            method: "GET",
+            url: capability,
+            headers,
+          })
+        ).json(),
+        { cutoffMinutes: 0 },
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url: capability,
+          })
+        ).statusCode,
+        401,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "GET",
+            url: capability,
+            headers: adminHeaders,
+          })
+        ).statusCode,
+        403,
+      );
+      assert.equal(
+        (await cancel(ownerCancel, key, app, adminHeaders)).statusCode,
+        403,
+      );
+      assert.equal(
+        (await cancel(ownerCancel.replace(tenant, randomUUID()))).statusCode,
+        403,
+      );
+      assert.equal(
+        (await cancel(ownerCancel.replace(owner.locationId, otherBranch)))
+          .statusCode,
+        404,
+      );
+      assert.equal(
+        (
+          await cancel(
+            calendarUrl +
+              "/" +
+              randomUUID() +
+              "/cancel?locationId=" +
+              owner.locationId,
+          )
+        ).statusCode,
+        404,
+      );
+      assert.equal(
+        (await cancel(ownerCancel + "&customerId=" + customerId)).statusCode,
+        400,
+      );
+      assert.equal(
+        (await cancel(ownerCancel, key, cutoffDenied)).statusCode,
+        409,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "POST",
+            url: ownerCancel,
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+        400,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "POST",
+            url: ownerCancel,
+            headers: { "idempotency-key": key },
+            payload: {},
+          })
+        ).statusCode,
+        401,
+      );
       const unmodified = await pool.query(
         "SELECT status FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
         [tenant, mutable],
@@ -381,7 +470,10 @@ test(
       );
       assert.equal(after.rows[0]?.status, "CancelledByBusiness");
       assert.equal(after.rows[0]?.price, "123456");
-      assert.equal(after.rows[0]?.start_at.toISOString(), new Date(futureStart).toISOString());
+      assert.equal(
+        after.rows[0]?.start_at.toISOString(),
+        new Date(futureStart).toISOString(),
+      );
       const effects = await pool.query(
         "SELECT (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.cancel') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.cancelled' AND payload->>'bookingId'=$2::text) AS events",
         [tenant, mutable],
@@ -389,19 +481,33 @@ test(
       assert.deepEqual(effects.rows[0], { audits: 1, receipts: 1, events: 1 });
       assert.equal((await cancel(ownerCancel, randomUUID())).statusCode, 409);
       assert.deepEqual((await cancel()).json(), done.json());
-      assert.deepEqual((await pool.query(
-        "SELECT status FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
-        [tenant, mutable],
-      )).rows, [{ status: "CancelledByBusiness" }]);
-      assert.deepEqual((await pool.query(
-        "SELECT (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.cancel') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.cancelled' AND payload->>'bookingId'=$2::text) AS events",
-        [tenant, mutable],
-      )).rows[0], effects.rows[0]);
+      assert.deepEqual(
+        (
+          await pool.query(
+            "SELECT status FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+            [tenant, mutable],
+          )
+        ).rows,
+        [{ status: "CancelledByBusiness" }],
+      );
+      assert.deepEqual(
+        (
+          await pool.query(
+            "SELECT (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.cancel') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.cancelled' AND payload->>'bookingId'=$2::text) AS events",
+            [tenant, mutable],
+          )
+        ).rows[0],
+        effects.rows[0],
+      );
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'booking.cancel') WHERE tenant_id=$1::uuid",
         [tenant],
       );
-      assert.equal((await cancel()).statusCode, 403, "Same-key replay must not bypass revoked booking.cancel");
+      assert.equal(
+        (await cancel()).statusCode,
+        403,
+        "Same-key replay must not bypass revoked booking.cancel",
+      );
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'booking.cancel') WHERE tenant_id=$1::uuid",
         [tenant],

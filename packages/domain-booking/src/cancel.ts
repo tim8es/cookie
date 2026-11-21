@@ -171,11 +171,16 @@ export async function cancelStagingOwnerBooking(
     cutoffMinutes < 0 ||
     cutoffMinutes > 525600 ||
     typeof assertMayCancel !== "function"
-  ) invalid();
+  )
+    invalid();
   if (!input?.actor?.opaqueSessionAuthority)
     throw new AuthorizationDeniedError();
   return cancelBooking(
-    pool, input, "CancelledByBusiness", assertMayCancel, cutoffMinutes,
+    pool,
+    input,
+    "CancelledByBusiness",
+    assertMayCancel,
+    cutoffMinutes,
   );
 }
 
