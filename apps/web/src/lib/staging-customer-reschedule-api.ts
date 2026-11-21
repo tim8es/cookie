@@ -65,6 +65,108 @@ export async function readRescheduleCutoff(
     return null;
   }
 }
+export interface CustomerRescheduleSlot {
+  readonly startAt: string;
+  readonly endAt: string;
+}
+export interface CustomerRescheduleSlots {
+  readonly localDate: string;
+  readonly timeZone: string;
+  readonly slots: CustomerRescheduleSlot[];
+}
+
+function localDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return false;
+  const timestamp = Date.parse(value + "T00:00:00Z");
+  return (
+    Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 10) === value
+  );
+}
+function timeZone(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 100) return false;
+  try {
+    new Intl.DateTimeFormat("ru-RU", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+function branchLocalDate(value: string, zone: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+  const field = (kind: string) =>
+    parts.find((part) => part.type === kind)?.value ?? "";
+  return field("year") + "-" + field("month") + "-" + field("day");
+}
+/** Provisional own-Booking slots. Never a booking hold or confirmation. */
+export async function readRescheduleSlots(
+  session: VerifiedCustomerSession,
+  bookingId: string,
+  date: string,
+  expectedTimeZone: string,
+  fetcher: typeof fetch = globalThis.fetch,
+): Promise<CustomerRescheduleSlots> {
+  if (!UUID.test(bookingId) || !localDate(date) || !timeZone(expectedTimeZone))
+    throw new CustomerRescheduleError("uncertain");
+  const auth = authorization(session);
+  let response: Response;
+  try {
+    response = await fetcher(
+      endpoint(session) +
+        "/" +
+        bookingId +
+        "/slots?" +
+        new URLSearchParams({ localDate: date }).toString(),
+      { ...privacy, method: "GET", headers: { authorization: auth } },
+    );
+  } catch {
+    throw new CustomerRescheduleError("uncertain");
+  }
+  if (response.status === 401 || response.status === 403)
+    throw new CustomerRescheduleError("denied");
+  if (response.status === 404 || response.status === 409)
+    throw new CustomerRescheduleError("conflict");
+  if (response.status !== 200) throw new CustomerRescheduleError("uncertain");
+  const raw: unknown = await response.json().catch(() => undefined);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    throw new CustomerRescheduleError("uncertain");
+  const data = raw as Partial<CustomerRescheduleSlots>;
+  if (
+    Object.keys(data).length !== 3 ||
+    data.localDate !== date ||
+    data.timeZone !== expectedTimeZone ||
+    !timeZone(data.timeZone) ||
+    !Array.isArray(data.slots) ||
+    data.slots.length > 1500 ||
+    !data.slots.every((item: unknown): item is CustomerRescheduleSlot => {
+      if (!item || typeof item !== "object" || Array.isArray(item))
+        return false;
+      const slot = item as Partial<CustomerRescheduleSlot>;
+      return (
+        Object.keys(slot).length === 2 &&
+        instant(slot.startAt) &&
+        instant(slot.endAt) &&
+        slot.startAt < slot.endAt &&
+        branchLocalDate(slot.startAt, data.timeZone!) === date
+      );
+    }) ||
+    new Set(data.slots.map((slot) => slot.startAt)).size !==
+      data.slots.length ||
+    data.slots.some(
+      (slot, index) =>
+        index > 0 && data.slots![index - 1]!.startAt >= slot.startAt,
+    )
+  )
+    throw new CustomerRescheduleError("uncertain");
+  return { localDate: date, timeZone: data.timeZone, slots: data.slots };
+}
+
 export async function rescheduleOwnBooking(
   session: VerifiedCustomerSession,
   bookingId: string,

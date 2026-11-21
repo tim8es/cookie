@@ -1124,10 +1124,21 @@ async function main() {
     const moveAt = date + "T10:00:00.000Z";
     assert.notEqual(beforeMove.rows[0].start_at.toISOString(), moveAt);
     await button(cdp, "Перенести запись");
-    await requireDom(cdp, "UTC-only staging time selector", "document.querySelector('[aria-label=\"Мои записи\"] input[type=datetime-local]') && document.body.innerText.includes('Новое время в UTC')");
-    await fill(cdp, historyPanel + " input[type=datetime-local]", date + "T10:00", "input");
+    await requireDom(cdp, "server-local staging date and verified available slot",
+      "(()=>{const panel=document.querySelector(" + JSON.stringify(historyPanel) + ");const datePicker=panel?.querySelector('input[type=date]');const select=panel?.querySelector('select');return datePicker?.value===" + JSON.stringify(date) +
+      " && !panel.querySelector('input[type=datetime-local]') && [...(select?.options??[])].some(option=>option.value===" + JSON.stringify(moveAt) + ");})()");
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-reschedule/"+realBooking.rows[0].id+"/slots")));
+    await evaluate(cdp, "(()=>{const s=document.querySelector(" + JSON.stringify(historyPanel+" select") + ");s.value=" + JSON.stringify(moveAt) + ";s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await requireDom(cdp, "move selection is exactly a server-provided UTC instant",
+      "document.querySelector(" + JSON.stringify(historyPanel+" select") + ")?.value===" + JSON.stringify(moveAt));
+    for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"client branch-local slots "+width+"px");
+      await checkLabeledControls(cdp,"client branch-local slots "+width+"px");
+    }
     await button(cdp, "Проверить новое время");
-    await requireDom(cdp, "explicit move confirmation", "document.body.innerText.includes('Подтвердить перенос') && document.body.innerText.includes(" + JSON.stringify(moveAt) + ")");
+    await requireDom(cdp, "explicit branch-zone move confirmation",
+      "document.body.innerText.includes('Подтвердить перенос') && document.body.innerText.includes('исходная стоимость сохранятся')");
     await button(cdp, "Подтвердить перенос");
     await requireDom(cdp, "confirmed time-only move in customer cabinet",
       "document.querySelector(" + JSON.stringify(historyPanel) + ")?.innerText.includes('Перенос подтверждён сервером') && [...document.querySelectorAll('.customer-history li time')].some(t=>t.dateTime===" + JSON.stringify(moveAt) + ")");

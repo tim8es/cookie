@@ -1373,6 +1373,58 @@ test(
         ).json(),
         { cutoffMinutes: 30 },
       );
+      const ownSlotsUrl = moveUrl + "/slots?localDate=" + date;
+      const ownSlots = (url = ownSlotsUrl, instance = app) =>
+        instance.inject({ method: "GET", url, headers: clientHeaders });
+      const proposedSlots = await ownSlots();
+      assert.equal(proposedSlots.statusCode, 200, proposedSlots.body);
+      assert.equal(proposedSlots.headers["cache-control"], "no-store");
+      assert.equal(proposedSlots.headers["vary"], "Authorization");
+      assert.equal(proposedSlots.json().localDate, date);
+      assert.equal(proposedSlots.json().timeZone, "Europe/Moscow");
+      assert.ok(
+        proposedSlots
+          .json()
+          .slots.some(
+            (slot: { startAt: string }) => slot.startAt === moveTarget,
+          ),
+      );
+      assert.ok(
+        !proposedSlots
+          .json()
+          .slots.some(
+            (slot: { startAt: string }) =>
+              slot.startAt === bookingPayload.startAt,
+          ),
+      );
+      assert.equal((await ownSlots(ownSlotsUrl, disabled)).statusCode, 404);
+      assert.equal((await ownSlots(ownSlotsUrl, cutoffDenied)).statusCode, 409);
+      assert.equal(
+        (await ownSlots(ownSlotsUrl.replace(owner.tenantId, randomUUID())))
+          .statusCode,
+        403,
+      );
+      assert.equal(
+        (
+          await ownSlots(
+            moveRoot + "/" + another.rows[0]!.id + "/slots?localDate=" + date,
+          )
+        ).statusCode,
+        404,
+      );
+      assert.equal(
+        (await ownSlots(ownSlotsUrl + "&serviceId=" + serviceId)).statusCode,
+        400,
+      );
+      assert.equal(
+        (await ownSlots(moveUrl + "/slots?localDate=2028-02-30")).statusCode,
+        400,
+      );
+      assert.equal(
+        (await app.inject({ method: "GET", url: ownSlotsUrl })).statusCode,
+        401,
+      );
+
       assert.equal(
         (
           await disabled.inject({
@@ -1427,6 +1479,7 @@ test(
         [owner.tenantId],
       );
       assert.equal((await move()).statusCode, 403);
+      assert.equal((await ownSlots()).statusCode, 403);
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.booking.reschedule') WHERE tenant_id=$1::uuid AND base_type='client'",
         [owner.tenantId],
@@ -1481,6 +1534,7 @@ test(
       });
       assert.equal((await history()).statusCode, 401);
       assert.equal((await recover()).statusCode, 401);
+      assert.equal((await ownSlots()).statusCode, 401);
       const revokedReplay = await cancel();
       assert.equal(revokedReplay.statusCode, 401);
       assert.equal((await clientOffers()).statusCode, 401);
