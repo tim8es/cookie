@@ -8,8 +8,8 @@
 
 1. Локальные импорты разрешены только внутри собственного `src` модуля.
 2. Новые прямые импорты внутренней реализации другого Domain/Platform/API модуля запрещены. Можно использовать явно опубликованные upstream entrypoints `@cookie/contracts` и `@cookie/kernel`; deep package aliases не допускаются.
-3. Анализируются обычные статические импорты, реэкспорты, `import type`, литеральные `import()` и `require()`.
-4. **39 оставшихся существующих импортов** (было 55 до поэтапной изоляции) временно закреплены в `scripts/module-boundaries-legacy.json` как технический долг, точно по имени импортирующего файла и строке импорта. Новые связи автоматически в этот файл не добавляются. При удалении старой связи исключение тоже должно быть удалено — CI обнаруживает устаревшую запись.
+3. Анализируются обычные статические импорты, реэкспорты, `import type`, литеральные `import()` и `require()`. Вычисляемые вызовы `import(expr)` и `require(expr)` теперь отклоняются (fail-closed): их направление невозможно проверить статически. Литеральные строки и шаблоны без подстановок разрешены по стандартным правилам.
+4. **2 оставшихся существующих импорта** (по состоянию на main `965a267`, было 55 до поэтапной изоляции) временно закреплены в `scripts/module-boundaries-legacy.json` как технический долг, точно по имени импортирующего файла и строке импорта. Новые связи автоматически в этот файл не добавляются. При удалении старой связи исключение тоже должно быть удалено — CI обнаруживает устаревшую запись.
 5. Новые проверки выполняются существующим F1 workflow; отдельный дублирующий CI не создаётся.
 
 ## Что остаётся архитектурным долгом
@@ -17,7 +17,7 @@
 - Booking обращается напрямую к внутренним файлам Identity, Scheduling и Outbox, а также читает SQL-таблицы Catalog, Staff, Scheduling и Customers.
 - `domain-scheduling` использует `platform-db` Outbox. Обратная зависимость из `platform-db` в Scheduling удалена в следующем отдельном PR посредством `booking-read-adapter`; физический пакетный цикл разорван, но SQL ещё читает таблицы нескольких доменов.
 - `createKernel` реализован и протестирован как библиотека, но не используется как реальный composition root приложения.
-- Checker **пока не проверяет** владение SQL-схемами, динамические импорты с вычисляемыми путями, Svelte-компоненты или полную независимость модулей. Но теперь он проверяет и запрещает циклы зависимостей производственных TypeScript-модулей. Зеленый CI не следует трактовать как отсутствие этих рисков.
+- Checker **пока не проверяет** владение SQL-схемами, Svelte-компоненты, динамическую загрузку через другие обходные механизмы (например, `new Function`) или полную независимость модулей. Вычисляемые `import()`/`require()` блокируются вместо предположения о безопасности; обнаруженные статические связи участвуют в проверке циклов. Зеленый CI не следует трактовать как отсутствие этих рисков.
 
 ## Как устранять остаточные нарушения
 
@@ -49,7 +49,7 @@ Checker пропускает точный относительный путь `p
 - SQL-запросы, проверка `requireTenantPermission`, `listAvailableSlots`, UTC/DST, расчёт интервалов, фильтр прошедших слотов и DTO **не изменены**. Подтверждение Booking по-прежнему выполняется независимой командой с повторной проверкой внутри транзакции; read adapter не удерживает слот.
 - Адаптер намеренно читает таблицы Staff, Catalog, Scheduling и Booking, поэтому это **прикладной агрегирующий read adapter**, а не владелец этих схем. Для будущего запрета cross-schema SQL потребуется отдельный согласованный ADR о транзакционных read ports.
 - Удалены ещё **3 точные записи baseline**, 42 → 39. Checker теперь блокирует циклы между любыми `packages/*/src` и `apps/*/src` по статическим импортам, включая разрешённые публичные entrypoints и унаследованные приватные зависимости.
-- **Не проверяется:** runtime computed `import(variable)`, владение SQL-таблицами, Svelte-импорты, сторонние npm dependencies и цикл на уровне динамической инфраструктуры. Статический CI не является доказательством безопасности всей архитектуры.
+- **Не проверяется:** владение SQL-таблицами, Svelte-импорты, сторонние npm dependencies и цикл на уровне динамической инфраструктуры. Нелитеральные `import(variable)`/`require(variable)` теперь блокируются ещё до исполнения; это не означает полной runtime-изоляции. Статический CI не является доказательством безопасности всей архитектуры.
 
 В этом PR нет новых миграций, внешних каналов, микросервисов, production запуска или изменений бизнес-команд Booking.
 
@@ -58,3 +58,10 @@ Checker пропускает точный относительный путь `p
 Nine Scheduling implementation files now consume the already published `platform-identity/src/index.js` and `platform-db/src/index.js` entrypoints instead of importing the implementations directly. The exact legacy baseline decreases **39 → 17**. The public entrypoints re-export the same implementations; no SQL, lock order, transaction boundaries, authorization, idempotency, or event behavior changes. No new runtime capability or product settings are introduced.
 
 `publish-shift.ts` is deliberately excluded while #245 overlaps it. The remaining cross-schema SQL, narrow transaction-scoped repository ports, production composition root, tenant entitlements, and package exports remain separate #201 follow-ups. This is an incremental boundary cleanup, not proof of runtime isolation. Verify the boundary checker, TypeScript and PostgreSQL regression gates on the resulting PR before merging.
+
+## Incremental ratchet: computed module specifiers (2026-11-21)
+
+- `check:boundaries` запрещает вычисляемые `import(expr)` и `require(expr)` в production TypeScript: иначе направление зависимости и отсутствие циклов нельзя доказать по AST. Это проверка кода, а не политика доступа пользователя.
+- Литеральные specifiers, включая шаблоны без подстановок, продолжают проходить существующие правила модульных границ. Для неизбежной динамической загрузки нужен отдельный согласованный ограниченный контракт, а не молчаливый обход проверки.
+- Два новых отрицательных теста покрывают анализ отдельного файла и полный repository scanner. Два существующих исключения `workspace-http.ts` сохранены без расширения публичного AuthZ API или изменения логики чтения; это отдельный долг #201/#175.
+- Изменены только скрипт проверки, тесты и архитектурная документация; Booking, SQL, HTTP и runtime-модули не затронуты. F1 CI для итогового commit SHA обязателен перед merge.
