@@ -6,6 +6,7 @@ import { parseStagingPublicationMode } from "../../../packages/domain-entitlemen
 
 import { createApp } from "./app.js";
 import { parseStagingCancellationCutoff } from "./staging-customer-cancellation-http.js";
+import { parseStagingRescheduleCutoff } from "./staging-customer-reschedule-http.js";
 import { parseControlledAppearanceMode } from "./staging-appearance-mode.js";
 import { parseConfig } from "./config.js";
 import { registerCompiledWeb } from "./static-web.js";
@@ -43,6 +44,11 @@ const stagingCancellationCutoff = parseStagingCancellationCutoff(
 );
 if (stagingCancellationCutoff !== undefined && !stagingPublicationEnabled)
   throw new Error("Staging cancellation requires staging publication");
+const stagingRescheduleCutoff = parseStagingRescheduleCutoff(
+  process.env.COOKIE_STAGING_CUSTOMER_RESCHEDULE_CUTOFF_MINUTES,
+);
+if (stagingRescheduleCutoff !== undefined && !stagingPublicationEnabled)
+  throw new Error("Staging reschedule requires staging publication");
 const pool = new Pool({
   connectionString: config.databaseUrl,
   application_name: "cookie-api",
@@ -122,6 +128,16 @@ const app = createApp(pool, {
                 verifier: tenantSessionVerifier,
                 enabled: true,
                 cutoffMinutes: stagingCancellationCutoff,
+              },
+            }),
+        ...(stagingRescheduleCutoff === undefined
+          ? {}
+          : {
+              stagingCustomerRescheduleRoutes: {
+                pool,
+                verifier: tenantSessionVerifier,
+                enabled: true,
+                cutoffMinutes: stagingRescheduleCutoff,
               },
             }),
         sessionRoutes: {

@@ -21,6 +21,7 @@ export { readStagingCreateReceipt } from "./staging-create-receipt.js";
 /** Trusted F1 staff-assisted mutation; authorization remains in the command. */
 export {
   rescheduleBookingInternal,
+  rescheduleStagingCustomerBooking,
   RescheduleBookingFailure,
   type AssertBookingMayReschedule,
 } from "./reschedule.js";

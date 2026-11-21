@@ -27,6 +27,7 @@ import {
   type StagingCancellationDependencies,
 } from "./staging-customer-cancellation-http.js";
 import { registerStagingCustomerBooking } from "./staging-customer-booking-http.js";
+import { registerStagingCustomerReschedule, type StagingRescheduleDependencies } from "./staging-customer-reschedule-http.js";
 import { registerStagingCustomerHistory } from "./staging-customer-history-http.js";
 import { registerStagingCustomerOffers } from "./staging-customer-offers-http.js";
 import {
@@ -108,6 +109,7 @@ export function createApp(
     readonly stagingPublicationRoutes?: StagingPublicationDependencies;
     readonly stagingCustomerBookingRoutes?: StagingPublicationDependencies;
     readonly stagingCustomerCancellationRoutes?: StagingCancellationDependencies;
+    readonly stagingCustomerRescheduleRoutes?: StagingRescheduleDependencies;
     readonly ownerCalendar?: OwnerCalendarDependencies;
     readonly telegramAuthRoutes?: {
       readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
@@ -267,6 +269,8 @@ export function createApp(
       app,
       options.stagingCustomerCancellationRoutes,
     );
+  if (options.stagingCustomerRescheduleRoutes)
+    registerStagingCustomerReschedule(app, options.stagingCustomerRescheduleRoutes);
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.
