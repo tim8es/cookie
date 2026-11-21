@@ -1399,7 +1399,7 @@ test(
       assert.equal(stateAfterMove.rows[0].staff, staffId);
       assert.equal(stateAfterMove.rows[0].location, owner.locationId);
       const moveSideEffects = await pool.query(
-        "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits, (SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts, (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2) AS events",
+        "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits, (SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts, (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2::text) AS events",
         [owner.tenantId, movedBookingId],
       );
       assert.deepEqual(moveSideEffects.rows[0], {
