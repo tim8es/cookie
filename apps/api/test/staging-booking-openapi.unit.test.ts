@@ -65,8 +65,16 @@ const cases = [
     method: "POST",
     group: "cancel",
   },
-  { route: "staging-customer-reschedule/capability", method: "GET", group: "reschedule" },
-  { route: "staging-customer-reschedule/{bookingId}", method: "POST", group: "reschedule" },
+  {
+    route: "staging-customer-reschedule/capability",
+    method: "GET",
+    group: "reschedule",
+  },
+  {
+    route: "staging-customer-reschedule/{bookingId}",
+    method: "POST",
+    group: "reschedule",
+  },
 ] as const;
 
 type RouteCase = (typeof cases)[number];

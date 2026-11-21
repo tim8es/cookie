@@ -83,7 +83,10 @@ test(
         cutoffMinutes: 60,
       },
       stagingCustomerRescheduleRoutes: {
-        pool, verifier: sessions, enabled: true, cutoffMinutes: 30,
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 30,
       },
     });
     const disabled = createApp(pool);
@@ -95,7 +98,10 @@ test(
         cutoffMinutes: 525600,
       },
       stagingCustomerRescheduleRoutes: {
-        pool, verifier: sessions, enabled: true, cutoffMinutes: 525600,
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 525600,
       },
     });
     try {
@@ -1286,28 +1292,80 @@ test(
       // expires; a customer time-only move never creates a new booking.
       const moveRoot = prefix + "/staging-customer-reschedule";
       const movedBookingId: string = rebooked.json().bookingId;
-      const moveTarget = afterRace.find(s => s.startAt !== bookingPayload.startAt)?.startAt;
-      assert.ok(moveTarget, "Expected another server-available start for the same shift");
+      const moveTarget = afterRace.find(
+        (s) => s.startAt !== bookingPayload.startAt,
+      )?.startAt;
+      assert.ok(
+        moveTarget,
+        "Expected another server-available start for the same shift",
+      );
       const moveUrl = moveRoot + "/" + movedBookingId;
       const moveKey = randomUUID();
-      const move = (key = moveKey, newStartAt = moveTarget!, target = moveUrl) =>
+      const move = (
+        key = moveKey,
+        newStartAt = moveTarget!,
+        target = moveUrl,
+      ) =>
         app.inject({
-          method: "POST", url: target,
+          method: "POST",
+          url: target,
           headers: { ...clientHeaders, "idempotency-key": key },
           payload: { newStartAt },
         });
-      assert.deepEqual((await app.inject({
-        method: "GET", url: moveRoot + "/capability", headers: clientHeaders,
-      })).json(), { cutoffMinutes: 30 });
-      assert.equal((await disabled.inject({ method: "POST", url: moveUrl,
-        headers: { ...clientHeaders, "idempotency-key": moveKey },
-        payload: { newStartAt: moveTarget } })).statusCode, 404);
-      assert.equal((await app.inject({ method: "POST", url: moveUrl,
-        payload: { newStartAt: moveTarget } })).statusCode, 401);
-      assert.equal((await move(randomUUID(), moveTarget, moveUrl.replace(owner.tenantId, randomUUID()))).statusCode, 403);
-      assert.equal((await move(randomUUID(), moveTarget, moveRoot + "/" + another.rows[0]!.id)).statusCode, 404);
+      assert.deepEqual(
+        (
+          await app.inject({
+            method: "GET",
+            url: moveRoot + "/capability",
+            headers: clientHeaders,
+          })
+        ).json(),
+        { cutoffMinutes: 30 },
+      );
+      assert.equal(
+        (
+          await disabled.inject({
+            method: "POST",
+            url: moveUrl,
+            headers: { ...clientHeaders, "idempotency-key": moveKey },
+            payload: { newStartAt: moveTarget },
+          })
+        ).statusCode,
+        404,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "POST",
+            url: moveUrl,
+            payload: { newStartAt: moveTarget },
+          })
+        ).statusCode,
+        401,
+      );
+      assert.equal(
+        (
+          await move(
+            randomUUID(),
+            moveTarget,
+            moveUrl.replace(owner.tenantId, randomUUID()),
+          )
+        ).statusCode,
+        403,
+      );
+      assert.equal(
+        (
+          await move(
+            randomUUID(),
+            moveTarget,
+            moveRoot + "/" + another.rows[0]!.id,
+          )
+        ).statusCode,
+        404,
+      );
       const deniedMove = await cutoffDenied.inject({
-        method: "POST", url: moveUrl,
+        method: "POST",
+        url: moveUrl,
         headers: { ...clientHeaders, "idempotency-key": moveKey },
         payload: { newStartAt: moveTarget },
       });
@@ -1344,7 +1402,11 @@ test(
         "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits, (SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts, (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2) AS events",
         [owner.tenantId, movedBookingId],
       );
-      assert.deepEqual(moveSideEffects.rows[0], { audits: 1, receipts: 1, events: 1 });
+      assert.deepEqual(moveSideEffects.rows[0], {
+        audits: 1,
+        receipts: 1,
+        events: 1,
+      });
       const afterGrant = await cancel(
         randomUUID(),
         cancellationRoot + "/" + rebooked.json().bookingId,

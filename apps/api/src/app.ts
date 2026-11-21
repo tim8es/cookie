@@ -27,7 +27,10 @@ import {
   type StagingCancellationDependencies,
 } from "./staging-customer-cancellation-http.js";
 import { registerStagingCustomerBooking } from "./staging-customer-booking-http.js";
-import { registerStagingCustomerReschedule, type StagingRescheduleDependencies } from "./staging-customer-reschedule-http.js";
+import {
+  registerStagingCustomerReschedule,
+  type StagingRescheduleDependencies,
+} from "./staging-customer-reschedule-http.js";
 import { registerStagingCustomerHistory } from "./staging-customer-history-http.js";
 import { registerStagingCustomerOffers } from "./staging-customer-offers-http.js";
 import {
@@ -270,7 +273,10 @@ export function createApp(
       options.stagingCustomerCancellationRoutes,
     );
   if (options.stagingCustomerRescheduleRoutes)
-    registerStagingCustomerReschedule(app, options.stagingCustomerRescheduleRoutes);
+    registerStagingCustomerReschedule(
+      app,
+      options.stagingCustomerRescheduleRoutes,
+    );
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or
   // synthetic entitlement callback, so these booking routes stay absent.
