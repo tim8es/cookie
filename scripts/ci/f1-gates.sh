@@ -26,6 +26,11 @@ browser() {
   pnpm --filter @cookie/web build:fixture
   node apps/web/scripts/browser-smoke.mjs
 }
+ui_kit() {
+  pnpm --filter @cookie/web exec vite build --config vite.ui-kit.config.mts
+  test -f apps/web/.tmp/rhythm-ui-kit-dist/ui-kit/index.html
+  node apps/web/scripts/rhythm-catalog-smoke.mjs
+}
 browser_evidence() { node scripts/ci-visual-evidence-check.mjs; }
 real_owner() {
   pnpm build:runtime
@@ -49,7 +54,7 @@ if [[ $# != 1 ]]; then
   exit 2
 fi
 case "$1" in
-  install|lint|format_check|boundaries|ui|types|unit|integration|restore|build|worker|web|browser|browser_evidence|real_owner|staging_readiness|staging_runtime|pg17_verify|pg17_restore)
+  install|lint|format_check|boundaries|ui|types|unit|integration|restore|build|worker|web|ui_kit|browser|browser_evidence|real_owner|staging_readiness|staging_runtime|pg17_verify|pg17_restore)
     "$1"
     ;;
   quality)
@@ -58,6 +63,7 @@ case "$1" in
     format_check
     boundaries
     ui
+    ui_kit
     types
     unit
     integration
