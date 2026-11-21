@@ -185,6 +185,28 @@ export async function listTenantStaff(
   };
 }
 
+/**
+ * Positive-only lookup in an already authorized transaction. The receipt
+ * identifies the committed creation, not the current state of the profile.
+ * A missing row cannot prove that an earlier request failed.
+ */
+export async function readTenantStaffCreateReceipt(
+  client: PoolClient,
+  tenantId: string,
+  actorIdentityId: string,
+  key: string,
+): Promise<{ staffId: string } | null> {
+  if (!KEY.test(key)) throw new StaffInputError("invalid idempotency key");
+  const result = await client.query<{ staff_id: string }>(
+    `SELECT staff_id::text FROM cookie_staff.staff_create_receipts
+      WHERE tenant_id=$1::uuid AND actor_identity_id=$2::uuid
+        AND idempotency_key=$3`,
+    [tenantId, actorIdentityId, key],
+  );
+  const record = result.rows[0];
+  return record ? { staffId: record.staff_id } : null;
+}
+
 /** All writes and replay receipt atomically join the API caller's policy check. */
 export async function createTenantDraftStaff(
   client: PoolClient,
