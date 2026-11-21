@@ -52,6 +52,7 @@ test(
       max: 6,
     });
     const ownerId = randomUUID();
+    let cleanupTenant: string | undefined;
     const verifier = createTelegramMiniAppProofVerifier({
       botToken: BOT,
       maxAgeSeconds: 300,
@@ -145,6 +146,7 @@ test(
       assert.equal(staff.statusCode, 201);
       const staffId: string = staff.json().staff.id;
       const tenant = owner.tenantId;
+      cleanupTenant = tenant;
       const serviceId: string = service.json().service.id;
       const customerId = randomUUID();
       await pool.query(
@@ -521,10 +523,21 @@ test(
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal((await read()).statusCode, 401);
     } finally {
-      await cutoffDenied.close();
-      await disabled.close();
-      await app.close();
-      await pool.end();
+      try {
+        if (cleanupTenant) {
+          // Other PG integration suites share the test database. Never leave
+          // a due synthetic Booking event for the unrelated global worker test.
+          await pool.query(
+            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid",
+            [cleanupTenant],
+          );
+        }
+      } finally {
+        await cutoffDenied.close();
+        await disabled.close();
+        await app.close();
+        await pool.end();
+      }
     }
   },
 );
