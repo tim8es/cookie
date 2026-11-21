@@ -4,6 +4,8 @@ import type { Pool, PoolClient, QueryResultRow } from "pg";
 
 import {
   evaluateAvailableStart,
+  listAvailableSlots,
+  type AvailabilityRequest,
   lockActiveShiftWindows,
   lockActiveBlockedWindows,
   type StaffOccupancy,
@@ -147,21 +149,18 @@ function localDateAt(utc: string, timeZone: string): string {
   return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
-async function readAvailableSlot(
+type RescheduleAvailability = {
+  readonly timeZone: string;
+  readonly request: Omit<AvailabilityRequest, "localDate" | "stepMinutes">;
+};
+
+/** Shared trusted availability sources for preview and the committing move.
+ * Publication grants only restrict new Bookings, never existing-Booking edits. */
+async function readRescheduleAvailability(
   client: PoolClient,
   tenantId: string,
   booking: BookingRow,
-  newStartAt: string,
-): Promise<{ startAt: string; endAt: string; occupiedUntil: string }> {
-  const currentTime = await client.query<{ now: Date }>(
-    "SELECT clock_timestamp() AS now",
-  );
-  if (
-    Date.parse(newStartAt) <=
-    (currentTime.rows[0]?.now.getTime() ?? Number.POSITIVE_INFINITY)
-  ) {
-    fail("RESCHEDULE_NOT_AVAILABLE");
-  }
+): Promise<RescheduleAvailability> {
   // The old booking's snapshot supplies duration + buffer; a catalog edit
   // cannot silently change the visit or its monetary/promo snapshot.
   const reference = await client.query<{ time_zone: string | null }>(
@@ -211,24 +210,136 @@ async function readAvailableSlot(
     startAt: row.start_at.toISOString(),
     occupiedUntil: row.occupied_until.toISOString(),
   }));
-  const slot = evaluateAvailableStart(
-    {
+  return {
+    timeZone: zone,
+    request: {
       organizationId: tenantId,
       staffId: booking.staff_id,
       locationId: booking.location_id,
-      localDate: localDateAt(newStartAt, zone),
       timeZone: zone,
       serviceDurationMinutes: booking.service_duration_minutes_snapshot,
       postServiceBufferMinutes: booking.post_service_buffer_minutes_snapshot,
-      stepMinutes: 1,
       shifts,
       breaks: blocked.filter((row) => row.kind === "break"),
       exceptions: blocked.filter((row) => row.kind === "exception"),
       occupied,
     },
+  };
+}
+
+async function readAvailableSlot(
+  client: PoolClient,
+  tenantId: string,
+  booking: BookingRow,
+  newStartAt: string,
+): Promise<{ startAt: string; endAt: string; occupiedUntil: string }> {
+  const currentTime = await client.query<{ now: Date }>(
+    "SELECT clock_timestamp() AS now",
+  );
+  if (
+    Date.parse(newStartAt) <=
+    (currentTime.rows[0]?.now.getTime() ?? Number.POSITIVE_INFINITY)
+  ) {
+    fail("RESCHEDULE_NOT_AVAILABLE");
+  }
+  const available = await readRescheduleAvailability(client, tenantId, booking);
+  const slot = evaluateAvailableStart(
+    {
+      ...available.request,
+      localDate: localDateAt(newStartAt, available.timeZone),
+      stepMinutes: 1,
+    },
     newStartAt,
   );
   return slot ?? fail("RESCHEDULE_NOT_AVAILABLE");
+}
+
+/** Own Booking, verified current session, no client-selected Staff/Service or
+ * grant bypass. Provisional read only; POST revalidates before COMMIT. */
+export async function listStagingCustomerRescheduleSlots(
+  client: PoolClient,
+  actor: TrustedActor,
+  bookingId: string,
+  localDate: string,
+  cutoffMinutes: number,
+): Promise<{
+  localDate: string;
+  timeZone: string;
+  slots: { startAt: string; endAt: string }[];
+}> {
+  if (
+    !UUID.test(bookingId) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(localDate) ||
+    !Number.isFinite(Date.parse(localDate + "T00:00:00Z")) ||
+    new Date(localDate + "T00:00:00Z").toISOString().slice(0, 10) !== localDate ||
+    !Number.isSafeInteger(cutoffMinutes) ||
+    cutoffMinutes < 0 ||
+    cutoffMinutes > 525600
+  ) fail("INVALID_RESCHEDULE_COMMAND");
+  if (!actor?.opaqueSessionAuthority) throw new AuthorizationDeniedError();
+  const tenantId = actor.tenantId;
+  const actorId = actor.identityId;
+  const initial = await client.query<{ staff_id: string; location_id: string }>(
+    `SELECT staff_id::text, location_id::text FROM cookie_booking.bookings
+      WHERE tenant_id=$1::uuid AND id=$2::uuid
+        AND EXISTS (
+          SELECT 1 FROM cookie_customers.staging_customer_identities c
+           WHERE c.tenant_id=bookings.tenant_id
+             AND c.customer_id=bookings.customer_id
+             AND c.identity_id=$3::uuid
+        )`,
+    [tenantId, bookingId, actorId],
+  );
+  const metadata = initial.rows[0];
+  if (!metadata) fail("BOOKING_NOT_FOUND");
+  const staffLock = await client.query(
+    `SELECT id FROM cookie_staff.staff_profiles
+      WHERE tenant_id=$1::uuid AND id=$2::uuid FOR SHARE`,
+    [tenantId, metadata.staff_id],
+  );
+  if (staffLock.rowCount !== 1) fail("BOOKING_NOT_FOUND");
+  const result = await client.query<BookingRow>(
+    `SELECT id::text, customer_id::text, staff_id::text,
+            location_id::text, service_id::text, status,
+            start_at, end_at, service_duration_minutes_snapshot,
+            post_service_buffer_minutes_snapshot, price_kopecks_snapshot::text
+       FROM cookie_booking.bookings
+      WHERE tenant_id=$1::uuid AND id=$2::uuid FOR SHARE`,
+    [tenantId, bookingId],
+  );
+  const booking = result.rows[0];
+  if (
+    !booking ||
+    booking.staff_id !== metadata.staff_id ||
+    booking.location_id !== metadata.location_id
+  ) fail("BOOKING_NOT_FOUND");
+  const context = await readStagingCustomerContext(client, actor);
+  if (context.customerId !== booking.customer_id) fail("BOOKING_NOT_FOUND");
+  await requireTenantPermission(
+    client, actor,
+    { kind: "customer-self", tenantId, clientIdentityId: actorId },
+    "staging.customer.booking.reschedule",
+  );
+  if (booking.status !== "Confirmed") fail("BOOKING_NOT_CONFIRMED");
+  const now = await client.query<{ now: Date }>(
+    "SELECT clock_timestamp() AS now",
+  );
+  const deadline = (now.rows[0]?.now.getTime() ?? Number.POSITIVE_INFINITY)
+    + cutoffMinutes * 60_000;
+  if (booking.start_at.getTime() <= deadline)
+    fail("RESCHEDULE_POLICY_DENIED");
+  const available = await readRescheduleAvailability(client, tenantId, booking);
+  const previousStartAt = booking.start_at.toISOString();
+  const slots = listAvailableSlots({
+    ...available.request,
+    localDate,
+    // Controlled staging grid, not a salon cancellation/reschedule policy.
+    stepMinutes: 15,
+  })
+    .filter((slot) => slot.startAt !== previousStartAt &&
+      Date.parse(slot.startAt) > deadline)
+    .map(({ startAt, endAt }) => ({ startAt, endAt }));
+  return { localDate, timeZone: available.timeZone, slots };
 }
 
 /**

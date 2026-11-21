@@ -75,6 +75,11 @@ const cases = [
     method: "POST",
     group: "reschedule",
   },
+  {
+    route: "staging-customer-reschedule/{bookingId}/slots",
+    method: "GET",
+    group: "reschedule-slots",
+  },
 ] as const;
 
 type RouteCase = (typeof cases)[number];
@@ -90,6 +95,8 @@ function url(item: RouteCase, tenantId = tenant): string {
   const path = (prefix + item.route)
     .replace("{tenantId}", tenantId)
     .replace("{bookingId}", booking);
+  if (item.route === "staging-customer-reschedule/{bookingId}/slots")
+    return path + "?localDate=2027-05-01";
   if (item.route !== "staging-customer-slots") return path;
   const query = new URLSearchParams({ ...uuidFields, localDate: "2027-05-01" });
   return path + "?" + query.toString();

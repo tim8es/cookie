@@ -2,9 +2,9 @@
   import { onMount } from "svelte";
   import { Button } from "../components/ui/button/index.js";
   import { cancelOwnBooking, readCancellationCutoff, CancellationError } from "../staging-customer-cancellation-api";
-  import { rescheduleOwnBooking, readRescheduleCutoff, CustomerRescheduleError } from "../staging-customer-reschedule-api";
+  import { rescheduleOwnBooking, readRescheduleCutoff, readRescheduleSlots, CustomerRescheduleError, type CustomerRescheduleSlots } from "../staging-customer-reschedule-api";
   import type { VerifiedCustomerSession } from "../owner-auth";
-  import { readOwnBookings, CustomerHistoryError, type OwnBookingHistory, type CustomerBookingStatus } from "../staging-customer-history-api";
+  import { readOwnBookings, CustomerHistoryError, type OwnBookingHistory, type OwnBooking, type CustomerBookingStatus } from "../staging-customer-history-api";
 
   export let session: VerifiedCustomerSession;
   export let onUnauthorized: () => void;
@@ -17,7 +17,14 @@
   let cutoff: number | null = null;
   let moveCutoff: number | null = null;
   let moveBookingId: string | null = null;
-  let moveUtc = "";
+  let moveDate = "";
+  let moveTimeZone: string | null = null;
+  let moveOriginalStart = "";
+  let moveSlots: CustomerRescheduleSlots | null = null;
+  let moveSlotId = "";
+  let moveSlotsBusy = false;
+  let moveSlotsError = "";
+  let moveGeneration = 0;
   let movePending: { bookingId: string; key: string; newStartAt: string } | null = null;
   let moveBusy = false;
   let moveUncertain = false;
@@ -25,20 +32,80 @@
   let cancellationBusy = false;
   let uncertain = false;
   let message = "";
-  function utcMinute(value: string): string | null {
-    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
-    const instant = value + ":00.000Z";
-    return Number.isFinite(Date.parse(instant)) && new Date(instant).toISOString() === instant ? instant : null;
+  function branchDate(value: string, zone: string): string {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(new Date(value));
+    const field = (kind: string) => parts.find((part) => part.type === kind)?.value ?? "";
+    return field("year") + "-" + field("month") + "-" + field("day");
   }
-  function startMove(bookingId: string): void {
-    if (busy || moveBusy || cancellationBusy || pending || movePending || moveCutoff === null) return;
-    moveBookingId = bookingId; moveUtc = ""; message = "";
+  function slotTime(value: string, zone: string): string {
+    return new Intl.DateTimeFormat("ru-RU", {
+      timeZone: zone, hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset",
+    }).format(new Date(value));
+  }
+  function closeMove(): void {
+    if (moveBusy || moveUncertain) return;
+    moveGeneration++;
+    moveBookingId = null;
+    movePending = null;
+    moveDate = "";
+    moveTimeZone = null;
+    moveOriginalStart = "";
+    moveSlots = null;
+    moveSlotId = "";
+    moveSlotsBusy = false;
+    moveSlotsError = "";
+  }
+  async function loadMoveSlots(): Promise<void> {
+    if (!moveBookingId || !moveTimeZone || !moveDate || movePending || moveBusy || busy) return;
+    const version = ++moveGeneration;
+    const bookingId = moveBookingId;
+    const localDate = moveDate;
+    const zone = moveTimeZone;
+    moveSlots = null;
+    moveSlotId = "";
+    moveSlotsError = "";
+    moveSlotsBusy = true;
+    try {
+      const result = await readRescheduleSlots(session, bookingId, localDate, zone);
+      if (!mounted || version !== moveGeneration || moveBookingId !== bookingId) return;
+      moveSlots = result;
+    } catch (reason) {
+      if (!mounted || version !== moveGeneration || moveBookingId !== bookingId) return;
+      if (reason instanceof CustomerRescheduleError && reason.reason === "denied") {
+        onUnauthorized();
+        return;
+      }
+      moveSlotsError = reason instanceof CustomerRescheduleError && reason.reason === "conflict"
+        ? "Запись или расписание больше недоступны для переноса. Обновите записи."
+        : "Не удалось загрузить свободные интервалы. Повторите запрос.";
+    } finally {
+      if (mounted && version === moveGeneration) moveSlotsBusy = false;
+    }
+  }
+  function startMove(booking: OwnBooking): void {
+    if (busy || moveBusy || cancellationBusy || pending || movePending || moveCutoff === null || !booking.timeZone)
+      return;
+    moveGeneration++;
+    moveBookingId = booking.bookingId;
+    moveTimeZone = booking.timeZone;
+    moveOriginalStart = booking.startAt;
+    moveDate = branchDate(booking.startAt, booking.timeZone);
+    moveSlots = null;
+    moveSlotId = "";
+    moveSlotsError = "";
+    message = "";
+    void loadMoveSlots();
   }
   function prepareMove(): void {
-    if (!moveBookingId || moveBusy || busy || pending) return;
-    const newStartAt = utcMinute(moveUtc);
-    if (!newStartAt) { message = "Укажите корректные дату и время в UTC."; return; }
-    movePending = { bookingId: moveBookingId, newStartAt, key: globalThis.crypto.randomUUID() };
+    if (!moveBookingId || moveBusy || busy || movePending || moveSlotsBusy) return;
+    const chosen = moveSlots?.slots.find((slot) => slot.startAt === moveSlotId);
+    if (!chosen || chosen.startAt === moveOriginalStart) {
+      moveSlotsError = "Выберите свободное время из списка сервера.";
+      return;
+    }
+    movePending = { bookingId: moveBookingId, newStartAt: chosen.startAt, key: globalThis.crypto.randomUUID() };
     moveUncertain = false;
     message = "";
   }
@@ -115,6 +182,10 @@
     onHistory(null);
     cutoff = null;
     moveCutoff = null;
+    moveGeneration++;
+    moveSlots = null;
+    moveSlotId = "";
+    moveSlotsBusy = false;
     busy = true;
     failed = false;
     try {
@@ -159,7 +230,7 @@
     const amount = BigInt(value);
     return new Intl.NumberFormat("ru-RU").format(amount / 100n) + "," + String(amount % 100n).padStart(2, "0") + " ₽";
   }
-  onMount(() => { void refresh(); return () => { mounted = false; generation++; }; });
+  onMount(() => { void refresh(); return () => { mounted = false; generation++; moveGeneration++; }; });
 </script>
 
 <section class="card" aria-label="Мои записи">
@@ -192,22 +263,40 @@
               {#if cutoff !== null && booking.status === "Confirmed" && Date.parse(booking.startAt) > Date.now() + cutoff * 60000}
                 <Button type="button" variant="outline" disabled={!!pending || cancellationBusy || !!moveBookingId || moveBusy} onclick={() => selectCancellation(booking.bookingId)}>Отменить запись</Button>
               {/if}
-              {#if moveCutoff !== null && booking.status === "Confirmed" && Date.parse(booking.startAt) > Date.now() + moveCutoff * 60000}
+              {#if moveCutoff !== null && booking.status === "Confirmed" && booking.timeZone && Date.parse(booking.startAt) > Date.now() + moveCutoff * 60000}
                 {#if moveBookingId === booking.bookingId}
-                  <label>Новое время в UTC (только тестовый контур)
-                    <input type="datetime-local" step="60" bind:value={moveUtc} disabled={moveBusy || !!movePending} />
+                  <label class="field">Дата филиала ({moveTimeZone})
+                    <input type="date" value={moveDate} disabled={moveBusy || !!movePending || moveSlotsBusy}
+                      onchange={event => { moveDate = event.currentTarget.value; moveGeneration++; moveSlots = null; moveSlotId = ""; moveSlotsBusy = false; moveSlotsError = ""; }} />
                   </label>
+                  <Button type="button" variant="outline" disabled={moveBusy || !!movePending || moveSlotsBusy || !moveDate} onclick={() => void loadMoveSlots()}>Показать свободные интервалы</Button>
+                  {#if moveSlotsBusy}<p role="status">Проверяем свободное время филиала…</p>{/if}
+                  {#if moveSlotsError}<p role="alert" class="alert-error">{moveSlotsError}</p>{/if}
+                  {#if moveSlots && !moveSlotsBusy}
+                    {#if moveSlots.slots.length === 0}<p>На выбранную дату свободного времени нет. Выберите другую дату.</p>
+                    {:else}
+                      <label class="field">Доступное время ({moveSlots.timeZone})
+                        <select value={moveSlotId} disabled={moveBusy || !!movePending} onchange={event => { moveSlotId = event.currentTarget.value; moveSlotsError = ""; }}>
+                          <option value="">Выберите время</option>
+                          {#each moveSlots.slots as slot (slot.startAt)}
+                            <option value={slot.startAt}>{slotTime(slot.startAt, moveSlots.timeZone)} — {slotTime(slot.endAt, moveSlots.timeZone)}</option>
+                          {/each}
+                        </select>
+                      </label>
+                    {/if}
+                  {/if}
                   {#if movePending?.bookingId === booking.bookingId}
-                    <p>Подтвердить перенос только времени на {movePending.newStartAt}? Услуга, мастер, филиал и стоимость сохранятся.</p>
+                    <p>Подтвердить перенос на {time(movePending.newStartAt, booking.timeZone)}? Услуга, мастер, филиал и исходная стоимость сохранятся.</p>
                     <Button type="button" disabled={moveBusy || busy} onclick={() => void confirmMove()}>Подтвердить перенос</Button>
-                    {#if !moveUncertain}<Button type="button" variant="outline" disabled={moveBusy} onclick={() => { moveBookingId = null; movePending = null; }}>Отмена</Button>{/if}
+                    {#if !moveUncertain}<Button type="button" variant="outline" disabled={moveBusy} onclick={closeMove}>Отмена</Button>{/if}
                   {:else}
-                    <Button type="button" disabled={moveBusy || busy} onclick={prepareMove}>Проверить новое время</Button>
-                    <Button type="button" variant="outline" disabled={moveBusy} onclick={() => { moveBookingId = null; moveUtc = ""; }}>Назад</Button>
+                    <Button type="button" disabled={moveBusy || busy || moveSlotsBusy || !moveSlotId} onclick={prepareMove}>Проверить новое время</Button>
+                    <Button type="button" variant="outline" disabled={moveBusy} onclick={closeMove}>Назад</Button>
                   {/if}
                 {:else}
-                  <Button type="button" variant="outline" disabled={!!pending || cancellationBusy || !!moveBookingId || moveBusy} onclick={() => startMove(booking.bookingId)}>Перенести запись</Button>
+                  <Button type="button" variant="outline" disabled={!!pending || cancellationBusy || !!moveBookingId || moveBusy} onclick={() => startMove(booking)}>Перенести запись</Button>
                 {/if}
+              {/if}
               {/if}
             {/if}
           </li>
@@ -217,7 +306,7 @@
     {/if}
   {/if}
   <p class="owner-form-note">Статусы в списке отображаются на момент последнего обновления с сервера.</p>
-  <p class="owner-form-note">{cutoff === null ? "Отмена в тестовом режиме недоступна." : "Отмена проверяется сервером; тестовый срок — до начала записи более чем " + cutoff + " мин."} {moveCutoff === null ? "Перенос в тестовом режиме недоступен." : "Перенос проверяется сервером; отдельный тестовый срок — более " + moveCutoff + " мин. до начала."} Ввод времени переноса здесь строго UTC; для обычного клиентского интерфейса потребуется выбор слота в часовом поясе филиала. Названия услуг, филиала и мастера — текущие данные каталога.</p>
+  <p class="owner-form-note">{cutoff === null ? "Отмена в тестовом режиме недоступна." : "Отмена проверяется сервером; тестовый срок — до начала записи более чем " + cutoff + " мин."} {moveCutoff === null ? "Перенос в тестовом режиме недоступен." : "Перенос проверяется сервером; отдельный тестовый срок — более " + moveCutoff + " мин. до начала."} Перенос выбирается из предварительно доступных серверных слотов во времени филиала (с UTC-смещением для неоднозначных часов); подтверждение и проверка конфликтов выполняются сервером. Настройки политики владельца пока не подключены. Названия услуг, филиала и мастера — текущие данные каталога.</p>
 </section>
 
 <style>

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   readRescheduleCutoff,
+  readRescheduleSlots,
   rescheduleOwnBooking,
 } from "./staging-customer-reschedule-api";
 
@@ -145,4 +146,80 @@ test("reschedule never assumes success from malformed or denied responses", asyn
     /denied/,
   );
   assert.equal(called, false);
+});
+
+test("reschedule slot projection is authenticated and exactly zoned to the booking", async () => {
+  const localDate = "2028-12-15";
+  const zone = "Europe/Moscow";
+  const slots = [
+    { startAt: "2028-12-15T10:00:00.000Z", endAt: "2028-12-15T11:00:00.000Z" },
+    { startAt: "2028-12-15T11:00:00.000Z", endAt: "2028-12-15T12:00:00.000Z" },
+  ];
+  const fetcher: typeof fetch = async (url, init) => {
+    assert.equal(url, root + "/" + bookingId + "/slots?localDate=" + localDate);
+    assert.equal(init?.method, "GET");
+    assert.equal(init?.cache, "no-store");
+    assert.equal(init?.redirect, "error");
+    assert.equal(init?.credentials, "omit");
+    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer " + session.accessToken);
+    return Response.json({ localDate, timeZone: zone, slots });
+  };
+  assert.deepEqual(
+    await readRescheduleSlots(session, bookingId, localDate, zone, fetcher),
+    { localDate, timeZone: zone, slots },
+  );
+  let called = false;
+  const noFetch: typeof fetch = async () => { called = true; throw new Error("must not call"); };
+  for (const date of ["2028-02-30", "2028-13-01", "2028-12-15T10:00", ""]) {
+    await assert.rejects(readRescheduleSlots(session, bookingId, date, zone, noFetch), /uncertain/);
+  }
+  await assert.rejects(readRescheduleSlots(session, "invalid", localDate, zone, noFetch), /uncertain/);
+  await assert.rejects(readRescheduleSlots(session, bookingId, localDate, "Invalid/Zone", noFetch), /uncertain/);
+  await assert.rejects(readRescheduleSlots({ ...session, expiresAtUnixSeconds: 0 }, bookingId, localDate, zone, noFetch), /denied/);
+  assert.equal(called, false);
+});
+
+test("slot picker rejects mismatched zone, duplicates, stale or extraneous data", async () => {
+  const date = "2028-12-15";
+  const zone = "Europe/Moscow";
+  const slot = { startAt: "2028-12-15T10:00:00.000Z", endAt: "2028-12-15T11:00:00.000Z" };
+  const valid = { localDate: date, timeZone: zone, slots: [slot] };
+  for (const raw of [
+    { ...valid, timeZone: "UTC" },
+    { ...valid, localDate: "2028-12-16" },
+    { ...valid, slots: [slot, slot] },
+    { ...valid, slots: [{ ...slot, startAt: "2028-12-15T22:00:00.000Z" }] },
+    { ...valid, slots: [{ ...slot, endAt: slot.startAt }] },
+    { ...valid, slots: [{ ...slot, priceKopecks: "0" }] },
+    { ...valid, slots: [{ ...slot, startAt: "2028-12-15T10:00:00Z" }] },
+    { ...valid, slots: [{ ...slot, startAt: "2028-12-15T11:00:00.000Z" }, slot] },
+    { ...valid, extra: true },
+    null,
+  ]) {
+    await assert.rejects(
+      readRescheduleSlots(session, bookingId, date, zone, async () => Response.json(raw)),
+      /uncertain/,
+    );
+  }
+  await assert.rejects(readRescheduleSlots(session, bookingId, date, zone, async () => Response.json({}, { status: 401 })), /denied/);
+  await assert.rejects(readRescheduleSlots(session, bookingId, date, zone, async () => Response.json({}, { status: 403 })), /denied/);
+  await assert.rejects(readRescheduleSlots(session, bookingId, date, zone, async () => Response.json({}, { status: 404 })), /conflict/);
+  await assert.rejects(readRescheduleSlots(session, bookingId, date, zone, async () => Response.json({}, { status: 409 })), /conflict/);
+  await assert.rejects(readRescheduleSlots(session, bookingId, date, zone, async () => { throw new Error("network"); }), /uncertain/);
+});
+
+test("folded civil hour retains two distinct UTC instants for DST", async () => {
+  const date = "2028-10-29";
+  const zone = "Europe/London";
+  const slots = [
+    { startAt: "2028-10-29T00:30:00.000Z", endAt: "2028-10-29T01:00:00.000Z" },
+    { startAt: "2028-10-29T01:30:00.000Z", endAt: "2028-10-29T02:00:00.000Z" },
+  ];
+  const result = await readRescheduleSlots(session, bookingId, date, zone,
+    async () => Response.json({ localDate: date, timeZone: zone, slots }));
+  assert.deepEqual(result.slots, slots);
+  const shown = slots.map(slot => new Intl.DateTimeFormat("ru-RU", {
+    timeZone: zone, hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset",
+  }).format(new Date(slot.startAt)));
+  assert.notEqual(shown[0], shown[1], "DST fold must retain visible UTC offset");
 });
