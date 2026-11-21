@@ -22,6 +22,7 @@ export { readStagingCreateReceipt } from "./staging-create-receipt.js";
 export {
   rescheduleBookingInternal,
   rescheduleStagingCustomerBooking,
+  listStagingCustomerRescheduleSlots,
   RescheduleBookingFailure,
   type AssertBookingMayReschedule,
 } from "./reschedule.js";

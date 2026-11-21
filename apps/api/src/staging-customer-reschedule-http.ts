@@ -1,10 +1,12 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   rescheduleStagingCustomerBooking,
+  listStagingCustomerRescheduleSlots,
   RescheduleBookingFailure,
 } from "../../../packages/domain-booking/src/index.js";
 import { readStagingCustomerContext } from "../../../packages/domain-customers/src/index.js";
 import { runSqlTransaction } from "../../../packages/platform-db/src/index.js";
+import { runAuditedRead } from "./protected-tenant-transaction.js";
 import {
   AuthorizationDeniedError,
   requireTenantPermission,
@@ -79,6 +81,59 @@ export function registerStagingCustomerReschedule(
       } catch (error) {
         if (error instanceof AuthorizationDeniedError)
           return reply.code(403).send({ error: "forbidden" });
+        return reply.code(503).send({ error: "unavailable" });
+      }
+    },
+  );
+  app.get<{
+    Params: { tenantId: string; bookingId: string };
+    Querystring: { localDate?: string };
+  }>(
+    "/v1/organizations/:tenantId/staging-customer-reschedule/:bookingId/slots",
+    async (request, reply) => {
+      privacy(reply);
+      const verified = await verifyTenantActor(
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
+      );
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
+      const query = request.query as Record<string, unknown>;
+      if (
+        !UUID.test(request.params.bookingId) ||
+        Object.keys(query).length !== 1 ||
+        typeof query.localDate !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(query.localDate) ||
+        !Number.isFinite(Date.parse(query.localDate + "T00:00:00Z")) ||
+        new Date(query.localDate + "T00:00:00Z").toISOString().slice(0, 10) !==
+          query.localDate
+      )
+        return reply.code(400).send({ error: "invalid-request" });
+      const actor = verified.actor;
+      try {
+        const slots = await runAuditedRead(pool, (client) =>
+          listStagingCustomerRescheduleSlots(
+            client,
+            actor,
+            request.params.bookingId,
+            query.localDate as string,
+            cutoffMinutes,
+          ),
+        );
+        return reply.send(slots);
+      } catch (error) {
+        if (error instanceof AuthorizationDeniedError)
+          return reply.code(403).send({ error: "forbidden" });
+        if (error instanceof RescheduleBookingFailure) {
+          const status =
+            error.code === "INVALID_RESCHEDULE_COMMAND"
+              ? 400
+              : error.code === "BOOKING_NOT_FOUND"
+                ? 404
+                : 409;
+          return reply.code(status).send({ error: error.code });
+        }
         return reply.code(503).send({ error: "unavailable" });
       }
     },
