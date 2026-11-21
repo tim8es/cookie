@@ -1164,6 +1164,57 @@ test(
       );
       assert.equal(eventForWinner.rows[0].count, 1);
       assert.deepEqual((await raceBook(winner.authorization)).json(), receipt);
+      // BOOK-05 recovery GET is scoped to the *verified actor*, not merely
+      // tenant + raw idempotency key. All 12 contenders shared raceKey but
+      // only the winner has a corresponding committed Create receipt.
+      const winnerRecovery = await app.inject({
+        method: "GET",
+        url: recoveryUrl,
+        headers: {
+          authorization: winner.authorization,
+          "idempotency-key": raceKey,
+        },
+      });
+      assert.equal(winnerRecovery.statusCode, 200, winnerRecovery.body);
+      assert.equal(winnerRecovery.headers["cache-control"], "no-store");
+      assert.deepEqual(winnerRecovery.json(), receipt);
+      for (const contender of contenders) {
+        if (contender.customerId === winner.customerId) continue;
+        const isolated = await app.inject({
+          method: "GET",
+          url: recoveryUrl,
+          headers: {
+            authorization: contender.authorization,
+            "idempotency-key": raceKey,
+          },
+        });
+        assert.equal(isolated.statusCode, 404, isolated.body);
+        assert.deepEqual(isolated.json(), { error: "receipt-unavailable" });
+        assert.equal(isolated.headers["cache-control"], "no-store");
+        assert.equal(isolated.headers.vary, "Authorization, Idempotency-Key");
+        for (const sensitive of [
+          receipt.bookingId,
+          receipt.startAt,
+          receipt.priceKopecks,
+        ]) {
+          assert.ok(!isolated.body.includes(sensitive));
+        }
+      }
+      const afterReceiptQueries = await pool.query(
+        `SELECT
+          (SELECT count(*)::int FROM cookie_booking.bookings
+            WHERE tenant_id=$1::uuid AND customer_id=ANY($2::uuid[])) AS bookings,
+          (SELECT count(*)::int FROM cookie_booking.command_receipts
+            WHERE tenant_id=$1::uuid) AS receipts,
+          (SELECT count(*)::int FROM cookie_jobs.outbox_events
+            WHERE tenant_id=$1::uuid AND topic='booking.confirmed') AS events`,
+        [owner.tenantId, contenders.map((c) => c.customerId)],
+      );
+      assert.deepEqual(
+        afterReceiptQueries.rows[0],
+        raceState.rows[0],
+        "Receipt GETs must not create Booking, command receipts or outbox events",
+      );
       const afterRace = (await clientSlots()).json().slots as Array<{
         startAt: string;
       }>;
