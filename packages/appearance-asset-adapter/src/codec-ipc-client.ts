@@ -88,7 +88,9 @@ export async function normalizeImageOverCodecIpc(
       timeout,
     );
     socket.on("connect", () => {
-      socket.write(request);
+      // A request is complete only after a clean write-side EOF.
+      // The server must not trust the declared length alone.
+      socket.end(request);
     });
     socket.on("data", (chunk: Buffer) => {
       if (settled) return;
@@ -113,19 +115,22 @@ export async function normalizeImageOverCodecIpc(
         finish(new AppearanceCodecFailure("codec-unavailable"));
         return;
       }
-      if (total === IPC_HEADER_BYTES + expected) {
-        try {
-          finish(null, codecIpcReadResponse(Buffer.concat(chunks, total)));
-        } catch (error) {
-          finish(error);
-        }
-      }
     });
     socket.on("error", () => {
       finish(new AppearanceCodecFailure("codec-unavailable"));
     });
     socket.on("end", () => {
-      finish(new AppearanceCodecFailure("codec-unavailable"));
+      // Never accept an apparent success until the peer has ended the stream:
+      // a valid frame followed by a later trailer must fail closed.
+      if (expected === null || total !== IPC_HEADER_BYTES + expected) {
+        finish(new AppearanceCodecFailure("codec-unavailable"));
+        return;
+      }
+      try {
+        finish(null, codecIpcReadResponse(Buffer.concat(chunks, total)));
+      } catch (error) {
+        finish(error);
+      }
     });
     socket.on("close", () => {
       finish(new AppearanceCodecFailure("codec-unavailable"));
