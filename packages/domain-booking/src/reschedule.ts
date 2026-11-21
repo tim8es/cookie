@@ -271,11 +271,13 @@ export async function listStagingCustomerRescheduleSlots(
     !UUID.test(bookingId) ||
     !/^\d{4}-\d{2}-\d{2}$/.test(localDate) ||
     !Number.isFinite(Date.parse(localDate + "T00:00:00Z")) ||
-    new Date(localDate + "T00:00:00Z").toISOString().slice(0, 10) !== localDate ||
+    new Date(localDate + "T00:00:00Z").toISOString().slice(0, 10) !==
+      localDate ||
     !Number.isSafeInteger(cutoffMinutes) ||
     cutoffMinutes < 0 ||
     cutoffMinutes > 525600
-  ) fail("INVALID_RESCHEDULE_COMMAND");
+  )
+    fail("INVALID_RESCHEDULE_COMMAND");
   if (!actor?.opaqueSessionAuthority) throw new AuthorizationDeniedError();
   const tenantId = actor.tenantId;
   const actorId = actor.identityId;
@@ -312,11 +314,13 @@ export async function listStagingCustomerRescheduleSlots(
     !booking ||
     booking.staff_id !== metadata.staff_id ||
     booking.location_id !== metadata.location_id
-  ) fail("BOOKING_NOT_FOUND");
+  )
+    fail("BOOKING_NOT_FOUND");
   const context = await readStagingCustomerContext(client, actor);
   if (context.customerId !== booking.customer_id) fail("BOOKING_NOT_FOUND");
   await requireTenantPermission(
-    client, actor,
+    client,
+    actor,
     { kind: "customer-self", tenantId, clientIdentityId: actorId },
     "staging.customer.booking.reschedule",
   );
@@ -324,10 +328,10 @@ export async function listStagingCustomerRescheduleSlots(
   const now = await client.query<{ now: Date }>(
     "SELECT clock_timestamp() AS now",
   );
-  const deadline = (now.rows[0]?.now.getTime() ?? Number.POSITIVE_INFINITY)
-    + cutoffMinutes * 60_000;
-  if (booking.start_at.getTime() <= deadline)
-    fail("RESCHEDULE_POLICY_DENIED");
+  const deadline =
+    (now.rows[0]?.now.getTime() ?? Number.POSITIVE_INFINITY) +
+    cutoffMinutes * 60_000;
+  if (booking.start_at.getTime() <= deadline) fail("RESCHEDULE_POLICY_DENIED");
   const available = await readRescheduleAvailability(client, tenantId, booking);
   const previousStartAt = booking.start_at.toISOString();
   const slots = listAvailableSlots({
@@ -336,8 +340,10 @@ export async function listStagingCustomerRescheduleSlots(
     // Controlled staging grid, not a salon cancellation/reschedule policy.
     stepMinutes: 15,
   })
-    .filter((slot) => slot.startAt !== previousStartAt &&
-      Date.parse(slot.startAt) > deadline)
+    .filter(
+      (slot) =>
+        slot.startAt !== previousStartAt && Date.parse(slot.startAt) > deadline,
+    )
     .map(({ startAt, endAt }) => ({ startAt, endAt }));
   return { localDate, timeZone: available.timeZone, slots };
 }

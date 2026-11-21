@@ -79,8 +79,10 @@ function localDate(value: unknown): value is string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
     return false;
   const timestamp = Date.parse(value + "T00:00:00Z");
-  return Number.isFinite(timestamp) &&
-    new Date(timestamp).toISOString().slice(0, 10) === value;
+  return (
+    Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 10) === value
+  );
 }
 function timeZone(value: unknown): value is string {
   if (typeof value !== "string" || value.length > 100) return false;
@@ -93,7 +95,10 @@ function timeZone(value: unknown): value is string {
 }
 function branchLocalDate(value: string, zone: string): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   }).formatToParts(new Date(value));
   const field = (kind: string) =>
     parts.find((part) => part.type === kind)?.value ?? "";
@@ -113,8 +118,11 @@ export async function readRescheduleSlots(
   let response: Response;
   try {
     response = await fetcher(
-      endpoint(session) + "/" + bookingId + "/slots?" +
-      new URLSearchParams({ localDate: date }).toString(),
+      endpoint(session) +
+        "/" +
+        bookingId +
+        "/slots?" +
+        new URLSearchParams({ localDate: date }).toString(),
       { ...privacy, method: "GET", headers: { authorization: auth } },
     );
   } catch {
@@ -124,8 +132,7 @@ export async function readRescheduleSlots(
     throw new CustomerRescheduleError("denied");
   if (response.status === 404 || response.status === 409)
     throw new CustomerRescheduleError("conflict");
-  if (response.status !== 200)
-    throw new CustomerRescheduleError("uncertain");
+  if (response.status !== 200) throw new CustomerRescheduleError("uncertain");
   const raw: unknown = await response.json().catch(() => undefined);
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     throw new CustomerRescheduleError("uncertain");
@@ -141,15 +148,22 @@ export async function readRescheduleSlots(
       if (!item || typeof item !== "object" || Array.isArray(item))
         return false;
       const slot = item as Partial<CustomerRescheduleSlot>;
-      return Object.keys(slot).length === 2 &&
-        instant(slot.startAt) && instant(slot.endAt) &&
+      return (
+        Object.keys(slot).length === 2 &&
+        instant(slot.startAt) &&
+        instant(slot.endAt) &&
         slot.startAt < slot.endAt &&
-        branchLocalDate(slot.startAt, data.timeZone!) === date;
+        branchLocalDate(slot.startAt, data.timeZone!) === date
+      );
     }) ||
-    new Set(data.slots.map((slot) => slot.startAt)).size !== data.slots.length ||
-    data.slots.some((slot, index) =>
-      index > 0 && data.slots![index - 1]!.startAt >= slot.startAt)
-  ) throw new CustomerRescheduleError("uncertain");
+    new Set(data.slots.map((slot) => slot.startAt)).size !==
+      data.slots.length ||
+    data.slots.some(
+      (slot, index) =>
+        index > 0 && data.slots![index - 1]!.startAt >= slot.startAt,
+    )
+  )
+    throw new CustomerRescheduleError("uncertain");
   return { localDate: date, timeZone: data.timeZone, slots: data.slots };
 }
 

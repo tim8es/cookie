@@ -1382,15 +1382,48 @@ test(
       assert.equal(proposedSlots.headers["vary"], "Authorization");
       assert.equal(proposedSlots.json().localDate, date);
       assert.equal(proposedSlots.json().timeZone, "Europe/Moscow");
-      assert.ok(proposedSlots.json().slots.some((slot: { startAt: string }) => slot.startAt === moveTarget));
-      assert.ok(!proposedSlots.json().slots.some((slot: { startAt: string }) => slot.startAt === bookingPayload.startAt));
+      assert.ok(
+        proposedSlots
+          .json()
+          .slots.some(
+            (slot: { startAt: string }) => slot.startAt === moveTarget,
+          ),
+      );
+      assert.ok(
+        !proposedSlots
+          .json()
+          .slots.some(
+            (slot: { startAt: string }) =>
+              slot.startAt === bookingPayload.startAt,
+          ),
+      );
       assert.equal((await ownSlots(ownSlotsUrl, disabled)).statusCode, 404);
       assert.equal((await ownSlots(ownSlotsUrl, cutoffDenied)).statusCode, 409);
-      assert.equal((await ownSlots(ownSlotsUrl.replace(owner.tenantId, randomUUID()))).statusCode, 403);
-      assert.equal((await ownSlots(moveRoot + "/" + another.rows[0]!.id + "/slots?localDate=" + date)).statusCode, 404);
-      assert.equal((await ownSlots(ownSlotsUrl + "&serviceId=" + serviceId)).statusCode, 400);
-      assert.equal((await ownSlots(moveUrl + "/slots?localDate=2028-02-30")).statusCode, 400);
-      assert.equal((await app.inject({ method: "GET", url: ownSlotsUrl })).statusCode, 401);
+      assert.equal(
+        (await ownSlots(ownSlotsUrl.replace(owner.tenantId, randomUUID())))
+          .statusCode,
+        403,
+      );
+      assert.equal(
+        (
+          await ownSlots(
+            moveRoot + "/" + another.rows[0]!.id + "/slots?localDate=" + date,
+          )
+        ).statusCode,
+        404,
+      );
+      assert.equal(
+        (await ownSlots(ownSlotsUrl + "&serviceId=" + serviceId)).statusCode,
+        400,
+      );
+      assert.equal(
+        (await ownSlots(moveUrl + "/slots?localDate=2028-02-30")).statusCode,
+        400,
+      );
+      assert.equal(
+        (await app.inject({ method: "GET", url: ownSlotsUrl })).statusCode,
+        401,
+      );
 
       assert.equal(
         (

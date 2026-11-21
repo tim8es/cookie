@@ -246,9 +246,14 @@ test(
       assert.equal(moveSlots.json().localDate, date);
       assert.equal(moveSlots.json().timeZone, "UTC");
       assert.ok(moveSlots.json().slots.length > 0);
-      assert.ok(!moveSlots.json().slots.some(
-        (slot: { startAt: string }) => slot.startAt === created.json().startAt,
-      ));
+      assert.ok(
+        !moveSlots
+          .json()
+          .slots.some(
+            (slot: { startAt: string }) =>
+              slot.startAt === created.json().startAt,
+          ),
+      );
       const cancelCapability = "staging-customer-cancellation/capability";
       assertStagingBookingResponse(
         cancelCapability,

@@ -106,14 +106,18 @@ export function registerStagingCustomerReschedule(
         typeof query.localDate !== "string" ||
         !/^\d{4}-\d{2}-\d{2}$/.test(query.localDate) ||
         !Number.isFinite(Date.parse(query.localDate + "T00:00:00Z")) ||
-        new Date(query.localDate + "T00:00:00Z").toISOString().slice(0, 10) !== query.localDate
+        new Date(query.localDate + "T00:00:00Z").toISOString().slice(0, 10) !==
+          query.localDate
       )
         return reply.code(400).send({ error: "invalid-request" });
       const actor = verified.actor;
       try {
         const slots = await runAuditedRead(pool, (client) =>
           listStagingCustomerRescheduleSlots(
-            client, actor, request.params.bookingId, query.localDate as string,
+            client,
+            actor,
+            request.params.bookingId,
+            query.localDate as string,
             cutoffMinutes,
           ),
         );
@@ -122,8 +126,12 @@ export function registerStagingCustomerReschedule(
         if (error instanceof AuthorizationDeniedError)
           return reply.code(403).send({ error: "forbidden" });
         if (error instanceof RescheduleBookingFailure) {
-          const status = error.code === "INVALID_RESCHEDULE_COMMAND" ? 400
-            : error.code === "BOOKING_NOT_FOUND" ? 404 : 409;
+          const status =
+            error.code === "INVALID_RESCHEDULE_COMMAND"
+              ? 400
+              : error.code === "BOOKING_NOT_FOUND"
+                ? 404
+                : 409;
           return reply.code(status).send({ error: error.code });
         }
         return reply.code(503).send({ error: "unavailable" });
