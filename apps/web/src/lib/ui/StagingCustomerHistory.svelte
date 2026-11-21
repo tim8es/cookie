@@ -297,7 +297,6 @@
                   <Button type="button" variant="outline" disabled={!!pending || cancellationBusy || !!moveBookingId || moveBusy} onclick={() => startMove(booking)}>Перенести запись</Button>
                 {/if}
               {/if}
-              {/if}
             {/if}
           </li>
         {/each}
