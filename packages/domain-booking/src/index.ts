@@ -11,6 +11,7 @@ export {
 export { listOwnStagingBookings } from "./staging-customer-history.js";
 export {
   cancelStagingCustomerBooking,
+  cancelStagingOwnerBooking,
   cancelBookingInternal,
   CancelBookingFailure,
   type AssertBookingMayCancel,

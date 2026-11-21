@@ -156,6 +156,34 @@ export async function cancelStagingCustomerBooking(
   );
 }
 
+/** Synthetic operator-controlled staging only. This does not define a
+ * salon-owned cancellation policy (#285), nor grant access by itself: the
+ * trusted callback must establish current owner and exact branch inside
+ * the command transaction. The UPDATE rechecks the explicit cutoff. */
+export async function cancelStagingOwnerBooking(
+  pool: Pool,
+  input: InternalCancelBooking,
+  cutoffMinutes: number,
+  assertMayCancel: AssertBookingMayCancel,
+): Promise<CancelledBookingReceipt<"CancelledByBusiness">> {
+  if (
+    !Number.isSafeInteger(cutoffMinutes) ||
+    cutoffMinutes < 0 ||
+    cutoffMinutes > 525600 ||
+    typeof assertMayCancel !== "function"
+  )
+    invalid();
+  if (!input?.actor?.opaqueSessionAuthority)
+    throw new AuthorizationDeniedError();
+  return cancelBooking(
+    pool,
+    input,
+    "CancelledByBusiness",
+    assertMayCancel,
+    cutoffMinutes,
+  );
+}
+
 async function cancelBooking<
   Status extends "CancelledByBusiness" | "CancelledByClient",
 >(
@@ -292,7 +320,9 @@ async function cancelBooking<
     const cancelled = updated.rows[0];
     if (!cancelled) {
       throw new CancelBookingFailure(
-        staging ? "CANCELLATION_POLICY_DENIED" : "BOOKING_NOT_CONFIRMED",
+        cutoffMinutes !== undefined
+          ? "CANCELLATION_POLICY_DENIED"
+          : "BOOKING_NOT_CONFIRMED",
       );
     }
     const receipt: CancelledBookingReceipt<Status> = {

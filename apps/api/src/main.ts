@@ -7,6 +7,7 @@ import { parseStagingPublicationMode } from "../../../packages/domain-entitlemen
 import { createApp } from "./app.js";
 import { parseStagingCancellationCutoff } from "./staging-customer-cancellation-http.js";
 import { parseStagingRescheduleCutoff } from "./staging-customer-reschedule-http.js";
+import { parseStagingOwnerCancellationCutoff } from "./staging-owner-calendar-cancellation-http.js";
 import { parseControlledAppearanceMode } from "./staging-appearance-mode.js";
 import { parseConfig } from "./config.js";
 import { registerCompiledWeb } from "./static-web.js";
@@ -49,6 +50,12 @@ const stagingRescheduleCutoff = parseStagingRescheduleCutoff(
 );
 if (stagingRescheduleCutoff !== undefined && !stagingPublicationEnabled)
   throw new Error("Staging reschedule requires staging publication");
+// Owner-side edits also require their own explicit synthetic-only opt-in.
+const stagingOwnerCancellationCutoff = parseStagingOwnerCancellationCutoff(
+  process.env.COOKIE_STAGING_OWNER_CANCEL_CUTOFF_MINUTES,
+);
+if (stagingOwnerCancellationCutoff !== undefined && !stagingPublicationEnabled)
+  throw new Error("Staging owner cancellation requires staging publication");
 const pool = new Pool({
   connectionString: config.databaseUrl,
   application_name: "cookie-api",
@@ -106,6 +113,16 @@ const app = createApp(pool, {
           stagingPublicationEnabled: stagingAppearanceEnabled,
         },
         ownerCalendar: { pool, verifier: tenantSessionVerifier },
+        ...(stagingOwnerCancellationCutoff === undefined
+          ? {}
+          : {
+              stagingOwnerCalendarCancellation: {
+                pool,
+                verifier: tenantSessionVerifier,
+                enabled: true,
+                cutoffMinutes: stagingOwnerCancellationCutoff,
+              },
+            }),
         staffRoutes: { pool, verifier: tenantSessionVerifier },
         locationRoutes: { pool, verifier: tenantSessionVerifier },
         shiftPlanRoutes: { pool, verifier: tenantSessionVerifier },
