@@ -344,7 +344,7 @@ export async function listStagingOwnerRescheduleSlots(
   if (
     !UUID.test(bookingId) ||
     !UUID.test(locationId) ||
-    !/^\\d{4}-\\d{2}-\\d{2}$/.test(localDate) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(localDate) ||
     !Number.isFinite(Date.parse(localDate + "T00:00:00Z")) ||
     new Date(localDate + "T00:00:00Z").toISOString().slice(0, 10) !==
       localDate ||
