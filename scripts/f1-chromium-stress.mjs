@@ -33,12 +33,17 @@ export async function runStartupSeries(samples, exercise) {
         recoveredFailures: outcome.failures.map((message) => String(message).slice(0, 1200)),
       });
     } catch (error) {
-      results.push({ sample, status: 'FAIL', diagnostic: String(error?.message ?? error).slice(0, 1600) });
+      const message = String(error?.message ?? error);
+      results.push({ sample, status: 'FAIL', diagnostic: message.slice(0, 1600) });
+      // Failed reaping/cleanup must not launch the next sample with a live orphan.
+      if (/cleanup FAILED|Chromium child could not be reaped/.test(message)) break;
     }
   }
   const passed = results.filter((result) => result.status === 'PASS').length;
   const recovered = results.filter((result) => result.status === 'PASS' && result.recoveredFailures.length > 0).length;
-  return { samples, passed, failed: samples - passed, recovered, results };
+  return { samples, executed: results.length, passed,
+    failed: results.filter((result) => result.status === 'FAIL').length,
+    incomplete: samples - results.length, recovered, results };
 }
 
 function browserBinary() {
@@ -149,10 +154,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       console.log('F1 CHROMIUM STRESS SAMPLE', JSON.stringify(result));
     }
     console.log('F1 CHROMIUM STRESS SUMMARY', JSON.stringify({
-      samples: summary.samples, passed: summary.passed, failed: summary.failed,
+      samples: summary.samples, executed: summary.executed, passed: summary.passed,
+      failed: summary.failed, incomplete: summary.incomplete,
       recovered: summary.recovered, executable: basename(executable),
     }));
-    if (summary.failed) process.exitCode = 1;
+    if (summary.failed || summary.incomplete) process.exitCode = 1;
   } catch (error) {
     console.error('F1 CHROMIUM STRESS FAILED:', error.message);
     process.exitCode = 1;
