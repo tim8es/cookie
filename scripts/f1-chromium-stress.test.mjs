@@ -61,3 +61,18 @@ test('diagnostics are bounded for machine-readable logging', async () => {
   assert.equal(summary.results[0].recoveredFailures[0].length, 1200);
   assert.equal(summary.results[1].diagnostic.length, 1600);
 });
+
+
+test('cannot launch further samples after unreaped Chromium cleanup failure', async () => {
+  const called = [];
+  const summary = await runStartupSeries(4, async (sample) => {
+    called.push(sample);
+    if (sample === 2) throw new Error('startup attempt 2/2; cleanup FAILED: Chromium child could not be reaped');
+    return ready();
+  });
+  assert.deepEqual(called, [1, 2]);
+  assert.equal(summary.executed, 2);
+  assert.equal(summary.incomplete, 2);
+  assert.equal(summary.failed, 1);
+  assert.equal(summary.results[1].status, 'FAIL');
+});
