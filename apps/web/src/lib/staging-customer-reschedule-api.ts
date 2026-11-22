@@ -134,7 +134,9 @@ export async function readRescheduleSlots(
     throw new CustomerRescheduleError("conflict");
   if (response.status !== 200) throw new CustomerRescheduleError("uncertain");
   return parseRescheduleSlotsResponse(
-    await response.json().catch(() => undefined), date, expectedTimeZone,
+    await response.json().catch(() => undefined),
+    date,
+    expectedTimeZone,
   );
 }
 
