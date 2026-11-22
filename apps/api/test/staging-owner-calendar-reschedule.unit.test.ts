@@ -23,8 +23,14 @@ test("private owner reschedule cutoff requires an explicit valid operator settin
 test("owner time-move routes fail closed, validate scope and syntax before any DB access", async () => {
   let calls = 0;
   const pool = {
-    query() { calls++; throw new Error("fixture database disabled"); },
-    connect() { calls++; throw new Error("fixture database disabled"); },
+    query() {
+      calls++;
+      throw new Error("fixture database disabled");
+    },
+    connect() {
+      calls++;
+      throw new Error("fixture database disabled");
+    },
   } as unknown as Pool;
   const verifier = {
     async verifyBearerToken(token: string) {
@@ -40,15 +46,26 @@ test("owner time-move routes fail closed, validate scope and syntax before any D
   const disabled = createApp(pool);
   const app = createApp(pool, {
     stagingOwnerCalendarReschedule: {
-      pool, verifier, enabled: true, cutoffMinutes: 0,
+      pool,
+      verifier,
+      enabled: true,
+      cutoffMinutes: 0,
     },
   });
   const headers = { authorization: "Bearer verified-unit-token" };
-  const post = (currentUrl: string, body: unknown, key = "synthetic-owner-move-001") =>
+  const post = (
+    currentUrl: string,
+    body: unknown,
+    key = "synthetic-owner-move-001",
+  ) =>
     app.inject({
-      method: "POST", url: currentUrl, headers: {
-        ...headers, "idempotency-key": key,
-      }, payload: body,
+      method: "POST",
+      url: currentUrl,
+      headers: {
+        ...headers,
+        "idempotency-key": key,
+      },
+      payload: body,
     });
   try {
     for (const endpoint of [
@@ -56,7 +73,10 @@ test("owner time-move routes fail closed, validate scope and syntax before any D
       route + "/slots?locationId=" + location + "&localDate=2027-01-11",
       url,
     ]) {
-      assert.equal((await disabled.inject({ method: "GET", url: endpoint })).statusCode, 404);
+      assert.equal(
+        (await disabled.inject({ method: "GET", url: endpoint })).statusCode,
+        404,
+      );
     }
     for (const endpoint of [
       prefix + "/reschedule/capability",
@@ -67,25 +87,52 @@ test("owner time-move routes fail closed, validate scope and syntax before any D
       assert.equal(response.headers["cache-control"], "no-store");
       assert.equal(response.headers.vary, "Authorization");
     }
-    assert.equal((await app.inject({ method: "POST", url, payload: {} })).statusCode, 401);
+    assert.equal(
+      (await app.inject({ method: "POST", url, payload: {} })).statusCode,
+      401,
+    );
     for (const endpoint of [
       route + "/slots?locationId=wrong&localDate=2027-01-11",
       route + "/slots?locationId=" + location + "&localDate=2027-02-30",
       route + "/slots?locationId=" + location + "&localDate=2027-01-11&extra=1",
       route + "/slots?locationId=" + location,
-      prefix + "/wrong/reschedule/slots?locationId=" + location + "&localDate=2027-01-11",
+      prefix +
+        "/wrong/reschedule/slots?locationId=" +
+        location +
+        "&localDate=2027-01-11",
     ]) {
-      assert.equal((await app.inject({ method: "GET", url: endpoint, headers })).statusCode, 400);
+      assert.equal(
+        (await app.inject({ method: "GET", url: endpoint, headers }))
+          .statusCode,
+        400,
+      );
     }
     for (const [endpoint, body, key] of [
-      [url + "&extra=1", { newStartAt: "2027-01-11T11:00:00.000Z" }, "synthetic-owner-move-001"],
-      [route + "?locationId=wrong", { newStartAt: "2027-01-11T11:00:00.000Z" }, "synthetic-owner-move-001"],
+      [
+        url + "&extra=1",
+        { newStartAt: "2027-01-11T11:00:00.000Z" },
+        "synthetic-owner-move-001",
+      ],
+      [
+        route + "?locationId=wrong",
+        { newStartAt: "2027-01-11T11:00:00.000Z" },
+        "synthetic-owner-move-001",
+      ],
       [url, { newStartAt: "2027-01-11T11:00:00Z" }, "synthetic-owner-move-001"],
-      [url, { newStartAt: "2027-01-11T11:00:00.000Z", customerId: location }, "synthetic-owner-move-001"],
+      [
+        url,
+        { newStartAt: "2027-01-11T11:00:00.000Z", customerId: location },
+        "synthetic-owner-move-001",
+      ],
       [url, { newStartAt: "2027-01-11T11:00:00.000Z" }, "short"],
       [url, {}, "synthetic-owner-move-001"],
-    ] as const) assert.equal((await post(endpoint, body, key)).statusCode, 400);
-    assert.equal(calls, 0, "Malformed/unverified requests must never query the DB");
+    ] as const)
+      assert.equal((await post(endpoint, body, key)).statusCode, 400);
+    assert.equal(
+      calls,
+      0,
+      "Malformed/unverified requests must never query the DB",
+    );
   } finally {
     await app.close();
     await disabled.close();
