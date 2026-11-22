@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { chmodSync, mkdtempSync, rmSync, statSync } from "node:fs";
-import { createServer, type Server } from "node:net";
+import {
+  createConnection,
+  createServer,
+  type Server,
+  type Socket,
+} from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -10,7 +15,9 @@ import sharp from "sharp";
 
 import { normalizeImageOverCodecIpc } from "../../../packages/appearance-asset-adapter/src/codec-ipc-client.js";
 import {
+  codecIpcReadResponse,
   codecIpcRequest,
+  codecIpcSuccessResponse,
   IPC_MAX_IMAGE_BYTES,
 } from "../../../packages/appearance-asset-adapter/src/codec-ipc-protocol.js";
 import { startCodecIpcServer } from "../../../packages/appearance-asset-adapter/src/codec-ipc-server.js";
@@ -37,6 +44,24 @@ async function close(server: Server): Promise<void> {
       else resolve();
     });
   });
+}
+
+async function listenPrivate(
+  server: Server,
+  socketPath: string,
+): Promise<void> {
+  const previous = process.umask(0o117);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(socketPath, () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+  } finally {
+    process.umask(previous);
+  }
 }
 
 async function jpegFixture(): Promise<Buffer> {
@@ -242,15 +267,123 @@ test(
     const server = createServer((socket) => {
       socket.end(bogus, () => socket.destroy());
     });
-    const previous = process.umask(0o117);
-    try {
-      await new Promise<void>((resolve) => server.listen(socketPath, resolve));
-    } finally {
-      process.umask(previous);
-    }
+    await listenPrivate(server, socketPath);
     t.after(() => close(server));
     await assert.rejects(
       normalizeImageOverCodecIpc(Buffer.from("bytes"), "image/png", client()),
+      /codec-unavailable/,
+    );
+  },
+);
+
+test(
+  "client rejects a valid response with a delayed extra frame byte",
+  { skip: !supported },
+  async (t) => {
+    const { socketPath, client } = fixture(t);
+    const jpeg = await jpegFixture();
+    const image = await normalizeAppearanceImage(jpeg, "image/jpeg");
+    const validFrame = codecIpcSuccessResponse(image);
+    const server = createServer({ allowHalfOpen: true }, (socket) => {
+      socket.once("end", () => {
+        socket.write(validFrame);
+        setTimeout(() => socket.end(Buffer.from([0xff])), 30);
+      });
+      // Drain the half-closed request so Node emits the peer EOF event.
+      socket.resume();
+    });
+    await listenPrivate(server, socketPath);
+    t.after(() => close(server));
+    await assert.rejects(
+      normalizeImageOverCodecIpc(jpeg, "image/jpeg", client()),
+      /codec-unavailable/,
+    );
+  },
+);
+
+test(
+  "client does not accept a complete response until peer EOF",
+  { skip: !supported },
+  async (t) => {
+    const { socketPath, client } = fixture(t);
+    const jpeg = await jpegFixture();
+    const image = await normalizeAppearanceImage(jpeg, "image/jpeg");
+    const validFrame = codecIpcSuccessResponse(image);
+    let heldPeer: Socket | undefined;
+    const server = createServer({ allowHalfOpen: true }, (socket) => {
+      heldPeer = socket;
+      socket.once("end", () => {
+        // Supply a valid success frame but never close the write-side.
+        socket.write(validFrame);
+      });
+      // Drain the half-closed request so Node emits the peer EOF event.
+      socket.resume();
+    });
+    await listenPrivate(server, socketPath);
+    t.after(async () => {
+      // A deliberately half-open Unix server is not closed by the client FIN.
+      // Destroy our synthetic peer before awaiting server.close().
+      heldPeer?.destroy();
+      await close(server);
+    });
+    await assert.rejects(
+      normalizeImageOverCodecIpc(jpeg, "image/jpeg", client(250)),
+      /codec-timeout/,
+    );
+  },
+);
+
+test(
+  "server rejects a full request followed by a separate trailer without decoding",
+  { skip: !supported },
+  async (t) => {
+    const { socketPath } = fixture(t);
+    let decoded = 0;
+    const server = await startCodecIpcServer({
+      socketPath,
+      normalize: async (raw, mime) => {
+        decoded += 1;
+        return normalizeAppearanceImage(raw, mime);
+      },
+    });
+    t.after(() => close(server));
+    const jpeg = await jpegFixture();
+    const framedRequest = codecIpcRequest(jpeg, "image/jpeg");
+    const reply = await new Promise<Buffer>((resolve, reject) => {
+      const socket = createConnection({ path: socketPath });
+      const chunks: Buffer[] = [];
+      socket.on("connect", () => {
+        socket.write(framedRequest);
+        setTimeout(() => socket.end(Buffer.from([0xff])), 30);
+      });
+      socket.on("data", (chunk: Buffer) => chunks.push(chunk));
+      socket.on("end", () => resolve(Buffer.concat(chunks)));
+      socket.on("error", reject);
+    });
+    assert.equal(decoded, 0, "trailer was accepted as a native decode");
+    assert.throws(() => codecIpcReadResponse(reply), /invalid-image/);
+  },
+);
+
+test(
+  "client rejects an EOF-truncated framed response",
+  { skip: !supported },
+  async (t) => {
+    const { socketPath, client } = fixture(t);
+    const jpeg = await jpegFixture();
+    const image = await normalizeAppearanceImage(jpeg, "image/jpeg");
+    const validFrame = codecIpcSuccessResponse(image);
+    const server = createServer({ allowHalfOpen: true }, (socket) => {
+      socket.once("end", () => {
+        socket.end(validFrame.subarray(0, validFrame.length - 1));
+      });
+      // Drain the half-closed request so Node emits the peer EOF event.
+      socket.resume();
+    });
+    await listenPrivate(server, socketPath);
+    t.after(() => close(server));
+    await assert.rejects(
+      normalizeImageOverCodecIpc(jpeg, "image/jpeg", client()),
       /codec-unavailable/,
     );
   },

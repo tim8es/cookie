@@ -112,13 +112,25 @@ function handleCodecConnection(
       reply(codecIpcFailureResponse("invalid-image"));
       return;
     }
-    if (total !== IPC_HEADER_BYTES + expected) return;
+    // Complete frame bytes alone do not prove a single request.
+    // Hold admission and wait for the client's clean write-side EOF.
+  });
+  socket.on("end", () => {
+    if (responded || processing) return;
+    if (
+      expected === null ||
+      mime === null ||
+      total !== IPC_HEADER_BYTES + expected
+    ) {
+      reply(codecIpcFailureResponse("codec-unavailable"));
+      return;
+    }
     const request = Buffer.concat(chunks, total);
     const raw = Buffer.from(request.subarray(IPC_HEADER_BYTES));
     processing = true;
     void (async () => {
       try {
-        const image = await normalize(raw, mime!);
+        const image = await normalize(raw, mime);
         reply(codecIpcSuccessResponse(image));
       } catch (error) {
         reply(statusFor(error));
@@ -127,9 +139,6 @@ function handleCodecConnection(
         release();
       }
     })();
-  });
-  socket.on("end", () => {
-    if (!processing) reply(codecIpcFailureResponse("codec-unavailable"));
   });
   socket.on("error", () => {
     socket.destroy();
