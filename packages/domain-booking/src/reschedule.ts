@@ -324,6 +324,87 @@ export async function listStagingCustomerRescheduleSlots(
     { kind: "customer-self", tenantId, clientIdentityId: actorId },
     "staging.customer.booking.reschedule",
   );
+  return availableRescheduleSlots(client, tenantId, booking, localDate, cutoffMinutes);
+}
+
+/** Private-staging owner preview. The URL's branch is a filter, never authority.
+ * Actual transaction-locked permissions and owner status are required. */
+export async function listStagingOwnerRescheduleSlots(
+  client: PoolClient,
+  actor: TrustedActor,
+  bookingId: string,
+  locationId: string,
+  localDate: string,
+  cutoffMinutes: number,
+): Promise<{
+  localDate: string;
+  timeZone: string;
+  slots: { startAt: string; endAt: string }[];
+}> {
+  if (
+    !UUID.test(bookingId) ||
+    !UUID.test(locationId) ||
+    !/^\\d{4}-\\d{2}-\\d{2}$/.test(localDate) ||
+    !Number.isFinite(Date.parse(localDate + "T00:00:00Z")) ||
+    new Date(localDate + "T00:00:00Z").toISOString().slice(0, 10) !==
+      localDate ||
+    !Number.isSafeInteger(cutoffMinutes) ||
+    cutoffMinutes < 0 ||
+    cutoffMinutes > 525600
+  ) fail("INVALID_RESCHEDULE_COMMAND");
+  if (!actor?.opaqueSessionAuthority) throw new AuthorizationDeniedError();
+
+  const tenantId = actor.tenantId;
+  const initial = await client.query<{ staff_id: string }>(
+    `SELECT staff_id::text FROM cookie_booking.bookings
+      WHERE tenant_id=$1::uuid AND id=$2::uuid AND location_id=$3::uuid`,
+    [tenantId, bookingId, locationId],
+  );
+  if (!initial.rows[0]) fail("BOOKING_NOT_FOUND");
+  const staffLock = await client.query(
+    `SELECT id FROM cookie_staff.staff_profiles
+      WHERE tenant_id=$1::uuid AND id=$2::uuid FOR SHARE`,
+    [tenantId, initial.rows[0].staff_id],
+  );
+  if (staffLock.rowCount !== 1) fail("BOOKING_NOT_FOUND");
+  const result = await client.query<BookingRow>(
+    `SELECT id::text, customer_id::text, staff_id::text,
+            location_id::text, service_id::text, status,
+            start_at, end_at, service_duration_minutes_snapshot,
+            post_service_buffer_minutes_snapshot, price_kopecks_snapshot::text
+       FROM cookie_booking.bookings
+      WHERE tenant_id=$1::uuid AND id=$2::uuid FOR SHARE`,
+    [tenantId, bookingId],
+  );
+  const booking = result.rows[0];
+  if (
+    !booking ||
+    booking.staff_id !== initial.rows[0].staff_id ||
+    booking.location_id !== locationId
+  ) fail("BOOKING_NOT_FOUND");
+  await requireTenantPermission(
+    client,
+    actor,
+    { kind: "booking", tenantId, locationId, staffProfileId: booking.staff_id },
+    "booking.reschedule",
+  );
+  const owner = await client.query(
+    `SELECT 1 FROM cookie_tenancy.organizations
+      WHERE id=$1::uuid AND owner_identity_id=$2::uuid FOR SHARE`,
+    [tenantId, actor.identityId],
+  );
+  if (owner.rowCount !== 1) throw new AuthorizationDeniedError();
+  return availableRescheduleSlots(client, tenantId, booking, localDate, cutoffMinutes);
+}
+
+/** Shared provisional preview; neither a hold nor authoritative mutation. */
+async function availableRescheduleSlots(
+  client: PoolClient,
+  tenantId: string,
+  booking: BookingRow,
+  localDate: string,
+  cutoffMinutes: number,
+): Promise<{ localDate: string; timeZone: string; slots: { startAt: string; endAt: string }[] }> {
   if (booking.status !== "Confirmed") fail("BOOKING_NOT_CONFIRMED");
   const now = await client.query<{ now: Date }>(
     "SELECT clock_timestamp() AS now",
@@ -337,7 +418,7 @@ export async function listStagingCustomerRescheduleSlots(
   const slots = listAvailableSlots({
     ...available.request,
     localDate,
-    // Controlled staging grid, not a salon cancellation/reschedule policy.
+    // Preview grid is a staging UI input, not a salon business policy.
     stepMinutes: 15,
   })
     .filter(
@@ -346,6 +427,46 @@ export async function listStagingCustomerRescheduleSlots(
     )
     .map(({ startAt, endAt }) => ({ startAt, endAt }));
   return { localDate, timeZone: available.timeZone, slots };
+}
+
+
+
+/** Owner-only private staging. The owner, exact branch, session and permission
+ * are checked again inside the same transaction that changes the Booking.
+ * This is NOT a persisted salon-owned business policy (#285). */
+export async function rescheduleStagingOwnerBooking(
+  pool: Pool,
+  input: InternalRescheduleBooking,
+  locationId: string,
+  cutoffMinutes: number,
+): Promise<RescheduledBookingReceipt> {
+  if (
+    !UUID.test(locationId) ||
+    !Number.isSafeInteger(cutoffMinutes) ||
+    cutoffMinutes < 0 ||
+    cutoffMinutes > 525600
+  ) fail("INVALID_RESCHEDULE_COMMAND");
+  if (!input?.actor?.opaqueSessionAuthority) throw new AuthorizationDeniedError();
+  return rescheduleBooking(
+    pool,
+    input,
+    async (client, booking) => {
+      const owner = await client.query(
+        `SELECT 1 FROM cookie_tenancy.organizations
+           WHERE id=$1::uuid AND owner_identity_id=$2::uuid FOR SHARE`,
+        [booking.tenantId, input.actor.identityId],
+      );
+      if (owner.rowCount !== 1 || booking.locationId !== locationId)
+        throw new AuthorizationDeniedError();
+      const allowed = await client.query(
+        "SELECT 1 WHERE $1::timestamptz > clock_timestamp() + $3::int * interval '1 minute' AND $2::timestamptz > clock_timestamp() + $3::int * interval '1 minute'",
+        [booking.oldStartAt, booking.newStartAt, cutoffMinutes],
+      );
+      if (allowed.rowCount !== 1) fail("RESCHEDULE_POLICY_DENIED");
+    },
+    cutoffMinutes,
+    "owner",
+  );
 }
 
 /**
@@ -397,16 +518,17 @@ async function rescheduleBooking(
   input: InternalRescheduleBooking,
   assertMayReschedule: AssertBookingMayReschedule,
   cutoffMinutes?: number,
+  stagingScope: "customer" | "owner" = "customer",
 ): Promise<RescheduledBookingReceipt> {
-  const staging = cutoffMinutes !== undefined;
+  const staging = cutoffMinutes !== undefined && stagingScope === "customer";
   const newStartAt = validate(input);
   const tenantId = input.actor.tenantId;
   const actorId = input.actor.identityId;
   const keyHash = hash(input.idempotencyKey);
   const requestHash = hash(
     JSON.stringify(
-      staging
-        ? [input.bookingId, newStartAt, "staging.client"]
+      cutoffMinutes !== undefined
+        ? [input.bookingId, newStartAt, "staging." + stagingScope]
         : [input.bookingId, newStartAt],
     ),
   );
@@ -539,7 +661,7 @@ async function rescheduleBooking(
         ],
       );
       if (updated.rowCount !== 1)
-        fail(staging ? "RESCHEDULE_POLICY_DENIED" : "RESCHEDULE_CONFLICT");
+        fail(cutoffMinutes !== undefined ? "RESCHEDULE_POLICY_DENIED" : "RESCHEDULE_CONFLICT");
 
       const receipt: RescheduledBookingReceipt = {
         bookingId: booking.id,
