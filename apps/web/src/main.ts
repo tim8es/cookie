@@ -7,6 +7,7 @@ import { isReservedPublicBookingPath } from "./lib/navigation";
 const target = document.getElementById("app");
 if (!target) throw new Error("Application mounting element is absent");
 
+// Legacy fixture remains compile-time-only at /demo (separate from public booking).
 // Never mount the owner or customer auth shell on a prospective salon link.
 // Until public slug resolution and booking proofs are implemented, fail closed.
 if (isReservedPublicBookingPath(window.location.pathname)) {
@@ -14,8 +15,6 @@ if (isReservedPublicBookingPath(window.location.pathname)) {
     mount(Unavailable, { target });
   });
 } else if (
-  // Compile-time opt-in. The normal app cannot select a mock adapter by URL.
-
   import.meta.env.MODE === "ui-fixture" &&
   ["/demo", "/demo/"].includes(window.location.pathname)
 ) {
