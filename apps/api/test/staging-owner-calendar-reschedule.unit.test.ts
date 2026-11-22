@@ -55,7 +55,7 @@ test("owner time-move routes fail closed, validate scope and syntax before any D
   const headers = { authorization: "Bearer verified-unit-token" };
   const post = (
     currentUrl: string,
-    body: unknown,
+    body: Record<string, unknown>,
     key = "synthetic-owner-move-001",
   ) =>
     app.inject({
