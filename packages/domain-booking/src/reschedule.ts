@@ -324,7 +324,13 @@ export async function listStagingCustomerRescheduleSlots(
     { kind: "customer-self", tenantId, clientIdentityId: actorId },
     "staging.customer.booking.reschedule",
   );
-  return availableRescheduleSlots(client, tenantId, booking, localDate, cutoffMinutes);
+  return availableRescheduleSlots(
+    client,
+    tenantId,
+    booking,
+    localDate,
+    cutoffMinutes,
+  );
 }
 
 /** Private-staging owner preview. The URL's branch is a filter, never authority.
@@ -351,7 +357,8 @@ export async function listStagingOwnerRescheduleSlots(
     !Number.isSafeInteger(cutoffMinutes) ||
     cutoffMinutes < 0 ||
     cutoffMinutes > 525600
-  ) fail("INVALID_RESCHEDULE_COMMAND");
+  )
+    fail("INVALID_RESCHEDULE_COMMAND");
   if (!actor?.opaqueSessionAuthority) throw new AuthorizationDeniedError();
 
   const tenantId = actor.tenantId;
@@ -381,7 +388,8 @@ export async function listStagingOwnerRescheduleSlots(
     !booking ||
     booking.staff_id !== initial.rows[0].staff_id ||
     booking.location_id !== locationId
-  ) fail("BOOKING_NOT_FOUND");
+  )
+    fail("BOOKING_NOT_FOUND");
   await requireTenantPermission(
     client,
     actor,
@@ -394,7 +402,13 @@ export async function listStagingOwnerRescheduleSlots(
     [tenantId, actor.identityId],
   );
   if (owner.rowCount !== 1) throw new AuthorizationDeniedError();
-  return availableRescheduleSlots(client, tenantId, booking, localDate, cutoffMinutes);
+  return availableRescheduleSlots(
+    client,
+    tenantId,
+    booking,
+    localDate,
+    cutoffMinutes,
+  );
 }
 
 /** Shared provisional preview; neither a hold nor authoritative mutation. */
@@ -404,7 +418,11 @@ async function availableRescheduleSlots(
   booking: BookingRow,
   localDate: string,
   cutoffMinutes: number,
-): Promise<{ localDate: string; timeZone: string; slots: { startAt: string; endAt: string }[] }> {
+): Promise<{
+  localDate: string;
+  timeZone: string;
+  slots: { startAt: string; endAt: string }[];
+}> {
   if (booking.status !== "Confirmed") fail("BOOKING_NOT_CONFIRMED");
   const now = await client.query<{ now: Date }>(
     "SELECT clock_timestamp() AS now",
@@ -429,8 +447,6 @@ async function availableRescheduleSlots(
   return { localDate, timeZone: available.timeZone, slots };
 }
 
-
-
 /** Owner-only private staging. The owner, exact branch, session and permission
  * are checked again inside the same transaction that changes the Booking.
  * This is NOT a persisted salon-owned business policy (#285). */
@@ -445,8 +461,10 @@ export async function rescheduleStagingOwnerBooking(
     !Number.isSafeInteger(cutoffMinutes) ||
     cutoffMinutes < 0 ||
     cutoffMinutes > 525600
-  ) fail("INVALID_RESCHEDULE_COMMAND");
-  if (!input?.actor?.opaqueSessionAuthority) throw new AuthorizationDeniedError();
+  )
+    fail("INVALID_RESCHEDULE_COMMAND");
+  if (!input?.actor?.opaqueSessionAuthority)
+    throw new AuthorizationDeniedError();
   return rescheduleBooking(
     pool,
     input,
@@ -661,7 +679,11 @@ async function rescheduleBooking(
         ],
       );
       if (updated.rowCount !== 1)
-        fail(cutoffMinutes !== undefined ? "RESCHEDULE_POLICY_DENIED" : "RESCHEDULE_CONFLICT");
+        fail(
+          cutoffMinutes !== undefined
+            ? "RESCHEDULE_POLICY_DENIED"
+            : "RESCHEDULE_CONFLICT",
+        );
 
       const receipt: RescheduledBookingReceipt = {
         bookingId: booking.id,
