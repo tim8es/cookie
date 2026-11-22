@@ -42,47 +42,100 @@ test("owner move capability is explicit and rejects missing or malformed cutoff"
     assert.equal(init?.method, "GET");
     assert.equal(init?.cache, "no-store");
     assert.equal(init?.credentials, "omit");
-    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer " + session.accessToken);
+    assert.equal(
+      new Headers(init?.headers).get("authorization"),
+      "Bearer " + session.accessToken,
+    );
     return Response.json({ cutoffMinutes: 0 });
   };
   assert.equal(await readStagingOwnerRescheduleCutoff(session, fetcher), 0);
   for (const cutoffMinutes of [-1, "60", null, 525601, 1.5]) {
-    assert.equal(await readStagingOwnerRescheduleCutoff(session, async () =>
-      Response.json({ cutoffMinutes })), null);
+    assert.equal(
+      await readStagingOwnerRescheduleCutoff(session, async () =>
+        Response.json({ cutoffMinutes }),
+      ),
+      null,
+    );
   }
-  assert.equal(await readStagingOwnerRescheduleCutoff(session, async () =>
-    Response.json({}, { status: 404 })), null);
+  assert.equal(
+    await readStagingOwnerRescheduleCutoff(session, async () =>
+      Response.json({}, { status: 404 }),
+    ),
+    null,
+  );
 });
 
 test("owner slots use verified tenant, branch and booking; reject malformed data", async () => {
   const fetcher: typeof fetch = async (url, init) => {
-    assert.equal(url, prefix + "/" + booking + "/reschedule/slots?locationId=" +
-      location + "&localDate=" + date);
+    assert.equal(
+      url,
+      prefix +
+        "/" +
+        booking +
+        "/reschedule/slots?locationId=" +
+        location +
+        "&localDate=" +
+        date,
+    );
     assert.equal(init?.method, "GET");
     assert.equal(init?.referrerPolicy, "no-referrer");
-    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer " + session.accessToken);
+    assert.equal(
+      new Headers(init?.headers).get("authorization"),
+      "Bearer " + session.accessToken,
+    );
     return Response.json(slots);
   };
-  assert.deepEqual(await readOwnerRescheduleSlots(
-    session, location, booking, date, timeZone, fetcher,
-  ), slots);
+  assert.deepEqual(
+    await readOwnerRescheduleSlots(
+      session,
+      location,
+      booking,
+      date,
+      timeZone,
+      fetcher,
+    ),
+    slots,
+  );
   for (const result of [
     { ...slots, timeZone: "UTC" },
     { ...slots, localDate: "2027-03-02" },
-    { ...slots, slots: [{ ...slots.slots[0], startAt: "2027-04-01T05:00:00.000Z" }] },
+    {
+      ...slots,
+      slots: [{ ...slots.slots[0], startAt: "2027-04-01T05:00:00.000Z" }],
+    },
     { ...slots, slots: [slots.slots[1], slots.slots[0]] },
     { ...slots, slots: [slots.slots[0], slots.slots[0]] },
   ]) {
-    await assert.rejects(readOwnerRescheduleSlots(
-      session, location, booking, date, timeZone,
-      async () => Response.json(result),
-    ), /uncertain/);
+    await assert.rejects(
+      readOwnerRescheduleSlots(
+        session,
+        location,
+        booking,
+        date,
+        timeZone,
+        async () => Response.json(result),
+      ),
+      /uncertain/,
+    );
   }
-  for (const [status, reason] of [[401, "denied"], [403, "denied"], [404, "conflict"], [409, "conflict"], [503, "uncertain"]] as const) {
-    await assert.rejects(readOwnerRescheduleSlots(
-      session, location, booking, date, timeZone,
-      async () => Response.json({}, { status }),
-    ), new RegExp(reason));
+  for (const [status, reason] of [
+    [401, "denied"],
+    [403, "denied"],
+    [404, "conflict"],
+    [409, "conflict"],
+    [503, "uncertain"],
+  ] as const) {
+    await assert.rejects(
+      readOwnerRescheduleSlots(
+        session,
+        location,
+        booking,
+        date,
+        timeZone,
+        async () => Response.json({}, { status }),
+      ),
+      new RegExp(reason),
+    );
   }
 });
 
@@ -90,24 +143,46 @@ test("owner move retries the exact key on lost response and requires committed r
   let calls = 0;
   const fetcher: typeof fetch = async (url, init) => {
     calls++;
-    assert.equal(url, prefix + "/" + booking + "/reschedule?locationId=" + location);
+    assert.equal(
+      url,
+      prefix + "/" + booking + "/reschedule?locationId=" + location,
+    );
     assert.equal(init?.method, "POST");
     assert.equal(init?.cache, "no-store");
     assert.equal(init?.credentials, "omit");
     assert.equal(init?.redirect, "error");
     assert.equal(init?.referrerPolicy, "no-referrer");
-    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer " + session.accessToken);
+    assert.equal(
+      new Headers(init?.headers).get("authorization"),
+      "Bearer " + session.accessToken,
+    );
     assert.equal(new Headers(init?.headers).get("idempotency-key"), key);
     assert.deepEqual(JSON.parse(String(init?.body)), { newStartAt: time });
     if (calls === 1) throw new Error("lost synthetic response");
     return Response.json(receipt);
   };
-  await assert.rejects(rescheduleOwnerCalendarBooking(
-    session, location, booking, time, key, fetcher,
-  ), /uncertain/);
-  assert.deepEqual(await rescheduleOwnerCalendarBooking(
-    session, location, booking, time, key, fetcher,
-  ), receipt);
+  await assert.rejects(
+    rescheduleOwnerCalendarBooking(
+      session,
+      location,
+      booking,
+      time,
+      key,
+      fetcher,
+    ),
+    /uncertain/,
+  );
+  assert.deepEqual(
+    await rescheduleOwnerCalendarBooking(
+      session,
+      location,
+      booking,
+      time,
+      key,
+      fetcher,
+    ),
+    receipt,
+  );
   assert.equal(calls, 2);
 });
 
@@ -120,31 +195,74 @@ test("owner move refuses forged receipts, noncommits, invalid inputs and expired
     { ...receipt, endAt: "2027-03-01T04:00:00.000Z" },
     { ...receipt, extra: true },
   ]) {
-    await assert.rejects(rescheduleOwnerCalendarBooking(
-      session, location, booking, time, key,
-      async () => Response.json(bad),
-    ), /uncertain/);
+    await assert.rejects(
+      rescheduleOwnerCalendarBooking(
+        session,
+        location,
+        booking,
+        time,
+        key,
+        async () => Response.json(bad),
+      ),
+      /uncertain/,
+    );
   }
-  for (const [status, reason] of [[401, "denied"], [403, "denied"], [404, "conflict"], [409, "conflict"], [503, "uncertain"]] as const) {
-    await assert.rejects(rescheduleOwnerCalendarBooking(
-      session, location, booking, time, key,
-      async () => Response.json({}, { status }),
-    ), new RegExp(reason));
+  for (const [status, reason] of [
+    [401, "denied"],
+    [403, "denied"],
+    [404, "conflict"],
+    [409, "conflict"],
+    [503, "uncertain"],
+  ] as const) {
+    await assert.rejects(
+      rescheduleOwnerCalendarBooking(
+        session,
+        location,
+        booking,
+        time,
+        key,
+        async () => Response.json({}, { status }),
+      ),
+      new RegExp(reason),
+    );
   }
   let called = false;
   const noFetch: typeof fetch = async () => {
     called = true;
     return Response.json(receipt);
   };
-  await assert.rejects(rescheduleOwnerCalendarBooking(
-    session, "invalid", booking, time, key, noFetch,
-  ), /uncertain/);
-  await assert.rejects(rescheduleOwnerCalendarBooking(
-    session, location, booking, time, "short", noFetch,
-  ), /uncertain/);
-  await assert.rejects(rescheduleOwnerCalendarBooking(
-    { ...session, expiresAtUnixSeconds: 0 },
-    location, booking, time, key, noFetch,
-  ), /denied/);
+  await assert.rejects(
+    rescheduleOwnerCalendarBooking(
+      session,
+      "invalid",
+      booking,
+      time,
+      key,
+      noFetch,
+    ),
+    /uncertain/,
+  );
+  await assert.rejects(
+    rescheduleOwnerCalendarBooking(
+      session,
+      location,
+      booking,
+      time,
+      "short",
+      noFetch,
+    ),
+    /uncertain/,
+  );
+  await assert.rejects(
+    rescheduleOwnerCalendarBooking(
+      { ...session, expiresAtUnixSeconds: 0 },
+      location,
+      booking,
+      time,
+      key,
+      noFetch,
+    ),
+    /denied/,
+  );
   assert.equal(called, false);
 });
