@@ -386,6 +386,7 @@ async function main() {
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
       COOKIE_STAGING_APPEARANCE_MODE: "enabled",
       COOKIE_STAGING_OWNER_CANCEL_CUTOFF_MINUTES: "0",
+      COOKIE_STAGING_OWNER_RESCHEDULE_CUTOFF_MINUTES: "0",
       COOKIE_TELEGRAM_USER_HMAC_SECRET: userHashSecret.toString("hex"),
       COOKIE_TELEGRAM_BOT_TOKEN: botToken,
       COOKIE_PUBLIC_ORIGIN: "https://cookie-e2e.invalid",
@@ -1376,6 +1377,40 @@ async function main() {
     await evaluate(cdp,ownerEditRoot+".querySelector('button[aria-expanded=false]').click()");
     await requireDom(cdp,"owner cancel capability is verified",
       "(()=>{const root="+ownerEditRoot+";return !!root?.querySelector('dl')&&[...root.querySelectorAll('button')].some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)})()");
+
+    // #23: test the *real* owner Calendar time-only move before cancellation.
+    // The same persisted Booking ID and immutable price are retained.
+    await requireDom(cdp,"owner Calendar move capability verified",
+      "(()=>{const root="+ownerEditRoot+";return [...root.querySelectorAll('button')].some(b=>b.textContent.trim()==='Перенести время'&&!b.disabled)})()");
+    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Перенести время').click();})()");
+    const ownerMoveStart=date+"T07:00:00.000Z";
+    await requireDom(cdp,"owner Calendar shows authoritative branch-zone move slots",
+      "(()=>{const root="+ownerEditRoot+";return [...root.querySelectorAll('.owner-calendar-move option')].some(o=>o.value==="+JSON.stringify(ownerMoveStart)+")})()");
+    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";const s=root.querySelector('.owner-calendar-move select');s.value="+JSON.stringify(ownerMoveStart)+";s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Проверить новое время').click();})()");
+    await requireDom(cdp,"owner Calendar move requires explicit confirmation",
+      ownerEditRoot+"?.innerText.includes('исходная стоимость сохранятся')&&[..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Подтвердить перенос'&&!b.disabled)");
+    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Подтвердить перенос').click();})()");
+    await requireDom(cdp,"owner Calendar shows committed time-only move",
+      "(()=>{const root="+ownerEditRoot+";return root?.querySelector('button[aria-expanded=false]')&&!root?.querySelector('.owner-calendar-move')})()");
+    const ownerMoved=await pool.query(
+      "SELECT start_at,status,price_kopecks_snapshot::text AS price,staff_id::text AS staff,service_id::text AS service,location_id::text AS location FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+      [owner.tenantId,bookingId],
+    );
+    assert.equal(ownerMoved.rows[0].start_at.toISOString(),ownerMoveStart);
+    assert.deepEqual(
+      Object.fromEntries(["status","price","staff","service","location"].map(k=>[k,ownerMoved.rows[0][k]])),
+      {status:"Confirmed",price:"125050",staff:beforeRestart.staffId,service:beforeRestart.serviceId,location:locationId},
+    );
+    const ownerMoveEffects=await pool.query(
+      "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2::text) AS events",
+      [owner.tenantId,bookingId],
+    );
+    assert.deepEqual(ownerMoveEffects.rows[0],{audits:1,receipts:1,events:1});
+    await evaluate(cdp,ownerEditRoot+".querySelector('button[aria-expanded=false]').click()");
+    await requireDom(cdp,"owner Calendar cancellation still available after move",
+      "(()=>{const root="+ownerEditRoot+";return [...root.querySelectorAll('button')].some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)})()");
+    console.log("PASS owner Calendar owner-only time move: server slots, confirmed receipt, unchanged price and booking scope, one audit/receipt/outbox.");
     await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Отменить запись').click();})()");
     await requireDom(cdp,"owner cancellation needs explicit second click",
       "(()=>{const root="+ownerEditRoot+";return root?.innerText.includes('Отменить подтверждённую запись для клиента?')&&[...root.querySelectorAll('button')].some(b=>b.textContent.trim()==='Подтвердить отмену'&&!b.disabled)})()");
