@@ -15,7 +15,7 @@ import {
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9._:-]{16,128}$/;
-const INSTANT = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:00\\.000Z$/;
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00\.000Z$/;
 
 export interface StagingOwnerRescheduleDependencies {
   readonly pool: Pool;
@@ -29,7 +29,7 @@ export function parseStagingOwnerRescheduleCutoff(
   raw: string | undefined,
 ): number | undefined {
   if (raw === undefined) return undefined;
-  if (!/^(0|[1-9]\\d{0,5})$/.test(raw) || Number(raw) > 525600)
+  if (!/^(0|[1-9]\d{0,5})$/.test(raw) || Number(raw) > 525600)
     throw new Error("Invalid staging owner reschedule cutoff");
   return Number(raw);
 }
@@ -103,7 +103,7 @@ export function registerStagingOwnerCalendarReschedule(
         typeof q.locationId !== "string" ||
         !UUID.test(q.locationId) ||
         typeof q.localDate !== "string" ||
-        !/^\\d{4}-\\d{2}-\\d{2}$/.test(q.localDate) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(q.localDate) ||
         !Number.isFinite(Date.parse(q.localDate + "T00:00:00Z")) ||
         new Date(q.localDate + "T00:00:00Z").toISOString().slice(0, 10) !== q.localDate
       ) return reply.code(400).send({ error: "invalid-request" });
