@@ -133,7 +133,17 @@ export async function readRescheduleSlots(
   if (response.status === 404 || response.status === 409)
     throw new CustomerRescheduleError("conflict");
   if (response.status !== 200) throw new CustomerRescheduleError("uncertain");
-  const raw: unknown = await response.json().catch(() => undefined);
+  return parseRescheduleSlotsResponse(
+    await response.json().catch(() => undefined), date, expectedTimeZone,
+  );
+}
+
+/** Shared strict wire validation for owner and customer slot previews. */
+export function parseRescheduleSlotsResponse(
+  raw: unknown,
+  date: string,
+  expectedTimeZone: string,
+): CustomerRescheduleSlots {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     throw new CustomerRescheduleError("uncertain");
   const data = raw as Partial<CustomerRescheduleSlots>;
