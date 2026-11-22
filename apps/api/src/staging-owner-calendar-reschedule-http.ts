@@ -6,7 +6,10 @@ import {
   RescheduleBookingFailure,
 } from "../../../packages/domain-booking/src/index.js";
 import { AuthorizationDeniedError } from "../../../packages/platform-identity/src/index.js";
-import { runAuditedRead, withTenantPermission } from "./protected-tenant-transaction.js";
+import {
+  runAuditedRead,
+  withTenantPermission,
+} from "./protected-tenant-transaction.js";
 import {
   verifyTenantActor,
   type BearerSessionVerifier,
@@ -41,27 +44,38 @@ function privacy(reply: FastifyReply): void {
 
 export function registerStagingOwnerCalendarReschedule(
   app: FastifyInstance,
-  { pool, verifier, enabled, cutoffMinutes }: StagingOwnerRescheduleDependencies,
+  {
+    pool,
+    verifier,
+    enabled,
+    cutoffMinutes,
+  }: StagingOwnerRescheduleDependencies,
 ): void {
   if (!enabled) return;
   if (
     !Number.isSafeInteger(cutoffMinutes) ||
     cutoffMinutes < 0 ||
     cutoffMinutes > 525600
-  ) throw new Error("Invalid staging owner reschedule dependency");
+  )
+    throw new Error("Invalid staging owner reschedule dependency");
 
   async function requireOwner(
     actor: NonNullable<Awaited<ReturnType<typeof verifyTenantActor>>["actor"]>,
   ): Promise<void> {
-    await withTenantPermission(pool, actor, "booking.reschedule", async (client) => {
-      const result = await client.query(
-        `SELECT 1 FROM cookie_tenancy.organizations
+    await withTenantPermission(
+      pool,
+      actor,
+      "booking.reschedule",
+      async (client) => {
+        const result = await client.query(
+          `SELECT 1 FROM cookie_tenancy.organizations
            WHERE id=$1::uuid AND owner_identity_id=$2::uuid FOR SHARE`,
-        [actor.tenantId, actor.identityId],
-      );
-      if (result.rowCount !== 1) throw new AuthorizationDeniedError();
-      return true;
-    });
+          [actor.tenantId, actor.identityId],
+        );
+        if (result.rowCount !== 1) throw new AuthorizationDeniedError();
+        return true;
+      },
+    );
   }
 
   app.get<{ Params: { tenantId: string } }>(
@@ -69,9 +83,12 @@ export function registerStagingOwnerCalendarReschedule(
     async (request, reply) => {
       privacy(reply);
       const verified = await verifyTenantActor(
-        request.headers.authorization, request.params.tenantId, verifier,
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
       );
-      if (!verified.actor) return reply.code(verified.status).send({ error: verified.error });
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
       if (Object.keys(request.query as object).length !== 0)
         return reply.code(400).send({ error: "invalid-request" });
       try {
@@ -93,9 +110,12 @@ export function registerStagingOwnerCalendarReschedule(
     async (request, reply) => {
       privacy(reply);
       const verified = await verifyTenantActor(
-        request.headers.authorization, request.params.tenantId, verifier,
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
       );
-      if (!verified.actor) return reply.code(verified.status).send({ error: verified.error });
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
       const q = request.query as Record<string, unknown>;
       if (
         !UUID.test(request.params.bookingId) ||
@@ -105,20 +125,29 @@ export function registerStagingOwnerCalendarReschedule(
         typeof q.localDate !== "string" ||
         !/^\d{4}-\d{2}-\d{2}$/.test(q.localDate) ||
         !Number.isFinite(Date.parse(q.localDate + "T00:00:00Z")) ||
-        new Date(q.localDate + "T00:00:00Z").toISOString().slice(0, 10) !== q.localDate
-      ) return reply.code(400).send({ error: "invalid-request" });
+        new Date(q.localDate + "T00:00:00Z").toISOString().slice(0, 10) !==
+          q.localDate
+      )
+        return reply.code(400).send({ error: "invalid-request" });
       try {
-        return reply.send(await runAuditedRead(pool, (client) =>
-          listStagingOwnerRescheduleSlots(
-            client, verified.actor!, request.params.bookingId,
-            q.locationId as string, q.localDate as string, cutoffMinutes,
+        return reply.send(
+          await runAuditedRead(pool, (client) =>
+            listStagingOwnerRescheduleSlots(
+              client,
+              verified.actor!,
+              request.params.bookingId,
+              q.locationId as string,
+              q.localDate as string,
+              cutoffMinutes,
+            ),
           ),
-        ));
+        );
       } catch (error) {
         if (error instanceof AuthorizationDeniedError)
           return reply.code(403).send({ error: "forbidden" });
         if (error instanceof RescheduleBookingFailure)
-          return reply.code(error.code === "BOOKING_NOT_FOUND" ? 404 : 409)
+          return reply
+            .code(error.code === "BOOKING_NOT_FOUND" ? 404 : 409)
             .send({ error: error.code });
         return reply.code(503).send({ error: "unavailable" });
       }
@@ -133,9 +162,12 @@ export function registerStagingOwnerCalendarReschedule(
     async (request, reply) => {
       privacy(reply);
       const verified = await verifyTenantActor(
-        request.headers.authorization, request.params.tenantId, verifier,
+        request.headers.authorization,
+        request.params.tenantId,
+        verifier,
       );
-      if (!verified.actor) return reply.code(verified.status).send({ error: verified.error });
+      if (!verified.actor)
+        return reply.code(verified.status).send({ error: verified.error });
       const q = request.query as Record<string, unknown>;
       const key = request.headers["idempotency-key"];
       const body = request.body;
@@ -146,32 +178,41 @@ export function registerStagingOwnerCalendarReschedule(
         !UUID.test(q.locationId) ||
         typeof key !== "string" ||
         !KEY.test(key) ||
-        !body || typeof body !== "object" || Array.isArray(body) ||
+        !body ||
+        typeof body !== "object" ||
+        Array.isArray(body) ||
         Object.keys(body).length !== 1 ||
         !("newStartAt" in body) ||
         typeof body.newStartAt !== "string" ||
         !INSTANT.test(body.newStartAt) ||
         !Number.isFinite(Date.parse(body.newStartAt)) ||
         new Date(body.newStartAt).toISOString() !== body.newStartAt
-      ) return reply.code(400).send({ error: "invalid-request" });
+      )
+        return reply.code(400).send({ error: "invalid-request" });
       try {
-        return reply.send(await rescheduleStagingOwnerBooking(
-          pool,
-          {
-            actor: verified.actor,
-            bookingId: request.params.bookingId,
-            idempotencyKey: key,
-            newStartAt: body.newStartAt.replace(".000Z", "Z"),
-          },
-          q.locationId,
-          cutoffMinutes,
-        ));
+        return reply.send(
+          await rescheduleStagingOwnerBooking(
+            pool,
+            {
+              actor: verified.actor,
+              bookingId: request.params.bookingId,
+              idempotencyKey: key,
+              newStartAt: body.newStartAt.replace(".000Z", "Z"),
+            },
+            q.locationId,
+            cutoffMinutes,
+          ),
+        );
       } catch (error) {
         if (error instanceof AuthorizationDeniedError)
           return reply.code(403).send({ error: "forbidden" });
         if (error instanceof RescheduleBookingFailure) {
-          const status = error.code === "INVALID_RESCHEDULE_COMMAND"
-            ? 400 : error.code === "BOOKING_NOT_FOUND" ? 404 : 409;
+          const status =
+            error.code === "INVALID_RESCHEDULE_COMMAND"
+              ? 400
+              : error.code === "BOOKING_NOT_FOUND"
+                ? 404
+                : 409;
           return reply.code(status).send({ error: error.code });
         }
         return reply.code(503).send({ error: "unavailable" });
