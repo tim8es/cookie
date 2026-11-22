@@ -1504,6 +1504,28 @@ async function main() {
       "location.pathname==='/demo' && document.readyState==='complete' && !document.querySelector('[data-cookie-mode]')");
     assert.deepEqual(demoApiRequests, [], "Retired demo route called real API");
     assert.deepEqual(external, [], "Retired demo route made external requests");
+    // #222: an unpublished salon URL must be a separate, unprivileged shell.
+    // A valid or stale browser session must not turn it into an owner login.
+    const unavailableApiRequests = [];
+    cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
+      if (request.url.startsWith(origin + "v1/")) {
+        unavailableApiRequests.push(new URL(request.url).pathname);
+      }
+    });
+    for (const path of ["book", "book/unknown-synthetic-salon"]) {
+      const response = await getLocal(origin + path);
+      assert.equal(response.status, 200, "Unpublished booking path must serve compiled SPA: " + path);
+      await cdp.send("Page.navigate", { url: origin + path });
+      await requireDom(cdp, "unpublished booking path " + path,
+        "document.querySelector('[data-kuki-public-booking=unavailable]') && " +
+        "document.body.innerText.includes('Публичная запись ещё не подключена') && " +
+        "!document.querySelector('.real-owner-nav, form')");
+      await cdp.send("Page.reload", { ignoreCache: true });
+      await requireDom(cdp, "unpublished booking reload " + path,
+        "document.querySelector('[data-kuki-public-booking=unavailable]') && " +
+        "!document.querySelector('.real-owner-nav, form')");
+    }
+    assert.deepEqual(unavailableApiRequests, [], "Unpublished salon URL triggered authenticated API");
     console.log("PASS integrated real owner/customer browser: direct owner routes and history navigation, fresh protected reads and fail-closed revocation, Overview + Location + Service create/edit + Staff + ShiftPlan, staging activation/publication, real client catalog and opt-in Booking, PostgreSQL restart persistence, logout and 3 viewports.");
   } finally {
     if (cdp) cdp.close();
