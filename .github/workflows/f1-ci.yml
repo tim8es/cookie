@@ -51,15 +51,6 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install pinned direct dependencies
         run: bash scripts/ci/f1-gates.sh install
-      - name: Review-only formatter snapshot for branch source repair
-        run: |
-          pnpm exec prettier --write --end-of-line auto apps/api/src/staging-owner-calendar-reschedule-http.ts apps/api/test/staging-owner-calendar-reschedule.unit.test.ts apps/web/src/lib/staging-customer-reschedule-api.ts apps/web/src/lib/staging-owner-calendar-reschedule-api.test.ts apps/web/src/lib/staging-owner-calendar-reschedule-api.ts packages/domain-booking/src/reschedule.ts
-          for file in apps/api/src/staging-owner-calendar-reschedule-http.ts apps/api/test/staging-owner-calendar-reschedule.unit.test.ts apps/web/src/lib/staging-customer-reschedule-api.ts apps/web/src/lib/staging-owner-calendar-reschedule-api.test.ts apps/web/src/lib/staging-owner-calendar-reschedule-api.ts packages/domain-booking/src/reschedule.ts; do
-            printf 'KUKI_FORMAT_START:%s:' "$file"
-            base64 -w0 "$file"
-            printf ':KUKI_FORMAT_END\n'
-          done
-          exit 1
       - name: Lint
         run: bash scripts/ci/f1-gates.sh lint
       - name: Check source formatting
