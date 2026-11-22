@@ -91,8 +91,16 @@ function getLocal(url) {
 
 async function probeOnce(executable) {
   const disposeAttempt = async ({ chrome, dir }) => {
-    try { await stopChrome(chrome); }
-    finally { if (chrome.exitCode !== null || chrome.signalCode !== null) rmSync(dir, { recursive: true, force: true }); }
+    try {
+      await stopChrome(chrome);
+      if (chrome.exitCode === null && chrome.signalCode === null) {
+        throw new Error('Chromium child could not be reaped');
+      }
+      rmSync(dir, { recursive: true, force: true });
+    } catch (error) {
+      // A failed profile removal is as fatal as an unreaped child.
+      throw new Error('Chromium stress cleanup FAILED: ' + error.message);
+    }
   };
   const started = await startChromiumWithRetry({
     attempts: 2, startupTimeoutMs: 12000, intervalMs: 100,
