@@ -35,11 +35,17 @@ function endpoint(session: VerifiedOwnerSession): string {
 function validDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const ts = Date.parse(value + "T00:00:00Z");
-  return Number.isFinite(ts) && new Date(ts).toISOString().slice(0, 10) === value;
+  return (
+    Number.isFinite(ts) && new Date(ts).toISOString().slice(0, 10) === value
+  );
 }
 function instant(value: unknown): value is string {
-  return typeof value === "string" && INSTANT.test(value) &&
-    Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
+  return (
+    typeof value === "string" &&
+    INSTANT.test(value) &&
+    Number.isFinite(Date.parse(value)) &&
+    new Date(value).toISOString() === value
+  );
 }
 
 /** Absent or malformed server capability keeps the owner UI read-only. */
@@ -48,17 +54,31 @@ export async function readStagingOwnerRescheduleCutoff(
   fetcher: typeof fetch = globalThis.fetch,
 ): Promise<number | null> {
   try {
-    const response = await fetcher(endpoint(session) + "/reschedule/capability", {
-      ...privacy, method: "GET", headers: { authorization: authorization(session) },
-    });
+    const response = await fetcher(
+      endpoint(session) + "/reschedule/capability",
+      {
+        ...privacy,
+        method: "GET",
+        headers: { authorization: authorization(session) },
+      },
+    );
     if (response.status !== 200) return null;
     const raw: unknown = await response.json();
-    if (!raw || typeof raw !== "object" || Array.isArray(raw) ||
-      Object.keys(raw).length !== 1 || !("cutoffMinutes" in raw))
+    if (
+      !raw ||
+      typeof raw !== "object" ||
+      Array.isArray(raw) ||
+      Object.keys(raw).length !== 1 ||
+      !("cutoffMinutes" in raw)
+    )
       return null;
     const minutes = raw.cutoffMinutes;
-    return typeof minutes === "number" && Number.isSafeInteger(minutes) &&
-      minutes >= 0 && minutes <= 525600 ? minutes : null;
+    return typeof minutes === "number" &&
+      Number.isSafeInteger(minutes) &&
+      minutes >= 0 &&
+      minutes <= 525600
+      ? minutes
+      : null;
   } catch {
     return null;
   }
@@ -79,8 +99,11 @@ export async function readOwnerRescheduleSlots(
   let response: Response;
   try {
     response = await fetcher(
-      endpoint(session) + "/" + bookingId + "/reschedule/slots?" +
-      new URLSearchParams({ locationId, localDate: date }).toString(),
+      endpoint(session) +
+        "/" +
+        bookingId +
+        "/reschedule/slots?" +
+        new URLSearchParams({ locationId, localDate: date }).toString(),
       { ...privacy, method: "GET", headers: { authorization: auth } },
     );
   } catch {
@@ -93,7 +116,9 @@ export async function readOwnerRescheduleSlots(
   if (response.status !== 200) throw new OwnerRescheduleError("uncertain");
   try {
     return parseRescheduleSlotsResponse(
-      await response.json(), date, expectedTimeZone,
+      await response.json(),
+      date,
+      expectedTimeZone,
     );
   } catch {
     throw new OwnerRescheduleError("uncertain");
@@ -109,15 +134,22 @@ export async function rescheduleOwnerCalendarBooking(
   key: string,
   fetcher: typeof fetch = globalThis.fetch,
 ): Promise<OwnerRescheduleReceipt> {
-  if (!UUID.test(locationId) || !UUID.test(bookingId) ||
-    !KEY.test(key) || !instant(newStartAt))
+  if (
+    !UUID.test(locationId) ||
+    !UUID.test(bookingId) ||
+    !KEY.test(key) ||
+    !instant(newStartAt)
+  )
     throw new OwnerRescheduleError("uncertain");
   const auth = authorization(session);
   let response: Response;
   try {
     response = await fetcher(
-      endpoint(session) + "/" + bookingId + "/reschedule?" +
-      new URLSearchParams({ locationId }).toString(),
+      endpoint(session) +
+        "/" +
+        bookingId +
+        "/reschedule?" +
+        new URLSearchParams({ locationId }).toString(),
       {
         ...privacy,
         method: "POST",
@@ -141,7 +173,8 @@ export async function rescheduleOwnerCalendarBooking(
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     throw new OwnerRescheduleError("uncertain");
   const receipt = raw as Partial<OwnerRescheduleReceipt>;
-  if (Object.keys(receipt).length !== 7 ||
+  if (
+    Object.keys(receipt).length !== 7 ||
     receipt.bookingId !== bookingId ||
     receipt.status !== "Confirmed" ||
     !instant(receipt.previousStartAt) ||
@@ -153,7 +186,8 @@ export async function rescheduleOwnerCalendarBooking(
     receipt.startAt >= receipt.endAt ||
     receipt.endAt > receipt.occupiedUntil ||
     typeof receipt.priceKopecks !== "string" ||
-    !/^(0|[1-9]\d{0,11})$/.test(receipt.priceKopecks))
+    !/^(0|[1-9]\d{0,11})$/.test(receipt.priceKopecks)
+  )
     throw new OwnerRescheduleError("uncertain");
   return receipt as OwnerRescheduleReceipt;
 }
