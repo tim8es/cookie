@@ -469,13 +469,6 @@ export async function rescheduleStagingOwnerBooking(
     pool,
     input,
     async (client, booking) => {
-      const owner = await client.query(
-        `SELECT 1 FROM cookie_tenancy.organizations
-           WHERE id=$1::uuid AND owner_identity_id=$2::uuid FOR SHARE`,
-        [booking.tenantId, input.actor.identityId],
-      );
-      if (owner.rowCount !== 1 || booking.locationId !== locationId)
-        throw new AuthorizationDeniedError();
       const allowed = await client.query(
         "SELECT 1 WHERE $1::timestamptz > clock_timestamp() + $3::int * interval '1 minute' AND $2::timestamptz > clock_timestamp() + $3::int * interval '1 minute'",
         [booking.oldStartAt, booking.newStartAt, cutoffMinutes],
@@ -484,6 +477,7 @@ export async function rescheduleStagingOwnerBooking(
     },
     cutoffMinutes,
     "owner",
+    locationId,
   );
 }
 
@@ -537,6 +531,7 @@ async function rescheduleBooking(
   assertMayReschedule: AssertBookingMayReschedule,
   cutoffMinutes?: number,
   stagingScope: "customer" | "owner" = "customer",
+  ownerLocationId?: string,
 ): Promise<RescheduledBookingReceipt> {
   const staging = cutoffMinutes !== undefined && stagingScope === "customer";
   const newStartAt = validate(input);
@@ -616,6 +611,19 @@ async function rescheduleBooking(
           },
           "booking.reschedule",
         );
+      }
+      // A saved receipt is not an authorization grant. Verify the current
+      // owner and exact branch under the same transaction before replay as
+      // well as before a new write. Deadlines apply only to new writes.
+      if (stagingScope === "owner") {
+        if (booking.location_id !== ownerLocationId)
+          throw new AuthorizationDeniedError();
+        const owner = await client.query(
+          `SELECT 1 FROM cookie_tenancy.organizations
+             WHERE id=$1::uuid AND owner_identity_id=$2::uuid FOR SHARE`,
+          [tenantId, actorId],
+        );
+        if (owner.rowCount !== 1) throw new AuthorizationDeniedError();
       }
       await client.query(
         "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
