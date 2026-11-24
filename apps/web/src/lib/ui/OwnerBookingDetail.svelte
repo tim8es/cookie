@@ -178,6 +178,7 @@
   async function confirmMove(): Promise<void> {
     if (!movePending || moveBusy || disabled || !detail) return;
     const attempt = movePending;
+    const previouslyUncertain = moveUncertain;
     moveBusy = true;
     moveMessage = "";
     try {
@@ -197,7 +198,11 @@
       onChanged();
     } catch (reason) {
       if (!mounted || !open) return;
-      if (reason instanceof OwnerRescheduleError && reason.reason === "denied") {
+      if (previouslyUncertain) {
+        // A rejection of this retry cannot disprove the original COMMIT.
+        moveUncertain = true;
+        moveMessage = "Результат исходного переноса неизвестен. Проверьте запись или повторите исходный запрос с тем же ключом.";
+      } else if (reason instanceof OwnerRescheduleError && reason.reason === "denied") {
         movePending = null;
         moveUncertain = false;
         moveMessage = "Нет прав на перенос или сеанс завершён.";
