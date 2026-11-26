@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { Pool } from "pg";
-import { setTimeout as delay } from "node:timers/promises";
 
 import { createApp } from "../src/app.js";
 import { runMigrations } from "../../../packages/platform-db/src/migrations.js";
@@ -172,12 +172,24 @@ test(
            VALUES($1,$2,$3,$4,$5,$6,'Confirmed',$7::timestamptz,
              $7::timestamptz+interval '60 minutes',
              $7::timestamptz+interval '70 minutes',60,10,123456)`,
-          [tenant, id, customerId, staffId, owner.locationId, serviceId, original],
+          [
+            tenant,
+            id,
+            customerId,
+            staffId,
+            owner.locationId,
+            serviceId,
+            original,
+          ],
         );
         return { id, original, target };
       };
       type Fixture = Awaited<ReturnType<typeof seed>>;
-      const command = (row: Fixture, kind: "cancel" | "reschedule", key: string) =>
+      const command = (
+        row: Fixture,
+        kind: "cancel" | "reschedule",
+        key: string,
+      ) =>
         app.inject({
           method: "POST",
           url:
@@ -248,11 +260,12 @@ test(
         assert.fail("Expected real Staff row lock contention");
       };
 
+      type CommandResponse = Awaited<ReturnType<typeof command>>;
       const withStaffLock = async (
-        work: (pending: Promise<Awaited<ReturnType<typeof command>>>[]) => Promise<void>,
+        work: (pending: Promise<CommandResponse>[]) => Promise<void>,
       ) => {
         const blocker = await pool.connect();
-        const pending: Promise<Awaited<ReturnType<typeof command>>>[] = [];
+        const pending: Promise<CommandResponse>[] = [];
         try {
           await blocker.query("BEGIN");
           await blocker.query(
@@ -315,7 +328,9 @@ test(
           committed.occupied_until.getTime() - committed.start_at.getTime(),
           70 * 60000,
         );
-        assert.deepEqual((await effects(row)).rows, [expectedEffects(moves, 1)]);
+        assert.deepEqual((await effects(row)).rows, [
+          expectedEffects(moves, 1),
+        ]);
         const replay = await command(row, "cancel", cancelKey);
         assert.equal(replay.statusCode, 200, replay.body);
         assert.deepEqual(replay.json(), cancelled.json());
@@ -325,7 +340,9 @@ test(
           assert.deepEqual(moveReplay.json(), moved.json());
         }
         assert.deepEqual((await state(row)).rows[0], committed);
-        assert.deepEqual((await effects(row)).rows, [expectedEffects(moves, 1)]);
+        assert.deepEqual((await effects(row)).rows, [
+          expectedEffects(moves, 1),
+        ]);
       }
 
       // Revoke the live role after the request has passed AuthN and is waiting
@@ -344,7 +361,9 @@ test(
         });
         assert.equal(denied?.statusCode, 403, denied?.body);
         assert.deepEqual((await state(roleRow)).rows, roleBefore);
-        assert.deepEqual((await effects(roleRow)).rows, [expectedEffects(0, 0)]);
+        assert.deepEqual((await effects(roleRow)).rows, [
+          expectedEffects(0, 0),
+        ]);
       } finally {
         await pool.query(
           "UPDATE cookie_identity.roles SET permissions=array_append(array_remove(permissions,'booking.reschedule'),'booking.reschedule') WHERE tenant_id=$1 AND base_type='owner'",
@@ -367,7 +386,9 @@ test(
       });
       assert.equal(denied?.statusCode, 403, denied?.body);
       assert.deepEqual((await state(sessionRow)).rows, sessionBefore);
-      assert.deepEqual((await effects(sessionRow)).rows, [expectedEffects(0, 0)]);
+      assert.deepEqual((await effects(sessionRow)).rows, [
+        expectedEffects(0, 0),
+      ]);
       assert.equal(
         (await command(sessionRow, "reschedule", randomUUID())).statusCode,
         401,
