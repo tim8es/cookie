@@ -359,7 +359,7 @@ test(
             [tenant],
           );
         });
-        assert.equal(denied?.statusCode, 403, denied?.body);
+        assert.equal(denied?.statusCode, 403, denied?.body ?? "Missing response");
         assert.deepEqual((await state(roleRow)).rows, roleBefore);
         assert.deepEqual((await effects(roleRow)).rows, [
           expectedEffects(0, 0),
@@ -384,7 +384,7 @@ test(
         await waitForStaff(1);
         assert.equal(await sessions.revokeBearerToken(bearer), true);
       });
-      assert.equal(denied?.statusCode, 403, denied?.body);
+      assert.equal(denied?.statusCode, 403, denied?.body ?? "Missing response");
       assert.deepEqual((await state(sessionRow)).rows, sessionBefore);
       assert.deepEqual((await effects(sessionRow)).rows, [
         expectedEffects(0, 0),
