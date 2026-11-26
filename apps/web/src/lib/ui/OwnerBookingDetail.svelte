@@ -232,6 +232,7 @@
   async function confirmCancellation(): Promise<void> {
     if (!cancelPending || cancelBusy || !detail || disabled) return;
     const attempt = cancelPending;
+    const previouslyUncertain = cancelUncertain;
     cancelBusy = true;
     cancelMessage = "";
     try {
@@ -245,7 +246,12 @@
       onChanged();
     } catch (reason) {
       if (!mounted || !open) return;
-      if (reason instanceof OwnerCancellationError && reason.reason === "conflict") {
+      if (previouslyUncertain) {
+        // A rejected retry does not establish whether the earlier cancellation
+        // committed. Keep its original key and require positive confirmation.
+        cancelUncertain = true;
+        cancelMessage = "Результат исходной отмены неизвестен. Проверьте запись или повторите исходный запрос с тем же ключом.";
+      } else if (reason instanceof OwnerCancellationError && reason.reason === "conflict") {
         cancelPending = null;
         cancelUncertain = false;
         cancelMessage = "Отмена не выполнена. Статус записи или тестовый срок изменился.";
