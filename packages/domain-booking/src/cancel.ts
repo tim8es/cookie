@@ -156,21 +156,20 @@ export async function cancelStagingCustomerBooking(
   );
 }
 
-/** Synthetic operator-controlled staging only. This does not define a
- * salon-owned cancellation policy (#285), nor grant access by itself: the
- * trusted callback must establish current owner and exact branch inside
- * the command transaction. The UPDATE rechecks the explicit cutoff. */
+/** Synthetic operator-controlled staging only. The current owner and exact
+ * branch must be authorized in the same transaction even for receipt replay.
+ * Deadline policy applies to new writes, not authorized replays (#285). */
 export async function cancelStagingOwnerBooking(
   pool: Pool,
   input: InternalCancelBooking,
   cutoffMinutes: number,
-  assertMayCancel: AssertBookingMayCancel,
+  locationId: string,
 ): Promise<CancelledBookingReceipt<"CancelledByBusiness">> {
   if (
     !Number.isSafeInteger(cutoffMinutes) ||
     cutoffMinutes < 0 ||
     cutoffMinutes > 525600 ||
-    typeof assertMayCancel !== "function"
+    !UUID.test(locationId)
   )
     invalid();
   if (!input?.actor?.opaqueSessionAuthority)
@@ -179,8 +178,16 @@ export async function cancelStagingOwnerBooking(
     pool,
     input,
     "CancelledByBusiness",
-    assertMayCancel,
+    async (client, booking) => {
+      const allowed = await client.query(
+        "SELECT 1 WHERE $1::timestamptz > clock_timestamp() + $2::int * interval '1 minute'",
+        [booking.startAt, cutoffMinutes],
+      );
+      if (allowed.rowCount !== 1)
+        throw new CancelBookingFailure("CANCELLATION_POLICY_DENIED");
+    },
     cutoffMinutes,
+    locationId,
   );
 }
 
@@ -192,6 +199,7 @@ async function cancelBooking<
   status: Status,
   assertMayCancel: AssertBookingMayCancel,
   cutoffMinutes?: number,
+  ownerLocationId?: string,
 ): Promise<CancelledBookingReceipt<Status>> {
   validate(input);
   const staging = status === "CancelledByClient";
@@ -266,6 +274,19 @@ async function cancelBooking<
         },
         "booking.cancel",
       );
+    }
+
+    // Preflight authorization cannot cover a concurrent owner change.
+    // Recheck scope under the command transaction before returning any receipt.
+    if (ownerLocationId !== undefined) {
+      if (current.location_id !== ownerLocationId)
+        throw new AuthorizationDeniedError();
+      const owner = await client.query(
+        `SELECT 1 FROM cookie_tenancy.organizations
+          WHERE id=$1::uuid AND owner_identity_id=$2::uuid FOR SHARE`,
+        [tenantId, actorId],
+      );
+      if (owner.rowCount !== 1) throw new AuthorizationDeniedError();
     }
 
     // Match CreateBooking's scoped advisory lock protocol. A duplicate key
