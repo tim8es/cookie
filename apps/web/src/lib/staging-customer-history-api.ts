@@ -102,7 +102,7 @@ export async function readOwnBookings(
   } catch {
     throw new CustomerHistoryError("unavailable");
   }
-  if (response.status === 401) {
+  if (response.status === 401 || response.status === 403) {
     throw new CustomerHistoryError("unauthorized");
   }
   if (response.status !== 200) {

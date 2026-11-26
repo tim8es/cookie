@@ -1141,7 +1141,54 @@ async function main() {
     await button(cdp, "Проверить новое время");
     await requireDom(cdp, "explicit branch-zone move confirmation",
       "document.body.innerText.includes('Подтвердить перенос') && document.body.innerText.includes('исходная стоимость сохранятся')");
+    const clientMoveUrl="/v1/organizations/"+owner.tenantId+"/staging-customer-reschedule/"+realBooking.rows[0].id;
+    let clientMoveRequests=0;
+    cdp.onEvent("Network.requestWillBeSent",({request})=>{
+      if(request.url.startsWith(origin)&&request.method==="POST"&&new URL(request.url).pathname===clientMoveUrl)clientMoveRequests++;
+    });
+    // Only the first and final POST reach the server. Simulated intermediate
+    // rejections test uncertainty handling, not actual permission revocation.
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);let lost=false;window.__kukiClientMoveKeys=[];window.__kukiClientMoveBodies=[];window.__kukiClientMoveRejections=[];window.__kukiClientMoveNext=null;window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(clientMoveUrl)+")){window.__kukiClientMoveKeys.push(new Headers(init.headers).get('idempotency-key'));window.__kukiClientMoveBodies.push(init.body);const rejection=window.__kukiClientMoveNext;if(rejection!==null){window.__kukiClientMoveNext=null;window.__kukiClientMoveRejections.push(rejection.status);return Response.json({error:rejection.code},{status:rejection.status});}const reply=await send(input,init);if(!lost&&reply.status===200){lost=true;throw new Error('synthetic lost customer move response');}return reply;}return send(input,init);};})()");
     await button(cdp, "Подтвердить перенос");
+    const clientMoveUnknown="document.querySelector("+JSON.stringify(historyPanel)+")";
+    await requireDom(cdp,"client move commit not acknowledged",
+      clientMoveUnknown+"?.innerText.includes('Результат переноса не подтверждён')&&[..."+clientMoveUnknown+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)&&!"+clientMoveUnknown+".innerText.includes('Перенос подтверждён сервером')");
+    const readCommittedMove=()=>pool.query(
+      "SELECT start_at,price_kopecks_snapshot::text AS price,service_id::text AS service,staff_id::text AS staff,location_id::text AS location,status FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+      [owner.tenantId,realBooking.rows[0].id],
+    );
+    const readMoveEffects=async()=> (await pool.query(
+      "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2::text) AS events",
+      [owner.tenantId,realBooking.rows[0].id],
+    )).rows[0];
+    const committedClientMove=await readCommittedMove();
+    assert.equal(committedClientMove.rowCount,1);
+    assert.equal(committedClientMove.rows[0].start_at.toISOString(),moveAt);
+    assert.equal(committedClientMove.rows[0].status,"Confirmed");
+    assert.deepEqual(await readMoveEffects(),{audits:1,receipts:1,events:1});
+    assert.equal(clientMoveRequests,1,"Unknown move must not auto-retry");
+    const rejectedMoves=[{status:409,code:"RESCHEDULE_CONFLICT"},{status:404,code:"BOOKING_NOT_FOUND"},{status:403,code:"forbidden"}];
+    for(const [i,rejection] of rejectedMoves.entries()){
+      const retryMarker=responses.length;
+      await evaluate(cdp,"window.__kukiClientMoveNext="+JSON.stringify(rejection));
+      await button(cdp,"Повторить исходный перенос");
+      await requireDom(cdp,"customer move remains unknown after synthetic "+rejection.status,
+        "window.__kukiClientMoveRejections.length==="+(i+1)+"&&"+clientMoveUnknown+"?.innerText.includes('Результат исходного переноса не подтверждён')&&[..."+clientMoveUnknown+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)&&!"+clientMoveUnknown+".innerText.includes('Перенос не выполнен')&&!"+clientMoveUnknown+".innerText.includes('Перенос подтверждён сервером')");
+      if(rejection.status===403){
+        assert.ok(responses.slice(retryMarker).some(r=>r.path.endsWith("/staging-customer-history")&&r.status===200),"Denied retry must revalidate the still-authorized customer context");
+      }
+      assert.equal(clientMoveRequests,1,"Synthetic rejection must not reach server");
+      const keys=await evaluate(cdp,"window.__kukiClientMoveKeys");
+      const bodies=await evaluate(cdp,"window.__kukiClientMoveBodies");
+      assert.equal(keys.length,i+2);
+      assert.ok(keys.every(key=>key===keys[0]));
+      assert.equal(bodies.length,i+2);
+      assert.ok(bodies.every(body=>body===bodies[0]));
+      assert.deepEqual((await readCommittedMove()).rows,committedClientMove.rows);
+      assert.deepEqual(await readMoveEffects(),{audits:1,receipts:1,events:1});
+    }
+    assert.deepEqual(await evaluate(cdp,"window.__kukiClientMoveRejections"),[409,404,403]);
+    await button(cdp,"Повторить исходный перенос");
     await requireDom(cdp, "confirmed time-only move in customer cabinet",
       "document.querySelector(" + JSON.stringify(historyPanel) + ")?.innerText.includes('Перенос подтверждён сервером') && [...document.querySelectorAll('.customer-history li time')].some(t=>t.dateTime===" + JSON.stringify(moveAt) + ")");
     const afterMove = await pool.query(
@@ -1159,6 +1206,17 @@ async function main() {
       [owner.tenantId, realBooking.rows[0].id],
     );
     assert.deepEqual(moveEvidence.rows[0], { audits: 1, receipts: 1, events: 1 });
+    assert.equal(clientMoveRequests,2,"Only original and final replay may reach server");
+    const clientMoveKeys=await evaluate(cdp,"window.__kukiClientMoveKeys");
+    const clientMoveBodies=await evaluate(cdp,"window.__kukiClientMoveBodies");
+    assert.equal(clientMoveKeys.length,5);
+    assert.equal(typeof clientMoveKeys[0],"string");
+    assert.ok(clientMoveKeys[0].length>=16);
+    assert.ok(clientMoveKeys.every(key=>key===clientMoveKeys[0]));
+    assert.equal(clientMoveBodies.length,5);
+    assert.ok(clientMoveBodies.every(body=>body===clientMoveBodies[0]));
+    assert.deepEqual(JSON.parse(clientMoveBodies[0]),{newStartAt:moveAt});
+    assert.deepEqual(afterMove.rows,committedClientMove.rows);
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-reschedule/"+realBooking.rows[0].id)));
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
     for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
@@ -1239,6 +1297,50 @@ async function main() {
       );
       return result.rows[0];
     };
+    // Separate real authorization regression on the recovered second Booking.
+    // First attempt loses transport BEFORE any server write; then revoke the
+    // actual customer role and retry. The original booking must be untouched.
+    const beforeDeniedMove=await durableBooking();
+    await requireDom(cdp,"second booking ready for revocation during unknown move",
+      "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Перенести запись'&&!b.disabled)");
+    await button(cdp,"Перенести запись");
+    const revokeMoveSelect=historyPanel+" select";
+    await requireDom(cdp,"actual available slots for revoked move",
+      "document.querySelector("+JSON.stringify(revokeMoveSelect)+")?.options.length>1");
+    await evaluate(cdp,"(()=>{const s=document.querySelector("+JSON.stringify(revokeMoveSelect)+");s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await button(cdp,"Проверить новое время");
+    const deniedMoveUrl="/v1/organizations/"+owner.tenantId+"/staging-customer-reschedule/"+restartBookingId;
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(deniedMoveUrl)+")){window.fetch=send;throw new TypeError('synthetic offline before move');}return send(input,init);};})()");
+    const beforeUnknownMove=responses.length;
+    await button(cdp,"Подтвердить перенос");
+    await requireDom(cdp,"second move unknown before revocation",
+      "document.body.innerText.includes('Результат переноса не подтверждён')&&[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)");
+    assert.deepEqual(await durableBooking(),beforeDeniedMove);
+    assert.equal(responses.slice(beforeUnknownMove).filter(r=>r.path===deniedMoveUrl).length,0);
+    const revokedMoveRoles=await pool.query(
+      `UPDATE cookie_identity.role_assignments a SET active=false
+       FROM cookie_identity.roles r,cookie_customers.staging_customer_identities c
+       WHERE a.tenant_id=$1::uuid AND c.tenant_id=a.tenant_id
+         AND c.identity_id=a.identity_id AND r.tenant_id=a.tenant_id
+         AND r.id=a.role_id AND r.base_type='client' AND a.active
+       RETURNING a.id::text`,[owner.tenantId]);
+    assert.equal(revokedMoveRoles.rowCount,1);
+    try {
+      const deniedMarker=responses.length;
+      await button(cdp,"Повторить исходный перенос");
+      await poll("actual denied customer move retry",()=>responses.slice(deniedMarker).some(r=>r.path===deniedMoveUrl&&(r.status===401||r.status===403)));
+      await poll("authoritative customer history denial after retry",()=>responses.slice(deniedMarker).some(r=>r.path.endsWith("/staging-customer-history")&&(r.status===401||r.status===403)));
+      await requireDom(cdp,"revoked customer move closes protected history and catalog",
+        "!document.querySelector("+JSON.stringify(historyPanel)+")&&!document.querySelector("+JSON.stringify(panel)+")&&!document.body.innerText.includes('Перенос подтверждён сервером')");
+      assert.deepEqual(await durableBooking(),beforeDeniedMove);
+      assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
+    } finally {
+      await pool.query("UPDATE cookie_identity.role_assignments SET active=true WHERE tenant_id=$1::uuid AND id=ANY($2::uuid[])",[owner.tenantId,revokedMoveRoles.rows.map(r=>r.id)]);
+    }
+    console.log("PASS customer unknown move: actual role revocation denied retry and history, protected UI cleared, no mutation.");
+    script=await loadAndEnterTelegram(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script,"customer");
+    await requireDom(cdp,"customer reauthenticated after synthetic role restoration",
+      "document.querySelector("+JSON.stringify(historyPanel)+")?.innerText.includes("+JSON.stringify(restartBookingId)+")");
     const beforeBookingRestart = await durableBooking();
     assert.equal(beforeBookingRestart.booking.id, restartBookingId);
     assert.equal(beforeBookingRestart.booking.status, "Confirmed");
