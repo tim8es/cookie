@@ -311,7 +311,7 @@ async function verifyDemoCalendar(cdp, example, expectedStatus) {
   await cdp.send("Emulation.clearDeviceMetricsOverride");
 }
 
-async function verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example) {
+async function verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example, cutoffs, ownerCapabilityResponses) {
   // Both roles use their own ordinary verified session and the exact same
   // compiled application. Every mutation goes through the actual browser UI.
   localStagingPhase = "create synthetic client booking";
@@ -321,6 +321,19 @@ async function verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenan
   localStagingPhase = "authenticate owner for confirmed calendar";
   await signIn(cdp, origin, state, "owner");
   await verifyDemoCalendar(cdp, example, "Подтверждена");
+  // Open the real detail before verifying its optional owner capabilities.
+  await requireDom(cdp, "confirmed demo booking detail ready",
+    "document.querySelector('.owner-booking-detail button[aria-expanded=false]')?.disabled===false");
+  await evaluate(cdp, "document.querySelector('.owner-booking-detail button[aria-expanded=false]').click()");
+  await poll("actual owner cancellation capability", () => ownerCapabilityResponses.cancel.includes(cutoffs.ownerCancel === undefined ? 404 : 200));
+  await poll("actual owner reschedule capability", () => ownerCapabilityResponses.move.includes(cutoffs.ownerMove === undefined ? 404 : 200));
+  const ownerCancelText = cutoffs.ownerCancel === undefined
+    ? "Отмена из календаря недоступна в этом контуре."
+    : "Тестовый срок отмены: более " + cutoffs.ownerCancel + " мин.";
+  const ownerMoveText = cutoffs.ownerMove === undefined
+    ? "Перенос из календаря недоступен в этом контуре."
+    : "Тестовый срок переноса: более " + cutoffs.ownerMove + " мин.";
+  await requireDom(cdp, "explicit owner booking cutoffs", "document.querySelector('.owner-booking-detail')?.innerText.includes(" + JSON.stringify(ownerCancelText) + ") && document.querySelector('.owner-booking-detail')?.innerText.includes(" + JSON.stringify(ownerMoveText) + ")");
   localStagingPhase = "logout owner before client cancellation";
   await logoutVerified(cdp);
   localStagingPhase = "authenticate client to cancel booking";
@@ -458,11 +471,14 @@ async function main() {
     await cdp.send("Page.enable");
     const cancellationResponses = [];
     const rescheduleResponses = [];
+    const ownerCapabilityResponses = { cancel: [], move: [] };
     if (verification) {
       await cdp.send("Network.enable");
       cdp.onEvent("Network.responseReceived", ({ response }) => {
         if (response.url.startsWith(origin + "/v1/") && response.url.endsWith("/staging-customer-cancellation/capability")) cancellationResponses.push(response.status);
         if (response.url.startsWith(origin + "/v1/") && response.url.endsWith("/staging-customer-reschedule/capability")) rescheduleResponses.push(response.status);
+        if (response.url.startsWith(origin + "/v1/") && response.url.endsWith("/owner-calendar/cancellation/capability")) ownerCapabilityResponses.cancel.push(response.status);
+        if (response.url.startsWith(origin + "/v1/") && response.url.endsWith("/owner-calendar/reschedule/capability")) ownerCapabilityResponses.move.push(response.status);
       });
     }
     checkInterrupted();
@@ -478,11 +494,13 @@ async function main() {
       await poll("actual customer reschedule capability", () => rescheduleResponses.includes(cutoffs.customerMove === undefined ? 404 : 200));
       const policyText = cutoff === undefined ? "Отмена в тестовом режиме недоступна." : "более чем " + cutoff + " мин.";
       await requireDom(cdp, "explicit cancellation cutoff (no implicit default)", "document.querySelector(\'[aria-label=\\\"Мои записи\\\"]\')?.innerText.includes(" + JSON.stringify(policyText) + ")");
+      const movePolicyText = cutoffs.customerMove === undefined ? "Перенос в тестовом режиме недоступен." : "отдельный тестовый срок — более " + cutoffs.customerMove + " мин.";
+      await requireDom(cdp, "explicit customer reschedule cutoff (no implicit default)", "document.querySelector('[aria-label=\\\"Мои записи\\\"]')?.innerText.includes(" + JSON.stringify(movePolicyText) + ")");
       await requireDom(cdp, "actual client workspace without owner navigation", "document.querySelector(\'[aria-label=\\\"Клиентский вход staging\\\"]\') && !document.querySelector(\'.real-owner-nav\')");
       if (example) {
         if (cutoff === undefined) throw new Error("Demo lifecycle verification requires explicit synthetic cutoff");
         localStagingPhase = "verify synthetic booking lifecycle";
-        await verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example);
+        await verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example, cutoffs, ownerCapabilityResponses);
       }
       localStagingPhase = "verify unauthenticated runtime and legacy-route closure";
       await cdp.send("Page.navigate", { url: origin + "/" });
