@@ -17,7 +17,7 @@ import {
   evaluate, fill, submitValidForm, checkWidth,
 } from "../apps/web/scripts/browser-smoke.mjs";
 
-import { isLocalStagingProject, resolveLocalStagingMode } from "./local-staging-mode.mjs";
+import { isLocalStagingProject, resolveLocalStagingMode, localBookingCutoffs } from "./local-staging-mode.mjs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 // Disposable demo and CI never read/write the operator's persistent QA state.
@@ -376,8 +376,17 @@ async function main() {
     if (!existsSync(join(root, "dist/apps/api/src/main.js")) ||
         !existsSync(join(root, "apps/web/dist/index.html"))) throw new Error("Run pnpm build:runtime first");
     const { parseStagingCancellationCutoff } = await import("../dist/apps/api/src/staging-customer-cancellation-http.js");
-    // Temporary operator-only staging input. No product default: #285 tracks tenant policy.
-    const cutoff = parseStagingCancellationCutoff(process.env.COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES);
+    const { parseStagingRescheduleCutoff } = await import("../dist/apps/api/src/staging-customer-reschedule-http.js");
+    const { parseStagingOwnerCancellationCutoff } = await import("../dist/apps/api/src/staging-owner-calendar-cancellation-http.js");
+    const { parseStagingOwnerRescheduleCutoff } = await import("../dist/apps/api/src/staging-owner-calendar-reschedule-http.js");
+    // Temporary operator-only staging inputs. No product default: #285 tracks tenant policy.
+    const { values: cutoffs, runtimeEnv: bookingEnv } = localBookingCutoffs(process.env, {
+      customerCancel: parseStagingCancellationCutoff,
+      customerMove: parseStagingRescheduleCutoff,
+      ownerCancel: parseStagingOwnerCancellationCutoff,
+      ownerMove: parseStagingOwnerRescheduleCutoff,
+    });
+    const cutoff = cutoffs.customerCancel;
     const binary = browser();
     checkInterrupted();
     composeAttempted = true;
@@ -410,7 +419,7 @@ async function main() {
       COOKIE_TELEGRAM_SELF_REGISTRATION_MODE: "enabled",
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
       COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled",
-      ...(cutoff === undefined ? {} : { COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: String(cutoff) }),
+      ...bookingEnv,
       COOKIE_PUBLIC_ORIGIN: "https://cookie-manual.invalid",
       COOKIE_TELEGRAM_BOT_TOKEN: state.botToken,
       COOKIE_TELEGRAM_USER_HMAC_SECRET: state.secret,
@@ -448,10 +457,12 @@ async function main() {
     await cdp.ready;
     await cdp.send("Page.enable");
     const cancellationResponses = [];
+    const rescheduleResponses = [];
     if (verification) {
       await cdp.send("Network.enable");
       cdp.onEvent("Network.responseReceived", ({ response }) => {
         if (response.url.startsWith(origin + "/v1/") && response.url.endsWith("/staging-customer-cancellation/capability")) cancellationResponses.push(response.status);
+        if (response.url.startsWith(origin + "/v1/") && response.url.endsWith("/staging-customer-reschedule/capability")) rescheduleResponses.push(response.status);
       });
     }
     checkInterrupted();
@@ -464,6 +475,7 @@ async function main() {
       localStagingPhase = "authenticate synthetic client";
       await signIn(cdp, origin, state, "client");
       await poll("actual cancellation capability", () => cancellationResponses.includes(cutoff === undefined ? 404 : 200));
+      await poll("actual customer reschedule capability", () => rescheduleResponses.includes(cutoffs.customerMove === undefined ? 404 : 200));
       const policyText = cutoff === undefined ? "Отмена в тестовом режиме недоступна." : "более чем " + cutoff + " мин.";
       await requireDom(cdp, "explicit cancellation cutoff (no implicit default)", "document.querySelector(\'[aria-label=\\\"Мои записи\\\"]\')?.innerText.includes(" + JSON.stringify(policyText) + ")");
       await requireDom(cdp, "actual client workspace without owner navigation", "document.querySelector(\'[aria-label=\\\"Клиентский вход staging\\\"]\') && !document.querySelector(\'.real-owner-nav\')");
@@ -492,7 +504,14 @@ async function main() {
       return;
     }
     console.log((demo ? "kuki demo (synthetic, disposable): " : "Real kuki: ") + origin + " — use the opened isolated browser.");
-    console.log(cutoff === undefined ? "Cancellation disabled: COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES is unset." : "Explicit synthetic cancellation cutoff: " + cutoff + " minutes.");
+    for (const [label, variable, value] of [
+      ["Customer cancellation", "COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES", cutoffs.customerCancel],
+      ["Customer reschedule", "COOKIE_MANUAL_RESCHEDULE_CUTOFF_MINUTES", cutoffs.customerMove],
+      ["Owner cancellation", "COOKIE_MANUAL_OWNER_CANCEL_CUTOFF_MINUTES", cutoffs.ownerCancel],
+      ["Owner reschedule", "COOKIE_MANUAL_OWNER_RESCHEDULE_CUTOFF_MINUTES", cutoffs.ownerMove],
+    ]) {
+      console.log(value === undefined ? label + " disabled: " + variable + " is unset." : label + ": explicit synthetic cutoff " + value + " minutes.");
+    }
     if (example) console.log("Sample service and published shift on " + example.date + ". Switch to client to book.");
     console.log(demo
       ? "Synthetic records only. owner / client = switch role; Enter = fresh login; Ctrl+C = exit and remove this demo database. Relaunch for a fresh demo."
