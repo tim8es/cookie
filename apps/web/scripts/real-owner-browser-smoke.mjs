@@ -1397,7 +1397,7 @@ async function main() {
     });
     // Drop the first valid 200 *after the server committed*, capturing only
     // synthetic idempotency keys. The UI must not assume a successful write.
-    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);let lost=false;window.__kukiOwnerMoveKeys=[];window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(ownerMoveUrl)+")){window.__kukiOwnerMoveKeys.push(new Headers(init.headers).get('idempotency-key'));const reply=await send(input,init);if(!lost&&reply.status===200){lost=true;throw new Error('synthetic lost owner time-move receipt');}return reply;}return send(input,init);};})()");
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);let lost=false;window.__kukiOwnerMoveKeys=[];window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(ownerMoveUrl)+")){window.__kukiOwnerMoveKeys.push(new Headers(init.headers).get('idempotency-key'));const attempt=window.__kukiOwnerMoveKeys.length;if(attempt===2)return new Response(JSON.stringify({error:'synthetic-conflict'}),{status:409,headers:{'content-type':'application/json'}});if(attempt===3)return new Response(JSON.stringify({error:'synthetic-not-found'}),{status:404,headers:{'content-type':'application/json'}});const reply=await send(input,init);if(!lost&&reply.status===200){lost=true;throw new Error('synthetic lost owner time-move receipt');}return reply;}return send(input,init);};})()");
     await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Подтвердить перенос').click();})()");
     await requireDom(cdp,"owner Calendar unknown move never shown as success",
       ownerEditRoot+"?.innerText.includes('Результат переноса неизвестен')&&[..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)");
@@ -1417,15 +1417,30 @@ async function main() {
       [owner.tenantId,bookingId],
     );
     assert.deepEqual(ownerMoveEffects.rows[0],{audits:1,receipts:1,events:1});
+    // Synthetic rejected retries must not erase the earlier ambiguous COMMIT.
+    // These two responses never reach the server; count them separately.
+    for(const [attempt,status] of [[2,409],[3,404]]){
+      await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Повторить исходный перенос').click();})()");
+      await requireDom(cdp,"owner move stays unresolved after synthetic "+status,
+        "window.__kukiOwnerMoveKeys.length==="+attempt+"&&"+ownerEditRoot+"?.innerText.includes('Результат исходного переноса неизвестен')&&[..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)&&![..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Подтвердить перенос'||b.textContent.trim()==='Отменить запись')");
+      assert.equal(ownerMoveRequests,1,"Synthetic rejection must not issue a network POST");
+      const captured=await evaluate(cdp,"window.__kukiOwnerMoveKeys");
+      assert.equal(captured.length,attempt);
+      assert.ok(captured.every(key=>key===captured[0]),"Rejected retry must retain original key");
+      assert.deepEqual((await pool.query(
+        "SELECT start_at,status,price_kopecks_snapshot::text AS price,staff_id::text AS staff,service_id::text AS service,location_id::text AS location FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [owner.tenantId,bookingId],
+      )).rows,ownerMoved.rows,"Rejected retry must preserve committed Booking");
+    }
     await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Повторить исходный перенос').click();})()");
     await requireDom(cdp,"owner Calendar refreshed only after acknowledged same-key move",
       "(()=>{const root="+ownerEditRoot+";return root?.querySelector('button[aria-expanded=false]')&&!root?.querySelector('.owner-calendar-move')})()");
     assert.equal(ownerMoveRequests,2,"Owner move must retry exactly once after explicit confirmation");
     const keys=await evaluate(cdp,"window.__kukiOwnerMoveKeys");
-    assert.equal(keys.length,2,"Both owner time-move requests must be captured");
+    assert.equal(keys.length,4,"Two network attempts and two intercepted retries must be captured");
     assert.equal(typeof keys[0],"string");
     assert.ok(keys[0].length>=16,"Expected a valid opaque idempotency key");
-    assert.equal(keys[0],keys[1],"Owner retry must use the original idempotency key");
+    assert.ok(keys.every(key=>key===keys[0]),"Every owner retry must use the original idempotency key");
     assert.deepEqual((await pool.query(
       "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2::text) AS events",
       [owner.tenantId,bookingId],
@@ -1433,7 +1448,7 @@ async function main() {
     await evaluate(cdp,ownerEditRoot+".querySelector('button[aria-expanded=false]').click()");
     await requireDom(cdp,"owner Calendar cancellation still available after move",
       "(()=>{const root="+ownerEditRoot+";return [...root.querySelectorAll('button')].some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)})()");
-    console.log("PASS owner Calendar owner-only time move: lost real response, explicit same-key recovery, unchanged price and booking scope, one audit/receipt/outbox.");
+    console.log("PASS owner Calendar owner-only time move: lost real response, rejected 409/404 retries, explicit same-key recovery, unchanged price and booking scope, one audit/receipt/outbox.");
     await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Отменить запись').click();})()");
     await requireDom(cdp,"owner cancellation needs explicit second click",
       "(()=>{const root="+ownerEditRoot+";return root?.innerText.includes('Отменить подтверждённую запись для клиента?')&&[...root.querySelectorAll('button')].some(b=>b.textContent.trim()==='Подтвердить отмену'&&!b.disabled)})()");
