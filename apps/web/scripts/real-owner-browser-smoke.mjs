@@ -1514,7 +1514,7 @@ async function main() {
     });
     for (const path of ["book", "book/unknown-synthetic-salon"]) {
       const response = await getLocal(origin + path);
-      assert.equal(response.status, 200, "Unpublished booking path must serve compiled SPA: " + path);
+      assert.equal(response.status, 404, "Unpublished booking path must return HTTP 404: " + path);
       await cdp.send("Page.navigate", { url: origin + path });
       await requireDom(cdp, "unpublished booking path " + path,
         "document.querySelector('[data-kuki-public-booking=unavailable]') && " +
