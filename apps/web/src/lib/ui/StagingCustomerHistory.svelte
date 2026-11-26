@@ -126,6 +126,9 @@
         // A rejected replay cannot disprove the original transaction's commit.
         moveUncertain = true;
         message = "Результат исходного переноса не подтверждён. Повторите тот же запрос с исходным ключом.";
+        // A denial may mean the entire customer context was revoked. Hide
+        // stale history and revalidate it without discarding the pending key.
+        if (reason instanceof CustomerRescheduleError && reason.reason === "denied") await refresh();
       } else if (reason instanceof CustomerRescheduleError && reason.reason === "conflict") {
         movePending = null; moveBookingId = null; moveUncertain = false;
         message = "Перенос не выполнен. Выбранное время или правило изменилось, обновите список.";
