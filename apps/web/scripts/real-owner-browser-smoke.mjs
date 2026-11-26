@@ -1384,7 +1384,7 @@ async function main() {
     cdp.onEvent("Network.requestWillBeSent",({request})=>{
       if(request.url.startsWith(origin)&&request.method==="POST"&&new URL(request.url).pathname===ownerCancelUrl)ownerCancellationRequests++;
     });
-    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);window.fetch=async(input,init)=>{const reply=await send(input,init);if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(ownerCancelUrl)+")&&reply.status===200){window.fetch=send;throw new Error('synthetic lost owner cancellation response');}return reply;};})()");
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);let lost=false;window.__kukiOwnerCancelKeys=[];window.__kukiOwnerCancelBodies=[];window.__kukiOwnerCancelNextStatus=null;window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(ownerCancelUrl)+")){window.__kukiOwnerCancelKeys.push(new Headers(init.headers).get('idempotency-key'));window.__kukiOwnerCancelBodies.push(init.body);const status=window.__kukiOwnerCancelNextStatus;if(status!==null){window.__kukiOwnerCancelNextStatus=null;return Response.json({error:'synthetic rejected retry'},{status});}const reply=await send(input,init);if(!lost&&reply.status===200){lost=true;throw new Error('synthetic lost owner cancellation response');}return reply;}return send(input,init);};})()");
     await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Подтвердить отмену').click();})()");
     await requireDom(cdp,"owner unknown commit is not shown as success",
       ownerEditRoot+"?.innerText.includes('Результат отмены неизвестен')&&[..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходную отмену'&&!b.disabled)");
@@ -1394,7 +1394,33 @@ async function main() {
     );
     assert.deepEqual(ownerCommitted.rows,[{status:"CancelledByBusiness",price:"125050"}]);
     assert.equal(ownerCancellationRequests,1,"Unknown owner result may not spontaneously retry");
-    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Повторить исходную отмену').click();})()");
+    const ownerCancelEffects=()=>pool.query(
+      "SELECT (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.cancel') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.cancelled' AND payload->>'bookingId'=$2::text) AS events",
+      [owner.tenantId,bookingId],
+    );
+    assert.deepEqual((await ownerCancelEffects()).rows,[{audits:1,receipts:1,events:1}]);
+    const clickOwnerCancelRetry="(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Повторить исходную отмену').click();})()";
+    // Intercept two retries before the network. A rejected retry cannot
+    // establish that the initial committed cancellation failed.
+    for(const [index,status] of [409,404].entries()){
+      await evaluate(cdp,"window.__kukiOwnerCancelNextStatus="+status);
+      await evaluate(cdp,clickOwnerCancelRetry);
+      await requireDom(cdp,"owner cancellation retains uncertainty after synthetic "+status,
+        "window.__kukiOwnerCancelKeys.length==="+(index+2)+"&&"+ownerEditRoot+"?.innerText.includes('Результат исходной отмены неизвестен')&&[..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходную отмену'&&!b.disabled)&&!"+ownerEditRoot+".innerText.includes('Отмена не выполнена')&&![..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Подтвердить отмену'||b.textContent.trim()==='Отменить запись')");
+      assert.equal(ownerCancellationRequests,1,"Synthetic rejection must not send a network POST");
+      const keys=await evaluate(cdp,"window.__kukiOwnerCancelKeys");
+      const bodies=await evaluate(cdp,"window.__kukiOwnerCancelBodies");
+      assert.equal(keys.length,index+2);
+      assert.ok(typeof keys[0]==="string"&&keys[0].length>=16&&keys.every(key=>key===keys[0]));
+      assert.equal(bodies.length,index+2);
+      assert.ok(bodies.every(body=>body===bodies[0]));
+      assert.deepEqual((await pool.query(
+        "SELECT status,price_kopecks_snapshot::text AS price FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [owner.tenantId,bookingId],
+      )).rows,ownerCommitted.rows);
+      assert.deepEqual((await ownerCancelEffects()).rows,[{audits:1,receipts:1,events:1}]);
+    }
+    await evaluate(cdp,clickOwnerCancelRetry);
     await requireDom(cdp,"owner calendar refreshed after acknowledged same-key receipt",
       "(()=>{const rows=[...document.querySelectorAll('[aria-label=\"Записи за выбранный период\"] .schedule-summary')];return rows.some(r=>r.querySelector('.owner-booking-detail[data-booking-id="+JSON.stringify(bookingId)+"]')&&r.querySelector('.status-pill')?.textContent==='Отменена салоном')})()");
     const ownerEffects=await pool.query(
@@ -1402,13 +1428,19 @@ async function main() {
       [owner.tenantId,bookingId],
     );
     assert.deepEqual(ownerEffects.rows[0],{audits:1,receipts:1,events:1});
-    assert.equal(ownerCancellationRequests,2,"Explicit owner retry must use the original command key");
+    assert.equal(ownerCancellationRequests,2,"Only initial and final real cancellation POSTs");
+    const cancellationKeys=await evaluate(cdp,"window.__kukiOwnerCancelKeys");
+    const cancellationBodies=await evaluate(cdp,"window.__kukiOwnerCancelBodies");
+    assert.equal(cancellationKeys.length,4);
+    assert.ok(cancellationKeys.every(key=>key===cancellationKeys[0]),"Every retry must retain the original key");
+    assert.equal(cancellationBodies.length,4);
+    assert.ok(cancellationBodies.every(body=>body===cancellationBodies[0]),"Every retry must retain the original body");
     for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
       await viewport(cdp,width,height);
       await checkWidth(cdp,"owner calendar after cancel "+width+"px");
       await checkLabeledControls(cdp,"owner calendar after cancel "+width+"px");
     }
-    console.log("PASS owner Calendar real browser cancellation: unknown response, same-key recovery, immutable price and one audit/receipt/outbox.");
+    console.log("PASS owner Calendar real browser cancellation: unknown response, rejected 409/404 retries, same-key recovery, immutable price and one audit/receipt/outbox.");
 
     const revokedOwner = await pool.query(
       "UPDATE cookie_identity.opaque_sessions SET revoked_at=clock_timestamp() WHERE tenant_id=$1::uuid AND revoked_at IS NULL",
