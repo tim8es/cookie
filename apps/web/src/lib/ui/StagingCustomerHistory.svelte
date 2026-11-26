@@ -112,6 +112,7 @@
   async function confirmMove(): Promise<void> {
     if (!movePending || moveBusy || busy) return;
     const attempt = movePending;
+    const previouslyUncertain = moveUncertain;
     moveBusy = true; onHistory(null); message = "";
     try {
       const receipt = await rescheduleOwnBooking(session, attempt.bookingId, attempt.newStartAt, attempt.key);
@@ -121,7 +122,11 @@
       await refresh();
     } catch (reason) {
       if (!mounted) return;
-      if (reason instanceof CustomerRescheduleError && reason.reason === "conflict") {
+      if (previouslyUncertain) {
+        // A rejected replay cannot disprove the original transaction's commit.
+        moveUncertain = true;
+        message = "Результат исходного переноса не подтверждён. Повторите тот же запрос с исходным ключом.";
+      } else if (reason instanceof CustomerRescheduleError && reason.reason === "conflict") {
         movePending = null; moveBookingId = null; moveUncertain = false;
         message = "Перенос не выполнен. Выбранное время или правило изменилось, обновите список.";
         await refresh();
@@ -286,9 +291,11 @@
                     {/if}
                   {/if}
                   {#if movePending?.bookingId === booking.bookingId}
-                    <p>Подтвердить перенос на {time(movePending.newStartAt, booking.timeZone)}? Услуга, мастер, филиал и исходная стоимость сохранятся.</p>
-                    <Button type="button" disabled={moveBusy || busy} onclick={() => void confirmMove()}>Подтвердить перенос</Button>
-                    {#if !moveUncertain}<Button type="button" variant="outline" disabled={moveBusy} onclick={closeMove}>Отмена</Button>{/if}
+                    {#if !moveUncertain}
+                      <p>Подтвердить перенос на {time(movePending.newStartAt, booking.timeZone)}? Услуга, мастер, филиал и исходная стоимость сохранятся.</p>
+                      <Button type="button" disabled={moveBusy || busy} onclick={() => void confirmMove()}>Подтвердить перенос</Button>
+                      <Button type="button" variant="outline" disabled={moveBusy} onclick={closeMove}>Отмена</Button>
+                    {/if}
                   {:else}
                     <Button type="button" disabled={moveBusy || busy || moveSlotsBusy || !moveSlotId} onclick={prepareMove}>Проверить новое время</Button>
                     <Button type="button" variant="outline" disabled={moveBusy} onclick={closeMove}>Назад</Button>
