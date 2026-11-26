@@ -82,6 +82,7 @@
   async function confirmCancellation(): Promise<void> {
     if (!cancelPending || cancelBusy || !detail || disabled) return;
     const attempt = cancelPending;
+    const previouslyUncertain = cancelUncertain;
     cancelBusy = true;
     cancelMessage = "";
     try {
@@ -95,7 +96,11 @@
       onChanged();
     } catch (reason) {
       if (!mounted || !open) return;
-      if (reason instanceof OwnerCancellationError && reason.reason === "conflict") {
+      if (previouslyUncertain) {
+        // A rejected retry cannot establish whether the original write committed.
+        cancelUncertain = true;
+        cancelMessage = "Результат исходной отмены неизвестен. Повторите исходный запрос с тем же ключом; не создавайте новую операцию.";
+      } else if (reason instanceof OwnerCancellationError && reason.reason === "conflict") {
         cancelPending = null;
         cancelUncertain = false;
         cancelMessage = "Отмена не выполнена. Статус записи или тестовый срок изменился.";
