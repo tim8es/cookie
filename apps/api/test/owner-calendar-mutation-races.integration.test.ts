@@ -139,6 +139,24 @@ test(
       });
       assert.equal(staff.statusCode, 201, staff.body);
       const staffId: string = staff.json().staff.id;
+      // These are isolated persisted test fixtures, not publication commands.
+      // Existing-Booking edits must work without a new-booking entitlement.
+      await pool.query(
+        "UPDATE cookie_catalog.services SET active=true WHERE tenant_id=$1 AND id=$2",
+        [tenant, serviceId],
+      );
+      await pool.query(
+        "UPDATE cookie_staff.staff_profiles SET bookable=true WHERE tenant_id=$1 AND id=$2",
+        [tenant, staffId],
+      );
+      await pool.query(
+        "UPDATE cookie_staff.location_assignments SET active=true WHERE tenant_id=$1 AND staff_id=$2 AND location_id=$3",
+        [tenant, staffId, owner.locationId],
+      );
+      await pool.query(
+        "UPDATE cookie_staff.service_assignments SET active=true WHERE tenant_id=$1 AND staff_id=$2 AND location_id=$3 AND service_id=$4",
+        [tenant, staffId, owner.locationId, serviceId],
+      );
       const customerId = randomUUID();
       await pool.query(
         "INSERT INTO cookie_customers.customers(tenant_id,id) VALUES($1::uuid,$2::uuid)",
@@ -181,6 +199,26 @@ test(
             serviceId,
             original,
           ],
+        );
+        // Prove the target is actually available before starting any race.
+        const preview = await app.inject({
+          method: "GET",
+          url:
+            prefix +
+            "/owner-calendar/" +
+            id +
+            "/reschedule/slots?locationId=" +
+            owner.locationId +
+            "&localDate=" +
+            date,
+          headers,
+        });
+        assert.equal(preview.statusCode, 200, preview.body);
+        assert.ok(
+          preview
+            .json()
+            .slots.some((slot: { startAt: string }) => slot.startAt === target),
+          "Fixture target must be available before contention",
         );
         return { id, original, target };
       };
@@ -359,7 +397,8 @@ test(
             [tenant],
           );
         });
-        assert.equal(denied?.statusCode, 403, denied?.body ?? "Missing response");
+        assert.ok(denied);
+        assert.equal(denied.statusCode, 403, denied.body);
         assert.deepEqual((await state(roleRow)).rows, roleBefore);
         assert.deepEqual((await effects(roleRow)).rows, [
           expectedEffects(0, 0),
@@ -384,7 +423,8 @@ test(
         await waitForStaff(1);
         assert.equal(await sessions.revokeBearerToken(bearer), true);
       });
-      assert.equal(denied?.statusCode, 403, denied?.body ?? "Missing response");
+      assert.ok(denied);
+      assert.equal(denied.statusCode, 403, denied.body);
       assert.deepEqual((await state(sessionRow)).rows, sessionBefore);
       assert.deepEqual((await effects(sessionRow)).rows, [
         expectedEffects(0, 0),
