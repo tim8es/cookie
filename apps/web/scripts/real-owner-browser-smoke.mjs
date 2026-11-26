@@ -1492,8 +1492,10 @@ async function main() {
     assert.deepEqual(await cancellationEffects(),{audits:1,receipts:1,events:1});
     const clickCancellationRetry="(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Повторить исходную отмену').click();})()";
     // Rejections below are injected before the network. They test mounted
-    // uncertainty handling, not a real authorization revocation.
-    for(const [index,status] of [409,404,403].entries()){
+    // uncertainty handling, not a real authorization revocation. A 401/403
+    // tears down the protected owner shell via createOwnerReads; never keep
+    // that shell mounted for the sake of an ambiguous receipt.
+    for(const [index,status] of [409,404,503].entries()){
       await evaluate(cdp,"window.__kukiOwnerCancelNextStatus="+status);
       await evaluate(cdp,clickCancellationRetry);
       await requireDom(cdp,"owner cancellation remains unknown after synthetic "+status,
@@ -1511,7 +1513,7 @@ async function main() {
       )).rows,ownerCommitted.rows);
       assert.deepEqual(await cancellationEffects(),{audits:1,receipts:1,events:1});
     }
-    assert.deepEqual(await evaluate(cdp,"window.__kukiOwnerCancelSynthetic"),[409,404,403]);
+    assert.deepEqual(await evaluate(cdp,"window.__kukiOwnerCancelSynthetic"),[409,404,503]);
     await evaluate(cdp,clickCancellationRetry);
     await requireDom(cdp,"owner calendar refreshed after acknowledged same-key receipt",
       "(()=>{const rows=[...document.querySelectorAll('[aria-label=\"Записи за выбранный период\"] .schedule-summary')];return rows.some(r=>r.querySelector('.owner-booking-detail[data-booking-id="+JSON.stringify(bookingId)+"]')&&r.querySelector('.status-pill')?.textContent==='Отменена салоном')})()");
@@ -1538,7 +1540,7 @@ async function main() {
       await checkWidth(cdp,"owner calendar after cancel "+width+"px");
       await checkLabeledControls(cdp,"owner calendar after cancel "+width+"px");
     }
-    console.log("PASS owner Calendar real browser cancellation: lost 200, synthetic 409/404/403 remain unknown, real same-key replay, immutable price and one audit/receipt/outbox.");
+    console.log("PASS owner Calendar real browser cancellation: lost 200, synthetic 409/404/503 remain unknown, real same-key replay, immutable price and one audit/receipt/outbox.");
 
     const revokedOwner = await pool.query(
       "UPDATE cookie_identity.opaque_sessions SET revoked_at=clock_timestamp() WHERE tenant_id=$1::uuid AND revoked_at IS NULL",
