@@ -8,6 +8,7 @@ import { createApp } from "./app.js";
 import { parseStagingCancellationCutoff } from "./staging-customer-cancellation-http.js";
 import { parseStagingRescheduleCutoff } from "./staging-customer-reschedule-http.js";
 import { parseStagingOwnerCancellationCutoff } from "./staging-owner-calendar-cancellation-http.js";
+import { parseStagingOwnerRescheduleCutoff } from "./staging-owner-calendar-reschedule-http.js";
 import { parseControlledAppearanceMode } from "./staging-appearance-mode.js";
 import { parseConfig } from "./config.js";
 import { registerCompiledWeb } from "./static-web.js";
@@ -56,6 +57,11 @@ const stagingOwnerCancellationCutoff = parseStagingOwnerCancellationCutoff(
 );
 if (stagingOwnerCancellationCutoff !== undefined && !stagingPublicationEnabled)
   throw new Error("Staging owner cancellation requires staging publication");
+const stagingOwnerRescheduleCutoff = parseStagingOwnerRescheduleCutoff(
+  process.env.COOKIE_STAGING_OWNER_RESCHEDULE_CUTOFF_MINUTES,
+);
+if (stagingOwnerRescheduleCutoff !== undefined && !stagingPublicationEnabled)
+  throw new Error("Staging owner reschedule requires staging publication");
 const pool = new Pool({
   connectionString: config.databaseUrl,
   application_name: "cookie-api",
@@ -121,6 +127,16 @@ const app = createApp(pool, {
                 verifier: tenantSessionVerifier,
                 enabled: true,
                 cutoffMinutes: stagingOwnerCancellationCutoff,
+              },
+            }),
+        ...(stagingOwnerRescheduleCutoff === undefined
+          ? {}
+          : {
+              stagingOwnerCalendarReschedule: {
+                pool,
+                verifier: tenantSessionVerifier,
+                enabled: true,
+                cutoffMinutes: stagingOwnerRescheduleCutoff,
               },
             }),
         staffRoutes: { pool, verifier: tenantSessionVerifier },

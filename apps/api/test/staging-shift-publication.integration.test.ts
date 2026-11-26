@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -1492,6 +1492,21 @@ test(
       assert.equal(moved.json().startAt, moveTarget);
       assert.equal(moved.json().previousStartAt, bookingPayload.startAt);
       assert.equal(moved.json().priceKopecks, rebooked.json().priceKopecks);
+      // Match the deployed customer fingerprint byte for byte. A successful
+      // same-key replay with only a newly generated hash is not upgrade proof.
+      const legacyHash = createHash("sha256")
+        .update(JSON.stringify([movedBookingId, moveTarget, "staging.client"]))
+        .digest("hex");
+      const persistedMove = await pool.query<{ request_sha256: string }>(
+        `SELECT request_sha256 FROM cookie_booking.command_receipts
+          WHERE tenant_id=$1::uuid AND booking_id=$2::uuid
+            AND operation='booking.reschedule'`,
+        [owner.tenantId, movedBookingId],
+      );
+      assert.deepEqual(persistedMove.rows, [{ request_sha256: legacyHash }]);
+      const legacyReplay = await move();
+      assert.equal(legacyReplay.statusCode, 200, legacyReplay.body);
+      assert.deepEqual(legacyReplay.json(), moved.json());
       assert.equal((await move(moveKey, slots[10]!.startAt)).statusCode, 409);
       const stateAfterMove = await pool.query(
         "SELECT start_at,price_kopecks_snapshot::text AS price,service_id::text AS service,staff_id::text AS staff,location_id::text AS location FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
@@ -1517,6 +1532,19 @@ test(
       );
       assert.equal(afterGrant.statusCode, 200);
       assert.equal(afterGrant.json().status, "CancelledByClient");
+      // A legitimate old receipt is historical, not a new Confirmed write.
+      const historicalMove = await move();
+      assert.equal(historicalMove.statusCode, 200, historicalMove.body);
+      assert.deepEqual(historicalMove.json(), moved.json());
+      const afterHistoricalReplay = await pool.query(
+        "SELECT status,start_at FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [owner.tenantId, movedBookingId],
+      );
+      assert.equal(afterHistoricalReplay.rows[0].status, "CancelledByClient");
+      assert.equal(
+        afterHistoricalReplay.rows[0].start_at.toISOString(),
+        moveTarget,
+      );
       const finalCounts = await pool.query(
         "SELECT (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND operation='booking.cancel') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.cancelled') AS events",
         [owner.tenantId],

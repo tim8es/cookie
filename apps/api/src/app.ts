@@ -69,6 +69,10 @@ import {
   type StagingOwnerCancellationDependencies,
 } from "./staging-owner-calendar-cancellation-http.js";
 import {
+  registerStagingOwnerCalendarReschedule,
+  type StagingOwnerRescheduleDependencies,
+} from "./staging-owner-calendar-reschedule-http.js";
+import {
   registerOwnerShiftPlanRoutes,
   type OwnerShiftPlanRouteDependencies,
 } from "./owner-shift-plan-http.js";
@@ -119,6 +123,7 @@ export function createApp(
     readonly stagingCustomerRescheduleRoutes?: StagingRescheduleDependencies;
     readonly ownerCalendar?: OwnerCalendarDependencies;
     readonly stagingOwnerCalendarCancellation?: StagingOwnerCancellationDependencies;
+    readonly stagingOwnerCalendarReschedule?: StagingOwnerRescheduleDependencies;
     readonly telegramAuthRoutes?: {
       readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
@@ -263,6 +268,11 @@ export function createApp(
     registerStagingOwnerCalendarCancellation(
       app,
       options.stagingOwnerCalendarCancellation,
+    );
+  if (options.stagingOwnerCalendarReschedule)
+    registerStagingOwnerCalendarReschedule(
+      app,
+      options.stagingOwnerCalendarReschedule,
     );
 
   if (options.stagingPublicationRoutes) {
