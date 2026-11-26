@@ -80,6 +80,12 @@ export async function registerCompiledWeb(
     ) {
       return reply.callNotFound();
     }
+    // The reserved public booking family has no published resolver yet.
+    // Serve its isolated unavailable UI with the real HTTP status, not a
+    // successful SPA response. Do not reserve the separate owner /booking.
+    if (path === "/book" || path.startsWith("/book/")) {
+      reply.code(404).header("X-Robots-Tag", "noindex, nofollow");
+    }
     return htmlResponse(reply, indexHtml);
   });
 }
