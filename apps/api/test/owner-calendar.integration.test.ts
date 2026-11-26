@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -69,6 +69,14 @@ test(
       ownerCalendar: { pool, verifier: sessions },
     });
     const disabled = createApp(pool);
+    const replayApp = createApp(pool, {
+      stagingOwnerCalendarReschedule: {
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 525600,
+      },
+    });
     try {
       await runMigrations(pool, resolve(process.cwd(), "db/migrations"));
       await pool.query(
@@ -277,6 +285,104 @@ test(
         ).statusCode,
         404,
       );
+      // A synthetic persisted receipt represents a previously committed move.
+      // This isolates the real authorized replay from availability and policy
+      // setup. The large cutoff deliberately forbids a new move at this date.
+      const moveKey = randomUUID();
+      const newStartAt = record.startAt;
+      const priorReceipt = {
+        bookingId: confirmed,
+        status: "Confirmed",
+        previousStartAt: "2027-03-14T10:00:00.000Z",
+        startAt: newStartAt,
+        endAt: record.endAt,
+        occupiedUntil: "2027-03-14T13:10:00.000Z",
+        priceKopecks: record.priceKopecks,
+      };
+      const hash = (value: string) =>
+        createHash("sha256").update(value, "utf8").digest("hex");
+      await pool.query(
+        `INSERT INTO cookie_booking.command_receipts
+           (tenant_id,actor_identity_id,operation,key_sha256,request_sha256,
+            booking_id,result)
+         VALUES ($1::uuid,$2::uuid,'booking.reschedule',$3,$4,$5::uuid,$6::jsonb)`,
+        [
+          tenant,
+          ownerId,
+          hash(moveKey),
+          hash(JSON.stringify([confirmed, newStartAt, "staging.owner"])),
+          confirmed,
+          JSON.stringify(priorReceipt),
+        ],
+      );
+      const replay = (branchId = owner.locationId) =>
+        replayApp.inject({
+          method: "POST",
+          url:
+            calendarUrl +
+            "/" +
+            confirmed +
+            "/reschedule?locationId=" +
+            branchId,
+          headers: { ...headers, "idempotency-key": moveKey },
+          payload: { newStartAt },
+        });
+      const original = await replay();
+      assert.equal(original.statusCode, 200, original.body);
+      assert.deepEqual(original.json(), priorReceipt);
+      const wrongBranch = await replay(otherBranch);
+      assert.equal(wrongBranch.statusCode, 403, wrongBranch.body);
+      assert.deepEqual(wrongBranch.json(), { error: "forbidden" });
+
+      // Change only synthetic ownership, retaining the old bearer/membership
+      // and role grants. A cached result must not bypass current owner scope.
+      const replacementOwner = randomUUID();
+      await pool.query(
+        "INSERT INTO cookie_identity.identities(id) VALUES($1::uuid)",
+        [replacementOwner],
+      );
+      await pool.query(
+        "INSERT INTO cookie_identity.memberships(tenant_id,identity_id) VALUES($1::uuid,$2::uuid)",
+        [tenant, replacementOwner],
+      );
+      await pool.query(
+        "UPDATE cookie_tenancy.organizations SET owner_identity_id=$2::uuid WHERE id=$1::uuid",
+        [tenant, replacementOwner],
+      );
+      try {
+        const formerOwner = await replay();
+        assert.equal(formerOwner.statusCode, 403, formerOwner.body);
+        assert.deepEqual(formerOwner.json(), { error: "forbidden" });
+      } finally {
+        await pool.query(
+          "UPDATE cookie_tenancy.organizations SET owner_identity_id=$2::uuid WHERE id=$1::uuid",
+          [tenant, ownerId],
+        );
+      }
+      const restoredOwner = await replay();
+      assert.equal(restoredOwner.statusCode, 200, restoredOwner.body);
+      assert.deepEqual(restoredOwner.json(), priorReceipt);
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'booking.reschedule') WHERE tenant_id=$1::uuid",
+        [tenant],
+      );
+      assert.equal((await replay()).statusCode, 403);
+
+      const effects = await pool.query(
+        `SELECT
+           (SELECT count(*)::int FROM cookie_booking.command_receipts
+             WHERE tenant_id=$1::uuid AND booking_id=$2::uuid
+               AND operation='booking.reschedule') AS receipts,
+           (SELECT count(*)::int FROM cookie_booking.time_change_audit
+             WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,
+           (SELECT count(*)::int FROM cookie_jobs.outbox_events
+             WHERE tenant_id=$1::uuid AND topic='booking.rescheduled'
+               AND payload->>'bookingId'=$2::text) AS events`,
+        [tenant, confirmed],
+      );
+      assert.deepEqual(effects.rows, [{ receipts: 1, audits: 0, events: 0 }]);
+      assert.deepEqual((await read()).json().entries[1], record);
+
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'booking.read') WHERE tenant_id=$1::uuid",
         [tenant],
@@ -284,7 +390,9 @@ test(
       assert.equal((await read()).statusCode, 403);
       await app.inject({ method: "POST", url: "/v1/auth/logout", headers });
       assert.equal((await read()).statusCode, 401);
+      assert.equal((await replay()).statusCode, 401);
     } finally {
+      await replayApp.close();
       await disabled.close();
       await app.close();
       await pool.end();
