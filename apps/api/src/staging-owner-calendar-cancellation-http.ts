@@ -147,23 +147,7 @@ export function registerStagingOwnerCalendarCancellation(
           pool,
           { actor, bookingId, idempotencyKey: key },
           cutoffMinutes,
-          async (client, booking) => {
-            // A preflight is never the mutation's authority. Hold the exact
-            // tenant-owner row lock through the committing cancellation.
-            const owner = await client.query(
-              `SELECT 1 FROM cookie_tenancy.organizations
-                WHERE id=$1::uuid AND owner_identity_id=$2::uuid FOR SHARE`,
-              [actor.tenantId, actor.identityId],
-            );
-            if (owner.rowCount !== 1 || booking.locationId !== locationId)
-              throw new AuthorizationDeniedError();
-            const allowed = await client.query(
-              "SELECT 1 WHERE $1::timestamptz > clock_timestamp() + $2::int * interval '1 minute'",
-              [booking.startAt, cutoffMinutes],
-            );
-            if (allowed.rowCount !== 1)
-              throw new CancelBookingFailure("CANCELLATION_POLICY_DENIED");
-          },
+          locationId,
         );
         return reply.send(receipt);
       } catch (error) {

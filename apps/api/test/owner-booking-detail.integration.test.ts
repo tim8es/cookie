@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { Pool } from "pg";
 
@@ -501,6 +502,89 @@ test(
         ).rows[0],
         effects.rows[0],
       );
+      // A legitimate replay is independent of the current new-write deadline.
+      const lateReplay = await cancel(ownerCancel, key, cutoffDenied);
+      assert.equal(lateReplay.statusCode, 200, lateReplay.body);
+      assert.deepEqual(lateReplay.json(), done.json());
+
+      // The HTTP preflight runs in a separate transaction. Hold the staff row
+      // until the actual command is demonstrably waiting on it, then change
+      // current ownership while leaving the old bearer and role intact.
+      const blocker = await pool.connect();
+      let inFlight: ReturnType<typeof cancel> | undefined;
+      try {
+        await blocker.query("BEGIN");
+        const pid = await blocker.query<{ pid: number }>(
+          "SELECT pg_backend_pid() AS pid",
+        );
+        await blocker.query(
+          "SELECT id FROM cookie_staff.staff_profiles WHERE tenant_id=$1::uuid AND id=$2::uuid FOR UPDATE",
+          [tenant, staffId],
+        );
+        inFlight = cancel();
+        let waiting = false;
+        const deadline = Date.now() + 10000;
+        while (Date.now() < deadline) {
+          const blocked = await pool.query(
+            `SELECT 1 FROM pg_stat_activity
+                WHERE $1::int = ANY(pg_blocking_pids(pid))
+                  AND application_name = 'cookie-owner-calendar-detail-test'
+                  AND query LIKE '%cookie_staff.staff_profiles%'
+                  AND query LIKE '%FOR UPDATE%'`,
+            [pid.rows[0]!.pid],
+          );
+          if (blocked.rowCount === 1) {
+            waiting = true;
+            break;
+          }
+          await delay(25);
+        }
+        assert.ok(waiting, "Replay must wait on the actual Staff row lock");
+        await pool.query(
+          "UPDATE cookie_tenancy.organizations SET owner_identity_id=$2::uuid WHERE id=$1::uuid",
+          [tenant, adminId],
+        );
+      } finally {
+        try {
+          await blocker.query("ROLLBACK");
+        } finally {
+          blocker.release();
+        }
+        try {
+          if (inFlight) {
+            const denied = await inFlight;
+            assert.equal(denied.statusCode, 403, denied.body);
+            assert.deepEqual(denied.json(), { error: "forbidden" });
+          }
+        } finally {
+          await pool.query(
+            "UPDATE cookie_tenancy.organizations SET owner_identity_id=$2::uuid WHERE id=$1::uuid",
+            [tenant, ownerId],
+          );
+        }
+      }
+      const restored = await cancel();
+      assert.equal(restored.statusCode, 200, restored.body);
+      assert.deepEqual(restored.json(), done.json());
+      assert.deepEqual(
+        (
+          await pool.query(
+            "SELECT status,price_kopecks_snapshot::text AS price,start_at FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+            [tenant, mutable],
+          )
+        ).rows,
+        after.rows,
+      );
+      assert.deepEqual(
+        (
+          await pool.query(
+            "SELECT (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.cancel') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.cancelled' AND payload->>'bookingId'=$2::text) AS events",
+            [tenant, mutable],
+          )
+        ).rows[0],
+        effects.rows[0],
+      );
+
       await pool.query(
         "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'booking.cancel') WHERE tenant_id=$1::uuid",
         [tenant],
