@@ -42,6 +42,36 @@ test("compiled static web never enables Booking", async (t) => {
   assert.equal(spa.statusCode, 200);
   assert.match(spa.body, /Cookie/);
 
+  // The reserved public family renders the unavailable SPA, but never
+  // represents a successfully resolved or published salon.
+  for (const url of [
+    "/book",
+    "/book/",
+    "/book/unknown-synthetic-salon",
+    "/book/unknown-synthetic-salon?source=qr",
+    "/book/unknown-synthetic-salon/branch",
+  ]) {
+    const response = await app.inject({ method: "GET", url });
+    assert.equal(response.statusCode, 404, url);
+    assert.match(response.headers["content-type"] ?? "", /text\/html/);
+    assert.equal(response.headers["cache-control"], "no-store");
+    assert.equal(response.headers["x-robots-tag"], "noindex, nofollow");
+    assert.equal(response.headers["x-frame-options"], "DENY");
+    assert.equal(response.headers["x-content-type-options"], "nosniff");
+    assert.equal(response.body, page.body);
+    const head = await app.inject({ method: "HEAD", url });
+    assert.equal(head.statusCode, 404, url);
+    assert.equal(head.headers["cache-control"], "no-store");
+    assert.equal(head.headers["x-robots-tag"], "noindex, nofollow");
+    assert.equal(head.body, "");
+  }
+  for (const url of ["/booking", "/booking/", "/booking?source=owner"]) {
+    const owner = await app.inject({ method: "GET", url });
+    assert.equal(owner.statusCode, 200, url);
+    assert.equal(owner.body, page.body);
+    assert.equal(owner.headers["x-robots-tag"], undefined);
+  }
+
   for (const url of [
     "/v1/bookings",
     "/v1/organizations/00000000-0000-4000-8000-000000000000/bookings",
