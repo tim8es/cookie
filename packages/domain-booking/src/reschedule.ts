@@ -538,11 +538,18 @@ async function rescheduleBooking(
   const tenantId = input.actor.tenantId;
   const actorId = input.actor.identityId;
   const keyHash = hash(input.idempotencyKey);
+  // Preserve the original customer receipt fingerprint across upgrades.
+  // The staging owner operation has a separate namespace; internal commands
+  // retain their existing unqualified fingerprint.
   const requestHash = hash(
     JSON.stringify(
-      cutoffMinutes !== undefined
-        ? [input.bookingId, newStartAt, "staging." + stagingScope]
-        : [input.bookingId, newStartAt],
+      cutoffMinutes === undefined
+        ? [input.bookingId, newStartAt]
+        : [
+            input.bookingId,
+            newStartAt,
+            stagingScope === "customer" ? "staging.client" : "staging.owner",
+          ],
     ),
   );
   try {
