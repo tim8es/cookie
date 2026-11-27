@@ -16,7 +16,7 @@
   } = $props();
 </script>
 
-<!-- Native scrolling preserves touch, wheel, keyboard and platform scrollbar behavior. -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard users must be able to focus and scroll the labeled region) -->
 <div
   class={"rhythm-scroll-area " + className}
   data-component="ScrollArea"

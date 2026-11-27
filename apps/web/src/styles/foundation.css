@@ -68,6 +68,45 @@ h1,h2,h3 { color: var(--cookie-ink); letter-spacing: -.035em; }
   border-bottom: 1px solid #e7e0e9; min-height: 30px; font-size: 11px;
 }
 .ribbon-pulse { background: #86648c; }
+.verified-owner-shell .main-area { background: var(--rhythm-canvas); }
+.verified-owner-shell .content { padding-top: clamp(16px, 2vw, 28px); }
+.app-shell.verified-owner-shell .sidebar {
+  background: var(--rhythm-canvas);
+  color: var(--rhythm-ink);
+  border-inline-end: 1px solid var(--cookie-border);
+}
+.verified-owner-shell .sidebar .brand strong,
+.verified-owner-shell .sidebar .brand-dot { color: var(--rhythm-brand); }
+.verified-owner-shell .sidebar .brand small,
+.verified-owner-shell .sidebar .sidebar-heading { color: var(--rhythm-muted); }
+.verified-owner-shell .nav-links button {
+  color: var(--rhythm-ink);
+  min-height: var(--rhythm-control-height);
+}
+.verified-owner-shell .nav-links button:is(:hover, .active),
+.verified-owner-shell .mobile-nav button.active {
+  background: var(--rhythm-selected);
+  color: var(--rhythm-on-selected);
+}
+.verified-owner-shell .workspace-account .rhythm-popover,
+.verified-owner-shell .workspace-account .rhythm-popover-trigger { width: 100%; }
+.verified-owner-shell .workspace-account .rhythm-popover-trigger > span:first-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.verified-owner-shell .mobile-more-panel > .workspace-account { grid-column: 1 / -1; }
+@media (min-width: 951px) {
+  .verified-owner-shell .nav-links {
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    padding: 4px;
+  }
+  .verified-owner-shell .nav-links button,
+  .verified-owner-shell .sidebar-bottom { flex-shrink: 0; }
+}
+
 .topbar { background: var(--cookie-surface); border-bottom: 1px solid #eee8ef; height: 75px; }
 .topbar-title strong { color: #382b3d; font-size: 14px; }
 .breadcrumb { color: #948a98; }

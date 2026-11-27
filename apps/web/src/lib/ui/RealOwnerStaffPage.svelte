@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { Plus } from "@lucide/svelte";
+  import ActionButton from "../components/rhythm/ActionButton.svelte";
+  import PageHeader from "../components/rhythm/PageHeader.svelte";
   import { onMount } from "svelte";
   import type { OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
@@ -19,6 +22,7 @@
   export let reads: OwnerReads;
   export let onOpenServices: () => void;
 
+  let staffNameInput: HTMLInputElement | null = null;
   let staff: readonly RealStaff[] = [];
   let locations: readonly RealStaffLocation[] = [];
   let services: readonly RealService[] = [];
@@ -168,13 +172,19 @@
   });
 </script>
 
-<div class="section-head">
-  <div>
-    <span class="eyebrow">kuki / КОМАНДА</span>
-    <h1>Мастера</h1>
-    <p>Один профиль на организацию. Услуги и филиалы привязываются как черновики.</p>
-  </div>
-</div>
+<PageHeader title="Мастера" organization={session.organizationName}
+  description="Настройте профили мастеров, их услуги и филиалы.">
+  {#snippet secondaryActions()}
+    <ActionButton onclick={() => void refresh()} disabled={loading || saving || publicationPending || !!pendingKey}>Обновить</ActionButton>
+  {/snippet}
+  {#snippet primaryAction()}
+    {#if loaded && !pendingKey && locations.length > 0 && services.length > 0}
+      <ActionButton tone="primary" onclick={() => staffNameInput?.focus()} disabled={loading || saving || publicationPending}>
+        <Plus size={17} aria-hidden="true" />Добавить мастера
+      </ActionButton>
+    {/if}
+  {/snippet}
+</PageHeader>
 
 {#if readError}
   <div class="alert-error" role="alert">
@@ -195,7 +205,6 @@
   <section class="card">
     <div class="card-title">
       <div><span class="eyebrow">КОМАНДА</span><h2>Профили мастеров</h2></div>
-      <Button variant="outline" type="button" onclick={() => void refresh()} disabled={loading || saving || publicationPending || !!pendingKey}>Обновить</Button>
     </div>
     {#if loading && !loaded}
       <OwnerReadPlaceholder label="Загружаем профили…" />
@@ -218,6 +227,7 @@
   </section>
   {#if loaded}
     <StaffForm
+      bind:nameInput={staffNameInput}
       services={services.map((service) => ({ id: service.id, name: service.displayName }))}
       {locations}
       {staffName}

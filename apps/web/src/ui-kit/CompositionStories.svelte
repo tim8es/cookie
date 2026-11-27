@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
     AccountMenu, ActionButton, BookingLayout, BookingTicket, ChoiceList,
-    DateStrip, PublicHeader, ResourceDay, SalonPage, ScheduleRow, Segment,
+    DateStrip, PageHeader, PublicHeader, ResourceDay, SalonPage, ScheduleRow, Segment,
     SlotGrid, type BookingStep, type ChoiceItem, type DayOption,
     type ResourceGroup, type SegmentOption,
   } from "$lib/components/rhythm/index.js";
@@ -177,6 +177,12 @@
   <ScheduleRow schedule={{ label: "Ольга", period: "23 ноября", status: "Выходной" }} />
 {:else}
   <h2 class="text-xl font-semibold">Единое меню аккаунта</h2>
+  <PageHeader title="Услуги салона" organization="Студия S." headingLevel={2}
+    description="Новые услуги доступны клиентам после публикации.">
+    {#snippet primaryAction()}
+      <ActionButton tone="primary" onclick={() => status = "Открыта форма новой услуги"}>Новая услуга</ActionButton>
+    {/snippet}
+  </PageHeader>
   <AccountMenu label="Аккаунт" {accounts} current={account} onSelect={(id) => (account = id)} onProfile={() => (status = "Настройки профиля")} onLogout={() => (status = "Выход — учебный пример")} />
   <p class="rhythm-muted">Выбрано: {accounts.find((item) => item.id === account)?.title} · {accounts.find((item) => item.id === account)?.subtitle}</p>
 {/if}

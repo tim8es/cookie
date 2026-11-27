@@ -130,6 +130,15 @@ async function button(cdp, label) {
     }
     return;
   }
+  if ((label === "Выйти" || label === "Сменить кабинет") &&
+      await evaluate(cdp, "Boolean(document.querySelector('.real-owner-nav'))")) {
+    const findTrigger = "[...document.querySelectorAll('.workspace-account button.rhythm-popover-trigger')].find(el=>el.getClientRects().length)";
+    if (!await evaluate(cdp, "Boolean(" + findTrigger + ")")) {
+      await evaluate(cdp, "document.querySelector('.real-owner-nav .mobile-nav button[aria-controls=mobile-more-panel]').click()");
+    }
+    await requireDom(cdp, "workspace account trigger", "Boolean(" + findTrigger + ")");
+    await evaluate(cdp, "(" + findTrigger + ").click()");
+  }
   // Authentication may be restoring on mount. Await the enabled control,
   // not merely its presence, before attempting the user's next action.
   if (label === "Я представляю бизнес" || label === "Войти через Telegram") {
@@ -340,7 +349,8 @@ async function assertPlan(pool, owner, staffId, locationId, date) {
 async function requireOverview(cdp) {
   await button(cdp, "Обзор");
   await requireDom(cdp, "persisted organization and both branches",
-    "document.querySelector('h1')?.textContent.trim()==='Synthetic browser salon' && " +
+    "document.querySelector('[data-component=PageHeader] h1')?.textContent.trim()==='Обзор' && " +
+    "document.querySelector('[data-component=PageHeader]')?.innerText.includes('Synthetic browser salon') && " +
     "document.querySelector('.list-items')?.innerText.includes('Synthetic Central') && " +
     "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(BRANCH_NAME) + ") && " +
     "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(BRANCH_ZONE) + ")");
@@ -485,7 +495,7 @@ async function main() {
     await requireDom(cdp,"new owner navigation after signup","document.querySelector('.real-owner-nav')");
     await button(cdp,"Обзор");
     await requireDom(cdp,"new owner workspace appears after signup",
-      "document.querySelector('h1')?.textContent.trim()==="+JSON.stringify(onboardingOrganization)+" && document.querySelector('.list-items')?.innerText.includes("+JSON.stringify(onboardingLocation)+")");
+      "document.querySelector('[data-component=PageHeader]')?.innerText.includes("+JSON.stringify(onboardingOrganization)+") && document.querySelector('.list-items')?.innerText.includes("+JSON.stringify(onboardingLocation)+")");
     const onboardingRows=await pool.query(
       `SELECT o.id::text AS tenant_id,l.id::text AS location_id,l.time_zone
          FROM cookie_tenancy.organizations o
@@ -506,7 +516,7 @@ async function main() {
       "document.querySelector('.real-owner-nav')");
     await button(cdp,"Обзор");
     await requireDom(cdp,"same verified organization restored",
-      "document.querySelector('h1')?.textContent.trim()==="+JSON.stringify(onboardingOrganization));
+      "document.querySelector('[data-component=PageHeader]')?.innerText.includes("+JSON.stringify(onboardingOrganization)+")");
     assert.ok(responses.slice(beforeRestore).some(r=>r.path.endsWith("/session-context")&&r.status===200));
     await button(cdp, "Сменить кабинет");
     await requireDom(cdp, "returned to identity chooser without sign-in",
@@ -526,7 +536,11 @@ async function main() {
     await fill(cdp,"#customer-tenant-id",dualTenant);
     await evaluate(cdp,"document.querySelector('.identity-consent input').click()");
     await requireDom(cdp,"consented client enrollment ready","[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Продолжить как клиент'&&!b.disabled)");
+    const customerChunk = (r) => /^\/assets\/StagingCustomerGate-[^/]+\.js$/.test(r.path);
+    assert.equal(responses.filter(customerChunk).length, 0, "Customer workspace loaded before entering it");
     await button(cdp,"Продолжить как клиент");
+    await poll("customer workspace loaded on demand", () =>
+      responses.some((r) => customerChunk(r) && r.status === 200));
     const clientGate = "document.querySelector('[aria-label=\"Клиентский вход staging\"] h1')?.textContent.trim()==='Вход клиента подтверждён' && !document.querySelector('.real-owner-nav')";
     await requireDom(cdp,"same identity enters client workspace",clientGate);
     const enrolled = await pool.query(
@@ -714,6 +728,13 @@ async function main() {
     await button(cdp, "Услуги");
     await requireDom(cdp, "owner click updates path without reload",
       "location.pathname==='/services' && window.__kukiNavigationMarker===1 && document.body.innerText.includes('Услуги салона')");
+    await requireDom(cdp, "only one owner page title",
+      "document.querySelectorAll('main h1').length===1 && document.querySelector('[data-component=PageHeader] h1').textContent==='Услуги салона'");
+    await requireDom(cdp, "service action ready",
+      "[...document.querySelectorAll('[data-component=PageHeader] button')].some(b=>b.textContent.trim()==='Новая услуга'&&!b.disabled)");
+    await button(cdp, "Новая услуга");
+    await requireDom(cdp, "new service focuses the real editor",
+      "document.activeElement instanceof HTMLInputElement && document.activeElement.closest('.owner-form')!==null");
     await evaluate(cdp, "history.back()");
     await requireDom(cdp, "back restores locations",
       "location.pathname==='/locations' && window.__kukiNavigationMarker===1 && document.querySelector('[data-screen=locations][aria-current=page]')");
@@ -800,7 +821,11 @@ async function main() {
     await requireDom(cdp, "assignment retains edited service", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
     const beforeRestart = await assertStored(pool, owner, locationId);
     assert.ok(responses.some((r) => r.status === 200 && r.path.endsWith('/services/' + beforeRestart.serviceId)));
+    const scheduleChunk = (r) => /^\/assets\/RealOwnerSchedulePage-[^/]+\.js$/.test(r.path);
+    assert.equal(responses.filter(scheduleChunk).length, 0, "Schedule editor loaded before navigation");
     await button(cdp, "Расписание");
+    await poll("schedule editor loaded on demand", () =>
+      responses.some((r) => scheduleChunk(r) && r.status === 200));
     await requireDom(cdp, "real schedule loaded with assigned branch",
       "document.querySelector('h1')?.textContent.trim()==='Расписание' && document.querySelectorAll('.owner-form input[type=datetime-local]').length===2 && " +
       "document.querySelector('.owner-form .owner-form-note')?.innerText.includes(" + JSON.stringify(BRANCH_ZONE) + ")");
@@ -923,13 +948,29 @@ async function main() {
     assert.equal(await assertPlan(pool, owner, beforeRestart.staffId, locationId, date), shiftId);
     await button(cdp, "Мастера");
     await requireDom(cdp, "staff after restart", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
-    for (const [width, height] of [[320, 568], [1280, 800]]) {
+    for (const [width, height] of [[320, 568], [768, 900], [1280, 800]]) {
       await viewport(cdp, width, height);
       await checkWidth(cdp, "real staff " + width + "px");
       await checkLabeledControls(cdp, "real staff " + width + "px");
       await button(cdp, "Услуги");
       await requireDom(cdp, "service list at " + width, "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
       await checkWidth(cdp, "real services " + width + "px");
+      if (width >= 681) {
+        if (width === 1280) await viewport(cdp, width, 480);
+        const trigger = ".sidebar-bottom .rhythm-popover-trigger";
+        const target = await evaluate(cdp,
+          "(() => {const b=document.querySelector(" + JSON.stringify(trigger) + ");if(!b)return null;const r=b.getBoundingClientRect();const x=r.x+r.width/2,y=r.y+r.height/2;return b.contains(document.elementFromPoint(x,y))?{x,y}:null;})()");
+        assert.ok(target, "Workspace account must be clickable at " + width);
+        await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...target });
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...target });
+        await requireDom(cdp, "account menu opened and focused at " + width,
+          "Boolean(document.activeElement?.closest('.workspace-account [popover]'))");
+        await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+        await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+        await requireDom(cdp, "account menu closed and focus returned at " + width,
+          "document.activeElement?.matches(" + JSON.stringify(trigger) + ") && !document.querySelector('.workspace-account [popover]')?.matches(':popover-open')");
+        if (width === 1280) await viewport(cdp, width, height);
+      }
       await requireOverview(cdp);
       await checkWidth(cdp, "real overview " + width + "px");
       await checkLabeledControls(cdp, "real overview " + width + "px");
@@ -1760,12 +1801,12 @@ async function main() {
         "!document.querySelector('.real-owner-nav, form')");
     }
     assert.deepEqual(unavailableApiRequests, [], "Unpublished salon URL triggered authenticated API");
-    console.log("PASS integrated real owner/customer browser: direct owner routes and history navigation, fresh protected reads and fail-closed revocation, Overview + Location + Service create/edit + Staff + ShiftPlan, staging activation/publication, real client catalog and opt-in Booking, PostgreSQL restart persistence, logout and 3 viewports.");
+    console.log("PASS integrated real owner/customer browser: direct owner routes and history navigation, fresh protected reads and fail-closed revocation, Overview + Location + Service create/edit + Staff + ShiftPlan, staging activation/publication, real client catalog and opt-in Booking, PostgreSQL restart persistence, logout and 4 viewports.");
   } finally {
     if (cdp) cdp.close();
     try {
       await stopBrowser(chrome);
-      if (browserData) rmSync(browserData, { recursive: true, force: true });
+      if (browserData) rmSync(browserData, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
     } finally {
       try { await stopServer(api); } finally { await pool.end(); }
     }

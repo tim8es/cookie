@@ -765,7 +765,7 @@ async function main() {
     if (chrome && !chrome.killed) chrome.kill("SIGTERM");
     if (staticServer.listening) staticServer.close();
     await pause(300);
-    rmSync(browserDataDir, { recursive: true, force: true });
+    rmSync(browserDataDir, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
   }
 }
 

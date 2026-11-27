@@ -8,6 +8,7 @@ import { notifyBrowserSessionChanged } from "./browser-session-events";
 export interface VerifiedOwnerSession {
   readonly accessToken: string;
   readonly tenantId: string;
+  readonly organizationName?: string;
   readonly expiresAtUnixSeconds: number;
   readonly browserBound?: boolean;
 }

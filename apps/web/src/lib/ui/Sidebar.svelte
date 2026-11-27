@@ -1,11 +1,21 @@
 <script lang="ts">
   import { ArrowUpRight, CalendarDays, Check, Clock3, LayoutDashboard, MapPin, Menu, Palette, Scissors, UsersRound } from "@lucide/svelte";
   import { screens, type Screen } from "../navigation";
+  import PopoverMenu from "../components/rhythm/PopoverMenu.svelte";
+  import type { MenuOption } from "../components/rhythm/contracts";
 
   export let screen: Screen;
   export let stepCount: number;
   export let realOwner = false;
   export let onNavigate: (next: Screen) => void;
+  export let organizationName: string | undefined = undefined;
+  export let onLogout: (() => void) | undefined = undefined;
+  export let onSwitchAccount: (() => void) | undefined = undefined;
+
+  $: accountItems = [
+    ...(onSwitchAccount ? [{ id: "switch", label: "Сменить кабинет" }] : []),
+    { id: "logout", label: "Выйти" },
+  ] satisfies MenuOption[];
 
   let moreOpen = false;
   function navigate(next: Screen): void {
@@ -13,6 +23,13 @@
     onNavigate(next);
   }
 </script>
+
+{#snippet workspaceAccount()}
+  <div class="workspace-account" data-component="WorkspaceAccount">
+    <PopoverMenu label={organizationName || "Кабинет салона"} items={accountItems}
+      onSelect={(id) => id === "switch" ? onSwitchAccount?.() : onLogout?.()} />
+  </div>
+{/snippet}
 
 <aside class="sidebar" class:real-owner-nav={realOwner} aria-label="Главная навигация">
   <div class="brand">
@@ -73,6 +90,7 @@
       {#each screens.filter((item) => ["services", "staff", "schedule", "locations", "appearance"].includes(item.id)) as item (item.id)}
         <button type="button" data-screen={item.id} aria-current={screen === item.id ? "page" : undefined} onclick={() => navigate(item.id)}>{item.label}</button>
       {/each}
+      {#if realOwner && onLogout}{@render workspaceAccount()}{/if}
     </nav>
   {/if}
 
@@ -89,10 +107,12 @@
       </div>
       <p>{stepCount === 5 ? "Все шаги демонстрации выполнены" : "Добавьте услуги, команду и расписание"}</p>
     </div>
-    {/if}
     <div class="workspace-identity">
       <span class="identity-avatar" aria-hidden="true"><Check size={16}/></span>
-      <div><strong>{realOwner ? "Кабинет владельца" : "Демо-пространство"}</strong><small>{realOwner ? "Серверные данные" : "Локальные данные"}</small></div>
+      <div><strong>Демо-пространство</strong><small>Локальные данные</small></div>
     </div>
+    {:else if onLogout}
+      {@render workspaceAccount()}
+    {/if}
   </div>
 </aside>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ActionButton from "../components/rhythm/ActionButton.svelte";
+  import PageHeader from "../components/rhythm/PageHeader.svelte";
   import { onMount } from "svelte";
   import { branchToday, type OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
@@ -135,14 +137,11 @@
   });
 </script>
 
-<div class="section-head calendar-page-head owner-calendar-header">
-  <div>
-    <span class="eyebrow">kuki / ЗАПИСИ</span>
-    <h1>Календарь записей</h1>
-    <p>Сохранённые записи филиала. Просмотр не открывает новую запись.</p>
-  </div>
-  <Button type="button" variant="outline" onclick={() => void load()} disabled={loading || expired}>Обновить</Button>
-</div>
+<PageHeader title="Календарь записей" organization={session.organizationName}>
+  {#snippet secondaryActions()}
+    <ActionButton onclick={() => void load()} disabled={loading || expired}>Обновить</ActionButton>
+  {/snippet}
+</PageHeader>
 
 <section class="card owner-calendar" aria-label="Календарь записей владельца">
   {#if branches.length}
@@ -201,11 +200,6 @@
 </section>
 
 <style>
-  .owner-calendar-header {
-    flex-wrap: wrap;
-    min-width: 0;
-  }
-  .owner-calendar-header > div,
   .owner-calendar {
     min-width: 0;
     max-width: 100%;

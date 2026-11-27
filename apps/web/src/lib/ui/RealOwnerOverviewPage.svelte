@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ActionButton from "../components/rhythm/ActionButton.svelte";
+  import PageHeader from "../components/rhythm/PageHeader.svelte";
   import { onMount } from "svelte";
   import type { OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
@@ -85,16 +87,11 @@
   });
 </script>
 
-<div class="section-head">
-  <div>
-    <span class="eyebrow">kuki / ОРГАНИЗАЦИЯ</span>
-    <h1>{overview?.organization.displayName ?? "Обзор салона"}</h1>
-    <p>Сведения об организации и филиалах из защищённого кабинета.</p>
-  </div>
-  <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || expired}>
-    Обновить
-  </Button>
-</div>
+<PageHeader title="Обзор" organization={overview?.organization.displayName ?? session.organizationName}>
+  {#snippet secondaryActions()}
+    <ActionButton onclick={() => void refresh()} disabled={loading || expired}>Обновить</ActionButton>
+  {/snippet}
+</PageHeader>
 
 {#if loading && !overview}
   <div class="card"><OwnerReadPlaceholder label="Загружаем данные организации…" /></div>

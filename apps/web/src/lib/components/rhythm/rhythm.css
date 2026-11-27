@@ -1,50 +1,4 @@
-.rhythm-scope {
-  --rhythm-canvas: #f3f0ec;
-  --rhythm-ink: #29232c;
-  --rhythm-surface: #ffffff;
-  --rhythm-surface-ink: #29232c;
-  --rhythm-muted: #625963;
-  --rhythm-line: #837786;
-  --rhythm-brand: #422d49;
-  --rhythm-on-brand: #ffffff;
-  --rhythm-selected: #eee4ed;
-  --rhythm-on-selected: #422d49;
-  --rhythm-selected-line: #765287;
-  --rhythm-radius: 11px;
-  --rhythm-panel-radius: 15px;
-  --rhythm-control-height: 44px;
-  --rhythm-scrollbar-size: 8px;
-  --rhythm-scrollbar-thumb: var(--rhythm-line);
-  --rhythm-scrollbar-track: transparent;
-  --rhythm-gap: 12px;
-  --rhythm-danger: #9b302c;
-  --rhythm-focus: #765287;
-  --rhythm-font: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  --background: var(--rhythm-canvas);
-  --foreground: var(--rhythm-ink);
-  --card: var(--rhythm-surface);
-  --card-foreground: var(--rhythm-surface-ink);
-  --popover: var(--rhythm-surface);
-  --popover-foreground: var(--rhythm-surface-ink);
-  --primary: var(--rhythm-brand);
-  --primary-foreground: var(--rhythm-on-brand);
-  --secondary: var(--rhythm-selected);
-  --secondary-foreground: var(--rhythm-on-selected);
-  --muted: var(--rhythm-selected);
-  --muted-foreground: var(--rhythm-muted);
-  --accent: var(--rhythm-selected);
-  --accent-foreground: var(--rhythm-on-selected);
-  --destructive: var(--rhythm-danger);
-  --ring: var(--rhythm-focus);
-  --border: var(--rhythm-line);
-  --input: var(--rhythm-line);
-  --radius: var(--rhythm-radius);
-  font-family: var(--rhythm-font);
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--rhythm-ink);
-  background: var(--rhythm-canvas);
-}
+@import "./workspace.css";
 
 /* Presets for the isolated review catalog; not a publication contract. */
 .rhythm-scope[data-rhythm-theme="studio"] {
@@ -87,46 +41,6 @@
   --rhythm-radius: 22px;
 }
 
-.rhythm-scope .rhythm-action {
-  min-height: var(--rhythm-control-height);
-  height: auto;
-  padding: 9px 14px;
-  white-space: normal;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.3;
-  border: 1px solid var(--rhythm-line);
-  border-radius: var(--rhythm-radius);
-  color: var(--rhythm-ink);
-  background: transparent;
-  transition: border-color 140ms ease;
-}
-.rhythm-scope .rhythm-action--primary {
-  color: var(--rhythm-on-brand);
-  background: var(--rhythm-brand);
-  border-color: var(--rhythm-brand);
-}
-.rhythm-scope .rhythm-action--danger {
-  color: var(--rhythm-danger);
-}
-.rhythm-scope .rhythm-action:not(:disabled):hover {
-  background: var(--rhythm-selected);
-  color: var(--rhythm-on-selected);
-}
-.rhythm-scope .rhythm-action--primary:not(:disabled):hover {
-  background: var(--rhythm-brand);
-  color: var(--rhythm-on-brand);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.rhythm-scope .rhythm-action:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-.rhythm-scope :is(button, input, select, textarea, a):focus-visible {
-  outline: 3px solid var(--rhythm-focus);
-  outline-offset: 3px;
-}
 .rhythm-scope [data-slot="input"].rhythm-input {
   width: 100%;
   min-height: var(--rhythm-control-height);
@@ -696,43 +610,6 @@
 .rhythm-scope .rhythm-scroll-area::-webkit-scrollbar-thumb { background: var(--rhythm-scrollbar-thumb); border-radius: 999px; }
 .rhythm-scope .rhythm-scroll-area::-webkit-scrollbar-track { background: var(--rhythm-scrollbar-track); }
 
-/* Native top layer retains theme inheritance without ancestor clipping. */
-.rhythm-scope .rhythm-popover { display: inline-block; max-width: 100%; min-width: 0; }
-.rhythm-scope .rhythm-popover-trigger {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  min-width: min(156px, 100%); max-width: 100%; min-height: var(--rhythm-control-height);
-  background: var(--rhythm-canvas); color: var(--rhythm-ink);
-  padding: 9px 12px; border: 1px solid var(--rhythm-line);
-  border-radius: var(--rhythm-radius); font-size: 13px; font-weight: 600;
-  text-align: left; cursor: pointer;
-}
-.rhythm-scope .rhythm-popover-trigger > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-.rhythm-scope .rhythm-popover-trigger:focus-visible,
-.rhythm-scope .rhythm-popover-item:focus-visible { outline: 2px solid var(--rhythm-focus); outline-offset: -2px; }
-.rhythm-scope .rhythm-popover-trigger[aria-expanded="true"] {
-  background: var(--rhythm-selected); color: var(--rhythm-on-selected);
-}
-.rhythm-scope .rhythm-popover-items {
-  position: fixed; inset: auto; margin: 0; box-sizing: border-box;
-  min-width: 0; max-width: 100%; overflow: auto; overscroll-behavior: contain;
-  background: var(--rhythm-surface); color: var(--rhythm-surface-ink);
-  box-shadow: 0 12px 35px #17141a24;
-  border: 1px solid var(--rhythm-line); border-radius: var(--rhythm-radius);
-  padding: 6px; gap: 3px;
-  scrollbar-width: thin; scrollbar-color: var(--rhythm-scrollbar-thumb) var(--rhythm-scrollbar-track);
-}
-.rhythm-scope .rhythm-popover-items[popover]:not(:popover-open) { display: none; }
-.rhythm-scope .rhythm-popover-items:popover-open { display: grid; }
-.rhythm-scope .rhythm-popover-item {
-  display: block; width: 100%; min-height: var(--rhythm-control-height); padding: 9px 12px; text-align: left;
-  color: var(--rhythm-surface-ink); background: transparent;
-  border-radius: calc(var(--rhythm-radius) - 3px); font-size: 13px; overflow-wrap: anywhere;
-}
-.rhythm-scope .rhythm-popover-item:hover:not(:disabled),
-.rhythm-scope .rhythm-popover-item[aria-current="true"] {
-  color: var(--rhythm-on-selected); background: var(--rhythm-selected);
-}
-.rhythm-scope .rhythm-popover-item:disabled { opacity: .55; cursor: not-allowed; }
 /* Tenant module controls are only presentation of server-validated state. */
 .rhythm-scope .rhythm-module-grid { display: grid; gap: 10px; grid-template-columns: repeat(2,minmax(0,1fr)); }
 .rhythm-scope .rhythm-module-item {

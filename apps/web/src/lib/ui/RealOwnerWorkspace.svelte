@@ -6,7 +6,7 @@
   import RealOwnerServicesPage from "./RealOwnerServicesPage.svelte";
   import RealOwnerStaffPage from "./RealOwnerStaffPage.svelte";
   import RealOwnerLocationsPage from "./RealOwnerLocationsPage.svelte";
-  import RealOwnerSchedulePage from "./RealOwnerSchedulePage.svelte";
+  import PageHeader from "../components/rhythm/PageHeader.svelte";
   import RealOwnerCalendarPage from "./RealOwnerCalendarPage.svelte";
   import RealOwnerOverviewPage from "./RealOwnerOverviewPage.svelte";
   import RealOwnerUnavailablePage from "./RealOwnerUnavailablePage.svelte";
@@ -42,16 +42,26 @@
 {:else if screen === "calendar"}
   <RealOwnerCalendarPage {session} {reads} />
 {:else if screen === "schedule"}
-  <RealOwnerSchedulePage {session} {reads} onOpenStaff={() => onNavigate("staff")} />
+  {#await import("./RealOwnerSchedulePage.svelte")}
+    <PageHeader title="Расписание" organization={session.organizationName} />
+    <p class="card" role="status">Загружаем расписание…</p>
+  {:then module}
+    <svelte:component this={module.default} {session} {reads} onOpenStaff={() => onNavigate("staff")} />
+  {:catch}
+    <PageHeader title="Расписание" organization={session.organizationName} />
+    <section class="card">
+      <p role="alert">Не удалось загрузить расписание.</p>
+      <Button type="button" variant="outline" onclick={() => window.location.reload()}>Перезагрузить страницу</Button>
+    </section>
+  {/await}
 {:else if screen === "appearance"}
+  <PageHeader title="Оформление" organization={session.organizationName} />
   {#key session.accessToken}
     {#await import("./RealOwnerAppearancePage.svelte")}
-      <div class="section-head"><h1>Оформление</h1></div>
       <section class="card" role="status">Загружаем редактор оформления…</section>
     {:then module}
       <svelte:component this={module.default} {session} {reads} />
     {:catch}
-      <div class="section-head"><h1>Оформление</h1></div>
       <section class="card">
         <p role="alert">Не удалось загрузить редактор оформления. Проверьте соединение и перезагрузите страницу.</p>
         <Button type="button" variant="outline" onclick={() => window.location.reload()}>Перезагрузить страницу</Button>
@@ -59,5 +69,5 @@
     {/await}
   {/key}
 {:else if screen === "booking"}
-  <RealOwnerUnavailablePage {screen} onReturn={() => onNavigate("home")} />
+  <RealOwnerUnavailablePage {screen} organizationName={session.organizationName} onReturn={() => onNavigate("home")} />
 {/if}

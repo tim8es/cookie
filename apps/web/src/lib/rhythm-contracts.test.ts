@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const css = readFileSync(
-  new URL("./components/rhythm/rhythm.css", import.meta.url),
-  "utf8",
-);
+const css = ["workspace.css", "rhythm.css"]
+  .map((file) =>
+    readFileSync(
+      new URL("./components/rhythm/" + file, import.meta.url),
+      "utf8",
+    ),
+  )
+  .join("\n");
 
 function colors(selector: string): Record<string, string> {
   const start = css.indexOf(selector + " {");

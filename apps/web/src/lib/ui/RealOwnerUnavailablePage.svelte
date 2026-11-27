@@ -1,15 +1,13 @@
 <script lang="ts">
+  import PageHeader from "../components/rhythm/PageHeader.svelte";
   import { Button } from "../components/ui/button/index.js";
   export let screen: "appearance" | "booking";
   export let onReturn: () => void;
+  export let organizationName: string | undefined = undefined;
 </script>
 
-<div class="section-head">
-  <div>
-    <span class="eyebrow">kuki / КАБИНЕТ</span>
-    <h1>{screen === "appearance" ? "Оформление" : "Онлайн-запись"}</h1>
-  </div>
-</div>
+<PageHeader title={screen === "appearance" ? "Оформление" : "Онлайн-запись"}
+  organization={organizationName} />
 <section class="card" role="status">
   {#if screen === "appearance"}
     <h2>Редактор оформления пока недоступен</h2>

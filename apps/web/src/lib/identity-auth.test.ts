@@ -338,7 +338,10 @@ test("workspace resume checks current role and context without enrolling", async
       [org],
       fetcher,
     ),
-    { role: "business", session: { ...session, tenantId } },
+    {
+      role: "business",
+      session: { ...session, tenantId, organizationName: org.organizationName },
+    },
   );
   assert.deepEqual(
     await restoreWorkspaceContext(

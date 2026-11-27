@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { Plus } from "@lucide/svelte";
+  import ActionButton from "../components/rhythm/ActionButton.svelte";
+  import PageHeader from "../components/rhythm/PageHeader.svelte";
   import { onMount } from "svelte";
   import type { OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
@@ -31,6 +34,7 @@
   $: canPublish = publicationReady && !loading && !saving && !publishing;
 
   let hasMore = false;
+  let staffInput: HTMLSelectElement | undefined;
   let staffId = "";
   let locationId = "";
   let startLocal = "";
@@ -208,13 +212,19 @@
   onMount(() => { void refresh(); });
 </script>
 
-<div class="section-head">
-  <div>
-    <span class="eyebrow">kuki / РАБОЧЕЕ ВРЕМЯ</span>
-    <h1>Расписание</h1>
-    <p>Планирование будущих смен в часовом поясе филиала. Черновики не открывают запись клиентам.</p>
-  </div>
-</div>
+<PageHeader title="Расписание" organization={session.organizationName}
+  description="Смены планируются в часовом поясе филиала. Черновики не открывают запись клиентам.">
+  {#snippet secondaryActions()}
+    <ActionButton onclick={() => void refresh()} disabled={loading || saving || publishing}>Обновить</ActionButton>
+  {/snippet}
+  {#snippet primaryAction()}
+    {#if loaded && eligibleStaff.length > 0 && !pendingKey}
+      <ActionButton tone="primary" onclick={() => staffInput?.focus()} disabled={loading || saving || publishing}>
+        <Plus size={17} aria-hidden="true" />Новая смена
+      </ActionButton>
+    {/if}
+  {/snippet}
+</PageHeader>
 {#if readError}
   <div class="alert-error" role="alert">
     <p>{readError}</p>
@@ -227,7 +237,6 @@
   <section class="card">
     <div class="card-title">
       <div><span class="eyebrow">РАСПИСАНИЕ</span><h2>Будущие черновики</h2></div>
-      <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || saving || publishing}>Обновить</Button>
     </div>
     {#if loading && !loaded}
       <OwnerReadPlaceholder label="Загружаем смены…" />
@@ -292,7 +301,7 @@
         {:else}
           <div class="owner-form-fields">
             <label class="field">Мастер
-              <select value={staffId} onchange={(event) => chooseStaff(event.currentTarget.value)} disabled={saving} required>
+              <select bind:this={staffInput} value={staffId} onchange={(event) => chooseStaff(event.currentTarget.value)} disabled={saving} required>
                 <option value="" disabled>Выберите мастера</option>
                 {#each eligibleStaff as member (member.id)}<option value={member.id}>{member.displayName}</option>{/each}
               </select>
