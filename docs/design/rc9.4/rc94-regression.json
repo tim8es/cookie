@@ -1,0 +1,820 @@
+{
+  "tests": 195,
+  "passed": 195,
+  "failed": 0,
+  "explicit_component_count": 29,
+  "component_registry_count": 32,
+  "coverage": [
+    "Avatar",
+    "BookingLayout",
+    "BookingProgress",
+    "BookingTicket",
+    "Button",
+    "CheckGroup",
+    "ChoiceRow",
+    "DemoToolbar",
+    "DirectoryRow",
+    "EntityEditor",
+    "EntityRow",
+    "ImageAssetField",
+    "MetricStrip",
+    "ModuleSettings",
+    "PublicCatalog",
+    "PublicHeader",
+    "PublicServiceRow",
+    "PublicStaffRow",
+    "SalonCatalog",
+    "SalonHero",
+    "SalonPage",
+    "ScrollArea",
+    "Segment",
+    "SelectMenu",
+    "ServicePicker",
+    "SettingToggle",
+    "SurfacePreview",
+    "TextField",
+    "VisitRow"
+  ],
+  "checks": [
+    {
+      "name": "owner/320: canonical booking present",
+      "passed": true
+    },
+    {
+      "name": "owner/320: shared BookingProgress",
+      "passed": true
+    },
+    {
+      "name": "owner/320: four step buttons",
+      "passed": true
+    },
+    {
+      "name": "owner/320: no page errors",
+      "passed": true
+    },
+    {
+      "name": "owner/320: no document horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "owner/320: ScrollArea applied to services",
+      "passed": true
+    },
+    {
+      "name": "owner/320: action min height >=44",
+      "passed": true
+    },
+    {
+      "name": "owner/320: choice >=44",
+      "passed": true
+    },
+    {
+      "name": "owner/320: service selected",
+      "passed": true
+    },
+    {
+      "name": "owner/320: next button enabled",
+      "passed": true
+    },
+    {
+      "name": "owner/320: progressed to staff/branch",
+      "passed": true
+    },
+    {
+      "name": "owner/320: step1 no page error",
+      "passed": true
+    },
+    {
+      "name": "owner/375: canonical booking present",
+      "passed": true
+    },
+    {
+      "name": "owner/375: shared BookingProgress",
+      "passed": true
+    },
+    {
+      "name": "owner/375: four step buttons",
+      "passed": true
+    },
+    {
+      "name": "owner/375: no page errors",
+      "passed": true
+    },
+    {
+      "name": "owner/375: no document horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "owner/375: ScrollArea applied to services",
+      "passed": true
+    },
+    {
+      "name": "owner/375: action min height >=44",
+      "passed": true
+    },
+    {
+      "name": "owner/375: choice >=44",
+      "passed": true
+    },
+    {
+      "name": "owner/375: service selected",
+      "passed": true
+    },
+    {
+      "name": "owner/375: next button enabled",
+      "passed": true
+    },
+    {
+      "name": "owner/375: progressed to staff/branch",
+      "passed": true
+    },
+    {
+      "name": "owner/375: step1 no page error",
+      "passed": true
+    },
+    {
+      "name": "owner/768: canonical booking present",
+      "passed": true
+    },
+    {
+      "name": "owner/768: shared BookingProgress",
+      "passed": true
+    },
+    {
+      "name": "owner/768: four step buttons",
+      "passed": true
+    },
+    {
+      "name": "owner/768: no page errors",
+      "passed": true
+    },
+    {
+      "name": "owner/768: no document horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "owner/768: ScrollArea applied to services",
+      "passed": true
+    },
+    {
+      "name": "owner/768: action min height >=44",
+      "passed": true
+    },
+    {
+      "name": "owner/768: choice >=44",
+      "passed": true
+    },
+    {
+      "name": "owner/768: service selected",
+      "passed": true
+    },
+    {
+      "name": "owner/768: next button enabled",
+      "passed": true
+    },
+    {
+      "name": "owner/768: progressed to staff/branch",
+      "passed": true
+    },
+    {
+      "name": "owner/768: step1 no page error",
+      "passed": true
+    },
+    {
+      "name": "owner/1366: canonical booking present",
+      "passed": true
+    },
+    {
+      "name": "owner/1366: shared BookingProgress",
+      "passed": true
+    },
+    {
+      "name": "owner/1366: four step buttons",
+      "passed": true
+    },
+    {
+      "name": "owner/1366: no page errors",
+      "passed": true
+    },
+    {
+      "name": "owner/1366: no document horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "owner/1366: ScrollArea applied to services",
+      "passed": true
+    },
+    {
+      "name": "owner/1366: action min height >=44",
+      "passed": true
+    },
+    {
+      "name": "owner/1366: choice >=44",
+      "passed": true
+    },
+    {
+      "name": "owner/1366: service selected",
+      "passed": true
+    },
+    {
+      "name": "owner/1366: next button enabled",
+      "passed": true
+    },
+    {
+      "name": "owner/1366: progressed to staff/branch",
+      "passed": true
+    },
+    {
+      "name": "owner/1366: step1 no page error",
+      "passed": true
+    },
+    {
+      "name": "admin/320: canonical booking present",
+      "passed": true
+    },
+    {
+      "name": "admin/320: shared BookingProgress",
+      "passed": true
+    },
+    {
+      "name": "admin/320: four step buttons",
+      "passed": true
+    },
+    {
+      "name": "admin/320: no page errors",
+      "passed": true
+    },
+    {
+      "name": "admin/320: no document horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "admin/320: ScrollArea applied to services",
+      "passed": true
+    },
+    {
+      "name": "admin/320: action min height >=44",
+      "passed": true
+    },
+    {
+      "name": "admin/320: choice >=44",
+      "passed": true
+    },
+    {
+      "name": "admin/320: service selected",
+      "passed": true
+    },
+    {
+      "name": "admin/320: next button enabled",
+      "passed": true
+    },
+    {
+      "name": "admin/320: progressed to staff/branch",
+      "passed": true
+    },
+    {
+      "name": "admin/320: step1 no page error",
+      "passed": true
+    },
+    {
+      "name": "admin/375: canonical booking present",
+      "passed": true
+    },
+    {
+      "name": "admin/375: shared BookingProgress",
+      "passed": true
+    },
+    {
+      "name": "admin/375: four step buttons",
+      "passed": true
+    },
+    {
+      "name": "admin/375: no page errors",
+      "passed": true
+    },
+    {
+      "name": "admin/375: no document horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "admin/375: ScrollArea applied to services",
+      "passed": true
+    },
+    {
+      "name": "admin/375: action min height >=44",
+      "passed": true
+    },
+    {
+      "name": "admin/375: choice >=44",
+      "passed": true
+    },
+    {
+      "name": "admin/375: service selected",
+      "passed": true
+    },
+    {
+      "name": "admin/375: next button enabled",
+      "passed": true
+    },
+    {
+      "name": "admin/375: progressed to staff/branch",
+      "passed": true
+    },
+    {
+      "name": "admin/375: step1 no page error",
+      "passed": true
+    },
+    {
+      "name": "admin/768: canonical booking present",
+      "passed": true
+    },
+    {
+      "name": "admin/768: shared BookingProgress",
+      "passed": true
+    },
+    {
+      "name": "admin/768: four step buttons",
+      "passed": true
+    },
+    {
+      "name": "admin/768: no page errors",
+      "passed": true
+    },
+    {
+      "name": "admin/768: no document horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "admin/768: ScrollArea applied to services",
+      "passed": true
+    },
+    {
+      "name": "admin/768: action min height >=44",
+      "passed": true
+    },
+    {
+      "name": "admin/768: choice >=44",
+      "passed": true
+    },
+    {
+      "name": "admin/768: service selected",
+      "passed": true
+    },
+    {
+      "name": "admin/768: next button enabled",
+      "passed": true
+    },
+    {
+      "name": "admin/768: progressed to staff/branch",
+      "passed": true
+    },
+    {
+      "name": "admin/768: step1 no page error",
+      "passed": true
+    },
+    {
+      "name": "admin/1366: canonical booking present",
+      "passed": true
+    },
+    {
+      "name": "admin/1366: shared BookingProgress",
+      "passed": true
+    },
+    {
+      "name": "admin/1366: four step buttons",
+      "passed": true
+    },
+    {
+      "name": "admin/1366: no page errors",
+      "passed": true
+    },
+    {
+      "name": "admin/1366: no document horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "admin/1366: ScrollArea applied to services",
+      "passed": true
+    },
+    {
+      "name": "admin/1366: action min height >=44",
+      "passed": true
+    },
+    {
+      "name": "admin/1366: choice >=44",
+      "passed": true
+    },
+    {
+      "name": "admin/1366: service selected",
+      "passed": true
+    },
+    {
+      "name": "admin/1366: next button enabled",
+      "passed": true
+    },
+    {
+      "name": "admin/1366: progressed to staff/branch",
+      "passed": true
+    },
+    {
+      "name": "admin/1366: step1 no page error",
+      "passed": true
+    },
+    {
+      "name": "client/320: canonical booking present",
+      "passed": true
+    },
+    {
+      "name": "client/320: shared BookingProgress",
+      "passed": true
+    },
+    {
+      "name": "client/320: four step buttons",
+      "passed": true
+    },
+    {
+      "name": "client/320: no page errors",
+      "passed": true
+    },
+    {
+      "name": "client/320: no document horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "client/320: ScrollArea applied to services",
+      "passed": true
+    },
+    {
+      "name": "client/320: action min height >=44",
+      "passed": true
+    },
+    {
+      "name": "client/320: choice >=44",
+      "passed": true
+    },
+    {
+      "name": "client/320: service selected",
+      "passed": true
+    },
+    {
+      "name": "client/320: next button enabled",
+      "passed": true
+    },
+    {
+      "name": "client/320: progressed to staff/branch",
+      "passed": true
+    },
+    {
+      "name": "client/320: step1 no page error",
+      "passed": true
+    },
+    {
+      "name": "client/375: canonical booking present",
+      "passed": true
+    },
+    {
+      "name": "client/375: shared BookingProgress",
+      "passed": true
+    },
+    {
+      "name": "client/375: four step buttons",
+      "passed": true
+    },
+    {
+      "name": "client/375: no page errors",
+      "passed": true
+    },
+    {
+      "name": "client/375: no document horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "client/375: ScrollArea applied to services",
+      "passed": true
+    },
+    {
+      "name": "client/375: action min height >=44",
+      "passed": true
+    },
+    {
+      "name": "client/375: choice >=44",
+      "passed": true
+    },
+    {
+      "name": "client/375: service selected",
+      "passed": true
+    },
+    {
+      "name": "client/375: next button enabled",
+      "passed": true
+    },
+    {
+      "name": "client/375: progressed to staff/branch",
+      "passed": true
+    },
+    {
+      "name": "client/375: step1 no page error",
+      "passed": true
+    },
+    {
+      "name": "client/768: canonical booking present",
+      "passed": true
+    },
+    {
+      "name": "client/768: shared BookingProgress",
+      "passed": true
+    },
+    {
+      "name": "client/768: four step buttons",
+      "passed": true
+    },
+    {
+      "name": "client/768: no page errors",
+      "passed": true
+    },
+    {
+      "name": "client/768: no document horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "client/768: ScrollArea applied to services",
+      "passed": true
+    },
+    {
+      "name": "client/768: action min height >=44",
+      "passed": true
+    },
+    {
+      "name": "client/768: choice >=44",
+      "passed": true
+    },
+    {
+      "name": "client/768: service selected",
+      "passed": true
+    },
+    {
+      "name": "client/768: next button enabled",
+      "passed": true
+    },
+    {
+      "name": "client/768: progressed to staff/branch",
+      "passed": true
+    },
+    {
+      "name": "client/768: step1 no page error",
+      "passed": true
+    },
+    {
+      "name": "client/1366: canonical booking present",
+      "passed": true
+    },
+    {
+      "name": "client/1366: shared BookingProgress",
+      "passed": true
+    },
+    {
+      "name": "client/1366: four step buttons",
+      "passed": true
+    },
+    {
+      "name": "client/1366: no page errors",
+      "passed": true
+    },
+    {
+      "name": "client/1366: no document horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "client/1366: ScrollArea applied to services",
+      "passed": true
+    },
+    {
+      "name": "client/1366: action min height >=44",
+      "passed": true
+    },
+    {
+      "name": "client/1366: choice >=44",
+      "passed": true
+    },
+    {
+      "name": "client/1366: service selected",
+      "passed": true
+    },
+    {
+      "name": "client/1366: next button enabled",
+      "passed": true
+    },
+    {
+      "name": "client/1366: progressed to staff/branch",
+      "passed": true
+    },
+    {
+      "name": "client/1366: step1 no page error",
+      "passed": true
+    },
+    {
+      "name": "workspace rail uses same scrollbar",
+      "passed": true
+    },
+    {
+      "name": "workspace account remains clickable",
+      "passed": true
+    },
+    {
+      "name": "workspace has no JS errors",
+      "passed": true
+    },
+    {
+      "name": "kit/320: 27 source components covered",
+      "passed": true
+    },
+    {
+      "name": "kit/320: all 32 registry rows",
+      "passed": true
+    },
+    {
+      "name": "kit/320: 18 navigable stories",
+      "passed": true
+    },
+    {
+      "name": "kit/320: no JS errors",
+      "passed": true
+    },
+    {
+      "name": "kit/320: no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "kit/320: v scroll overflow exists",
+      "passed": true
+    },
+    {
+      "name": "kit/320: h scroll overflow exists",
+      "passed": true
+    },
+    {
+      "name": "kit/320: native vertical keyboard scroll",
+      "passed": true
+    },
+    {
+      "name": "kit/320: horizontal scroll moves",
+      "passed": true
+    },
+    {
+      "name": "kit/320: scrollbar aria labels",
+      "passed": true
+    },
+    {
+      "name": "kit/320: registry opens story",
+      "passed": true
+    },
+    {
+      "name": "kit/320: canonical layout in catalog",
+      "passed": true
+    },
+    {
+      "name": "kit/375: 27 source components covered",
+      "passed": true
+    },
+    {
+      "name": "kit/375: all 32 registry rows",
+      "passed": true
+    },
+    {
+      "name": "kit/375: 18 navigable stories",
+      "passed": true
+    },
+    {
+      "name": "kit/375: no JS errors",
+      "passed": true
+    },
+    {
+      "name": "kit/375: no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "kit/375: v scroll overflow exists",
+      "passed": true
+    },
+    {
+      "name": "kit/375: h scroll overflow exists",
+      "passed": true
+    },
+    {
+      "name": "kit/375: native vertical keyboard scroll",
+      "passed": true
+    },
+    {
+      "name": "kit/375: horizontal scroll moves",
+      "passed": true
+    },
+    {
+      "name": "kit/375: scrollbar aria labels",
+      "passed": true
+    },
+    {
+      "name": "kit/375: registry opens story",
+      "passed": true
+    },
+    {
+      "name": "kit/375: canonical layout in catalog",
+      "passed": true
+    },
+    {
+      "name": "kit/768: 27 source components covered",
+      "passed": true
+    },
+    {
+      "name": "kit/768: all 32 registry rows",
+      "passed": true
+    },
+    {
+      "name": "kit/768: 18 navigable stories",
+      "passed": true
+    },
+    {
+      "name": "kit/768: no JS errors",
+      "passed": true
+    },
+    {
+      "name": "kit/768: no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "kit/768: v scroll overflow exists",
+      "passed": true
+    },
+    {
+      "name": "kit/768: h scroll overflow exists",
+      "passed": true
+    },
+    {
+      "name": "kit/768: native vertical keyboard scroll",
+      "passed": true
+    },
+    {
+      "name": "kit/768: horizontal scroll moves",
+      "passed": true
+    },
+    {
+      "name": "kit/768: scrollbar aria labels",
+      "passed": true
+    },
+    {
+      "name": "kit/768: registry opens story",
+      "passed": true
+    },
+    {
+      "name": "kit/768: canonical layout in catalog",
+      "passed": true
+    },
+    {
+      "name": "kit/1366: 27 source components covered",
+      "passed": true
+    },
+    {
+      "name": "kit/1366: all 32 registry rows",
+      "passed": true
+    },
+    {
+      "name": "kit/1366: 18 navigable stories",
+      "passed": true
+    },
+    {
+      "name": "kit/1366: no JS errors",
+      "passed": true
+    },
+    {
+      "name": "kit/1366: no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "kit/1366: v scroll overflow exists",
+      "passed": true
+    },
+    {
+      "name": "kit/1366: h scroll overflow exists",
+      "passed": true
+    },
+    {
+      "name": "kit/1366: native vertical keyboard scroll",
+      "passed": true
+    },
+    {
+      "name": "kit/1366: horizontal scroll moves",
+      "passed": true
+    },
+    {
+      "name": "kit/1366: scrollbar aria labels",
+      "passed": true
+    },
+    {
+      "name": "kit/1366: registry opens story",
+      "passed": true
+    },
+    {
+      "name": "kit/1366: canonical layout in catalog",
+      "passed": true
+    }
+  ]
+}
