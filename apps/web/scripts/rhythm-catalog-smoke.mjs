@@ -214,17 +214,43 @@ async function main() {
             await requireDom(cdp, "metrics restore original scope preference",
               "document.querySelector('[data-component=MetricStrip]')?.dataset.expanded === 'true' && document.querySelector('.rhythm-scope')?.dataset.rhythmTheme === " + JSON.stringify(theme));
             await evaluate(cdp, "localStorage.removeItem(" + JSON.stringify("kuki.rhythm.catalog.metricstrip." + alternateTheme) + ")");
-            await click(cdp, '[data-component=PopoverMenu] summary');
-            await requireDom(cdp, "popover open", "document.querySelector('[data-component=PopoverMenu]')?.open === true");
-            await click(cdp, '[data-component=PopoverMenu] button:nth-child(2)');
+            await click(cdp, '[data-component=PopoverMenu] .rhythm-popover-trigger');
+            await requireDom(cdp, "native popover open", "document.querySelector('[data-component=PopoverMenu] [popover]')?.matches(':popover-open')");
+            await requireDom(cdp, "popover escapes clipped ancestor and stays within viewport", `(() => {
+              const trigger = document.querySelector('[data-component=PopoverMenu] .rhythm-popover-trigger');
+              const panel = document.querySelector('[data-component=PopoverMenu] [popover]');
+              const option = panel?.querySelector('.rhythm-popover-item');
+              if (!trigger || !panel || !option) return false;
+              const rect = panel.getBoundingClientRect(), item = option.getBoundingClientRect();
+              const vp = window.visualViewport;
+              const left = vp?.offsetLeft ?? 0, top = vp?.offsetTop ?? 0;
+              const right = left + (vp?.width ?? innerWidth), bottom = top + (vp?.height ?? innerHeight);
+              const hit = document.elementFromPoint(item.left + item.width / 2, item.top + Math.min(item.height, 20));
+              return rect.left >= left - 1 && rect.top >= top - 1 && rect.right <= right + 1 && rect.bottom <= bottom + 1
+                && option.contains(hit) && trigger.getBoundingClientRect().height >= 44;
+            })()`);
+            await click(cdp, '[data-component=PopoverMenu] .rhythm-popover-item:nth-child(2)');
             await requireDom(cdp, "popover selected and keyboard focus restored",
-              "document.querySelector('[data-component=PopoverMenu] summary')?.textContent.includes('Центр') && !document.querySelector('[data-component=PopoverMenu]')?.open && document.activeElement === document.querySelector('[data-component=PopoverMenu] summary')");
-            await click(cdp, '[data-component=PopoverMenu] summary');
-            await requireDom(cdp, "popover reopened with keyboard focus", "document.querySelector('[data-component=PopoverMenu]')?.open === true");
+              "document.querySelector('[data-component=PopoverMenu] .rhythm-popover-trigger')?.textContent.includes('Центр') && !document.querySelector('[data-component=PopoverMenu] [popover]')?.matches(':popover-open') && document.activeElement === document.querySelector('[data-component=PopoverMenu] .rhythm-popover-trigger')");
+            await click(cdp, '[data-component=PopoverMenu] .rhythm-popover-trigger');
+            await requireDom(cdp, "popover reopened", "document.querySelector('[data-component=PopoverMenu] [popover]')?.matches(':popover-open')");
             await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
             await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
-            await requireDom(cdp, "popover Escape closes and restores summary focus",
-              "document.querySelector('[data-component=PopoverMenu]')?.open === false && document.activeElement === document.querySelector('[data-component=PopoverMenu] summary')");
+            await requireDom(cdp, "popover Escape closes and restores focus",
+              "!document.querySelector('[data-component=PopoverMenu] [popover]')?.matches(':popover-open') && document.activeElement === document.querySelector('[data-component=PopoverMenu] .rhythm-popover-trigger')");
+            await requireDom(cdp, "both native ScrollArea axes have deliberate overflow", `(() => {
+              const y = document.querySelector('[data-component=ScrollArea][data-axis=y]');
+              const x = document.querySelector('[data-component=ScrollArea][data-axis=x]');
+              return y?.scrollHeight > y?.clientHeight && x?.scrollWidth > x?.clientWidth && y.tabIndex === 0 && x.tabIndex === 0;
+            })()`);
+            await evaluate(cdp, "document.querySelector('[data-component=ScrollArea][data-axis=y]').focus()");
+            await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "ArrowDown", code: "ArrowDown", windowsVirtualKeyCode: 40 });
+            await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "ArrowDown", code: "ArrowDown", windowsVirtualKeyCode: 40 });
+            await requireDom(cdp, "vertical native keyboard scrolling", "document.querySelector('[data-component=ScrollArea][data-axis=y]').scrollTop > 0");
+            await evaluate(cdp, "document.querySelector('[data-component=ScrollArea][data-axis=x]').focus()");
+            await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "ArrowRight", code: "ArrowRight", windowsVirtualKeyCode: 39 });
+            await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "ArrowRight", code: "ArrowRight", windowsVirtualKeyCode: 39 });
+            await requireDom(cdp, "horizontal native keyboard scrolling", "document.querySelector('[data-component=ScrollArea][data-axis=x]').scrollLeft > 0");
             await click(cdp, '[data-component=ModuleSettings] button[aria-label=Клиенты]');
             await requireDom(cdp, "module switched", "document.querySelector('[data-component=ModuleSettings] button[aria-label=Клиенты]')?.getAttribute('aria-checked') === 'false'");
           }

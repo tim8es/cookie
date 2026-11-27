@@ -12,7 +12,10 @@
   --rhythm-selected-line: #765287;
   --rhythm-radius: 11px;
   --rhythm-panel-radius: 15px;
-  --rhythm-control-height: 42px;
+  --rhythm-control-height: 44px;
+  --rhythm-scrollbar-size: 8px;
+  --rhythm-scrollbar-thumb: var(--rhythm-line);
+  --rhythm-scrollbar-track: transparent;
   --rhythm-gap: 12px;
   --rhythm-danger: #9b302c;
   --rhythm-focus: #765287;
@@ -589,7 +592,6 @@
   display: grid;
   grid-auto-columns: minmax(54px, 1fr);
   grid-auto-flow: column;
-  overflow-x: auto;
   gap: 6px;
   padding: 4px;
 }
@@ -680,36 +682,57 @@
   font-variant-numeric: tabular-nums; line-height: 1.13; overflow-wrap: anywhere;
 }
 .rhythm-scope .rhythm-metric > span { font-size: 12px; line-height: 1.35; }
-/* Native details + explicit options: one menu for all branch and filter selectors. */
-.rhythm-scope .rhythm-popover { display: inline-block; position: relative; max-width: 100%; z-index: 5; }
-.rhythm-scope .rhythm-popover summary {
+/* Shared native scroll region; no custom wheel or pointer interception. */
+.rhythm-scope .rhythm-scroll-area {
+  min-width: 0;
+  max-width: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: var(--rhythm-scrollbar-thumb) var(--rhythm-scrollbar-track);
+}
+.rhythm-scope .rhythm-scroll-area[data-axis="y"] { overflow-y: auto; overflow-x: hidden; }
+.rhythm-scope .rhythm-scroll-area[data-axis="x"] { overflow-x: auto; overflow-y: hidden; }
+.rhythm-scope .rhythm-scroll-area:focus-visible { outline: 2px solid var(--rhythm-focus); outline-offset: 2px; }
+.rhythm-scope .rhythm-scroll-area::-webkit-scrollbar { width: var(--rhythm-scrollbar-size); height: var(--rhythm-scrollbar-size); }
+.rhythm-scope .rhythm-scroll-area::-webkit-scrollbar-thumb { background: var(--rhythm-scrollbar-thumb); border-radius: 999px; }
+.rhythm-scope .rhythm-scroll-area::-webkit-scrollbar-track { background: var(--rhythm-scrollbar-track); }
+
+/* Native top layer retains theme inheritance without ancestor clipping. */
+.rhythm-scope .rhythm-popover { display: inline-block; max-width: 100%; min-width: 0; }
+.rhythm-scope .rhythm-popover-trigger {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  list-style: none; cursor: pointer; min-width: 156px; min-height: 42px;
+  min-width: min(156px, 100%); max-width: 100%; min-height: var(--rhythm-control-height);
   background: var(--rhythm-canvas); color: var(--rhythm-ink);
   padding: 9px 12px; border: 1px solid var(--rhythm-line);
   border-radius: var(--rhythm-radius); font-size: 13px; font-weight: 600;
+  text-align: left; cursor: pointer;
 }
-.rhythm-scope .rhythm-popover summary::-webkit-details-marker { display: none; }\n.rhythm-scope .rhythm-popover summary:focus-visible { outline: 3px solid var(--rhythm-focus); outline-offset: 3px; }
-.rhythm-scope .rhythm-popover[open] summary {
+.rhythm-scope .rhythm-popover-trigger > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.rhythm-scope .rhythm-popover-trigger:focus-visible,
+.rhythm-scope .rhythm-popover-item:focus-visible { outline: 2px solid var(--rhythm-focus); outline-offset: -2px; }
+.rhythm-scope .rhythm-popover-trigger[aria-expanded="true"] {
   background: var(--rhythm-selected); color: var(--rhythm-on-selected);
 }
 .rhythm-scope .rhythm-popover-items {
-  position: absolute; right: 0; top: calc(100% + 6px);
-  min-width: max(100%, 200px); max-width: 90vw;
+  position: fixed; inset: auto; margin: 0; box-sizing: border-box;
+  min-width: 0; max-width: 100%; overflow: auto; overscroll-behavior: contain;
   background: var(--rhythm-surface); color: var(--rhythm-surface-ink);
   box-shadow: 0 12px 35px #17141a24;
   border: 1px solid var(--rhythm-line); border-radius: var(--rhythm-radius);
-  padding: 6px; display: grid; gap: 3px; z-index: 9;
+  padding: 6px; gap: 3px;
+  scrollbar-width: thin; scrollbar-color: var(--rhythm-scrollbar-thumb) var(--rhythm-scrollbar-track);
 }
+.rhythm-scope .rhythm-popover-items[popover]:not(:popover-open) { display: none; }
+.rhythm-scope .rhythm-popover-items:popover-open { display: grid; }
 .rhythm-scope .rhythm-popover-item {
-  display: block; width: 100%; min-height: 42px; padding: 9px 12px; text-align: left;
+  display: block; width: 100%; min-height: var(--rhythm-control-height); padding: 9px 12px; text-align: left;
   color: var(--rhythm-surface-ink); background: transparent;
-  border-radius: calc(var(--rhythm-radius) - 3px); font-size: 13px;
+  border-radius: calc(var(--rhythm-radius) - 3px); font-size: 13px; overflow-wrap: anywhere;
 }
 .rhythm-scope .rhythm-popover-item:hover:not(:disabled),
 .rhythm-scope .rhythm-popover-item[aria-current="true"] {
   color: var(--rhythm-on-selected); background: var(--rhythm-selected);
 }
+.rhythm-scope .rhythm-popover-item:disabled { opacity: .55; cursor: not-allowed; }
 /* Tenant module controls are only presentation of server-validated state. */
 .rhythm-scope .rhythm-module-grid { display: grid; gap: 10px; grid-template-columns: repeat(2,minmax(0,1fr)); }
 .rhythm-scope .rhythm-module-item {
