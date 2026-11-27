@@ -17,6 +17,7 @@ export const CUSTOMER_OFFERS_PERMISSION = "staging.customer.offers.read";
 const CUSTOMER_BOOKING_PERMISSION = "staging.customer.booking.create";
 const CUSTOMER_HISTORY_PERMISSION = "staging.customer.bookings.read";
 const CUSTOMER_CANCEL_PERMISSION = "staging.customer.booking.cancel";
+const CUSTOMER_RESCHEDULE_PERMISSION = "staging.customer.booking.reschedule";
 
 interface LinkInput {
   readonly tenantId: string;
@@ -115,7 +116,7 @@ export async function provisionStagingCustomer(
       [input.tenantId, identityId],
     );
     await client.query(
-      "INSERT INTO cookie_identity.roles(tenant_id,id,base_type,display_name,permissions) VALUES($1::uuid,$2::uuid,'client','Staging Client',ARRAY[$3::text,$4::text,$5::text,$6::text,$7::text])",
+      "INSERT INTO cookie_identity.roles(tenant_id,id,base_type,display_name,permissions) VALUES($1::uuid,$2::uuid,'client','Staging Client',ARRAY[$3::text,$4::text,$5::text,$6::text,$7::text,$8::text])",
       [
         input.tenantId,
         roleId,
@@ -124,6 +125,7 @@ export async function provisionStagingCustomer(
         CUSTOMER_BOOKING_PERMISSION,
         CUSTOMER_HISTORY_PERMISSION,
         CUSTOMER_CANCEL_PERMISSION,
+        CUSTOMER_RESCHEDULE_PERMISSION,
       ],
     );
     await client.query(
@@ -189,7 +191,7 @@ export async function enrollStagingCustomerInTransaction(
   const customer = randomUUID();
   const roleId = randomUUID();
   await client.query(
-    "INSERT INTO cookie_identity.roles(tenant_id,id,base_type,display_name,permissions) VALUES($1::uuid,$2::uuid,'client','Client',ARRAY[$3::text,$4::text,$5::text,$6::text,$7::text])",
+    "INSERT INTO cookie_identity.roles(tenant_id,id,base_type,display_name,permissions) VALUES($1::uuid,$2::uuid,'client','Client',ARRAY[$3::text,$4::text,$5::text,$6::text,$7::text,$8::text])",
     [
       tenantId,
       roleId,
@@ -198,6 +200,7 @@ export async function enrollStagingCustomerInTransaction(
       CUSTOMER_BOOKING_PERMISSION,
       CUSTOMER_HISTORY_PERMISSION,
       CUSTOMER_CANCEL_PERMISSION,
+      CUSTOMER_RESCHEDULE_PERMISSION,
     ],
   );
   await client.query(

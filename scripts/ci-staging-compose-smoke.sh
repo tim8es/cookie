@@ -151,3 +151,6 @@ value_after_outage="$("${compose[@]}" exec -T postgres psql -U cookie -d cookie 
 [[ "$value_after_outage" == "42" ]] || { echo "Lost durable data after outage"; exit 1; }
 echo "PASS: same compiled API process recovered PostgreSQL connectivity; durable owner receipt and data unchanged"
 echo "Compiled API + same-origin web + verified migrations + owner provisioning/replay + persistent PostgreSQL restart PASS; Booking routes remain fail-closed."
+# Separate, dedicated real-OS Linux codec sandbox proof. No routes are
+# activated in the API; never mount a Docker socket in the app container.
+bash scripts/ci-codec-sandbox-smoke.sh

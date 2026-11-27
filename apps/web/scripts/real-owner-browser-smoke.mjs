@@ -384,6 +384,9 @@ async function main() {
       COOKIE_TELEGRAM_OIDC_REDIRECT_URI: "https://cookie-e2e.invalid/auth/telegram/callback",
       COOKIE_TELEGRAM_OIDC_COOKIE_KEY: randomBytes(32).toString("hex"),
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
+      COOKIE_STAGING_APPEARANCE_MODE: "enabled",
+      COOKIE_STAGING_OWNER_CANCEL_CUTOFF_MINUTES: "0",
+      COOKIE_STAGING_OWNER_RESCHEDULE_CUTOFF_MINUTES: "0",
       COOKIE_TELEGRAM_USER_HMAC_SECRET: userHashSecret.toString("hex"),
       COOKIE_TELEGRAM_BOT_TOKEN: botToken,
       COOKIE_PUBLIC_ORIGIN: "https://cookie-e2e.invalid",
@@ -725,7 +728,7 @@ async function main() {
     await poll("appearance module downloaded on demand", () =>
       responses.some((response) => appearanceChunk(response) && response.status === 200),
     );
-    await requireDom(cdp, "real appearance draft loaded", "document.querySelector('.brand-editor') && document.body.innerText.includes('Только черновик') && document.querySelector('.brand-presets button')");
+    await requireDom(cdp, "real appearance draft loaded", "document.querySelector('.brand-editor') && document.body.innerText.includes('Не опубликовано') && document.querySelector('.brand-presets button')");
     await checkWidth(cdp, "real appearance 375px");
     await evaluate(cdp, "[...document.querySelectorAll('.brand-presets button')].find(b=>b.textContent.includes('Ботаника')).click()");
     await button(cdp, "Сохранить черновик");
@@ -738,6 +741,11 @@ async function main() {
     await button(cdp, "Оформление");
     await requireDom(cdp, "persisted appearance reloaded", "document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника') && [...document.querySelectorAll('.brand-actions button')].find(b=>b.textContent.trim()==='Опубликовать')?.disabled && [...document.querySelectorAll('.brand-assets input')].every(i=>i.matches(':disabled'))");
     assert.equal(responses.filter(appearanceChunk).length, 1, "Appearance module requested again within the same document");
+    assert.ok(responses.some(r => r.status === 404 && r.path.endsWith("/appearance/published")),
+      "Owner must see 404 for a never-published appearance");
+    assert.ok(responses.some(r => r.status === 200 && r.path.endsWith("/appearance/publication")),
+      "Explicit staging mode must serve the authenticated owner capability endpoint");
+
     await button(cdp, "Онлайн-запись");
     await requireDom(cdp, "owner booking unavailable without customer identity", "document.querySelector('h1')?.textContent==='Онлайн-запись' && document.body.innerText.includes('Клиентская запись — отдельный вход') && !document.querySelector('.booking-form')");
     await button(cdp, "Услуги");
@@ -809,6 +817,71 @@ async function main() {
       "document.querySelector('.alert-ok')?.innerText.includes('Черновик сохранён') && !document.querySelector('.owner-form button[type=submit]')?.disabled");
     const shiftId = await assertPlan(pool, owner, beforeRestart.staffId, locationId, date);
     await benchmarkOwnerNavigation(cdp);
+    // The compiled API mounts the real owner publish route only because BOTH
+    // explicit staging flags are set, but a separately issued live Appearance
+    // grant is still mandatory. No grant is seeded at onboarding.
+    await button(cdp, "Услуги");
+    await button(cdp, "Оформление");
+    await requireDom(cdp, "owner publish disabled without a live Appearance grant",
+      "document.querySelector('.brand-editor') && " +
+      "[...document.querySelectorAll('.brand-actions button')].find(b=>b.textContent.trim()==='Опубликовать')?.disabled && " +
+      "document.body.innerText.includes('Публикация недоступна')");
+    const appearanceGrantId = randomUUID();
+    await pool.query(
+      "INSERT INTO cookie_entitlement.staging_appearance_grants (tenant_id,id,expires_at) VALUES ($1::uuid,$2::uuid,clock_timestamp()+interval '1 hour')",
+      [owner.tenantId, appearanceGrantId]);
+    await button(cdp, "Услуги");
+    await button(cdp, "Оформление");
+    await requireDom(cdp, "verified owner publication button enabled by server policy and grant",
+      "document.querySelector('.brand-editor') && " +
+      "[...document.querySelectorAll('.brand-actions button')].find(b=>b.textContent.trim()==='Опубликовать')?.disabled===false");
+    await button(cdp, "Опубликовать");
+    await requireDom(cdp, "actual owner publish POST confirmed by authoritative GET",
+      "document.body.innerText.includes('Сервер подтвердил публикацию оформления версии 1') && " +
+      "document.querySelector('.brand-state')?.innerText.includes('Опубликовано · версия 1')");
+    assert.equal(responses.filter(r => r.status === 200 && r.path.endsWith("/appearance/publish")).length, 1,
+      "Expected exactly one actual owner POST to publish");
+    const appearanceAudit = await pool.query(
+      "SELECT revision::text,grant_id::text,actor_identity_id::text FROM cookie_appearance.publication_audit WHERE tenant_id=$1::uuid",
+      [owner.tenantId]);
+    assert.deepEqual(appearanceAudit.rows, [{revision:"1",grant_id:appearanceGrantId,actor_identity_id:owner.identityId}],
+      "Actual owner publish must create an atomic grant-bound actor audit");
+    await requireDom(cdp, "real published snapshot read into owner browser",
+      "document.querySelector('.brand-state')?.innerText.includes('Опубликовано · версия 1') && " +
+      "document.body.innerText.includes('На сервере опубликована версия 1 (Ботаника)') && " +
+      "document.body.innerText.includes('Черновик совпадает с опубликованной версией.') && " +
+      "[...document.querySelectorAll('.brand-actions button')].find(b=>b.textContent.trim()==='Опубликовать')?.disabled");
+    assert.ok(responses.some(r => r.status === 200 && r.path.endsWith("/appearance/published")),
+      "Missing real authenticated published Appearance GET");
+    await checkWidth(cdp, "published owner appearance 375px");
+
+    // The browser may save a newer draft, but must keep showing the older
+    // published version until an independently authorized publish succeeds.
+    await evaluate(cdp, "[...document.querySelectorAll('.brand-presets button')].find(b=>b.textContent.includes('Горизонт')).click()");
+    await button(cdp, "Сохранить черновик");
+    await requireDom(cdp, "newer owner draft cannot impersonate published theme",
+      "document.querySelector('.brand-presets button.active')?.textContent.includes('Горизонт') && " +
+      "document.querySelector('.brand-state')?.innerText.includes('Опубликовано · версия 1') && " +
+      "document.body.innerText.includes('Текущий черновик ещё не опубликован.') && " +
+      "document.body.innerText.includes('Черновик сохранён на сервере')");
+    const afterNewerDraft = await pool.query(
+      "SELECT draft_revision::text, draft_config, published_revision::text, published_config FROM cookie_appearance.organization_branding WHERE tenant_id=$1::uuid",
+      [owner.tenantId]);
+    assert.equal(afterNewerDraft.rows[0]?.draft_revision, "2");
+    assert.equal(afterNewerDraft.rows[0]?.draft_config.presetId, "ocean");
+    assert.equal(afterNewerDraft.rows[0]?.published_revision, "1");
+    assert.equal(afterNewerDraft.rows[0]?.published_config.presetId, "forest");
+
+    // Keep the pre-existing warm navigation benchmark's Botanika fixture.
+    await evaluate(cdp, "[...document.querySelectorAll('.brand-presets button')].find(b=>b.textContent.includes('Ботаника')).click()");
+    await button(cdp, "Сохранить черновик");
+    await requireDom(cdp, "restored draft remains distinct from published revision",
+      "document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника') && " +
+      "document.querySelector('.brand-state')?.innerText.includes('Опубликовано · версия 1') && " +
+      "document.body.innerText.includes('Версия черновика: 3.') && " +
+      "document.body.innerText.includes('Текущий черновик ещё не опубликован.')");
+    assert.equal(await evaluate(cdp, "localStorage.length + sessionStorage.length"), 0,
+      "Published appearance wrote browser storage");
     assert.equal(responses.filter((r) => r.status === 201 && r.path.endsWith("/locations")).length, 1);
     assert.equal(responses.filter((r) => r.status === 201 && r.path.endsWith("/shift-plans")).length, 1);
     assert.ok(responses.some((r) => r.status === 200 && r.path.endsWith("/workspace-overview")));
@@ -829,6 +902,18 @@ async function main() {
     script = await loadAndEnterTelegram(cdp, origin, signedProof(botToken, userId), script, "business");
     await requireDom(cdp, "service persisted after process restart",
       "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service')");
+    await button(cdp, "Оформление");
+    await requireDom(cdp, "published appearance persists across API restart",
+      "document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника') && " +
+      "document.querySelector('.brand-state')?.innerText.includes('Опубликовано · версия 1') && " +
+      "document.body.innerText.includes('Версия черновика: 3.') && " +
+      "document.body.innerText.includes('Текущий черновик ещё не опубликован.')");
+    const appearanceAfterRestart = await pool.query(
+      "SELECT draft_revision::text, published_revision::text, published_config FROM cookie_appearance.organization_branding WHERE tenant_id=$1::uuid",
+      [owner.tenantId]);
+    assert.equal(appearanceAfterRestart.rows[0]?.draft_revision, "3");
+    assert.equal(appearanceAfterRestart.rows[0]?.published_revision, "1");
+    assert.equal(appearanceAfterRestart.rows[0]?.published_config.presetId, "forest");
     await button(cdp, "Мастера");
     await requireDom(cdp, "staff persisted after process restart",
       "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
@@ -996,7 +1081,7 @@ async function main() {
     // The previous browser path proved default-off. Restart with the separate
     // write switch only in this isolated synthetic CI process.
     await stopServer(api);
-    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60" }, origin);
+    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60", COOKIE_STAGING_CUSTOMER_RESCHEDULE_CUTOFF_MINUTES: "30" }, origin);
     script = await loadAndEnterTelegram(cdp, origin+"?surface=customer-staging", signedProof(botToken,customerUserId), script, "customer");
     await requireDom(cdp,"write-enabled customer catalog","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
     for(let i=0;i<3;i++){
@@ -1029,6 +1114,117 @@ async function main() {
       await viewport(cdp,width,height);
       await checkWidth(cdp,"confirmed customer booking "+width+"px");
     }
+    // Independent real-browser customer reschedule path: the same Confirmed
+    // Booking changes only its UTC minute, not ID, service/staff/location,
+    // price snapshot, or customer. All evidence is from live PostgreSQL.
+    await requireDom(cdp, "real client move action", "Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Перенести запись'&&!b.disabled)");
+    const beforeMove = await pool.query(
+      "SELECT start_at,price_kopecks_snapshot::text AS price,service_id::text AS service,staff_id::text AS staff,location_id::text AS location FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+      [owner.tenantId, realBooking.rows[0].id],
+    );
+    assert.equal(beforeMove.rowCount, 1);
+    const moveAt = date + "T10:00:00.000Z";
+    assert.notEqual(beforeMove.rows[0].start_at.toISOString(), moveAt);
+    await button(cdp, "Перенести запись");
+    await requireDom(cdp, "server-local staging date and verified available slot",
+      "(()=>{const panel=document.querySelector(" + JSON.stringify(historyPanel) + ");const datePicker=panel?.querySelector('input[type=date]');const select=panel?.querySelector('select');return datePicker?.value===" + JSON.stringify(date) +
+      " && !panel.querySelector('input[type=datetime-local]') && [...(select?.options??[])].some(option=>option.value===" + JSON.stringify(moveAt) + ");})()");
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-reschedule/"+realBooking.rows[0].id+"/slots")));
+    await evaluate(cdp, "(()=>{const s=document.querySelector(" + JSON.stringify(historyPanel+" select") + ");s.value=" + JSON.stringify(moveAt) + ";s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await requireDom(cdp, "move selection is exactly a server-provided UTC instant",
+      "document.querySelector(" + JSON.stringify(historyPanel+" select") + ")?.value===" + JSON.stringify(moveAt));
+    for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"client branch-local slots "+width+"px");
+      await checkLabeledControls(cdp,"client branch-local slots "+width+"px");
+    }
+    await button(cdp, "Проверить новое время");
+    await requireDom(cdp, "explicit branch-zone move confirmation",
+      "document.body.innerText.includes('Подтвердить перенос') && document.body.innerText.includes('исходная стоимость сохранятся')");
+    const clientMoveUrl="/v1/organizations/"+owner.tenantId+"/staging-customer-reschedule/"+realBooking.rows[0].id;
+    let clientMoveRequests=0;
+    cdp.onEvent("Network.requestWillBeSent",({request})=>{
+      if(request.url.startsWith(origin)&&request.method==="POST"&&new URL(request.url).pathname===clientMoveUrl)clientMoveRequests++;
+    });
+    // Only the first and final POST reach the server. Simulated intermediate
+    // rejections test uncertainty handling, not actual permission revocation.
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);let lost=false;window.__kukiClientMoveKeys=[];window.__kukiClientMoveBodies=[];window.__kukiClientMoveRejections=[];window.__kukiClientMoveNext=null;window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(clientMoveUrl)+")){window.__kukiClientMoveKeys.push(new Headers(init.headers).get('idempotency-key'));window.__kukiClientMoveBodies.push(init.body);const rejection=window.__kukiClientMoveNext;if(rejection!==null){window.__kukiClientMoveNext=null;window.__kukiClientMoveRejections.push(rejection.status);return Response.json({error:rejection.code},{status:rejection.status});}const reply=await send(input,init);if(!lost&&reply.status===200){lost=true;throw new Error('synthetic lost customer move response');}return reply;}return send(input,init);};})()");
+    await button(cdp, "Подтвердить перенос");
+    const clientMoveUnknown="document.querySelector("+JSON.stringify(historyPanel)+")";
+    await requireDom(cdp,"client move commit not acknowledged",
+      clientMoveUnknown+"?.innerText.includes('Результат переноса не подтверждён')&&[..."+clientMoveUnknown+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)&&!"+clientMoveUnknown+".innerText.includes('Перенос подтверждён сервером')");
+    const readCommittedMove=()=>pool.query(
+      "SELECT start_at,price_kopecks_snapshot::text AS price,service_id::text AS service,staff_id::text AS staff,location_id::text AS location,status FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+      [owner.tenantId,realBooking.rows[0].id],
+    );
+    const readMoveEffects=async()=> (await pool.query(
+      "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2::text) AS events",
+      [owner.tenantId,realBooking.rows[0].id],
+    )).rows[0];
+    const committedClientMove=await readCommittedMove();
+    assert.equal(committedClientMove.rowCount,1);
+    assert.equal(committedClientMove.rows[0].start_at.toISOString(),moveAt);
+    assert.equal(committedClientMove.rows[0].status,"Confirmed");
+    assert.deepEqual(await readMoveEffects(),{audits:1,receipts:1,events:1});
+    assert.equal(clientMoveRequests,1,"Unknown move must not auto-retry");
+    const rejectedMoves=[{status:409,code:"RESCHEDULE_CONFLICT"},{status:404,code:"BOOKING_NOT_FOUND"},{status:403,code:"forbidden"}];
+    for(const [i,rejection] of rejectedMoves.entries()){
+      const retryMarker=responses.length;
+      await evaluate(cdp,"window.__kukiClientMoveNext="+JSON.stringify(rejection));
+      await button(cdp,"Повторить исходный перенос");
+      await requireDom(cdp,"customer move remains unknown after synthetic "+rejection.status,
+        "window.__kukiClientMoveRejections.length==="+(i+1)+"&&"+clientMoveUnknown+"?.innerText.includes('Результат исходного переноса не подтверждён')&&[..."+clientMoveUnknown+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)&&!"+clientMoveUnknown+".innerText.includes('Перенос не выполнен')&&!"+clientMoveUnknown+".innerText.includes('Перенос подтверждён сервером')");
+      if(rejection.status===403){
+        assert.ok(responses.slice(retryMarker).some(r=>r.path.endsWith("/staging-customer-history")&&r.status===200),"Denied retry must revalidate the still-authorized customer context");
+      }
+      assert.equal(clientMoveRequests,1,"Synthetic rejection must not reach server");
+      const keys=await evaluate(cdp,"window.__kukiClientMoveKeys");
+      const bodies=await evaluate(cdp,"window.__kukiClientMoveBodies");
+      assert.equal(keys.length,i+2);
+      assert.ok(keys.every(key=>key===keys[0]));
+      assert.equal(bodies.length,i+2);
+      assert.ok(bodies.every(body=>body===bodies[0]));
+      assert.deepEqual((await readCommittedMove()).rows,committedClientMove.rows);
+      assert.deepEqual(await readMoveEffects(),{audits:1,receipts:1,events:1});
+    }
+    assert.deepEqual(await evaluate(cdp,"window.__kukiClientMoveRejections"),[409,404,403]);
+    await button(cdp,"Повторить исходный перенос");
+    await requireDom(cdp, "confirmed time-only move in customer cabinet",
+      "document.querySelector(" + JSON.stringify(historyPanel) + ")?.innerText.includes('Перенос подтверждён сервером') && [...document.querySelectorAll('.customer-history li time')].some(t=>t.dateTime===" + JSON.stringify(moveAt) + ")");
+    const afterMove = await pool.query(
+      "SELECT start_at,price_kopecks_snapshot::text AS price,service_id::text AS service,staff_id::text AS staff,location_id::text AS location,status FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+      [owner.tenantId, realBooking.rows[0].id],
+    );
+    assert.equal(afterMove.rowCount, 1);
+    assert.equal(afterMove.rows[0].start_at.toISOString(), moveAt);
+    assert.equal(afterMove.rows[0].price, beforeMove.rows[0].price);
+    for (const field of ["service", "staff", "location"])
+      assert.equal(afterMove.rows[0][field], beforeMove.rows[0][field]);
+    assert.equal(afterMove.rows[0].status, "Confirmed");
+    const moveEvidence = await pool.query(
+      "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits, (SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts, (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2::text) AS events",
+      [owner.tenantId, realBooking.rows[0].id],
+    );
+    assert.deepEqual(moveEvidence.rows[0], { audits: 1, receipts: 1, events: 1 });
+    assert.equal(clientMoveRequests,2,"Only original and final replay may reach server");
+    const clientMoveKeys=await evaluate(cdp,"window.__kukiClientMoveKeys");
+    const clientMoveBodies=await evaluate(cdp,"window.__kukiClientMoveBodies");
+    assert.equal(clientMoveKeys.length,5);
+    assert.equal(typeof clientMoveKeys[0],"string");
+    assert.ok(clientMoveKeys[0].length>=16);
+    assert.ok(clientMoveKeys.every(key=>key===clientMoveKeys[0]));
+    assert.equal(clientMoveBodies.length,5);
+    assert.ok(clientMoveBodies.every(body=>body===clientMoveBodies[0]));
+    assert.deepEqual(JSON.parse(clientMoveBodies[0]),{newStartAt:moveAt});
+    assert.deepEqual(afterMove.rows,committedClientMove.rows);
+    assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-reschedule/"+realBooking.rows[0].id)));
+    assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
+    for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"confirmed client move "+width+"px");
+      await checkLabeledControls(cdp,"confirmed client move "+width+"px");
+    }
+    console.log("PASS real customer browser time-only move: unchanged Booking ID, price, service, staff and location, one audit/receipt/outbox.");
     await requireDom(cdp,"real cancel action","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)");
     await button(cdp,"Отменить запись");
     await button(cdp,"Подтвердить отмену");
@@ -1101,6 +1297,50 @@ async function main() {
       );
       return result.rows[0];
     };
+    // Separate real authorization regression on the recovered second Booking.
+    // First attempt loses transport BEFORE any server write; then revoke the
+    // actual customer role and retry. The original booking must be untouched.
+    const beforeDeniedMove=await durableBooking();
+    await requireDom(cdp,"second booking ready for revocation during unknown move",
+      "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Перенести запись'&&!b.disabled)");
+    await button(cdp,"Перенести запись");
+    const revokeMoveSelect=historyPanel+" select";
+    await requireDom(cdp,"actual available slots for revoked move",
+      "document.querySelector("+JSON.stringify(revokeMoveSelect)+")?.options.length>1");
+    await evaluate(cdp,"(()=>{const s=document.querySelector("+JSON.stringify(revokeMoveSelect)+");s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await button(cdp,"Проверить новое время");
+    const deniedMoveUrl="/v1/organizations/"+owner.tenantId+"/staging-customer-reschedule/"+restartBookingId;
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(deniedMoveUrl)+")){window.fetch=send;throw new TypeError('synthetic offline before move');}return send(input,init);};})()");
+    const beforeUnknownMove=responses.length;
+    await button(cdp,"Подтвердить перенос");
+    await requireDom(cdp,"second move unknown before revocation",
+      "document.body.innerText.includes('Результат переноса не подтверждён')&&[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)");
+    assert.deepEqual(await durableBooking(),beforeDeniedMove);
+    assert.equal(responses.slice(beforeUnknownMove).filter(r=>r.path===deniedMoveUrl).length,0);
+    const revokedMoveRoles=await pool.query(
+      `UPDATE cookie_identity.role_assignments a SET active=false
+       FROM cookie_identity.roles r,cookie_customers.staging_customer_identities c
+       WHERE a.tenant_id=$1::uuid AND c.tenant_id=a.tenant_id
+         AND c.identity_id=a.identity_id AND r.tenant_id=a.tenant_id
+         AND r.id=a.role_id AND r.base_type='client' AND a.active
+       RETURNING a.id::text`,[owner.tenantId]);
+    assert.equal(revokedMoveRoles.rowCount,1);
+    try {
+      const deniedMarker=responses.length;
+      await button(cdp,"Повторить исходный перенос");
+      await poll("actual denied customer move retry",()=>responses.slice(deniedMarker).some(r=>r.path===deniedMoveUrl&&(r.status===401||r.status===403)));
+      await poll("authoritative customer history denial after retry",()=>responses.slice(deniedMarker).some(r=>r.path.endsWith("/staging-customer-history")&&(r.status===401||r.status===403)));
+      await requireDom(cdp,"revoked customer move closes protected history and catalog",
+        "!document.querySelector("+JSON.stringify(historyPanel)+")&&!document.querySelector("+JSON.stringify(panel)+")&&!document.body.innerText.includes('Перенос подтверждён сервером')");
+      assert.deepEqual(await durableBooking(),beforeDeniedMove);
+      assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
+    } finally {
+      await pool.query("UPDATE cookie_identity.role_assignments SET active=true WHERE tenant_id=$1::uuid AND id=ANY($2::uuid[])",[owner.tenantId,revokedMoveRoles.rows.map(r=>r.id)]);
+    }
+    console.log("PASS customer unknown move: actual role revocation denied retry and history, protected UI cleared, no mutation.");
+    script=await loadAndEnterTelegram(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script,"customer");
+    await requireDom(cdp,"customer reauthenticated after synthetic role restoration",
+      "document.querySelector("+JSON.stringify(historyPanel)+")?.innerText.includes("+JSON.stringify(restartBookingId)+")");
     const beforeBookingRestart = await durableBooking();
     assert.equal(beforeBookingRestart.booking.id, restartBookingId);
     assert.equal(beforeBookingRestart.booking.status, "Confirmed");
@@ -1129,7 +1369,7 @@ async function main() {
       "!document.querySelector('[aria-label=\\\"Мои записи\\\"]') && !document.querySelector('[aria-label=\\\"Клиентская витрина staging\\\"]') && !document.body.innerText.includes('Вход клиента подтверждён')",
     );
     await stopServer(api);
-    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60" }, origin);
+    api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60", COOKIE_STAGING_CUSTOMER_RESCHEDULE_CUTOFF_MINUTES: "30" }, origin);
 
     const historyResponseStart = responses.length;
     script = await loadAndEnterTelegram(cdp, origin+"?surface=customer-staging", signedProof(botToken, customerUserId), script, "customer");
@@ -1224,6 +1464,186 @@ async function main() {
     await button(cdp, "Мастера");
     await requireDom(cdp, "owner staff warmed before revocation",
       "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
+    // An existing, synthetic Confirmed Booking is cancelled by the current
+    // owner through the real compiled Calendar. Simulate a lost HTTP success:
+    // the UI must never claim commit, and same-key retry has one side effect.
+    await button(cdp,"Календарь");
+    await requireDom(cdp,"owner edit calendar branch selector",
+      "document.querySelector('.owner-calendar select')?.options.length===2");
+    await evaluate(cdp,"(()=>{const s=document.querySelector('.owner-calendar select');s.value="+JSON.stringify(locationId)+";s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await fill(cdp,".owner-calendar input[type=date]",date,"change");
+    const ownerEditScope=".owner-booking-detail[data-booking-id="+JSON.stringify(bookingId)+"]";
+    const ownerEditRoot="document.querySelector("+JSON.stringify(ownerEditScope)+")";
+    await requireDom(cdp,"owner edit target persisted record",
+      ownerEditRoot+"?.querySelector('button[aria-expanded=false]')?.disabled===false");
+    await evaluate(cdp,ownerEditRoot+".querySelector('button[aria-expanded=false]').click()");
+    await requireDom(cdp,"owner cancel capability is verified",
+      "(()=>{const root="+ownerEditRoot+";return !!root?.querySelector('dl')&&[...root.querySelectorAll('button')].some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)})()");
+
+    // #23: test the *real* owner Calendar time-only move before cancellation.
+    // The same persisted Booking ID and immutable price are retained.
+    await requireDom(cdp,"owner Calendar move capability verified",
+      "(()=>{const root="+ownerEditRoot+";return [...root.querySelectorAll('button')].some(b=>b.textContent.trim()==='Перенести время'&&!b.disabled)})()");
+    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Перенести время').click();})()");
+    const ownerMoveStart=date+"T07:00:00.000Z";
+    await requireDom(cdp,"owner Calendar shows authoritative branch-zone move slots",
+      "(()=>{const root="+ownerEditRoot+";return [...root.querySelectorAll('.owner-calendar-move option')].some(o=>o.value==="+JSON.stringify(ownerMoveStart)+")})()");
+    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";const s=root.querySelector('.owner-calendar-move select');s.value="+JSON.stringify(ownerMoveStart)+";s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Проверить новое время').click();})()");
+    await requireDom(cdp,"owner Calendar move requires explicit confirmation",
+      ownerEditRoot+"?.innerText.includes('исходная стоимость сохранятся')&&[..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Подтвердить перенос'&&!b.disabled)");
+    const ownerMoveUrl="/v1/organizations/"+owner.tenantId+"/owner-calendar/"+bookingId+"/reschedule";
+    let ownerMoveRequests=0;
+    cdp.onEvent("Network.requestWillBeSent",({request})=>{
+      if(request.url.startsWith(origin)&&request.method==="POST"&&new URL(request.url).pathname===ownerMoveUrl)ownerMoveRequests++;
+    });
+    // Drop the first valid 200 *after the server committed*, capturing only
+    // synthetic idempotency keys. The UI must not assume a successful write.
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);let lost=false;window.__kukiOwnerMoveKeys=[];window.__kukiOwnerMoveBodies=[];window.__kukiOwnerMoveSynthetic=[];window.__kukiOwnerMoveNextStatus=null;window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(ownerMoveUrl)+")){window.__kukiOwnerMoveKeys.push(new Headers(init.headers).get('idempotency-key'));window.__kukiOwnerMoveBodies.push(init.body);const status=window.__kukiOwnerMoveNextStatus;if(status!==null){window.__kukiOwnerMoveNextStatus=null;window.__kukiOwnerMoveSynthetic.push(status);return Response.json({error:'synthetic rejected retry'},{status});}const reply=await send(input,init);if(!lost&&reply.status===200){lost=true;throw new Error('synthetic lost owner time-move receipt');}return reply;}return send(input,init);};})()");
+    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Подтвердить перенос').click();})()");
+    await requireDom(cdp,"owner Calendar unknown move never shown as success",
+      ownerEditRoot+"?.innerText.includes('Результат переноса неизвестен')&&[..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)");
+    assert.equal(ownerMoveRequests,1,"Unknown owner move must not auto-retry");
+
+    const ownerMoved=await pool.query(
+      "SELECT start_at,status,price_kopecks_snapshot::text AS price,staff_id::text AS staff,service_id::text AS service,location_id::text AS location FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+      [owner.tenantId,bookingId],
+    );
+    assert.equal(ownerMoved.rows[0].start_at.toISOString(),ownerMoveStart);
+    assert.deepEqual(
+      Object.fromEntries(["status","price","staff","service","location"].map(k=>[k,ownerMoved.rows[0][k]])),
+      {status:"Confirmed",price:"125050",staff:beforeRestart.staffId,service:beforeRestart.serviceId,location:locationId},
+    );
+    const ownerMoveEffects=await pool.query(
+      "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2::text) AS events",
+      [owner.tenantId,bookingId],
+    );
+    assert.deepEqual(ownerMoveEffects.rows[0],{audits:1,receipts:1,events:1});
+    // A rejection of a retry is not proof that an earlier ambiguous commit failed.
+    // Intercept the two responses before any network request; do not claim these
+    // synthetic HTTP responses cover an actual concurrent authorization change.
+    const clickOwnerMoveRetry="(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Повторить исходный перенос').click();})()";
+    for(const [index,status] of [409,404].entries()){
+      await evaluate(cdp,"window.__kukiOwnerMoveNextStatus="+status);
+      await evaluate(cdp,clickOwnerMoveRetry);
+      await requireDom(cdp,"owner Calendar retains original uncertain move after synthetic "+status,
+        "window.__kukiOwnerMoveSynthetic.length==="+(index+1)+"&&"+ownerEditRoot+"?.innerText.includes('Результат исходного переноса неизвестен')&&[..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)&&!"+ownerEditRoot+".innerText.includes('Перенос не выполнен')");
+      assert.equal(ownerMoveRequests,1,"Intercepted retry must not reach actual HTTP server");
+      const attemptKeys=await evaluate(cdp,"window.__kukiOwnerMoveKeys");
+      const attemptBodies=await evaluate(cdp,"window.__kukiOwnerMoveBodies");
+      assert.equal(attemptKeys.length,index+2);
+      assert.ok(attemptKeys.every(key=>key===attemptKeys[0]),"Every explicit retry must retain original key");
+      assert.equal(attemptBodies.length,index+2);
+      assert.ok(attemptBodies.every(body=>body===attemptBodies[0]),"Every retry must retain original time command");
+      assert.deepEqual((await pool.query(
+        "SELECT start_at,status,price_kopecks_snapshot::text AS price,staff_id::text AS staff,service_id::text AS service,location_id::text AS location FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [owner.tenantId,bookingId],
+      )).rows,ownerMoved.rows,"Rejected retry must not alter committed booking");
+      assert.deepEqual((await pool.query(
+        "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2::text) AS events",
+        [owner.tenantId,bookingId],
+      )).rows[0],ownerMoveEffects.rows[0],"Rejected retry must not duplicate business side effects");
+    }
+    assert.deepEqual(await evaluate(cdp,"window.__kukiOwnerMoveSynthetic"),[409,404]);
+    await evaluate(cdp,clickOwnerMoveRetry);
+    await requireDom(cdp,"owner Calendar refreshed only after acknowledged same-key move",
+      "(()=>{const root="+ownerEditRoot+";return root?.querySelector('button[aria-expanded=false]')&&!root?.querySelector('.owner-calendar-move')})()");
+    assert.equal(ownerMoveRequests,2,"Owner move must retry exactly once after explicit confirmation");
+    const keys=await evaluate(cdp,"window.__kukiOwnerMoveKeys");
+    assert.equal(keys.length,4,"Capture initial, two rejected and final real replay attempts");
+    assert.equal(typeof keys[0],"string");
+    assert.ok(keys[0].length>=16,"Expected a valid opaque idempotency key");
+    assert.ok(keys.every(key=>key===keys[0]),"All owner retries must use the original idempotency key");
+    const moveBodies=await evaluate(cdp,"window.__kukiOwnerMoveBodies");
+    assert.equal(moveBodies.length,4);
+    assert.ok(moveBodies.every(body=>body===moveBodies[0]),"All owner retries must keep the original time command");
+    assert.deepEqual((await pool.query(
+      "SELECT start_at,status,price_kopecks_snapshot::text AS price,staff_id::text AS staff,service_id::text AS service,location_id::text AS location FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+      [owner.tenantId,bookingId],
+    )).rows,ownerMoved.rows,"Real replay must not alter committed booking");
+    assert.deepEqual((await pool.query(
+      "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2::text) AS events",
+      [owner.tenantId,bookingId],
+    )).rows[0],ownerMoveEffects.rows[0],"Retry must not duplicate owner reschedule side effects");
+    await evaluate(cdp,ownerEditRoot+".querySelector('button[aria-expanded=false]').click()");
+    await requireDom(cdp,"owner Calendar cancellation still available after move",
+      "(()=>{const root="+ownerEditRoot+";return [...root.querySelectorAll('button')].some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)})()");
+    console.log("PASS owner Calendar owner-only time move: lost real response, synthetic 409/404 retained uncertainty, explicit same-key recovery, unchanged price and booking scope, one audit/receipt/outbox.");
+    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Отменить запись').click();})()");
+    await requireDom(cdp,"owner cancellation needs explicit second click",
+      "(()=>{const root="+ownerEditRoot+";return root?.innerText.includes('Отменить подтверждённую запись для клиента?')&&[...root.querySelectorAll('button')].some(b=>b.textContent.trim()==='Подтвердить отмену'&&!b.disabled)})()");
+    const ownerCancelUrl="/v1/organizations/"+owner.tenantId+"/owner-calendar/"+bookingId+"/cancel";
+    let ownerCancellationRequests=0;
+    cdp.onEvent("Network.requestWillBeSent",({request})=>{
+      if(request.url.startsWith(origin)&&request.method==="POST"&&new URL(request.url).pathname===ownerCancelUrl)ownerCancellationRequests++;
+    });
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);let lost=false;window.__kukiOwnerCancelKeys=[];window.__kukiOwnerCancelBodies=[];window.__kukiOwnerCancelSynthetic=[];window.__kukiOwnerCancelNextStatus=null;window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(ownerCancelUrl)+")){window.__kukiOwnerCancelKeys.push(new Headers(init.headers).get('idempotency-key'));window.__kukiOwnerCancelBodies.push(init.body);const status=window.__kukiOwnerCancelNextStatus;if(status!==null){window.__kukiOwnerCancelNextStatus=null;window.__kukiOwnerCancelSynthetic.push(status);return Response.json({error:'synthetic rejected cancellation retry'},{status});}const reply=await send(input,init);if(!lost&&reply.status===200){lost=true;throw new Error('synthetic lost owner cancellation response');}return reply;}return send(input,init);};})()");
+    await evaluate(cdp,"(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Подтвердить отмену').click();})()");
+    await requireDom(cdp,"owner unknown commit is not shown as success",
+      ownerEditRoot+"?.innerText.includes('Результат отмены неизвестен')&&[..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходную отмену'&&!b.disabled)");
+    const ownerCommitted=await pool.query(
+      "SELECT status,price_kopecks_snapshot::text AS price FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+      [owner.tenantId,bookingId],
+    );
+    assert.deepEqual(ownerCommitted.rows,[{status:"CancelledByBusiness",price:"125050"}]);
+    assert.equal(ownerCancellationRequests,1,"Unknown owner result may not spontaneously retry");
+    const cancellationEffects=async()=> (await pool.query(
+      "SELECT (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.cancel') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.cancelled' AND payload->>'bookingId'=$2::text) AS events",
+      [owner.tenantId,bookingId],
+    )).rows[0];
+    assert.deepEqual(await cancellationEffects(),{audits:1,receipts:1,events:1});
+    const clickCancellationRetry="(()=>{const root="+ownerEditRoot+";[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Повторить исходную отмену').click();})()";
+    // Rejections below are injected before the network. They test mounted
+    // uncertainty handling, not a real authorization revocation. A 401/403
+    // tears down the protected owner shell via createOwnerReads; never keep
+    // that shell mounted for the sake of an ambiguous receipt.
+    for(const [index,status] of [409,404,503].entries()){
+      await evaluate(cdp,"window.__kukiOwnerCancelNextStatus="+status);
+      await evaluate(cdp,clickCancellationRetry);
+      await requireDom(cdp,"owner cancellation remains unknown after synthetic "+status,
+        "window.__kukiOwnerCancelSynthetic.length==="+(index+1)+"&&"+ownerEditRoot+"?.innerText.includes('Результат исходной отмены неизвестен')&&[..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходную отмену'&&!b.disabled)&&!"+ownerEditRoot+".innerText.includes('Отмена не выполнена')");
+      assert.equal(ownerCancellationRequests,1,"Synthetic rejection must not reach the server");
+      const attemptKeys=await evaluate(cdp,"window.__kukiOwnerCancelKeys");
+      const attemptBodies=await evaluate(cdp,"window.__kukiOwnerCancelBodies");
+      assert.equal(attemptKeys.length,index+2);
+      assert.ok(attemptKeys.every(key=>key===attemptKeys[0]),"Rejected retry must keep original key");
+      assert.equal(attemptBodies.length,index+2);
+      assert.ok(attemptBodies.every(body=>body===attemptBodies[0]),"Rejected retry must keep original command");
+      assert.deepEqual((await pool.query(
+        "SELECT status,price_kopecks_snapshot::text AS price FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [owner.tenantId,bookingId],
+      )).rows,ownerCommitted.rows);
+      assert.deepEqual(await cancellationEffects(),{audits:1,receipts:1,events:1});
+    }
+    assert.deepEqual(await evaluate(cdp,"window.__kukiOwnerCancelSynthetic"),[409,404,503]);
+    await evaluate(cdp,clickCancellationRetry);
+    await requireDom(cdp,"owner calendar refreshed after acknowledged same-key receipt",
+      "(()=>{const rows=[...document.querySelectorAll('[aria-label=\"Записи за выбранный период\"] .schedule-summary')];return rows.some(r=>r.querySelector('.owner-booking-detail[data-booking-id="+JSON.stringify(bookingId)+"]')&&r.querySelector('.status-pill')?.textContent==='Отменена салоном')})()");
+    const ownerEffects=await pool.query(
+      "SELECT (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.cancel') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.cancelled' AND payload->>'bookingId'=$2::text) AS events",
+      [owner.tenantId,bookingId],
+    );
+    assert.deepEqual(ownerEffects.rows[0],{audits:1,receipts:1,events:1});
+    assert.equal(ownerCancellationRequests,2,"Only the original and final replay may reach the server");
+    const cancellationKeys=await evaluate(cdp,"window.__kukiOwnerCancelKeys");
+    const cancellationBodies=await evaluate(cdp,"window.__kukiOwnerCancelBodies");
+    assert.equal(cancellationKeys.length,5);
+    assert.equal(typeof cancellationKeys[0],"string");
+    assert.ok(cancellationKeys[0].length>=16);
+    assert.ok(cancellationKeys.every(key=>key===cancellationKeys[0]),"All cancellation attempts must keep the original key");
+    assert.equal(cancellationBodies.length,5);
+    assert.ok(cancellationBodies.every(body=>body===cancellationBodies[0]),"All cancellation attempts must keep the original payload");
+    assert.deepEqual((await pool.query(
+      "SELECT status,price_kopecks_snapshot::text AS price FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+      [owner.tenantId,bookingId],
+    )).rows,ownerCommitted.rows);
+    for(const [width,height] of [[320,568],[375,812],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"owner calendar after cancel "+width+"px");
+      await checkLabeledControls(cdp,"owner calendar after cancel "+width+"px");
+    }
+    console.log("PASS owner Calendar real browser cancellation: lost 200, synthetic 409/404/503 remain unknown, real same-key replay, immutable price and one audit/receipt/outbox.");
+
     const revokedOwner = await pool.query(
       "UPDATE cookie_identity.opaque_sessions SET revoked_at=clock_timestamp() WHERE tenant_id=$1::uuid AND revoked_at IS NULL",
       [owner.tenantId],
@@ -1318,6 +1738,28 @@ async function main() {
       "location.pathname==='/demo' && document.readyState==='complete' && !document.querySelector('[data-cookie-mode]')");
     assert.deepEqual(demoApiRequests, [], "Retired demo route called real API");
     assert.deepEqual(external, [], "Retired demo route made external requests");
+    // #222: an unpublished salon URL must be a separate, unprivileged shell.
+    // A valid or stale browser session must not turn it into an owner login.
+    const unavailableApiRequests = [];
+    cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
+      if (request.url.startsWith(origin + "v1/")) {
+        unavailableApiRequests.push(new URL(request.url).pathname);
+      }
+    });
+    for (const path of ["book", "book/unknown-synthetic-salon"]) {
+      const response = await getLocal(origin + path);
+      assert.equal(response.status, 404, "Unpublished booking path must return HTTP 404: " + path);
+      await cdp.send("Page.navigate", { url: origin + path });
+      await requireDom(cdp, "unpublished booking path " + path,
+        "document.querySelector('[data-kuki-public-booking=unavailable]') && " +
+        "document.body.innerText.includes('Публичная запись ещё не подключена') && " +
+        "!document.querySelector('.real-owner-nav, form')");
+      await cdp.send("Page.reload", { ignoreCache: true });
+      await requireDom(cdp, "unpublished booking reload " + path,
+        "document.querySelector('[data-kuki-public-booking=unavailable]') && " +
+        "!document.querySelector('.real-owner-nav, form')");
+    }
+    assert.deepEqual(unavailableApiRequests, [], "Unpublished salon URL triggered authenticated API");
     console.log("PASS integrated real owner/customer browser: direct owner routes and history navigation, fresh protected reads and fail-closed revocation, Overview + Location + Service create/edit + Staff + ShiftPlan, staging activation/publication, real client catalog and opt-in Booking, PostgreSQL restart persistence, logout and 3 viewports.");
   } finally {
     if (cdp) cdp.close();

@@ -2,8 +2,9 @@
   import { onMount } from "svelte";
   import { Button } from "../components/ui/button/index.js";
   import { cancelOwnBooking, readCancellationCutoff, CancellationError } from "../staging-customer-cancellation-api";
+  import { rescheduleOwnBooking, readRescheduleCutoff, readRescheduleSlots, CustomerRescheduleError, type CustomerRescheduleSlots } from "../staging-customer-reschedule-api";
   import type { VerifiedCustomerSession } from "../owner-auth";
-  import { readOwnBookings, CustomerHistoryError, type OwnBookingHistory, type CustomerBookingStatus } from "../staging-customer-history-api";
+  import { readOwnBookings, CustomerHistoryError, type OwnBookingHistory, type OwnBooking, type CustomerBookingStatus } from "../staging-customer-history-api";
 
   export let session: VerifiedCustomerSession;
   export let onUnauthorized: () => void;
@@ -14,12 +15,136 @@
   let mounted = true;
   let generation = 0;
   let cutoff: number | null = null;
+  let moveCutoff: number | null = null;
+  let moveBookingId: string | null = null;
+  let moveDate = "";
+  let moveTimeZone: string | null = null;
+  let moveOriginalStart = "";
+  let moveSlots: CustomerRescheduleSlots | null = null;
+  let moveSlotId = "";
+  let moveSlotsBusy = false;
+  let moveSlotsError = "";
+  let moveGeneration = 0;
+  let movePending: { bookingId: string; key: string; newStartAt: string } | null = null;
+  let moveBusy = false;
+  let moveUncertain = false;
   let pending: { bookingId: string; key: string } | null = null;
   let cancellationBusy = false;
   let uncertain = false;
   let message = "";
+  function branchDate(value: string, zone: string): string {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(new Date(value));
+    const field = (kind: string) => parts.find((part) => part.type === kind)?.value ?? "";
+    return field("year") + "-" + field("month") + "-" + field("day");
+  }
+  function slotTime(value: string, zone: string): string {
+    return new Intl.DateTimeFormat("ru-RU", {
+      timeZone: zone, hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset",
+    }).format(new Date(value));
+  }
+  function closeMove(): void {
+    if (moveBusy || moveUncertain) return;
+    moveGeneration++;
+    moveBookingId = null;
+    movePending = null;
+    moveDate = "";
+    moveTimeZone = null;
+    moveOriginalStart = "";
+    moveSlots = null;
+    moveSlotId = "";
+    moveSlotsBusy = false;
+    moveSlotsError = "";
+  }
+  async function loadMoveSlots(): Promise<void> {
+    if (!moveBookingId || !moveTimeZone || !moveDate || movePending || moveBusy || busy) return;
+    const version = ++moveGeneration;
+    const bookingId = moveBookingId;
+    const localDate = moveDate;
+    const zone = moveTimeZone;
+    moveSlots = null;
+    moveSlotId = "";
+    moveSlotsError = "";
+    moveSlotsBusy = true;
+    try {
+      const result = await readRescheduleSlots(session, bookingId, localDate, zone);
+      if (!mounted || version !== moveGeneration || moveBookingId !== bookingId) return;
+      moveSlots = result;
+    } catch (reason) {
+      if (!mounted || version !== moveGeneration || moveBookingId !== bookingId) return;
+      if (reason instanceof CustomerRescheduleError && reason.reason === "denied") {
+        onUnauthorized();
+        return;
+      }
+      moveSlotsError = reason instanceof CustomerRescheduleError && reason.reason === "conflict"
+        ? "Запись или расписание больше недоступны для переноса. Обновите записи."
+        : "Не удалось загрузить свободные интервалы. Повторите запрос.";
+    } finally {
+      if (mounted && version === moveGeneration) moveSlotsBusy = false;
+    }
+  }
+  function startMove(booking: OwnBooking): void {
+    if (busy || moveBusy || cancellationBusy || pending || movePending || moveCutoff === null || !booking.timeZone)
+      return;
+    moveGeneration++;
+    moveBookingId = booking.bookingId;
+    moveTimeZone = booking.timeZone;
+    moveOriginalStart = booking.startAt;
+    moveDate = branchDate(booking.startAt, booking.timeZone);
+    moveSlots = null;
+    moveSlotId = "";
+    moveSlotsError = "";
+    message = "";
+    void loadMoveSlots();
+  }
+  function prepareMove(): void {
+    if (!moveBookingId || moveBusy || busy || movePending || moveSlotsBusy) return;
+    const chosen = moveSlots?.slots.find((slot) => slot.startAt === moveSlotId);
+    if (!chosen || chosen.startAt === moveOriginalStart) {
+      moveSlotsError = "Выберите свободное время из списка сервера.";
+      return;
+    }
+    movePending = { bookingId: moveBookingId, newStartAt: chosen.startAt, key: globalThis.crypto.randomUUID() };
+    moveUncertain = false;
+    message = "";
+  }
+  async function confirmMove(): Promise<void> {
+    if (!movePending || moveBusy || busy) return;
+    const attempt = movePending;
+    const previouslyUncertain = moveUncertain;
+    moveBusy = true; onHistory(null); message = "";
+    try {
+      const receipt = await rescheduleOwnBooking(session, attempt.bookingId, attempt.newStartAt, attempt.key);
+      if (!mounted) return;
+      movePending = null; moveBookingId = null; moveUncertain = false;
+      message = "Перенос подтверждён сервером. Время записи: " + time(receipt.startAt, "UTC");
+      await refresh();
+    } catch (reason) {
+      if (!mounted) return;
+      if (previouslyUncertain) {
+        // A rejected replay cannot disprove the original transaction's commit.
+        moveUncertain = true;
+        message = "Результат исходного переноса не подтверждён. Повторите тот же запрос с исходным ключом.";
+        // A denial may mean the entire customer context was revoked. Hide
+        // stale history and revalidate it without discarding the pending key.
+        if (reason instanceof CustomerRescheduleError && reason.reason === "denied") await refresh();
+      } else if (reason instanceof CustomerRescheduleError && reason.reason === "conflict") {
+        movePending = null; moveBookingId = null; moveUncertain = false;
+        message = "Перенос не выполнен. Выбранное время или правило изменилось, обновите список.";
+        await refresh();
+      } else if (reason instanceof CustomerRescheduleError && reason.reason === "denied") {
+        movePending = null; moveBookingId = null; moveUncertain = false;
+        message = "Нет доступа к переносу. Проверьте текущий сеанс.";
+        await refresh();
+      } else {
+        moveUncertain = true;
+        message = "Результат переноса не подтверждён. Повторите тот же запрос; новая запись не создаётся.";
+      }
+    } finally { if (mounted) moveBusy = false; }
+  }
   function selectCancellation(bookingId: string): void {
-    if (pending || cancellationBusy || busy || cutoff === null) return;
+    if (pending || cancellationBusy || busy || cutoff === null || moveBusy || movePending || moveBookingId) return;
     pending = { bookingId, key: globalThis.crypto.randomUUID() };
     uncertain = false; message = "";
   }
@@ -64,6 +189,11 @@
     data = null;
     onHistory(null);
     cutoff = null;
+    moveCutoff = null;
+    moveGeneration++;
+    moveSlots = null;
+    moveSlotId = "";
+    moveSlotsBusy = false;
     busy = true;
     failed = false;
     try {
@@ -79,8 +209,13 @@
         message = "В списке сервера запись отменена клиентом.";
       }
       onHistory(result);
-      const policy = await readCancellationCutoff(session);
-      if (mounted && generation === version) cutoff = policy;
+      const [cancelPolicy, movePolicy] = await Promise.all([
+        readCancellationCutoff(session), readRescheduleCutoff(session),
+      ]);
+      if (mounted && generation === version) {
+        cutoff = cancelPolicy;
+        moveCutoff = movePolicy;
+      }
     } catch (reason) {
       if (!mounted || generation !== version) return;
       if (reason instanceof CustomerHistoryError && reason.reason === "unauthorized") {
@@ -103,16 +238,17 @@
     const amount = BigInt(value);
     return new Intl.NumberFormat("ru-RU").format(amount / 100n) + "," + String(amount % 100n).padStart(2, "0") + " ₽";
   }
-  onMount(() => { void refresh(); return () => { mounted = false; generation++; }; });
+  onMount(() => { void refresh(); return () => { mounted = false; generation++; moveGeneration++; }; });
 </script>
 
 <section class="card" aria-label="Мои записи">
   <div class="card-title">
     <div><span class="eyebrow">STAGING / ЛИЧНЫЙ КАБИНЕТ</span><h2>Мои записи</h2></div>
-    <Button type="button" variant="outline" disabled={busy || cancellationBusy} onclick={() => void refresh()}>Обновить записи</Button>
+    <Button type="button" variant="outline" disabled={busy || cancellationBusy || moveBusy} onclick={() => void refresh()}>Обновить записи</Button>
   </div>
   {#if message}<p role="status">{message}</p>{/if}
   {#if uncertain && pending}<Button type="button" disabled={cancellationBusy || busy} onclick={() => void confirmCancellation()}>Повторить запрос отмены</Button>{/if}
+  {#if moveUncertain && movePending}<Button type="button" disabled={moveBusy || busy} onclick={() => void confirmMove()}>Повторить исходный перенос</Button>{/if}
   {#if busy}<p role="status">Загружаем ваши записи…</p>
   {:else if failed}<p role="alert" class="alert-error">Не удалось получить ваши записи. Обновите список или проверьте доступ.</p>
   {:else if data}
@@ -131,8 +267,46 @@
               <p>Отменить эту запись? Время снова станет свободным, если его не занимает другая запись.</p>
               <Button type="button" disabled={cancellationBusy} onclick={() => void confirmCancellation()}>Подтвердить отмену</Button>
               <Button type="button" variant="outline" disabled={cancellationBusy} onclick={() => { pending = null; }}>Оставить запись</Button>
-            {:else if cutoff !== null && booking.status === "Confirmed" && Date.parse(booking.startAt) > Date.now() + cutoff * 60000}
-              <Button type="button" variant="outline" disabled={!!pending || cancellationBusy} onclick={() => selectCancellation(booking.bookingId)}>Отменить запись</Button>
+            {:else}
+              {#if cutoff !== null && booking.status === "Confirmed" && Date.parse(booking.startAt) > Date.now() + cutoff * 60000}
+                <Button type="button" variant="outline" disabled={!!pending || cancellationBusy || !!moveBookingId || moveBusy} onclick={() => selectCancellation(booking.bookingId)}>Отменить запись</Button>
+              {/if}
+              {#if moveCutoff !== null && booking.status === "Confirmed" && booking.timeZone && Date.parse(booking.startAt) > Date.now() + moveCutoff * 60000}
+                {#if moveBookingId === booking.bookingId}
+                  <label class="field">Дата филиала ({moveTimeZone})
+                    <input type="date" value={moveDate} disabled={moveBusy || !!movePending || moveSlotsBusy}
+                      onchange={event => { moveDate = event.currentTarget.value; moveGeneration++; moveSlots = null; moveSlotId = ""; moveSlotsBusy = false; moveSlotsError = ""; }} />
+                  </label>
+                  <Button type="button" variant="outline" disabled={moveBusy || !!movePending || moveSlotsBusy || !moveDate} onclick={() => void loadMoveSlots()}>Показать свободные интервалы</Button>
+                  {#if moveSlotsBusy}<p role="status">Проверяем свободное время филиала…</p>{/if}
+                  {#if moveSlotsError}<p role="alert" class="alert-error">{moveSlotsError}</p>{/if}
+                  {#if moveSlots && !moveSlotsBusy}
+                    {#if moveSlots.slots.length === 0}<p>На выбранную дату свободного времени нет. Выберите другую дату.</p>
+                    {:else}
+                      <label class="field">Доступное время ({moveSlots.timeZone})
+                        <select value={moveSlotId} disabled={moveBusy || !!movePending} onchange={event => { moveSlotId = event.currentTarget.value; moveSlotsError = ""; }}>
+                          <option value="">Выберите время</option>
+                          {#each moveSlots.slots as slot (slot.startAt)}
+                            <option value={slot.startAt}>{slotTime(slot.startAt, moveSlots.timeZone)} — {slotTime(slot.endAt, moveSlots.timeZone)}</option>
+                          {/each}
+                        </select>
+                      </label>
+                    {/if}
+                  {/if}
+                  {#if movePending?.bookingId === booking.bookingId}
+                    {#if !moveUncertain}
+                      <p>Подтвердить перенос на {time(movePending.newStartAt, booking.timeZone)}? Услуга, мастер, филиал и исходная стоимость сохранятся.</p>
+                      <Button type="button" disabled={moveBusy || busy} onclick={() => void confirmMove()}>Подтвердить перенос</Button>
+                      <Button type="button" variant="outline" disabled={moveBusy} onclick={closeMove}>Отмена</Button>
+                    {/if}
+                  {:else}
+                    <Button type="button" disabled={moveBusy || busy || moveSlotsBusy || !moveSlotId} onclick={prepareMove}>Проверить новое время</Button>
+                    <Button type="button" variant="outline" disabled={moveBusy} onclick={closeMove}>Назад</Button>
+                  {/if}
+                {:else}
+                  <Button type="button" variant="outline" disabled={!!pending || cancellationBusy || !!moveBookingId || moveBusy} onclick={() => startMove(booking)}>Перенести запись</Button>
+                {/if}
+              {/if}
             {/if}
           </li>
         {/each}
@@ -141,7 +315,7 @@
     {/if}
   {/if}
   <p class="owner-form-note">Статусы в списке отображаются на момент последнего обновления с сервера.</p>
-  <p class="owner-form-note">{cutoff === null ? "Отмена в тестовом режиме недоступна." : "Отмена проверяется сервером; тестовый срок — до начала записи более чем " + cutoff + " мин."} Перенос пока недоступен. Названия услуг, филиала и мастера — текущие данные каталога.</p>
+  <p class="owner-form-note">{cutoff === null ? "Отмена в тестовом режиме недоступна." : "Отмена проверяется сервером; тестовый срок — до начала записи более чем " + cutoff + " мин."} {moveCutoff === null ? "Перенос в тестовом режиме недоступен." : "Перенос проверяется сервером; отдельный тестовый срок — более " + moveCutoff + " мин. до начала."} Перенос выбирается из предварительно доступных серверных слотов во времени филиала (с UTC-смещением для неоднозначных часов); подтверждение и проверка конфликтов выполняются сервером. Настройки политики владельца пока не подключены. Названия услуг, филиала и мастера — текущие данные каталога.</p>
 </section>
 
 <style>
