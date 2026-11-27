@@ -260,17 +260,18 @@ async function logoutVerified(cdp) {
 async function verifyDemoBooking(cdp, databaseUrl, tenantId, example) {
   localStagingPhase = "select synthetic client booking offer";
   const panel = '[aria-label="Клиентская витрина staging"]';
-  const selector = JSON.stringify(panel + " select");
   const service = "document.querySelector(" + JSON.stringify(panel + " [data-component=ChoiceList] button") + ")";
   await requireDom(cdp, "seeded service option", service + " && !" + service + ".disabled");
   await evaluate(cdp, service + ".click()");
   await pressButton(cdp, "Продолжить");
-  for (const [i, next] of [[0, false], [1, true]]) {
-    const select = "document.querySelectorAll(" + selector + ")[" + i + "]";
-    await requireDom(cdp, "seeded catalog option " + i, select + "?.options.length===2 && !" + select + ".disabled");
-    await evaluate(cdp, "(()=>{const s=" + select + ";s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
-    if (next) await pressButton(cdp, "Продолжить");
+  for (const label of ["Филиал", "Мастер"]) {
+    const selector = JSON.stringify(panel + ' [data-component="ChoiceList"][aria-label="' + label + '"] button[data-component="ChoiceRow"]');
+    const choice = "document.querySelector(" + selector + ")";
+    await requireDom(cdp, "seeded catalog option " + label, "document.querySelectorAll(" + selector + ").length===1 && !" + choice + ".disabled");
+    await evaluate(cdp, choice + ".click()");
+    await requireDom(cdp, "selected catalog option " + label, choice + "?.getAttribute('aria-pressed')==='true'");
   }
+  await pressButton(cdp, "Продолжить");
   await requireDom(cdp, "date selection", "document.querySelector(" + JSON.stringify(panel + " input[type=date]") + ")?.disabled===false");
   await fill(cdp, panel + " input[type=date]", example.date, "change");
   await pressButton(cdp, "Найти свободное время");
