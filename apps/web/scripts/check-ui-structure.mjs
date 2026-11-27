@@ -88,5 +88,21 @@ assert.ok(!app.includes('<footer class="footer"'), "Footer belongs in a presenta
 assert.ok(!app.includes('<div class="alert alert-error"'), "Alert markup belongs in a presentation component");
 assert.ok(existsSync(join(root, "../AGENTS.md")), "Web agent instructions must be present");
 
+// #305: guard literal platform display branding without renaming technical
+// cookies, storage keys, CSS tokens or tenant-provided salon names.
+const platformBrandSurfaces = [
+  ["../index.html", "<title>kuki — инженерный стенд F1</title>"],
+  ["lib/ui/OnboardingHeader.svelte", '<span>kuki<span class="onboarding-brand-dot">.</span></span>'],
+  ["lib/ui/PublicAttribution.svelte", "Работает на <strong>kuki</strong>"],
+  ["lib/ui/DemoFooter.svelte", "<span>kuki · frontend preview · запись не отправляется на сервер</span>"],
+];
+for (const [path, expected] of platformBrandSurfaces) {
+  assert.ok(read(path).includes(expected), "Canonical lowercase kuki platform text must remain in " + path);
+}
+assert.doesNotMatch(
+  read("lib/ui/DemoFooter.svelte"),
+  /<span>\s*Cookie\b/,
+  "The visible demo footer cannot reintroduce the former Cookie product name",
+);
 
-console.log("PASS Cookie UI file structure: semantic tokens, ordered styles and presentational screens");
+console.log("PASS kuki UI file structure and platform brand: semantic tokens, ordered styles and presentational screens");

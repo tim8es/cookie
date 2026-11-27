@@ -83,7 +83,19 @@ export async function startChromiumWithRetry({
 
   const failures = [];
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    const startedAt = performance.now();
     const handle = await startAttempt(attempt);
+    // Bounded, non-sensitive evidence from the actual spawned child. The
+    // monotonic elapsed time includes process creation and CDP discovery,
+    // but not cleanup or any subsequent browser/UI/Booking assertions.
+    const observation = () => ({
+      attempt,
+      elapsedMs: Math.max(0, Math.round(performance.now() - startedAt)),
+      executable: handle.executable ?? "unknown",
+      stage: handle.probeStage ?? "not-probed",
+      probes: handle.probeCount ?? 0,
+      pid: Number.isInteger(handle.chrome.pid) ? handle.chrome.pid : null,
+    });
     let lastProbeError;
     try {
       const deadline = performance.now() + startupTimeoutMs;
@@ -99,7 +111,9 @@ export async function startChromiumWithRetry({
         // A result from an exited child or an expired attempt is not ready.
         assertRunning(handle);
         if (performance.now() >= deadline) break;
-        if (ready) return { handle, ready, attempt, failures: [...failures] };
+        if (ready) {
+          return { handle, ready, attempt, failures: [...failures], startup: observation() };
+        }
         await sleep(Math.min(intervalMs, Math.max(0, deadline - performance.now())));
       }
       throw new Error(
@@ -119,6 +133,8 @@ export async function startChromiumWithRetry({
         "; executable=" + (handle.executable ?? "unknown") +
         "; stage=" + (handle.probeStage ?? "not-probed") +
         "; probes=" + (handle.probeCount ?? 0) +
+        "; elapsedMs=" + observation().elapsedMs +
+        "; pid=" + (observation().pid ?? "unavailable") +
         "; exit=" + String(handle.chrome.exitCode) +
         "; signal=" + String(handle.chrome.signalCode) +
         (handle.logs?.length

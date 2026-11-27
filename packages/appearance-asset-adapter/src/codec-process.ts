@@ -57,16 +57,31 @@ export function runCodecChild(
     const child = spawn(process.execPath, [...argv], {
       env: childEnvironment(),
       stdio: ["pipe", "pipe", "ignore"],
+      // POSIX: create a fresh process group, not a detached background job.
+      // Its members can then be terminated together on any codec outcome.
+      detached: process.platform !== "win32",
       windowsHide: true,
       shell: false,
     });
+    function killCodecGroup(): void {
+      if (process.platform !== "win32" && child.pid && child.pid > 0) {
+        try {
+          process.kill(-child.pid, "SIGKILL");
+          return;
+        } catch {
+          // Spawn failure or already-exited group: still attempt direct kill.
+        }
+      }
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill("SIGKILL");
+    }
     let length = 0;
     const chunks: Buffer[] = [];
     let failure: AppearanceCodecFailureCode | undefined;
     const stop = (code: AppearanceCodecFailureCode) => {
       if (failure) return;
       failure = code;
-      child.kill("SIGKILL");
+      killCodecGroup();
     };
     const timer = setTimeout(() => stop("codec-timeout"), deadlineMs);
     child.on("error", () => stop("codec-unavailable"));
@@ -85,6 +100,9 @@ export function runCodecChild(
     // exits and its stdio closes; a hung worker must not admit more work.
     child.once("close", (code, signal) => {
       clearTimeout(timer);
+      // Even a successful direct child may have spawned a descendant with
+      // ignored stdio. Do not let its in-group work outlive the codec result.
+      killCodecGroup();
       if (failure) return reject(new AppearanceCodecFailure(failure));
       if (signal || code !== 0) {
         const reason =

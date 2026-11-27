@@ -27,6 +27,10 @@ import {
   type StagingCancellationDependencies,
 } from "./staging-customer-cancellation-http.js";
 import { registerStagingCustomerBooking } from "./staging-customer-booking-http.js";
+import {
+  registerStagingCustomerReschedule,
+  type StagingRescheduleDependencies,
+} from "./staging-customer-reschedule-http.js";
 import { registerStagingCustomerHistory } from "./staging-customer-history-http.js";
 import { registerStagingCustomerOffers } from "./staging-customer-offers-http.js";
 import {
@@ -60,6 +64,14 @@ import {
   registerOwnerCalendar,
   type OwnerCalendarDependencies,
 } from "./owner-calendar-http.js";
+import {
+  registerStagingOwnerCalendarCancellation,
+  type StagingOwnerCancellationDependencies,
+} from "./staging-owner-calendar-cancellation-http.js";
+import {
+  registerStagingOwnerCalendarReschedule,
+  type StagingOwnerRescheduleDependencies,
+} from "./staging-owner-calendar-reschedule-http.js";
 import {
   registerOwnerShiftPlanRoutes,
   type OwnerShiftPlanRouteDependencies,
@@ -97,7 +109,7 @@ export function createApp(
     readonly databaseReadiness?: () => Promise<void>;
     readonly appearanceDraftRoutes?: Pick<
       RealAppearanceRouteDependencies,
-      "pool" | "verifier"
+      "pool" | "verifier" | "stagingPublicationEnabled"
     >;
     readonly sessionRoutes?: ProtectedSessionDependencies;
     readonly liveWorkspaceReads?: LiveWorkspaceReadDependencies;
@@ -108,7 +120,10 @@ export function createApp(
     readonly stagingPublicationRoutes?: StagingPublicationDependencies;
     readonly stagingCustomerBookingRoutes?: StagingPublicationDependencies;
     readonly stagingCustomerCancellationRoutes?: StagingCancellationDependencies;
+    readonly stagingCustomerRescheduleRoutes?: StagingRescheduleDependencies;
     readonly ownerCalendar?: OwnerCalendarDependencies;
+    readonly stagingOwnerCalendarCancellation?: StagingOwnerCancellationDependencies;
+    readonly stagingOwnerCalendarReschedule?: StagingOwnerRescheduleDependencies;
     readonly telegramAuthRoutes?: {
       readonly sessions: import("../../../packages/platform-identity/src/index.js").PostgresOpaqueTelegramSessions;
     };
@@ -230,7 +245,10 @@ export function createApp(
   if (options.appearanceDraftRoutes)
     registerRealAppearanceRoutes(app, {
       ...options.appearanceDraftRoutes,
-      draftOnly: true,
+      // The ordinary compiled runtime remains draft-only unless an independent
+      // controlled-staging Appearance flag is explicitly enabled.
+      draftOnly:
+        options.appearanceDraftRoutes.stagingPublicationEnabled !== true,
     });
 
   if (options.catalogRoutes)
@@ -246,6 +264,16 @@ export function createApp(
     registerOwnerShiftPlanRoutes(app, options.shiftPlanRoutes);
 
   if (options.ownerCalendar) registerOwnerCalendar(app, options.ownerCalendar);
+  if (options.stagingOwnerCalendarCancellation)
+    registerStagingOwnerCalendarCancellation(
+      app,
+      options.stagingOwnerCalendarCancellation,
+    );
+  if (options.stagingOwnerCalendarReschedule)
+    registerStagingOwnerCalendarReschedule(
+      app,
+      options.stagingOwnerCalendarReschedule,
+    );
 
   if (options.stagingPublicationRoutes) {
     registerStagingPublicationRoutes(app, options.stagingPublicationRoutes);
@@ -263,6 +291,11 @@ export function createApp(
     registerStagingCustomerCancellation(
       app,
       options.stagingCustomerCancellationRoutes,
+    );
+  if (options.stagingCustomerRescheduleRoutes)
+    registerStagingCustomerReschedule(
+      app,
+      options.stagingCustomerRescheduleRoutes,
     );
 
   // Explicit injection only: ordinary main.ts never supplies an AuthN adapter or

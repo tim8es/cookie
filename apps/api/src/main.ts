@@ -6,6 +6,10 @@ import { parseStagingPublicationMode } from "../../../packages/domain-entitlemen
 
 import { createApp } from "./app.js";
 import { parseStagingCancellationCutoff } from "./staging-customer-cancellation-http.js";
+import { parseStagingRescheduleCutoff } from "./staging-customer-reschedule-http.js";
+import { parseStagingOwnerCancellationCutoff } from "./staging-owner-calendar-cancellation-http.js";
+import { parseStagingOwnerRescheduleCutoff } from "./staging-owner-calendar-reschedule-http.js";
+import { parseControlledAppearanceMode } from "./staging-appearance-mode.js";
 import { parseConfig } from "./config.js";
 import { registerCompiledWeb } from "./static-web.js";
 import {
@@ -24,6 +28,12 @@ const config = parseConfig(process.env);
 const stagingPublicationEnabled = parseStagingPublicationMode(
   process.env.COOKIE_STAGING_PUBLICATION_MODE,
 );
+// Independent Appearance publication opt-in; the general staging mode alone
+// never activates this protected owner write endpoint.
+const stagingAppearanceEnabled = parseControlledAppearanceMode(
+  process.env.COOKIE_STAGING_APPEARANCE_MODE,
+  stagingPublicationEnabled,
+);
 // Customer mutations require a second explicit controlled-staging opt-in.
 const stagingCustomerBookingEnabled = parseStagingPublicationMode(
   process.env.COOKIE_STAGING_CUSTOMER_BOOKING_MODE,
@@ -36,6 +46,22 @@ const stagingCancellationCutoff = parseStagingCancellationCutoff(
 );
 if (stagingCancellationCutoff !== undefined && !stagingPublicationEnabled)
   throw new Error("Staging cancellation requires staging publication");
+const stagingRescheduleCutoff = parseStagingRescheduleCutoff(
+  process.env.COOKIE_STAGING_CUSTOMER_RESCHEDULE_CUTOFF_MINUTES,
+);
+if (stagingRescheduleCutoff !== undefined && !stagingPublicationEnabled)
+  throw new Error("Staging reschedule requires staging publication");
+// Owner-side edits also require their own explicit synthetic-only opt-in.
+const stagingOwnerCancellationCutoff = parseStagingOwnerCancellationCutoff(
+  process.env.COOKIE_STAGING_OWNER_CANCEL_CUTOFF_MINUTES,
+);
+if (stagingOwnerCancellationCutoff !== undefined && !stagingPublicationEnabled)
+  throw new Error("Staging owner cancellation requires staging publication");
+const stagingOwnerRescheduleCutoff = parseStagingOwnerRescheduleCutoff(
+  process.env.COOKIE_STAGING_OWNER_RESCHEDULE_CUTOFF_MINUTES,
+);
+if (stagingOwnerRescheduleCutoff !== undefined && !stagingPublicationEnabled)
+  throw new Error("Staging owner reschedule requires staging publication");
 const pool = new Pool({
   connectionString: config.databaseUrl,
   application_name: "cookie-api",
@@ -87,8 +113,32 @@ const app = createApp(pool, {
           : {}),
         liveWorkspaceReads: { pool, verifier: tenantSessionVerifier },
         catalogRoutes: { pool, verifier: tenantSessionVerifier },
-        appearanceDraftRoutes: { pool, verifier: tenantSessionVerifier },
+        appearanceDraftRoutes: {
+          pool,
+          verifier: tenantSessionVerifier,
+          stagingPublicationEnabled: stagingAppearanceEnabled,
+        },
         ownerCalendar: { pool, verifier: tenantSessionVerifier },
+        ...(stagingOwnerCancellationCutoff === undefined
+          ? {}
+          : {
+              stagingOwnerCalendarCancellation: {
+                pool,
+                verifier: tenantSessionVerifier,
+                enabled: true,
+                cutoffMinutes: stagingOwnerCancellationCutoff,
+              },
+            }),
+        ...(stagingOwnerRescheduleCutoff === undefined
+          ? {}
+          : {
+              stagingOwnerCalendarReschedule: {
+                pool,
+                verifier: tenantSessionVerifier,
+                enabled: true,
+                cutoffMinutes: stagingOwnerRescheduleCutoff,
+              },
+            }),
         staffRoutes: { pool, verifier: tenantSessionVerifier },
         locationRoutes: { pool, verifier: tenantSessionVerifier },
         shiftPlanRoutes: { pool, verifier: tenantSessionVerifier },
@@ -111,6 +161,16 @@ const app = createApp(pool, {
                 verifier: tenantSessionVerifier,
                 enabled: true,
                 cutoffMinutes: stagingCancellationCutoff,
+              },
+            }),
+        ...(stagingRescheduleCutoff === undefined
+          ? {}
+          : {
+              stagingCustomerRescheduleRoutes: {
+                pool,
+                verifier: tenantSessionVerifier,
+                enabled: true,
+                cutoffMinutes: stagingRescheduleCutoff,
               },
             }),
         sessionRoutes: {

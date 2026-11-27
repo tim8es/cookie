@@ -205,6 +205,9 @@ export async function runF1BrowserBooking(url, syntheticBearer, options = {}) {
     if (started.failures.length) {
       console.warn("F1 CHROMIUM RECOVERED STARTUP", started.failures.join(" | "));
     }
+    // Log the same bounded startup evidence on green runs. This allows
+    // comparing runner latency/stages before future port-file timeouts.
+    console.info("F1 CHROMIUM STARTUP READY", JSON.stringify(started.startup));
     chrome = started.handle.chrome;
     chromeLogs = started.handle.logs;
     browserDataDir = started.handle.dir;

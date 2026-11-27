@@ -11,6 +11,7 @@ export {
 export { listOwnStagingBookings } from "./staging-customer-history.js";
 export {
   cancelStagingCustomerBooking,
+  cancelStagingOwnerBooking,
   cancelBookingInternal,
   CancelBookingFailure,
   type AssertBookingMayCancel,
@@ -21,6 +22,10 @@ export { readStagingCreateReceipt } from "./staging-create-receipt.js";
 /** Trusted F1 staff-assisted mutation; authorization remains in the command. */
 export {
   rescheduleBookingInternal,
+  rescheduleStagingCustomerBooking,
+  rescheduleStagingOwnerBooking,
+  listStagingOwnerRescheduleSlots,
+  listStagingCustomerRescheduleSlots,
   RescheduleBookingFailure,
   type AssertBookingMayReschedule,
 } from "./reschedule.js";

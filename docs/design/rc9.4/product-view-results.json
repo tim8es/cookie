@@ -1,0 +1,130 @@
+[
+  {
+    "name": "375/product: boot mode",
+    "passed": true
+  },
+  {
+    "name": "375/product: correct demo toolbar visibility",
+    "passed": true
+  },
+  {
+    "name": "375/product: PageHeader",
+    "passed": true
+  },
+  {
+    "name": "375/product: subscription test panel visibility",
+    "passed": true
+  },
+  {
+    "name": "375/product: demo import hidden or shown",
+    "passed": true
+  },
+  {
+    "name": "375/product: sample delivery action hidden or shown",
+    "passed": true
+  },
+  {
+    "name": "375/product: no removed CRM disclaimer",
+    "passed": true
+  },
+  {
+    "name": "375/product: no errors",
+    "passed": true
+  },
+  {
+    "name": "375/review: boot mode",
+    "passed": true
+  },
+  {
+    "name": "375/review: correct demo toolbar visibility",
+    "passed": true
+  },
+  {
+    "name": "375/review: PageHeader",
+    "passed": true
+  },
+  {
+    "name": "375/review: subscription test panel visibility",
+    "passed": true
+  },
+  {
+    "name": "375/review: demo import hidden or shown",
+    "passed": true
+  },
+  {
+    "name": "375/review: sample delivery action hidden or shown",
+    "passed": true
+  },
+  {
+    "name": "375/review: no removed CRM disclaimer",
+    "passed": true
+  },
+  {
+    "name": "375/review: no errors",
+    "passed": true
+  },
+  {
+    "name": "1366/product: boot mode",
+    "passed": true
+  },
+  {
+    "name": "1366/product: correct demo toolbar visibility",
+    "passed": true
+  },
+  {
+    "name": "1366/product: PageHeader",
+    "passed": true
+  },
+  {
+    "name": "1366/product: subscription test panel visibility",
+    "passed": true
+  },
+  {
+    "name": "1366/product: demo import hidden or shown",
+    "passed": true
+  },
+  {
+    "name": "1366/product: sample delivery action hidden or shown",
+    "passed": true
+  },
+  {
+    "name": "1366/product: no removed CRM disclaimer",
+    "passed": true
+  },
+  {
+    "name": "1366/product: no errors",
+    "passed": true
+  },
+  {
+    "name": "1366/review: boot mode",
+    "passed": true
+  },
+  {
+    "name": "1366/review: correct demo toolbar visibility",
+    "passed": true
+  },
+  {
+    "name": "1366/review: PageHeader",
+    "passed": true
+  },
+  {
+    "name": "1366/review: subscription test panel visibility",
+    "passed": true
+  },
+  {
+    "name": "1366/review: demo import hidden or shown",
+    "passed": true
+  },
+  {
+    "name": "1366/review: sample delivery action hidden or shown",
+    "passed": true
+  },
+  {
+    "name": "1366/review: no removed CRM disclaimer",
+    "passed": true
+  },
+  {
+    "name": "1366/review: no errors",
+    "passed": true
+  }
+]

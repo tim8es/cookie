@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 
 import sharp from "sharp";
@@ -68,3 +72,106 @@ test("codec child does not inherit application secrets or node flags", async () 
     else process.env[key] = before;
   }
 });
+
+const PNG_1X1 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII=";
+
+async function waitForSentinel(path: string): Promise<void> {
+  const end = Date.now() + 1_500;
+  while (Date.now() < end) {
+    if (existsSync(path)) return;
+    await delay(20);
+  }
+  throw new Error("Codec descendant never started: no containment evidence");
+}
+
+function inGroupDescendant(
+  started: string,
+  escaped: string,
+  writeDelayMs: number,
+  parentMode: "valid" | "hang",
+): string {
+  // A real same-process-group grandchild ignores the supervisor's stdio and
+  // writes a sentinel only if it outlives the original codec child. It exits
+  // on its own after a bounded delay even if the guard regresses.
+  const descendant = `
+    const fs = require("node:fs");
+    fs.writeFileSync(${JSON.stringify(started)}, "started");
+    setTimeout(() => fs.writeFileSync(${JSON.stringify(escaped)}, "escaped"), ${writeDelayMs});
+    setTimeout(() => process.exit(0), ${writeDelayMs + 500});
+  `;
+  const onStart =
+    parentMode === "valid"
+      ? `
+        const png = Buffer.from(${JSON.stringify(PNG_1X1)}, "base64");
+        const header = Buffer.alloc(8);
+        header.writeUInt32BE(1, 0);
+        header.writeUInt32BE(1, 4);
+        process.stdout.write(Buffer.concat([header, png]), () => process.exit(0));
+      `
+      : "setInterval(() => {}, 1000);";
+  return `
+    const { spawn } = require("node:child_process");
+    const fs = require("node:fs");
+    spawn(process.execPath, ["-e", ${JSON.stringify(descendant)}], {
+      stdio: "ignore", detached: false
+    });
+    const poll = setInterval(() => {
+      if (fs.existsSync(${JSON.stringify(started)})) {
+        clearInterval(poll);
+        ${onStart}
+      }
+    }, 10);
+    setTimeout(() => process.exit(9), 6_000).unref();
+  `;
+}
+
+test(
+  "POSIX codec supervisor cleans in-group descendants after a successful response",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "kuki-codec-group-ok-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const started = join(dir, "started");
+    const escaped = join(dir, "escaped");
+    const result = await runCodecChild(
+      ["-e", inGroupDescendant(started, escaped, 650, "valid")],
+      Buffer.alloc(0),
+      3_000,
+    );
+    assert.equal(existsSync(started), true, "Grandchild never started");
+    assert.equal(result.width, 1);
+    assert.equal(result.height, 1);
+    assert.equal(result.bytes.toString("base64"), PNG_1X1);
+    await delay(850);
+    assert.equal(
+      existsSync(escaped),
+      false,
+      "Grandchild escaped after success",
+    );
+  },
+);
+
+test(
+  "POSIX codec timeout kills the whole child process group",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "kuki-codec-group-timeout-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const started = join(dir, "started");
+    const escaped = join(dir, "escaped");
+    const running = runCodecChild(
+      ["-e", inGroupDescendant(started, escaped, 2_400, "hang")],
+      Buffer.alloc(0),
+      1_800,
+    );
+    await waitForSentinel(started);
+    await assert.rejects(running, /codec-timeout/);
+    await delay(950);
+    assert.equal(
+      existsSync(escaped),
+      false,
+      "Grandchild escaped after timeout",
+    );
+  },
+);

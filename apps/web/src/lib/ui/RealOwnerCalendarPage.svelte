@@ -96,6 +96,11 @@
     }
   }
 
+  function afterBookingChange(): void {
+    reads.invalidateCalendars();
+    void load();
+  }
+
   function changeBranch(value: string): void {
     branchId = value;
     const branch = branches.find((item) => item.id === value);
@@ -183,7 +188,7 @@
               <span class="status-pill">{statusNames[item.status]}</span>
               {#key session}
                 {#key data.locationId + "/" + data.localDate + "/" + data.days}
-                  <OwnerBookingDetail {session} fetcher={reads.fetch} locationId={data.locationId} bookingId={item.id} disabled={loading || expired} />
+                  <OwnerBookingDetail {session} fetcher={reads.fetch} locationId={data.locationId} bookingId={item.id} disabled={loading || expired} onChanged={afterBookingChange} />
                 {/key}
               {/key}
             </div>
