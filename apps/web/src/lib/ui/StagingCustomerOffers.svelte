@@ -81,6 +81,10 @@
       if (Date.now() / 1000 >= session.expiresAtUnixSeconds) { onUnauthorized(); return; }
       if (!receipt || sessionStorage.getItem(storageKey) !== key) {
         recoveryMessage = "Сервер не подтвердил исходную операцию. Не создавайте новую запись; повторите проверку или обратитесь в салон.";
+        // Positive-only recovery deliberately does not distinguish denial
+        // from absence. Revalidate protected access without clearing the
+        // unresolved marker or treating the missing receipt as failure.
+        await refresh();
         return;
       }
       clearPending();
@@ -111,6 +115,10 @@
     } else if (result.phase === "denied") {
       clearPending();
       onUnauthorized();
+    } else if (result.phase === "error" && result.reason === "outcome-unknown" && !result.retryable) {
+      // A terminal rejected replay may be an authorization denial. The
+      // original outcome remains unknown: keep the marker and check access.
+      void refresh();
     }
   }
   function receiptPrice(value: string): string {
