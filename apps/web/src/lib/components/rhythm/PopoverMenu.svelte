@@ -61,7 +61,7 @@
   }
 
   function focusOption(last = false) {
-    const options = [...(panel?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
+    const options = Array.from(panel?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
     const active = options.find((option) => option.getAttribute("aria-current") === "true");
     (last ? options.at(-1) : active ?? options[0])?.focus({ preventScroll: true });
   }
@@ -97,7 +97,7 @@
         return;
       }
       if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-      const options = [...(panel?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
+      const options = Array.from(panel?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
       if (!options.length) return;
       event.preventDefault();
       const current = options.indexOf(document.activeElement as HTMLButtonElement);
