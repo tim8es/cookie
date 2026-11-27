@@ -17,7 +17,7 @@ import {
   evaluate, fill, submitValidForm, checkWidth,
 } from "../apps/web/scripts/browser-smoke.mjs";
 
-import { isLocalStagingProject, resolveLocalStagingMode } from "./local-staging-mode.mjs";
+import { isLocalStagingProject, resolveLocalStagingMode, localBookingCutoffs } from "./local-staging-mode.mjs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 // Disposable demo and CI never read/write the operator's persistent QA state.
@@ -311,7 +311,7 @@ async function verifyDemoCalendar(cdp, example, expectedStatus) {
   await cdp.send("Emulation.clearDeviceMetricsOverride");
 }
 
-async function verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example) {
+async function verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example, cutoffs, ownerCapabilityResponses) {
   // Both roles use their own ordinary verified session and the exact same
   // compiled application. Every mutation goes through the actual browser UI.
   localStagingPhase = "create synthetic client booking";
@@ -321,6 +321,19 @@ async function verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenan
   localStagingPhase = "authenticate owner for confirmed calendar";
   await signIn(cdp, origin, state, "owner");
   await verifyDemoCalendar(cdp, example, "Подтверждена");
+  // Open the real detail before verifying its optional owner capabilities.
+  await requireDom(cdp, "confirmed demo booking detail ready",
+    "document.querySelector('.owner-booking-detail button[aria-expanded=false]')?.disabled===false");
+  await evaluate(cdp, "document.querySelector('.owner-booking-detail button[aria-expanded=false]').click()");
+  await poll("actual owner cancellation capability", () => ownerCapabilityResponses.cancel.includes(cutoffs.ownerCancel === undefined ? 404 : 200));
+  await poll("actual owner reschedule capability", () => ownerCapabilityResponses.move.includes(cutoffs.ownerMove === undefined ? 404 : 200));
+  const ownerCancelText = cutoffs.ownerCancel === undefined
+    ? "Отмена из календаря недоступна в этом контуре."
+    : "Тестовый срок отмены: более " + cutoffs.ownerCancel + " мин.";
+  const ownerMoveText = cutoffs.ownerMove === undefined
+    ? "Перенос из календаря недоступен в этом контуре."
+    : "Тестовый срок переноса: более " + cutoffs.ownerMove + " мин.";
+  await requireDom(cdp, "explicit owner booking cutoffs", "document.querySelector('.owner-booking-detail')?.innerText.includes(" + JSON.stringify(ownerCancelText) + ") && document.querySelector('.owner-booking-detail')?.innerText.includes(" + JSON.stringify(ownerMoveText) + ")");
   localStagingPhase = "logout owner before client cancellation";
   await logoutVerified(cdp);
   localStagingPhase = "authenticate client to cancel booking";
@@ -376,8 +389,17 @@ async function main() {
     if (!existsSync(join(root, "dist/apps/api/src/main.js")) ||
         !existsSync(join(root, "apps/web/dist/index.html"))) throw new Error("Run pnpm build:runtime first");
     const { parseStagingCancellationCutoff } = await import("../dist/apps/api/src/staging-customer-cancellation-http.js");
-    // Temporary operator-only staging input. No product default: #285 tracks tenant policy.
-    const cutoff = parseStagingCancellationCutoff(process.env.COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES);
+    const { parseStagingRescheduleCutoff } = await import("../dist/apps/api/src/staging-customer-reschedule-http.js");
+    const { parseStagingOwnerCancellationCutoff } = await import("../dist/apps/api/src/staging-owner-calendar-cancellation-http.js");
+    const { parseStagingOwnerRescheduleCutoff } = await import("../dist/apps/api/src/staging-owner-calendar-reschedule-http.js");
+    // Temporary operator-only staging inputs. No product default: #285 tracks tenant policy.
+    const { values: cutoffs, runtimeEnv: bookingEnv } = localBookingCutoffs(process.env, {
+      customerCancel: parseStagingCancellationCutoff,
+      customerMove: parseStagingRescheduleCutoff,
+      ownerCancel: parseStagingOwnerCancellationCutoff,
+      ownerMove: parseStagingOwnerRescheduleCutoff,
+    });
+    const cutoff = cutoffs.customerCancel;
     const binary = browser();
     checkInterrupted();
     composeAttempted = true;
@@ -410,7 +432,7 @@ async function main() {
       COOKIE_TELEGRAM_SELF_REGISTRATION_MODE: "enabled",
       COOKIE_STAGING_PUBLICATION_MODE: "enabled",
       COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled",
-      ...(cutoff === undefined ? {} : { COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: String(cutoff) }),
+      ...bookingEnv,
       COOKIE_PUBLIC_ORIGIN: "https://cookie-manual.invalid",
       COOKIE_TELEGRAM_BOT_TOKEN: state.botToken,
       COOKIE_TELEGRAM_USER_HMAC_SECRET: state.secret,
@@ -448,10 +470,15 @@ async function main() {
     await cdp.ready;
     await cdp.send("Page.enable");
     const cancellationResponses = [];
+    const rescheduleResponses = [];
+    const ownerCapabilityResponses = { cancel: [], move: [] };
     if (verification) {
       await cdp.send("Network.enable");
       cdp.onEvent("Network.responseReceived", ({ response }) => {
         if (response.url.startsWith(origin + "/v1/") && response.url.endsWith("/staging-customer-cancellation/capability")) cancellationResponses.push(response.status);
+        if (response.url.startsWith(origin + "/v1/") && response.url.endsWith("/staging-customer-reschedule/capability")) rescheduleResponses.push(response.status);
+        if (response.url.startsWith(origin + "/v1/") && response.url.endsWith("/owner-calendar/cancellation/capability")) ownerCapabilityResponses.cancel.push(response.status);
+        if (response.url.startsWith(origin + "/v1/") && response.url.endsWith("/owner-calendar/reschedule/capability")) ownerCapabilityResponses.move.push(response.status);
       });
     }
     checkInterrupted();
@@ -464,13 +491,16 @@ async function main() {
       localStagingPhase = "authenticate synthetic client";
       await signIn(cdp, origin, state, "client");
       await poll("actual cancellation capability", () => cancellationResponses.includes(cutoff === undefined ? 404 : 200));
+      await poll("actual customer reschedule capability", () => rescheduleResponses.includes(cutoffs.customerMove === undefined ? 404 : 200));
       const policyText = cutoff === undefined ? "Отмена в тестовом режиме недоступна." : "более чем " + cutoff + " мин.";
       await requireDom(cdp, "explicit cancellation cutoff (no implicit default)", "document.querySelector(\'[aria-label=\\\"Мои записи\\\"]\')?.innerText.includes(" + JSON.stringify(policyText) + ")");
+      const movePolicyText = cutoffs.customerMove === undefined ? "Перенос в тестовом режиме недоступен." : "отдельный тестовый срок — более " + cutoffs.customerMove + " мин.";
+      await requireDom(cdp, "explicit customer reschedule cutoff (no implicit default)", "document.querySelector('[aria-label=\\\"Мои записи\\\"]')?.innerText.includes(" + JSON.stringify(movePolicyText) + ")");
       await requireDom(cdp, "actual client workspace without owner navigation", "document.querySelector(\'[aria-label=\\\"Клиентский вход staging\\\"]\') && !document.querySelector(\'.real-owner-nav\')");
       if (example) {
         if (cutoff === undefined) throw new Error("Demo lifecycle verification requires explicit synthetic cutoff");
         localStagingPhase = "verify synthetic booking lifecycle";
-        await verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example);
+        await verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenantId, example, cutoffs, ownerCapabilityResponses);
       }
       localStagingPhase = "verify unauthenticated runtime and legacy-route closure";
       await cdp.send("Page.navigate", { url: origin + "/" });
@@ -492,7 +522,14 @@ async function main() {
       return;
     }
     console.log((demo ? "kuki demo (synthetic, disposable): " : "Real kuki: ") + origin + " — use the opened isolated browser.");
-    console.log(cutoff === undefined ? "Cancellation disabled: COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES is unset." : "Explicit synthetic cancellation cutoff: " + cutoff + " minutes.");
+    for (const [label, variable, value] of [
+      ["Customer cancellation", "COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES", cutoffs.customerCancel],
+      ["Customer reschedule", "COOKIE_MANUAL_RESCHEDULE_CUTOFF_MINUTES", cutoffs.customerMove],
+      ["Owner cancellation", "COOKIE_MANUAL_OWNER_CANCEL_CUTOFF_MINUTES", cutoffs.ownerCancel],
+      ["Owner reschedule", "COOKIE_MANUAL_OWNER_RESCHEDULE_CUTOFF_MINUTES", cutoffs.ownerMove],
+    ]) {
+      console.log(value === undefined ? label + " disabled: " + variable + " is unset." : label + ": explicit synthetic cutoff " + value + " minutes.");
+    }
     if (example) console.log("Sample service and published shift on " + example.date + ". Switch to client to book.");
     console.log(demo
       ? "Synthetic records only. owner / client = switch role; Enter = fresh login; Ctrl+C = exit and remove this demo database. Relaunch for a fresh demo."

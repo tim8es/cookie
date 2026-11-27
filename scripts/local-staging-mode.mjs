@@ -43,3 +43,20 @@ export function localDemoFetch(origin, fetcher = globalThis.fetch) {
     return fetcher(target.href, { ...init, redirect: "error", credentials: "omit" });
   };
 }
+
+// Explicit synthetic operator inputs only. Never forward an inherited runtime
+// flag or substitute one operation's cutoff for another.
+export function localBookingCutoffs(env, parsers) {
+  const customerCancel = parsers.customerCancel(env.COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES);
+  const customerMove = parsers.customerMove(env.COOKIE_MANUAL_RESCHEDULE_CUTOFF_MINUTES);
+  const ownerCancel = parsers.ownerCancel(env.COOKIE_MANUAL_OWNER_CANCEL_CUTOFF_MINUTES);
+  const ownerMove = parsers.ownerMove(env.COOKIE_MANUAL_OWNER_RESCHEDULE_CUTOFF_MINUTES);
+  const values = { customerCancel, customerMove, ownerCancel, ownerMove };
+  const runtimeEnv = Object.fromEntries([
+    ["COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES", customerCancel],
+    ["COOKIE_STAGING_CUSTOMER_RESCHEDULE_CUTOFF_MINUTES", customerMove],
+    ["COOKIE_STAGING_OWNER_CANCEL_CUTOFF_MINUTES", ownerCancel],
+    ["COOKIE_STAGING_OWNER_RESCHEDULE_CUTOFF_MINUTES", ownerMove],
+  ].filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+  return { values, runtimeEnv };
+}
