@@ -61,7 +61,9 @@
     catch { blocked = true; }
   }
   async function submitBooking(): Promise<void> {
-    if (!bookingEnabled || blocked || locked || busy || !selected || !chosen) return;
+    // The reactive locked flag is updated on the next Svelte flush. Guard the
+    // synchronous phase too, before reading/writing the pending operation key.
+    if (!bookingEnabled || blocked || locked || busy || bookingState.phase !== "idle" || !selected || !chosen) return;
     const key = globalThis.crypto.randomUUID();
     try {
       // Non-secret marker only. No token, proof, price or selection is stored.
@@ -170,6 +172,11 @@
     }));
   $: locations = unique(offers.filter(o => o.serviceId === serviceId), "locationId");
   $: staff = unique(offers.filter(o => o.locationId === locationId && o.serviceId === serviceId), "staffId");
+  $: locationChoices = locations.map(item => ({ id: item.locationId, title: item.locationName, description: item.timeZone }));
+  $: staffChoices = staff.map(item => ({
+    id: item.staffId, title: item.staffName,
+    description: item.durationMinutes + " мин", detail: price(item.basePriceKopecks),
+  }));
   $: selected = offers.find(o => o.locationId === locationId && o.serviceId === serviceId && o.staffId === staffId);
   $: chosen = slots?.slots.find(s => s.startAt === slotId);
   $: steps = [
@@ -192,6 +199,7 @@
     }
   }
   function nextStep(): void {
+    if (locked || busy) return;
     if (step === "service" && serviceId) step = "staff";
     else if (step === "staff" && selected) step = "time";
     else if (step === "time" && chosen) step = "review";
@@ -232,11 +240,20 @@
     } catch (reason) { if (mounted && version === generation) failed(reason); }
     finally { if (mounted && version === generation) busy = false; }
   }
+  const catalogPriceFormatter = new Intl.NumberFormat("ru-RU", {style:"currency",currency:"RUB",maximumFractionDigits:2,minimumFractionDigits:0});
+  // A slot response can contain up to 1500 intervals in one timezone.
+  // Keep only the last formatter; never allocate one per rendered slot.
+  let cachedTimeZone = "";
+  let cachedTimeFormatter: Intl.DateTimeFormat | undefined;
   function price(value: string): string {
-    return new Intl.NumberFormat("ru-RU", {style:"currency",currency:"RUB",maximumFractionDigits:2,minimumFractionDigits:0}).format(Number(value)/100);
+    return catalogPriceFormatter.format(Number(value)/100);
   }
   function format(value: string, zone: string): string {
-    return new Intl.DateTimeFormat("ru-RU", {timeZone:zone,hour:"2-digit",minute:"2-digit",timeZoneName:"shortOffset"}).format(new Date(value));
+    if (!cachedTimeFormatter || cachedTimeZone !== zone) {
+      cachedTimeFormatter = new Intl.DateTimeFormat("ru-RU", {timeZone:zone,hour:"2-digit",minute:"2-digit",timeZoneName:"shortOffset"});
+      cachedTimeZone = zone;
+    }
+    return cachedTimeFormatter.format(new Date(value));
   }
   onMount(() => { void initialize(); return () => { mounted = false; generation++; }; });
 </script>
@@ -268,18 +285,17 @@
             disabled={busy || locked} emptyLabel="Услуги по вашему запросу не найдены"
             onSelect={id => { if (id !== serviceId) { serviceId = id; locationId = ""; staffId = ""; date = ""; resetSlots(); } }} />
         {:else if step === "staff"}
-          <label class="field">Филиал
-            <select value={locationId} disabled={busy || locked} onchange={event => { locationId = event.currentTarget.value; staffId = ""; date = ""; resetSlots(); }}>
-              <option value="">Выберите филиал</option>
-              {#each locations as item (item.locationId)}<option value={item.locationId}>{item.locationName}</option>{/each}
-            </select>
-          </label>
-          <label class="field">Мастер
-            <select value={staffId} disabled={!locationId || busy || locked} onchange={event => { staffId = event.currentTarget.value; date = ""; resetSlots(); }}>
-              <option value="">Выберите мастера</option>
-              {#each staff as item (item.staffId)}<option value={item.staffId}>{item.staffName}</option>{/each}
-            </select>
-          </label>
+          <p class="rhythm-muted">Доступные варианты для выбранной услуги</p>
+          <ChoiceList title="Филиал" items={locationChoices} selected={locationId} variant="option"
+            disabled={busy || locked}
+            onSelect={id => { if (id !== locationId) { locationId = id; staffId = ""; date = ""; resetSlots(); } }} />
+          {#if locationId}
+            <ChoiceList title="Мастер" items={staffChoices} selected={staffId} variant="option"
+              disabled={busy || locked} emptyLabel="Нет доступных мастеров. Выберите другой филиал."
+              onSelect={id => { if (id !== staffId) { staffId = id; date = ""; resetSlots(); } }} />
+          {:else}
+            <p role="status" class="rhythm-muted">Выберите филиал, чтобы увидеть мастеров.</p>
+          {/if}
         {:else if step === "time"}
           <label class="field">Дата филиала
             <Input type="date" value={date} disabled={busy || locked} onchange={event => { date = event.currentTarget.value; resetSlots(); }} />
@@ -353,7 +369,7 @@
 
 <style>
   .customer-slot-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
-  .customer-slot-choice { min-height: 44px; padding: 8px; border: 1px solid currentColor; border-radius: 9px; font: inherit; background: transparent; color: inherit; cursor: pointer; }
+  .customer-slot-choice { min-height: 44px; padding: 8px; border: 1px solid currentColor; border-radius: var(--cookie-radius-control); font: inherit; background: transparent; color: inherit; cursor: pointer; }
   .customer-slot-choice[aria-pressed="true"] { font-weight: 700; outline: 2px solid currentColor; outline-offset: -3px; }
   .customer-choice-summary { display: grid; gap: 6px; margin-top: 12px; }
 </style>

@@ -1058,27 +1058,44 @@ async function main() {
     await button(cdp,"Продолжить");
     await requireDom(cdp,"next step heading receives focus",
       "document.activeElement?.matches("+JSON.stringify(panel+" [data-component=BookingLayout] h2")+") && document.activeElement.textContent==='Филиал и мастер'");
-    for(const [i,next] of [[0,false],[1,true]]){
-      await requireDom(cdp,"available selection "+i,"document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.options.length===2 && !document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.disabled");
-      await evaluate(cdp,"(()=>{const s=document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"];s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
-      if(next) await button(cdp,"Продолжить");
+    const choiceSelector = label => panel+' [data-component="ChoiceList"][aria-label="'+label+'"] button[data-component="ChoiceRow"]';
+    const chooseBranchAndStaff = async () => {
+      for (const label of ["Филиал", "Мастер"]) {
+        const selector = choiceSelector(label);
+        await requireDom(cdp,"available selection "+label,
+          "document.querySelectorAll("+JSON.stringify(selector)+").length===1 && !document.querySelector("+JSON.stringify(selector)+").disabled");
+        await evaluate(cdp,"document.querySelector("+JSON.stringify(selector)+").click()");
+        await requireDom(cdp,"selected "+label,
+          "document.querySelector("+JSON.stringify(selector+"[aria-pressed=true]")+")");
+      }
+    };
+    await requireDom(cdp,"staff hidden before branch","!document.querySelector("+JSON.stringify(choiceSelector("Мастер"))+")");
+    await chooseBranchAndStaff();
+    for (const [width,height] of [[320,568],[375,812],[768,900],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"branch and staff choices "+width+"px");
+      await checkLabeledControls(cdp,"branch and staff choices "+width+"px");
     }
+    await viewport(cdp,375,812);
+    await button(cdp,"Продолжить");
     await requireDom(cdp,"client date enabled","!document.querySelector("+JSON.stringify(panel+" input[type=date]")+")?.disabled");
     await evaluate(cdp,"(()=>{const d=document.querySelector("+JSON.stringify(panel+" input[type=date]")+");d.value="+JSON.stringify(date)+";d.dispatchEvent(new Event('change',{bubbles:true}));})()");
     await button(cdp,"Найти свободное время");
     await requireDom(cdp,"real customer slots","document.querySelectorAll("+JSON.stringify(panel+" .customer-slot-choice")+")?.length===29");
     await evaluate(cdp,"document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+").click()");
     await evaluate(cdp,"document.querySelectorAll("+JSON.stringify(panel+" .rhythm-steps button") + ")[1].click()");
-    await requireDom(cdp,"selected branch and staff preserved on back",
-      "document.querySelectorAll("+JSON.stringify(panel+" select")+ ").length===2 && [...document.querySelectorAll("+JSON.stringify(panel+" select")+ ")].every(s=>!!s.value)");
-    const chosenBranchAndStaff = await evaluate(cdp,
-      "[...document.querySelectorAll("+JSON.stringify(panel+" select")+ ")].map(s=>s.value)");
+    const selectedChoices = "[...document.querySelectorAll("+JSON.stringify(panel+' [data-component="ChoiceRow"][aria-pressed="true"]')+")].map(b=>b.textContent.trim())";
+    await requireDom(cdp,"selected branch and staff preserved on back",selectedChoices+".length===2");
+    const chosenBranchAndStaff = await evaluate(cdp,selectedChoices);
+    // Re-selecting an already selected branch must not clear valid downstream state.
+    await evaluate(cdp,"document.querySelector("+JSON.stringify(choiceSelector("Филиал")+"[aria-pressed=true]")+").click()");
+    assert.deepEqual(await evaluate(cdp,selectedChoices),chosenBranchAndStaff);
     await button(cdp,"Продолжить");
     await requireDom(cdp,"selected time preserved on return",
       "document.querySelector("+JSON.stringify(panel+" .customer-slot-choice[aria-pressed=true]")+")");
     await evaluate(cdp,"document.querySelectorAll("+JSON.stringify(panel+" .rhythm-steps button") + ")[1].click()");
     assert.deepEqual(await evaluate(cdp,
-      "[...document.querySelectorAll("+JSON.stringify(panel+" select")+ ")].map(s=>s.value)"), chosenBranchAndStaff);
+      selectedChoices), chosenBranchAndStaff);
     await button(cdp,"Продолжить");
     await button(cdp,"Продолжить");
     await requireDom(cdp,"slot is not reserved","document.querySelector("+JSON.stringify(panel+" .customer-choice-summary")+")?.innerText.includes('Время не забронировано')");
@@ -1160,21 +1177,21 @@ async function main() {
     await requireDom(cdp,"write-enabled customer catalog",serviceChoice);
     await evaluate(cdp,serviceChoice+".click()");
     await button(cdp,"Продолжить");
-    for(const [i,next] of [[0,false],[1,true]]){
-      await requireDom(cdp,"booking selection "+i,"document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.options.length===2 && !document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.disabled");
-      await evaluate(cdp,"(()=>{const s=document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"];s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
-      if(next) await button(cdp,"Продолжить");
-    }
+    await chooseBranchAndStaff();
+    await button(cdp,"Продолжить");
     await fill(cdp,panel+" input[type=date]",date,"change");
     await button(cdp,"Найти свободное время");
     await requireDom(cdp,"slots before actual booking","document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+")");
     await evaluate(cdp,"document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+").click()");
     await button(cdp,"Продолжить");
     await requireDom(cdp,"real write button","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Записаться'&&!b.disabled)");
-    await button(cdp,"Записаться");
+    // Dispatch two clicks in the same browser task, before Svelte can flush.
+    // Count actual POSTs rather than relying only on the persisted row count.
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);window.__rc94CreateRequests=0;window.fetch=(input,init)=>{if(init?.method==='POST'&&String(input).endsWith('/staging-customer-bookings'))window.__rc94CreateRequests++;return send(input,init);};const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Записаться'&&!b.disabled);b.click();b.click();})()");
     await requireDom(cdp,"server-confirmed real booking","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Создание записи подтверждено') && document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Фактическая стоимость')");
     await requireDom(cdp,"confirmation replaces booking steps and receives focus",
       "!document.querySelector("+JSON.stringify(panel+" [data-component=BookingLayout]")+") && document.activeElement?.matches("+JSON.stringify(panel+" .customer-choice-summary")+")");
+    assert.equal(await evaluate(cdp,"window.__rc94CreateRequests"),1,"Same-task double click must produce one Create request");
     const realBooking = await pool.query(
       "SELECT b.id::text,b.status,b.price_kopecks_snapshot::text AS price FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1::uuid",
       [owner.tenantId],
@@ -1320,11 +1337,8 @@ async function main() {
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0,"Cancellation must not create a pending Create marker");
     await evaluate(cdp,serviceChoice+".click()");
     await button(cdp,"Продолжить");
-    for(const [i,next] of [[0,false],[1,true]]){
-      await requireDom(cdp,"recovery selection "+i,"document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.options.length===2 && !document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.disabled");
-      await evaluate(cdp,"(()=>{const s=document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"];s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
-      if(next) await button(cdp,"Продолжить");
-    }
+    await chooseBranchAndStaff();
+    await button(cdp,"Продолжить");
     await fill(cdp,panel+" input[type=date]",date,"change");
     await button(cdp,"Найти свободное время");
     await requireDom(cdp,"slots before lost response","document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+")");
