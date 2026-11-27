@@ -1,13 +1,14 @@
 // Isolated, compiled Svelte catalog. Reuse the existing Chromium/CDP harness.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { createReadStream, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join, extname } from "node:path";
+import { basename, join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as pause } from "node:timers/promises";
-import { browserBinary, freePort, poll, getLocal, createClient, evaluate, requireDom, click, fill, checkWidth, checkLabeledControls } from "./browser-smoke.mjs";
+import { browserBinary, getLocal, createClient, evaluate, requireDom, click, fill, checkWidth, checkLabeledControls } from "./browser-smoke.mjs";
+import { probeChromiumPage, startChromiumWithRetry } from "../../../scripts/f1-chromium-startup.mjs";
 
 const webDir = fileURLToPath(new URL("../", import.meta.url));
 const dist = join(webDir, ".tmp/rhythm-ui-kit-dist");
@@ -63,6 +64,22 @@ async function capture(cdp, stem) {
   writeFileSync(join(evidence, stem + ".png"), Buffer.from(shot.data, "base64"));
 }
 
+async function disposeChrome({ chrome, dir }) {
+  if (chrome.exitCode === null && chrome.signalCode === null && chrome.pid) {
+    const closed = new Promise((resolve) => chrome.once("close", resolve));
+    chrome.kill("SIGTERM");
+    await Promise.race([closed, pause(800)]);
+    if (chrome.exitCode === null && chrome.signalCode === null) {
+      chrome.kill("SIGKILL");
+      await Promise.race([closed, pause(800)]);
+    }
+    if (chrome.exitCode === null && chrome.signalCode === null) {
+      throw new Error("Catalog Chromium child could not be reaped");
+    }
+  }
+  rmSync(dir, { recursive: true, force: true });
+}
+
 async function main() {
   assert.ok(existsSync(join(dist, "ui-kit/index.html")), "Build the isolated UI kit first");
   rmSync(evidence, { recursive: true, force: true });
@@ -86,7 +103,7 @@ async function main() {
     response.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
     createReadStream(file).pipe(response);
   });
-  let chrome;
+  let browser;
   let cdp;
   try {
     await new Promise((done, reject) => {
@@ -94,17 +111,52 @@ async function main() {
       server.listen(0, "127.0.0.1", done);
     });
     const origin = "http://127.0.0.1:" + server.address().port + "/ui-kit/";
-    const port = await freePort();
-    chrome = spawn(browserBinary(), [
-      "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
-      "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=" + port,
-      "--user-data-dir=" + join(temp, "chrome"), "about:blank",
-    ], { stdio: "ignore" });
-    const target = await poll("catalog Chrome target", async () => {
-      const reply = await getLocal("http://127.0.0.1:" + port + "/json/list");
-      return JSON.parse(reply.text).find((p) => p.type === "page" && p.webSocketDebuggerUrl);
-    }, 20000);
-    cdp = createClient(target.webSocketDebuggerUrl);
+    const executable = browserBinary();
+    const started = await startChromiumWithRetry({
+      attempts: 2,
+      startupTimeoutMs: 12000,
+      intervalMs: 100,
+      startAttempt: async () => {
+        const dir = mkdtempSync(join(temp, "chrome-"));
+        let chrome;
+        try {
+          chrome = spawn(executable, [
+            "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
+            "--disable-background-networking", "--no-first-run",
+            "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0",
+            "--user-data-dir=" + dir, "about:blank",
+          ], { stdio: ["ignore", "ignore", "pipe"] });
+        } catch (error) {
+          rmSync(dir, { recursive: true, force: true });
+          throw error;
+        }
+        const handle = { chrome, dir, executable: basename(executable), logs: [], startupError: null };
+        chrome.stderr.on("data", (chunk) => {
+          handle.logs.push(String(chunk).slice(0, 500));
+          if (handle.logs.length > 20) handle.logs.shift();
+        });
+        chrome.on("error", (error) => { handle.startupError = error.message; });
+        return handle;
+      },
+      probe: (handle) => probeChromiumPage(handle, {
+        readPort(dir) {
+          try { return readFileSync(join(dir, "DevToolsActivePort"), "utf8"); }
+          catch (error) {
+            if (error.code === "ENOENT") return null;
+            throw new Error("Catalog CDP port-file read failed: " + (error.code ?? "unknown"));
+          }
+        },
+        async getLocal(url) {
+          const reply = await getLocal(url);
+          return { code: reply.status, body: reply.text };
+        },
+      }),
+      disposeAttempt: disposeChrome,
+    });
+    browser = started.handle;
+    if (started.failures.length) console.warn("CATALOG CHROMIUM RECOVERED STARTUP", started.failures.join(" | "));
+    // Only startup is retried. From here every UI assertion executes once.
+    cdp = createClient(started.ready.webSocketDebuggerUrl);
     await cdp.ready;
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
@@ -302,10 +354,15 @@ async function main() {
     throw error;
   } finally {
     cdp?.close();
-    chrome?.kill("SIGTERM");
-    server.close();
-    await pause(300);
-    rmSync(temp, { recursive: true, force: true });
+    try {
+      if (browser) await disposeChrome(browser);
+    } finally {
+      server.close();
+      // Never delete a live Chromium profile if cleanup fails.
+      if (!browser || browser.chrome.exitCode !== null || browser.chrome.signalCode !== null) {
+        rmSync(temp, { recursive: true, force: true });
+      }
+    }
   }
 }
 
