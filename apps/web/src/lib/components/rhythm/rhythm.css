@@ -1,0 +1,744 @@
+.rhythm-scope {
+  --rhythm-canvas: #f3f0ec;
+  --rhythm-ink: #29232c;
+  --rhythm-surface: #ffffff;
+  --rhythm-surface-ink: #29232c;
+  --rhythm-muted: #625963;
+  --rhythm-line: #837786;
+  --rhythm-brand: #422d49;
+  --rhythm-on-brand: #ffffff;
+  --rhythm-selected: #eee4ed;
+  --rhythm-on-selected: #422d49;
+  --rhythm-selected-line: #765287;
+  --rhythm-radius: 11px;
+  --rhythm-panel-radius: 15px;
+  --rhythm-control-height: 42px;
+  --rhythm-gap: 12px;
+  --rhythm-danger: #9b302c;
+  --rhythm-focus: #765287;
+  --rhythm-font: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --background: var(--rhythm-canvas);
+  --foreground: var(--rhythm-ink);
+  --card: var(--rhythm-surface);
+  --card-foreground: var(--rhythm-surface-ink);
+  --popover: var(--rhythm-surface);
+  --popover-foreground: var(--rhythm-surface-ink);
+  --primary: var(--rhythm-brand);
+  --primary-foreground: var(--rhythm-on-brand);
+  --secondary: var(--rhythm-selected);
+  --secondary-foreground: var(--rhythm-on-selected);
+  --muted: var(--rhythm-selected);
+  --muted-foreground: var(--rhythm-muted);
+  --accent: var(--rhythm-selected);
+  --accent-foreground: var(--rhythm-on-selected);
+  --destructive: var(--rhythm-danger);
+  --ring: var(--rhythm-focus);
+  --border: var(--rhythm-line);
+  --input: var(--rhythm-line);
+  --radius: var(--rhythm-radius);
+  font-family: var(--rhythm-font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--rhythm-ink);
+  background: var(--rhythm-canvas);
+}
+
+/* Presets for the isolated review catalog; not a publication contract. */
+.rhythm-scope[data-rhythm-theme="studio"] {
+  --rhythm-selected: #e9d6eb;
+}
+.rhythm-scope[data-rhythm-theme="linen"] {
+  --rhythm-canvas: #f8f0e4;
+  --rhythm-brand: #75513c;
+  --rhythm-selected: #e8d1b5;
+  --rhythm-on-selected: #3b291c;
+  --rhythm-focus: #75513c;
+  --rhythm-selected-line: #75513c;
+  --rhythm-line: #837160;
+  --rhythm-radius: 13px;
+}
+.rhythm-scope[data-rhythm-theme="graphite"] {
+  --rhythm-canvas: #26252d;
+  --rhythm-ink: #ffffff;
+  --rhythm-surface: #302f38;
+  --rhythm-surface-ink: #ffffff;
+  --rhythm-muted: #d1cdd6;
+  --rhythm-line: #928b9d;
+  --rhythm-brand: #d4c2f1;
+  --rhythm-on-brand: #17141a;
+  --rhythm-selected: #c1d4be;
+  --rhythm-on-selected: #17141a;
+  --rhythm-selected-line: #ffffff;
+  --rhythm-danger: #ffb4ab;
+  --rhythm-focus: #d4c2f1;
+  --rhythm-radius: 6px;
+}
+.rhythm-scope[data-rhythm-theme="sage"] {
+  --rhythm-canvas: #edf3eb;
+  --rhythm-brand: #365d4d;
+  --rhythm-selected: #d4e3c8;
+  --rhythm-on-selected: #233a2c;
+  --rhythm-focus: #365d4d;
+  --rhythm-selected-line: #365d4d;
+  --rhythm-line: #67786c;
+  --rhythm-radius: 22px;
+}
+
+.rhythm-scope .rhythm-action {
+  min-height: var(--rhythm-control-height);
+  height: auto;
+  padding: 9px 14px;
+  white-space: normal;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius);
+  color: var(--rhythm-ink);
+  background: transparent;
+  transition: border-color 140ms ease;
+}
+.rhythm-scope .rhythm-action--primary {
+  color: var(--rhythm-on-brand);
+  background: var(--rhythm-brand);
+  border-color: var(--rhythm-brand);
+}
+.rhythm-scope .rhythm-action--danger {
+  color: var(--rhythm-danger);
+}
+.rhythm-scope .rhythm-action:not(:disabled):hover {
+  background: var(--rhythm-selected);
+  color: var(--rhythm-on-selected);
+}
+.rhythm-scope .rhythm-action--primary:not(:disabled):hover {
+  background: var(--rhythm-brand);
+  color: var(--rhythm-on-brand);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.rhythm-scope .rhythm-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.rhythm-scope :is(button, input, select, textarea, a):focus-visible {
+  outline: 3px solid var(--rhythm-focus);
+  outline-offset: 3px;
+}
+.rhythm-scope [data-slot="input"].rhythm-input {
+  width: 100%;
+  min-height: var(--rhythm-control-height);
+  height: auto;
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius);
+  color: var(--rhythm-ink);
+  background: var(--rhythm-canvas);
+  padding: 9px 12px;
+  font-size: 16px;
+}
+.rhythm-scope [data-slot="input"].rhythm-input::placeholder {
+  color: var(--rhythm-muted);
+}
+.rhythm-scope [data-slot="input"].rhythm-input[aria-invalid="true"] {
+  border-color: var(--rhythm-danger);
+}
+.rhythm-scope .rhythm-muted {
+  color: var(--rhythm-muted);
+}
+.rhythm-scope .rhythm-error {
+  color: var(--rhythm-danger);
+}
+.rhythm-scope .rhythm-panel {
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-panel-radius);
+  padding: 16px;
+  min-width: 0;
+}
+.rhythm-scope .rhythm-stack {
+  display: grid;
+  gap: var(--rhythm-gap);
+  min-width: 0;
+}
+.rhythm-scope .rhythm-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 76px;
+  padding: 14px 12px;
+  text-align: left;
+  white-space: normal;
+  border: 1px solid transparent;
+  border-bottom-color: var(--rhythm-line);
+  border-radius: 0;
+  color: var(--rhythm-ink);
+  background: var(--rhythm-canvas);
+  box-shadow: none;
+  transition: border-color 140ms ease;
+}
+.rhythm-scope .rhythm-choice[data-choice-variant="option"] {
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius);
+}
+.rhythm-scope .rhythm-choice[aria-pressed="true"] {
+  color: var(--rhythm-on-selected);
+  background: var(--rhythm-selected);
+  border: 1px solid var(--rhythm-selected-line);
+  border-radius: var(--rhythm-radius);
+}
+.rhythm-scope .rhythm-choice[aria-pressed="true"] .rhythm-muted {
+  color: var(--rhythm-on-selected);
+}
+.rhythm-scope .rhythm-choice:not(:disabled):hover {
+  border-color: var(--rhythm-line);
+}
+.rhythm-scope .rhythm-choice:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.rhythm-scope .rhythm-choice-check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 19px;
+  height: 19px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+}
+.rhythm-scope .rhythm-copy {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.rhythm-scope .rhythm-copy strong {
+  font-weight: 650;
+}
+.rhythm-scope .rhythm-copy small {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.rhythm-scope .rhythm-trailing {
+  flex: 0 1 auto;
+  max-width: 35%;
+  text-align: right;
+  overflow-wrap: anywhere;
+  font-weight: 650;
+}
+.rhythm-scope .rhythm-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--rhythm-selected);
+  color: var(--rhythm-on-selected);
+  font-weight: 650;
+}
+.rhythm-scope .rhythm-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rhythm-scope .rhythm-record {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rhythm-line);
+  min-width: 0;
+}
+.rhythm-scope .rhythm-segment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius);
+}
+.rhythm-scope .rhythm-segment [data-slot="button"] {
+  flex: 1 1 auto;
+  min-height: 40px;
+  height: auto;
+  padding: 8px 12px;
+  border-radius: calc(var(--rhythm-radius) - 2px);
+  background: transparent;
+  color: var(--rhythm-ink);
+  white-space: normal;
+}
+.rhythm-scope .rhythm-segment [aria-pressed="true"] {
+  color: var(--rhythm-on-selected);
+  background: var(--rhythm-selected);
+}
+.rhythm-scope .rhythm-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.rhythm-scope .rhythm-field label {
+  font-weight: 600;
+}
+.rhythm-scope .rhythm-field :is(p, small) {
+  margin: 0;
+  font-size: 12px;
+}
+.rhythm-scope .rhythm-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.rhythm-scope .rhythm-empty {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 24px 16px;
+}
+@media (max-width: 440px) {
+  .rhythm-scope .rhythm-panel {
+    padding: 12px;
+  }
+  .rhythm-scope .rhythm-actions > * {
+    flex: 1 1 auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rhythm-scope .rhythm-action {
+    transition: none;
+  }
+}
+
+.rhythm-scope .rhythm-check-group {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.rhythm-scope .rhythm-check-group legend {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.rhythm-scope .rhythm-check-row {
+  min-height: var(--rhythm-control-height);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+.rhythm-scope .rhythm-check-row input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  appearance: auto;
+  accent-color: var(--rhythm-brand);
+}
+.rhythm-scope .rhythm-check-row:has(input:disabled),
+.rhythm-scope .rhythm-check-group:disabled {
+  opacity: 0.55;
+}
+.rhythm-scope .rhythm-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius);
+  background: var(--rhythm-canvas);
+  padding: 14px;
+  color: var(--rhythm-ink);
+}
+.rhythm-scope .rhythm-notice[data-tone="error"] {
+  color: var(--rhythm-danger);
+  border-color: var(--rhythm-danger);
+}
+.rhythm-scope .rhythm-image-preview {
+  display: block;
+  width: min(100%, 240px);
+  aspect-ratio: 4 / 3;
+  border-radius: var(--rhythm-radius);
+  object-fit: cover;
+  border: 1px solid var(--rhythm-line);
+}
+.rhythm-scope .rhythm-file-input {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  color: var(--rhythm-ink);
+}
+.rhythm-scope .rhythm-file-input::file-selector-button {
+  min-height: var(--rhythm-control-height);
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius);
+  background: var(--rhythm-canvas);
+  color: var(--rhythm-ink);
+  margin-right: 8px;
+  font: inherit;
+}
+
+/* One dialog primitive with layout variants; preserve the closest theme host. */
+.rhythm-scope [data-slot="dialog-content"].rhythm-modal {
+  background: var(--rhythm-canvas);
+  color: var(--rhythm-ink);
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-panel-radius);
+  padding: 20px;
+  width: min(560px, calc(100% - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  box-shadow: 0 18px 64px #17141a24;
+}
+.rhythm-scope [data-slot="dialog-content"].rhythm-modal--sheet {
+  top: auto;
+  left: auto;
+  right: 0;
+  bottom: 0;
+  height: 100dvh;
+  max-height: none;
+  width: min(460px, 100%);
+  transform: none;
+  translate: none;
+  border-radius: var(--rhythm-panel-radius) 0 0 var(--rhythm-panel-radius);
+  align-content: start;
+}
+.rhythm-scope [data-slot="dialog-content"].rhythm-modal--drawer {
+  top: auto;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  max-height: 86dvh;
+  transform: none;
+  translate: none;
+  border-radius: var(--rhythm-panel-radius) var(--rhythm-panel-radius) 0 0;
+}
+.rhythm-scope .rhythm-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rhythm-scope .rhythm-navigation[data-layout="bar"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.rhythm-scope .rhythm-nav-item {
+  min-height: var(--rhythm-control-height);
+  height: auto;
+  justify-content: flex-start;
+  padding: 10px 12px;
+  white-space: normal;
+  border-radius: var(--rhythm-radius);
+  background: transparent;
+  color: var(--rhythm-ink);
+  text-align: left;
+}
+.rhythm-scope .rhythm-nav-item:not(:disabled):hover {
+  background: var(--rhythm-selected);
+  color: var(--rhythm-on-selected);
+}
+.rhythm-scope .rhythm-nav-item[aria-current="page"] {
+  background: var(--rhythm-selected);
+  color: var(--rhythm-on-selected);
+  font-weight: 650;
+}
+@media (max-width: 440px) {
+  .rhythm-scope [data-slot="dialog-content"].rhythm-modal {
+    padding: 16px;
+  }
+}
+
+/* Public and booking share the same canvas and controls. Layout, not theme,
+   distinguishes web, embedded and manual use. */
+.rhythm-scope .rhythm-subhead {
+  font-size: 16px;
+  font-weight: 650;
+}
+.rhythm-scope .rhythm-public-page {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  width: 100%;
+  margin: 0 auto;
+  background: var(--rhythm-canvas);
+}
+.rhythm-scope .rhythm-public-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rhythm-line);
+}
+.rhythm-scope .rhythm-public-identity,
+.rhythm-scope .rhythm-public-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.rhythm-scope .rhythm-public-identity {
+  flex: 1 1 140px;
+}
+.rhythm-scope .rhythm-public-actions {
+  flex-wrap: wrap;
+}
+.rhythm-scope .rhythm-hero {
+  display: grid;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+  color: var(--rhythm-on-brand);
+  background: var(--rhythm-brand);
+  border-radius: var(--rhythm-panel-radius);
+  overflow: hidden;
+}
+.rhythm-scope .rhythm-hero img {
+  width: 100%;
+  max-height: 280px;
+  object-fit: cover;
+}
+.rhythm-scope .rhythm-hero-copy {
+  display: grid;
+  justify-items: start;
+  gap: 16px;
+  padding: clamp(18px, 4vw, 36px);
+}
+.rhythm-scope .rhythm-hero-copy h2 {
+  font: 500 clamp(28px, 4vw, 44px)/1.15 Georgia, serif;
+  overflow-wrap: anywhere;
+}
+.rhythm-scope .rhythm-hero .rhythm-action--primary {
+  background: var(--rhythm-selected);
+  color: var(--rhythm-on-selected);
+  border-color: var(--rhythm-selected);
+}
+.rhythm-scope .rhythm-hero .rhythm-action--primary:hover {
+  background: var(--rhythm-selected);
+  color: var(--rhythm-on-selected);
+}
+.rhythm-scope .rhythm-hero .rhythm-action:focus-visible {
+  outline-color: var(--rhythm-on-brand);
+}
+.rhythm-scope .rhythm-salon-catalog {
+  display: grid;
+  gap: 24px;
+  background: var(--rhythm-canvas);
+}
+.rhythm-scope .rhythm-salon-catalog > section {
+  min-width: 0;
+  background: var(--rhythm-canvas);
+}
+.rhythm-scope .rhythm-booking-heading h2 {
+  font: 500 clamp(24px, 3vw, 34px)/1.2 Georgia, serif;
+}
+.rhythm-scope .rhythm-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 104px), 1fr));
+  gap: 6px;
+}
+.rhythm-scope .rhythm-steps button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius);
+  font: inherit;
+  text-align: left;
+  color: var(--rhythm-ink);
+  background: var(--rhythm-canvas);
+  overflow-wrap: anywhere;
+}
+.rhythm-scope .rhythm-steps [aria-current="step"] {
+  color: var(--rhythm-on-selected);
+  background: var(--rhythm-selected);
+  font-weight: 650;
+}
+.rhythm-scope .rhythm-steps button:disabled:not([aria-current]) {
+  opacity: .65;
+}
+.rhythm-scope .rhythm-booking-grid {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.rhythm-scope .rhythm-booking-body,
+.rhythm-scope .rhythm-booking-summary {
+  min-width: 0;
+  align-content: start;
+}
+.rhythm-scope .rhythm-booking-action {
+  display: grid;
+  padding: 12px 0 max(12px, env(safe-area-inset-bottom, 0px));
+  background: var(--rhythm-canvas);
+}
+.rhythm-scope .rhythm-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 82px), 1fr));
+  gap: 8px;
+}
+.rhythm-scope .rhythm-date-strip {
+  display: grid;
+  grid-auto-columns: minmax(54px, 1fr);
+  grid-auto-flow: column;
+  overflow-x: auto;
+  gap: 6px;
+  padding: 4px;
+}
+.rhythm-scope :is(.rhythm-slot, .rhythm-day) {
+  min-height: 44px;
+  height: auto;
+  padding: 8px;
+  color: var(--rhythm-ink);
+  background: var(--rhythm-canvas);
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius);
+  transition: border-color 140ms ease;
+}
+.rhythm-scope .rhythm-day {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+.rhythm-scope :is(.rhythm-slot, .rhythm-day)[aria-pressed="true"] {
+  background: var(--rhythm-selected);
+  color: var(--rhythm-on-selected);
+  border-color: var(--rhythm-selected-line);
+}
+.rhythm-scope .rhythm-resource-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
+.rhythm-scope .rhythm-resource {
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-panel-radius);
+  padding: 12px;
+  min-width: 0;
+}
+@media (min-width: 768px) {
+  .rhythm-scope .rhythm-hero[data-layout="split"] {
+    grid-template-columns: 1fr 1fr;
+  }
+  .rhythm-scope .rhythm-salon-catalog:has(> section:nth-child(2)),
+  .rhythm-scope .rhythm-booking:not([data-channel="embed"]):not([data-channel="telegram"]) .rhythm-booking-grid:has(> aside) {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  }
+}
+@media (max-width: 767px) {
+  .rhythm-scope .rhythm-booking .rhythm-booking-action {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rhythm-scope :is(.rhythm-choice, .rhythm-slot, .rhythm-day) {
+    transition: none;
+  }
+}
+
+/* Shared metrics: identical geometry on owner, calendar, CRM and reports. */
+.rhythm-scope .rhythm-metrics { width: 100%; min-width: 0; }
+.rhythm-scope .rhythm-metrics-toolbar {
+  display: flex; justify-content: flex-end; align-items: center;
+  min-height: 36px; margin-bottom: 6px;
+}
+.rhythm-scope .rhythm-metrics-toggle {
+  min-height: 36px; padding: 6px 11px;
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--rhythm-line); border-radius: var(--rhythm-radius);
+  color: var(--rhythm-ink); background: var(--rhythm-canvas);
+  font-size: 12px; font-weight: 600;
+}
+.rhythm-scope .rhythm-metrics-grid {
+  display: grid; grid-template-columns: repeat(3,minmax(0,1fr));
+  border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-panel-radius);
+  overflow: hidden;
+  background: var(--rhythm-selected);
+}
+.rhythm-scope .rhythm-metrics-grid[hidden] { display: none; }
+.rhythm-scope .rhythm-metric {
+  display: flex; flex-direction: column; justify-content: center;
+  gap: 5px; min-height: 104px; min-width: 0; padding: 16px 20px;
+  border-right: 1px solid var(--rhythm-line);
+  color: var(--rhythm-on-selected);
+}
+.rhythm-scope .rhythm-metric:last-child { border-right: 0; }
+.rhythm-scope .rhythm-metric strong {
+  font-size: clamp(23px,2.4vw,32px);
+  font-weight: 700; letter-spacing: -.045em;
+  font-variant-numeric: tabular-nums; line-height: 1.13; overflow-wrap: anywhere;
+}
+.rhythm-scope .rhythm-metric > span { font-size: 12px; line-height: 1.35; }
+/* Native details + explicit options: one menu for all branch and filter selectors. */
+.rhythm-scope .rhythm-popover { display: inline-block; position: relative; max-width: 100%; z-index: 5; }
+.rhythm-scope .rhythm-popover summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  list-style: none; cursor: pointer; min-width: 156px; min-height: 42px;
+  background: var(--rhythm-canvas); color: var(--rhythm-ink);
+  padding: 9px 12px; border: 1px solid var(--rhythm-line);
+  border-radius: var(--rhythm-radius); font-size: 13px; font-weight: 600;
+}
+.rhythm-scope .rhythm-popover summary::-webkit-details-marker { display: none; }\n.rhythm-scope .rhythm-popover summary:focus-visible { outline: 3px solid var(--rhythm-focus); outline-offset: 3px; }
+.rhythm-scope .rhythm-popover[open] summary {
+  background: var(--rhythm-selected); color: var(--rhythm-on-selected);
+}
+.rhythm-scope .rhythm-popover-items {
+  position: absolute; right: 0; top: calc(100% + 6px);
+  min-width: max(100%, 200px); max-width: 90vw;
+  background: var(--rhythm-surface); color: var(--rhythm-surface-ink);
+  box-shadow: 0 12px 35px #17141a24;
+  border: 1px solid var(--rhythm-line); border-radius: var(--rhythm-radius);
+  padding: 6px; display: grid; gap: 3px; z-index: 9;
+}
+.rhythm-scope .rhythm-popover-item {
+  display: block; width: 100%; min-height: 42px; padding: 9px 12px; text-align: left;
+  color: var(--rhythm-surface-ink); background: transparent;
+  border-radius: calc(var(--rhythm-radius) - 3px); font-size: 13px;
+}
+.rhythm-scope .rhythm-popover-item:hover:not(:disabled),
+.rhythm-scope .rhythm-popover-item[aria-current="true"] {
+  color: var(--rhythm-on-selected); background: var(--rhythm-selected);
+}
+/* Tenant module controls are only presentation of server-validated state. */
+.rhythm-scope .rhythm-module-grid { display: grid; gap: 10px; grid-template-columns: repeat(2,minmax(0,1fr)); }
+.rhythm-scope .rhythm-module-item {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; min-width: 0; min-height: 76px; padding: 12px;
+  border: 1px solid var(--rhythm-line); border-radius: var(--rhythm-radius);
+}
+.rhythm-scope .rhythm-module-switch {
+  position: relative; width: 47px; height: 28px; border-radius: 999px;
+  flex: none; background: var(--rhythm-line); border: none;
+}
+.rhythm-scope .rhythm-module-switch::after {
+  content: ""; position: absolute; left: 4px; top: 4px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--rhythm-surface); transition: transform 140ms ease;
+}
+.rhythm-scope .rhythm-module-switch[aria-checked="true"] { background: var(--rhythm-brand); }
+.rhythm-scope .rhythm-module-switch[aria-checked="true"]::after { transform: translateX(19px); }
+.rhythm-scope .rhythm-module-switch:disabled { opacity: .5; cursor: not-allowed; }
+@media(max-width:650px) {
+  .rhythm-scope .rhythm-metric { padding: 12px 8px; min-height: 100px; }
+  .rhythm-scope .rhythm-metric strong { font-size: 22px; }
+  .rhythm-scope .rhythm-metric > span { font-size: 11px; }
+  .rhythm-scope .rhythm-module-grid { grid-template-columns: minmax(0,1fr); }
+}
+@media(max-width:350px) {
+  .rhythm-scope .rhythm-metric strong { font-size: 19px; }
+  .rhythm-scope .rhythm-metric > span { font-size: 10px; }
+}
+@media(prefers-reduced-motion: reduce) {
+  .rhythm-scope .rhythm-module-switch::after { transition: none; }
+}
