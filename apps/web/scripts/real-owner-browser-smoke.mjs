@@ -1426,11 +1426,47 @@ async function main() {
     // from a fresh server history read, without issuing another mutation.
     script = await loadAndEnterTelegram(cdp, origin+"?surface=customer-staging", signedProof(botToken, customerUserId), script, "customer");
     await requireDom(cdp, "fresh client before lost cancellation response", "Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)");
+    // Separate pre-network unknown attempt followed by actual role revocation.
+    // No cancellation reaches the server until the explicitly denied retry.
+    const deniedCancelUrl="/v1/organizations/"+owner.tenantId+"/staging-customer-cancellation/"+restartBookingId;
+    const beforeDeniedCancel=await durableBooking();
+    await button(cdp,"Отменить запись");
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).endsWith("+JSON.stringify(deniedCancelUrl)+")){window.fetch=send;throw new TypeError('synthetic offline before cancel');}return send(input,init);};})()");
+    const unknownCancelMarker=responses.length;
+    await button(cdp,"Подтвердить отмену");
+    await requireDom(cdp,"unknown cancellation before revocation",
+      "document.body.innerText.includes('Результат отмены не подтверждён')&&[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить запрос отмены'&&!b.disabled)");
+    assert.deepEqual(await durableBooking(),beforeDeniedCancel);
+    assert.equal(responses.slice(unknownCancelMarker).filter(r=>r.path===deniedCancelUrl).length,0);
+    const revokedCancelRoles=await pool.query(
+      `UPDATE cookie_identity.role_assignments a SET active=false
+       FROM cookie_identity.roles r,cookie_customers.staging_customer_identities c
+       WHERE a.tenant_id=$1::uuid AND c.tenant_id=a.tenant_id
+         AND c.identity_id=a.identity_id AND r.tenant_id=a.tenant_id
+         AND r.id=a.role_id AND r.base_type='client' AND a.active
+       RETURNING a.id::text`,[owner.tenantId]);
+    assert.equal(revokedCancelRoles.rowCount,1);
+    try {
+      const deniedMarker=responses.length;
+      await button(cdp,"Повторить запрос отмены");
+      await poll("actual denied customer cancellation retry",()=>responses.slice(deniedMarker).some(r=>r.path===deniedCancelUrl&&(r.status===401||r.status===403)));
+      await poll("authoritative customer history denial after cancellation retry",()=>responses.slice(deniedMarker).some(r=>r.path.endsWith("/staging-customer-history")&&(r.status===401||r.status===403)));
+      await requireDom(cdp,"revoked customer cancellation closes private history and catalog",
+        "!document.querySelector("+JSON.stringify(historyPanel)+")&&!document.querySelector("+JSON.stringify(panel)+")&&!document.body.innerText.includes('Запись отменена сервером')");
+      assert.deepEqual(await durableBooking(),beforeDeniedCancel);
+      assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0);
+    } finally {
+      await pool.query("UPDATE cookie_identity.role_assignments SET active=true WHERE tenant_id=$1::uuid AND id=ANY($2::uuid[])",[owner.tenantId,revokedCancelRoles.rows.map(r=>r.id)]);
+    }
+    console.log("PASS customer unknown cancellation: actual role revocation denied retry and history, protected UI cleared, no mutation.");
+    script=await loadAndEnterTelegram(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script,"customer");
+    await requireDom(cdp,"reauthenticated customer can cancel confirmed booking",
+      "document.querySelector("+JSON.stringify(historyPanel)+")?.innerText.includes("+JSON.stringify(restartBookingId)+")&&[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)");
     let cancellationRequests = 0;
     cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
       if (request.url.startsWith(origin) && request.method === "POST" && new URL(request.url).pathname.endsWith("/staging-customer-cancellation/"+restartBookingId)) cancellationRequests++;
     });
-    await evaluate(cdp, "(()=>{const send=window.fetch.bind(window);window.fetch=async(input,init)=>{const response=await send(input,init);if(init?.method==='POST'&&String(input).endsWith("+JSON.stringify("/staging-customer-cancellation/"+restartBookingId)+")&&response.status===200){window.fetch=send;throw new Error('synthetic lost cancellation response');}return response;};})()");
+    await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);let lost=false;window.__kukiCancelKeys=[];window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).endsWith("+JSON.stringify(deniedCancelUrl)+")){window.__kukiCancelKeys.push(new Headers(init.headers).get('idempotency-key'));if(lost){window.fetch=send;return Response.json({error:'forbidden'},{status:403});}const response=await send(input,init);if(response.status===200){lost=true;throw new Error('synthetic lost cancellation response');}return response;}return send(input,init);};})()");
     await button(cdp, "Отменить запись");
     await button(cdp, "Подтвердить отмену");
     await requireDom(cdp, "uncertain cancellation remains retryable", "document.body.innerText.includes('Результат отмены не подтверждён') && Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Повторить запрос отмены'&&!b.disabled)");
@@ -1442,6 +1478,18 @@ async function main() {
     assert.equal(cancelledProjection.events.length, 2);
     assert.equal(cancelledProjection.events.filter(e=>e.topic==="booking.cancelled").length, 1);
     assert.equal(cancellationRequests, 1);
+    const cancellationDeniedMarker=responses.length;
+    await button(cdp,"Повторить запрос отмены");
+    await poll("authorized history revalidated after synthetic cancellation denial",()=>responses.slice(cancellationDeniedMarker).some(r=>r.status===200&&r.path.endsWith("/staging-customer-history")));
+    await requireDom(cdp,"authorized denied retry retains uncertain original cancellation",
+      "document.body.innerText.includes('Результат отмены не подтверждён')&&[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить запрос отмены'&&!b.disabled)");
+    const cancelKeys=await evaluate(cdp,"window.__kukiCancelKeys");
+    assert.equal(cancelKeys.length,2);
+    assert.equal(typeof cancelKeys[0],"string");
+    assert.ok(cancelKeys[0].length>=16);
+    assert.equal(cancelKeys[1],cancelKeys[0]);
+    assert.equal(cancellationRequests,1,"Synthetic denied retry must not send a second POST");
+    assert.deepEqual(await durableBooking(),cancelledProjection);
     const cancellationHistoryStart = responses.length;
     await button(cdp, "Обновить записи");
     await poll("fresh history HTTP 200 for cancellation reconciliation", () => responses.slice(cancellationHistoryStart).some(r=>r.status===200&&r.path.endsWith("/staging-customer-history")));
