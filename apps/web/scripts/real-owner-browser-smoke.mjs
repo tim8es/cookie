@@ -1264,8 +1264,57 @@ async function main() {
       [owner.tenantId],
     );
     const beforeProjection = await recoveryProjection();
+    const createPendingMarker=await evaluate(cdp,"sessionStorage.key(0)");
+    const createPendingKey=await evaluate(cdp,"sessionStorage.getItem("+JSON.stringify(createPendingMarker)+")");
+    assert.equal(typeof createPendingMarker,"string");
+    assert.equal(typeof createPendingKey,"string");
+    assert.ok(createPendingKey.length>=16);
+    const assertCreateMarker=async()=>{
+      assert.equal(await evaluate(cdp,"sessionStorage.length"),1);
+      assert.equal(await evaluate(cdp,"sessionStorage.getItem("+JSON.stringify(createPendingMarker)+")"),createPendingKey);
+      assert.deepEqual((await recoveryProjection()).rows,beforeProjection.rows);
+    };
+    const revokeCreateRole=async()=>{
+      const revoked=await pool.query(
+        `UPDATE cookie_identity.role_assignments a SET active=false
+         FROM cookie_identity.roles r,cookie_customers.staging_customer_identities c
+         WHERE a.tenant_id=$1::uuid AND c.tenant_id=a.tenant_id
+           AND c.identity_id=a.identity_id AND r.tenant_id=a.tenant_id
+           AND r.id=a.role_id AND r.base_type='client' AND a.active
+         RETURNING a.id::text`,[owner.tenantId]);
+      assert.equal(revoked.rowCount,1);
+      return revoked.rows[0].id;
+    };
+    const restoreCreateRole=id=>pool.query("UPDATE cookie_identity.role_assignments SET active=true WHERE tenant_id=$1::uuid AND id=$2::uuid",[owner.tenantId,id]);
+    const createDeniedUi="!document.querySelector("+JSON.stringify(historyPanel)+")&&!document.querySelector("+JSON.stringify(panel)+")";
+    const deniedStatus=r=>r.status===401||r.status===403;
+    const deniedReplayRole=await revokeCreateRole();
+    try {
+      const marker=responses.length;
+      await button(cdp,"Повторить проверку записи");
+      await poll("actual rejected create replay",()=>responses.slice(marker).some(r=>r.path.endsWith("/staging-customer-bookings")&&deniedStatus(r)));
+      await poll("actual denied catalog after create replay",()=>responses.slice(marker).some(r=>r.path.endsWith("/staging-customer-offers")&&deniedStatus(r)));
+      await requireDom(cdp,"revoked customer create replay closes protected UI",createDeniedUi);
+      assert.equal(customerCreateRequests,recoveryPostCount+1);
+      await assertCreateMarker();
+    } finally { await restoreCreateRole(deniedReplayRole); }
+    script=await loadAndEnterTelegram(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script,"customer");
+    await requireDom(cdp,"reload retains unresolved marker after revoked create retry","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Статус предыдущей попытки неизвестен')");
+    await assertCreateMarker();
+    const deniedReceiptRole=await revokeCreateRole();
+    try {
+      const marker=responses.length;
+      await button(cdp,"Найти подтверждение записи");
+      await poll("actual denied create receipt recovery",()=>responses.slice(marker).some(r=>r.path.endsWith("/staging-customer-bookings/receipt")&&deniedStatus(r)));
+      await poll("actual denied catalog after receipt lookup",()=>responses.slice(marker).some(r=>r.path.endsWith("/staging-customer-offers")&&deniedStatus(r)));
+      await requireDom(cdp,"revoked receipt lookup closes protected customer UI",createDeniedUi);
+      assert.equal(customerCreateRequests,recoveryPostCount+1);
+      await assertCreateMarker();
+    } finally { await restoreCreateRole(deniedReceiptRole); }
+    console.log("PASS unknown customer Create: denied replay and receipt lookup clear revoked context, preserve original marker, no additional mutation.");
     script=await loadAndEnterTelegram(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script,"customer");
     await requireDom(cdp,"reload retains unresolved marker","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Статус предыдущей попытки неизвестен')");
+    const recoveryReadOnlyPostCount=customerCreateRequests;
     await button(cdp,"Найти подтверждение записи");
     await requireDom(cdp,"receipt recovered by same key","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Восстановлено по исходной операции')&&document.querySelector("+JSON.stringify(panel)+")?.innerText.includes("+JSON.stringify(beforeRecovery.rows[0].id)+")");
     assert.equal(await evaluate(cdp,"sessionStorage.length"),0);
@@ -1273,7 +1322,7 @@ async function main() {
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-bookings/receipt")));
     const afterRecovery=await pool.query("SELECT b.id::text FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1 AND b.status='Confirmed'",[owner.tenantId]);
     assert.deepEqual(afterRecovery.rows,beforeRecovery.rows);
-    assert.equal(customerCreateRequests,recoveryPostCount,"Receipt recovery must not send any Create POST, including failed requests");
+    assert.equal(customerCreateRequests,recoveryReadOnlyPostCount,"Receipt recovery must not send any Create POST, including failed requests");
     assert.deepEqual((await recoveryProjection()).rows,beforeProjection.rows,"Recovery must leave durable bookings, create receipts and outbox counts unchanged");
     await checkWidth(cdp,"cancelled customer booking");
 
