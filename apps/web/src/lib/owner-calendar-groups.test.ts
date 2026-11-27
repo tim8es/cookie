@@ -54,10 +54,10 @@ test("day groups by stable staff ID, not display label", () => {
     staffId: otherStaff,
   };
   const groups = groupCalendar({ ...base, entries: [first, second, third] });
-  assert.deepEqual(
-    groups.map((group) => group.entries.map((entry) => entry.id)),
-    [[first.id, second.id], [third.id]],
-  );
+  const ids = groups.map((group) => group.entries.map((entry) => entry.id));
+  assert.equal(ids.length, 2);
+  assert.deepEqual(ids[0], [first.id, second.id]);
+  assert.deepEqual(ids[1], [third.id]);
   assert.equal(groups[0]?.label, groups[1]?.label);
 });
 
@@ -84,20 +84,22 @@ test("week groups local dates across DST and preserves carry-in once", () => {
   assert.equal(groups[6]?.id, "2027-03-20");
 });
 
-test("calendar parser preserves staff ID, accepts old contract, rejects invalid ID", async () => {
+test("calendar parser accepts current and legacy IDs, rejects invalid IDs", async () => {
   const current = booking(1, "2027-03-14T12:00:00.000Z");
   const legacy = legacyBooking(2, "2027-03-14T13:00:00.000Z");
   const data = { ...base, entries: [current, legacy] };
-  const read = (value: unknown) =>
-    readOwnerCalendar(session, locationId, base.localDate, 1, async () =>
-      Response.json(value),
-    );
+  const read = (value: unknown) => {
+    const fetcher = async () => Response.json(value);
+    return readOwnerCalendar(session, locationId, base.localDate, 1, fetcher);
+  };
   assert.deepEqual(await read(data), data);
   for (const invalid of [null, "", "not-a-uuid"]) {
     await assert.rejects(
       read({ ...base, entries: [{ ...current, staffId: invalid }] }),
-      (error: unknown) =>
-        error instanceof CalendarReadError && error.reason === "invalid-response",
+      (error: unknown) => {
+        if (!(error instanceof CalendarReadError)) return false;
+        return error.reason === "invalid-response";
+      },
     );
   }
 });
