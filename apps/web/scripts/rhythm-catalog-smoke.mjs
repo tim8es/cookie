@@ -117,7 +117,7 @@ async function main() {
       startupTimeoutMs: 12000,
       intervalMs: 100,
       startAttempt: async () => {
-        const dir = mkdtempSync(join(temp, "chrome-"));
+        const dir = mkdtempSync(join(tmpdir(), "kuki-rhythm-chrome-"));
         let chrome;
         try {
           chrome = spawn(executable, [
@@ -358,10 +358,8 @@ async function main() {
       if (browser) await disposeChrome(browser);
     } finally {
       server.close();
-      // Never delete a live Chromium profile if cleanup fails.
-      if (!browser || browser.chrome.exitCode !== null || browser.chrome.signalCode !== null) {
-        rmSync(temp, { recursive: true, force: true });
-      }
+      // Profiles are separate; a failed reap must not delete a live profile.
+      rmSync(temp, { recursive: true, force: true });
     }
   }
 }
