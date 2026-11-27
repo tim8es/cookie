@@ -81,16 +81,18 @@
   });
 </script>
 
-<Card.Root class="state-card feedback-state" aria-label="Клиентский вход staging">
-  <span class="feedback-overline">kuki / КЛИЕНТСКИЙ ВХОД STAGING</span>
+<Card.Root class={phase === "verified" ? "customer-session" : "state-card feedback-state"} aria-label="Клиентский вход staging">
+  {#if phase !== "verified"}<span class="feedback-overline">kuki / КЛИЕНТСКИЙ ВХОД STAGING</span>{/if}
   {#if phase === "verified" && session}
-    <h1>Вход клиента подтверждён</h1>
-    <p>Сервер подтвердил вашу клиентскую учётную запись в тестовой организации. Это не даёт доступа к кабинету владельца.</p>
-    <p>Доступные операции определяет сервер. Реальные клиентские данные не используются.</p>
-    {#if onSwitchAccount}
-      <Button type="button" variant="outline" onclick={onSwitchAccount}>Сменить кабинет</Button>
-    {/if}
-    <Button type="button" onclick={() => void logout()}>Выйти</Button>
+    <div class="customer-session-content">
+      <div><h1>Вход клиента подтверждён</h1><p>Вы вошли в тестовый клиентский кабинет.</p></div>
+      <div class="customer-session-actions">
+        {#if onSwitchAccount}
+          <Button type="button" variant="outline" onclick={onSwitchAccount}>Сменить кабинет</Button>
+        {/if}
+        <Button type="button" variant="outline" onclick={() => void logout()}>Выйти</Button>
+      </div>
+    </div>
   {:else if phase === "loading"}
     <h1>Проверяем вход клиента</h1>
     <p role="status">Подтверждаем серверную сессию и принадлежность клиентской записи.</p>
@@ -114,3 +116,18 @@
     <StagingCustomerHistory {session} onUnauthorized={denyContext} onHistory={value => historySnapshot = value} />
   {/key}
 {/if}
+
+<style>
+  .customer-session-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px;
+  }
+  .customer-session-content h1 { font-size: 16px; margin: 0; }
+  .customer-session-content p { color: var(--muted-foreground); font-size: 13px; margin: 4px 0 0; }
+  .customer-session-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .customer-session-actions :global(button) { min-height: 44px; }
+</style>

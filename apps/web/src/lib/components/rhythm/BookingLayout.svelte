@@ -32,12 +32,17 @@
     onNext?: () => void;
     onStep?: (id: string) => void;
   } = $props();
+  let heading = $state<HTMLHeadingElement>();
+
+  export function focusHeading(): void {
+    heading?.focus();
+  }
 </script>
 
 <div class="rhythm-public-page rhythm-booking" data-channel={channel} data-component="BookingLayout">
   {#if header}{@render header()}{/if}
   <header class="rhythm-booking-heading">
-    <h2>{title}</h2>
+    <h2 tabindex="-1" bind:this={heading}>{title}</h2>
     {#if description}<p class="rhythm-muted">{description}</p>{/if}
   </header>
   <nav class="rhythm-steps" aria-label="Этапы записи">
