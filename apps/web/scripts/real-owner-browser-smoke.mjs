@@ -795,7 +795,13 @@ async function main() {
       "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(BRANCH_NAME) + ") && !document.querySelector('.owner-form button[type=submit]')?.disabled");
     const locationId = await assertBranch(pool, owner);
     await requireOverview(cdp);
+    await fill(cdp, ".owner-day-overview select", locationId, "change");
+    await requireDom(cdp, "selected branch day loaded from API",
+      "document.querySelector('.owner-day-overview select')?.value==="+JSON.stringify(locationId)+" && document.querySelector('.owner-day-overview [data-component=MetricStrip]') && document.querySelector('.owner-day-overview')?.innerText.includes('На сегодня записей нет.')");
     await checkWidth(cdp, "real overview 375px");
+    await button(cdp, "Весь календарь");
+    await requireDom(cdp, "overview shortcut preserves selected branch",
+      "document.querySelector('.owner-calendar select')?.value==="+JSON.stringify(locationId)+" && document.querySelector('.owner-calendar input[type=date]')?.disabled===false");
 
     await button(cdp, "Мастера");
     await requireDom(cdp, "real staff page", "document.querySelector('h1')?.textContent.trim()==='Мастера'");
