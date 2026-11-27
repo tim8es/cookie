@@ -11,6 +11,7 @@
     onSelect,
     emptyLabel = "Нет доступных вариантов",
     variant = "catalog",
+    disabled = false,
   }: {
     title: string;
     items: readonly ChoiceItem[];
@@ -18,6 +19,7 @@
     onSelect: (id: string) => void;
     emptyLabel?: string;
     variant?: "catalog" | "option";
+    disabled?: boolean;
   } = $props();
 </script>
 
@@ -29,7 +31,7 @@
       description={item.description}
       trailing={item.detail}
       selected={selected === item.id}
-      disabled={item.disabled}
+      disabled={disabled || item.disabled}
       {variant}
       onSelect={() => onSelect(item.id)}
     >

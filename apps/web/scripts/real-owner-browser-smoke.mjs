@@ -1046,17 +1046,50 @@ async function main() {
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-context")));
     await checkWidth(cdp,"real client context");
     const panel='[aria-label="Клиентская витрина staging"]';
-    await requireDom(cdp,"published client catalog","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
-    for(let i=0;i<3;i++){
+    const serviceChoice = "document.querySelector("+JSON.stringify(panel+" [data-component=ChoiceList] button")+")";
+    await requireDom(cdp,"published client catalog",serviceChoice);
+    await requireDom(cdp,"future booking steps and continue unavailable",
+      "document.querySelectorAll("+JSON.stringify(panel+" .rhythm-steps button:disabled")+")?.length===3 && [...document.querySelectorAll("+JSON.stringify(panel+" button")+ ")].some(b=>b.textContent.trim()==='Продолжить'&&b.disabled)");
+    await fill(cdp, panel+" input[type=search]", "несуществующая услуга");
+    await requireDom(cdp,"no matching services","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Услуги по вашему запросу не найдены')");
+    await fill(cdp, panel+" input[type=search]", "");
+    await requireDom(cdp,"service returns after clearing search",serviceChoice);
+    await evaluate(cdp,serviceChoice+".click()");
+    await button(cdp,"Продолжить");
+    await requireDom(cdp,"next step heading receives focus",
+      "document.activeElement?.matches("+JSON.stringify(panel+" [data-component=BookingLayout] h2")+") && document.activeElement.textContent==='Филиал и мастер'");
+    for(const [i,next] of [[0,false],[1,true]]){
       await requireDom(cdp,"available selection "+i,"document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.options.length===2 && !document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.disabled");
       await evaluate(cdp,"(()=>{const s=document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"];s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+      if(next) await button(cdp,"Продолжить");
     }
     await requireDom(cdp,"client date enabled","!document.querySelector("+JSON.stringify(panel+" input[type=date]")+")?.disabled");
     await evaluate(cdp,"(()=>{const d=document.querySelector("+JSON.stringify(panel+" input[type=date]")+");d.value="+JSON.stringify(date)+";d.dispatchEvent(new Event('change',{bubbles:true}));})()");
     await button(cdp,"Найти свободное время");
     await requireDom(cdp,"real customer slots","document.querySelectorAll("+JSON.stringify(panel+" .customer-slot-choice")+")?.length===29");
     await evaluate(cdp,"document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+").click()");
+    await evaluate(cdp,"document.querySelectorAll("+JSON.stringify(panel+" .rhythm-steps button") + ")[1].click()");
+    await requireDom(cdp,"selected branch and staff preserved on back",
+      "document.querySelectorAll("+JSON.stringify(panel+" select")+ ").length===2 && [...document.querySelectorAll("+JSON.stringify(panel+" select")+ ")].every(s=>!!s.value)");
+    const chosenBranchAndStaff = await evaluate(cdp,
+      "[...document.querySelectorAll("+JSON.stringify(panel+" select")+ ")].map(s=>s.value)");
+    await button(cdp,"Продолжить");
+    await requireDom(cdp,"selected time preserved on return",
+      "document.querySelector("+JSON.stringify(panel+" .customer-slot-choice[aria-pressed=true]")+")");
+    await evaluate(cdp,"document.querySelectorAll("+JSON.stringify(panel+" .rhythm-steps button") + ")[1].click()");
+    assert.deepEqual(await evaluate(cdp,
+      "[...document.querySelectorAll("+JSON.stringify(panel+" select")+ ")].map(s=>s.value)"), chosenBranchAndStaff);
+    await button(cdp,"Продолжить");
+    await button(cdp,"Продолжить");
     await requireDom(cdp,"slot is not reserved","document.querySelector("+JSON.stringify(panel+" .customer-choice-summary")+")?.innerText.includes('Время не забронировано')");
+    for (const [width, height] of [[320, 568], [375, 812], [768, 900], [1280, 800]]) {
+      await viewport(cdp, width, height);
+      await checkWidth(cdp, "booking review " + width + "px");
+      await checkLabeledControls(cdp, "booking review " + width + "px");
+      await requireDom(cdp, "booking review retained at " + width,
+        "document.querySelector("+JSON.stringify(panel+" [aria-current=step]")+")?.innerText.includes('Проверка') && document.querySelector("+JSON.stringify(panel+" [data-component=BookingTicket]")+")");
+    }
+    await viewport(cdp, 375, 812);
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-offers")));
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-slots")));
     assert.equal((await pool.query("SELECT count(*)::int AS count FROM cookie_booking.bookings WHERE tenant_id=$1::uuid",[owner.tenantId])).rows[0].count,0);
@@ -1072,7 +1105,7 @@ async function main() {
     assert.deepEqual(errors, [], "Unexpected browser runtime errors");
     // Main's suspended-tab expiry contract also applies to the client surface.
     script=await loadAndEnterTelegram(cdp,origin+"?surface=customer-staging",signedProof(botToken,customerUserId),script,"customer");
-    await requireDom(cdp,"client catalog before local expiry","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
+    await requireDom(cdp,"client catalog before local expiry",serviceChoice);
     await evaluate(cdp,"window.__cookieTestClockMs=3600001;document.dispatchEvent(new Event('visibilitychange'));");
     await requireDom(cdp,"client fails closed on local expiry","!document.querySelector("+JSON.stringify(panel)+") && document.body.innerText.includes('Вход клиента') && !document.querySelector('.real-owner-nav')");
     script=await loadAndEnterTelegram(cdp,origin,signedProof(botToken,userId),script,"business");
@@ -1124,18 +1157,24 @@ async function main() {
     await stopServer(api);
     api = await startServer({ ...env, COOKIE_STAGING_CUSTOMER_BOOKING_MODE: "enabled", COOKIE_STAGING_CUSTOMER_CANCEL_CUTOFF_MINUTES: "60", COOKIE_STAGING_CUSTOMER_RESCHEDULE_CUTOFF_MINUTES: "30" }, origin);
     script = await loadAndEnterTelegram(cdp, origin+"?surface=customer-staging", signedProof(botToken,customerUserId), script, "customer");
-    await requireDom(cdp,"write-enabled customer catalog","document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2");
-    for(let i=0;i<3;i++){
+    await requireDom(cdp,"write-enabled customer catalog",serviceChoice);
+    await evaluate(cdp,serviceChoice+".click()");
+    await button(cdp,"Продолжить");
+    for(const [i,next] of [[0,false],[1,true]]){
       await requireDom(cdp,"booking selection "+i,"document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.options.length===2 && !document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.disabled");
       await evaluate(cdp,"(()=>{const s=document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"];s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+      if(next) await button(cdp,"Продолжить");
     }
     await fill(cdp,panel+" input[type=date]",date,"change");
     await button(cdp,"Найти свободное время");
     await requireDom(cdp,"slots before actual booking","document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+")");
     await evaluate(cdp,"document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+").click()");
+    await button(cdp,"Продолжить");
     await requireDom(cdp,"real write button","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Записаться'&&!b.disabled)");
     await button(cdp,"Записаться");
     await requireDom(cdp,"server-confirmed real booking","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Создание записи подтверждено') && document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Фактическая стоимость')");
+    await requireDom(cdp,"confirmation replaces booking steps and receives focus",
+      "!document.querySelector("+JSON.stringify(panel+" [data-component=BookingLayout]")+") && document.activeElement?.matches("+JSON.stringify(panel+" .customer-choice-summary")+")");
     const realBooking = await pool.query(
       "SELECT b.id::text,b.status,b.price_kopecks_snapshot::text AS price FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1::uuid",
       [owner.tenantId],
@@ -1277,21 +1316,27 @@ async function main() {
       receiptCard+"?.innerText.includes('Запись изменена после создания') && !"+receiptCard+"?.innerText.includes('Время при создании') && !"+receiptCard+"?.innerText.includes('Статус на момент обновления списка: подтверждена')");
     await button(cdp,"Создать ещё запись");
     await requireDom(cdp,"new selection returns to live catalog after cancellation",
-      "document.querySelector("+JSON.stringify(panel+" select")+")?.options.length===2 && !"+receiptCard);
+      serviceChoice+" && !"+receiptCard);
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0,"Cancellation must not create a pending Create marker");
-    for(let i=0;i<3;i++){
+    await evaluate(cdp,serviceChoice+".click()");
+    await button(cdp,"Продолжить");
+    for(const [i,next] of [[0,false],[1,true]]){
       await requireDom(cdp,"recovery selection "+i,"document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.options.length===2 && !document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"]?.disabled");
       await evaluate(cdp,"(()=>{const s=document.querySelectorAll("+JSON.stringify(panel+" select")+")["+i+"];s.value=s.options[1].value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+      if(next) await button(cdp,"Продолжить");
     }
     await fill(cdp,panel+" input[type=date]",date,"change");
     await button(cdp,"Найти свободное время");
     await requireDom(cdp,"slots before lost response","document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+")");
     await evaluate(cdp,"document.querySelector("+JSON.stringify(panel+" .customer-slot-choice")+").click()");
+    await button(cdp,"Продолжить");
     await requireDom(cdp,"second write available","Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Записаться'&&!b.disabled)");
     // Drop the real response only after the server has returned 201.
     await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);window.fetch=async(input,init)=>{const response=await send(input,init);if(init?.method==='POST'&&String(input).endsWith('/staging-customer-bookings')&&response.status===201)throw new Error('synthetic lost response');return response;};})()");
     await button(cdp,"Записаться");
     await requireDom(cdp,"uncertain actual committed result","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Статус записи не подтверждён')");
+    await requireDom(cdp,"uncertain booking locks step navigation",
+      "[...document.querySelectorAll("+JSON.stringify(panel+" .rhythm-steps button")+")].every(b=>b.disabled)");
     assert.equal(await evaluate(cdp,"sessionStorage.length"),1);
     const beforeRecovery=await pool.query("SELECT b.id::text FROM cookie_booking.bookings b JOIN cookie_customers.staging_customer_identities c ON c.tenant_id=b.tenant_id AND c.customer_id=b.customer_id WHERE b.tenant_id=$1 AND b.status='Confirmed'",[owner.tenantId]);
     assert.equal(beforeRecovery.rowCount,1,"Real second booking must already be committed");
