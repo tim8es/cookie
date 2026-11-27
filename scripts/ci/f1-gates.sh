@@ -33,8 +33,16 @@ real_owner() {
   node apps/web/scripts/refresh-browser-smoke.mjs
   # Explicit test cases, not product defaults. Separate isolated Docker projects.
   # Run the same real catalog scenario in QA and actual demo mode.
-  env -u COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES node scripts/local-staging.mjs verify
-  COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES=90 node --import tsx scripts/local-staging.mjs verify-demo
+  env -u COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES \
+    -u COOKIE_MANUAL_RESCHEDULE_CUTOFF_MINUTES \
+    -u COOKIE_MANUAL_OWNER_CANCEL_CUTOFF_MINUTES \
+    -u COOKIE_MANUAL_OWNER_RESCHEDULE_CUTOFF_MINUTES \
+    node scripts/local-staging.mjs verify
+  COOKIE_MANUAL_CANCEL_CUTOFF_MINUTES=90 \
+    COOKIE_MANUAL_RESCHEDULE_CUTOFF_MINUTES=30 \
+    COOKIE_MANUAL_OWNER_CANCEL_CUTOFF_MINUTES=0 \
+    COOKIE_MANUAL_OWNER_RESCHEDULE_CUTOFF_MINUTES=45 \
+    node --import tsx scripts/local-staging.mjs verify-demo
 }
 staging_readiness() { bash scripts/ci-staging-readiness.test.sh; }
 staging_runtime() { bash scripts/ci-staging-compose-smoke.sh; }
