@@ -4,6 +4,7 @@
   import { onMount } from "svelte";
   import type { OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
+  import OwnerDayOverview from "./OwnerDayOverview.svelte";
   import { Button } from "../components/ui/button/index.js";
   import { discoverAuthMethods } from "../identity-auth.js";
   import type { VerifiedOwnerSession } from "../owner-auth";
@@ -17,6 +18,7 @@
   export let onOpenLocations: () => void;
   export let onOpenServices: () => void;
   export let onOpenStaff: () => void;
+  export let onOpenCalendar: (locationId: string) => void;
 
   let overview: RealWorkspaceOverview | null = null;
   let loading = true;
@@ -24,6 +26,7 @@
   let requestNumber = 0;
   let expired = false;
   let stagingCustomerEnabled = false;
+  let selectedDayBranch = "";
 
   function customerStagingPath(): string {
     const url = new URL("/", window.location.origin);
@@ -91,6 +94,9 @@
   {#snippet secondaryActions()}
     <ActionButton onclick={() => void refresh()} disabled={loading || expired}>Обновить</ActionButton>
   {/snippet}
+  {#snippet primaryAction()}
+    <ActionButton tone="primary" onclick={() => onOpenCalendar(selectedDayBranch)}>Календарь</ActionButton>
+  {/snippet}
 </PageHeader>
 
 {#if loading && !overview}
@@ -98,6 +104,7 @@
 {:else if error}
   <div class="alert-error" role="alert"><p>{error}</p></div>
 {:else if overview}
+  <OwnerDayOverview {session} {reads} locations={overview.locations} bind:selectedId={selectedDayBranch} {onOpenCalendar} />
   <div class="workspace-grid">
     <section class="card">
       <div class="card-title">
