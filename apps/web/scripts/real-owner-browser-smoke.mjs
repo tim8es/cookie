@@ -1143,8 +1143,10 @@ async function main() {
     await requireDom(cdp,"calendar branch loaded","document.querySelector(\'.owner-calendar input[type=date]\')?.disabled===false && document.querySelector(\'.owner-calendar select\')?.value==="+JSON.stringify(locationId));
     await fill(cdp,".owner-calendar input[type=date]",date,"change");
     await requireDom(cdp,"calendar reads persisted Booking","document.querySelector('[aria-label=\"Записи за выбранный период\"]')?.innerText.includes('Synthetic E2E Edited Service') && document.querySelector('.status-pill')?.innerText.includes('Подтверждена')");
+    await requireDom(cdp,"day uses real staff resource group","document.querySelector('.owner-calendar-group h3')?.innerText==='Synthetic E2E Staff' && document.querySelectorAll('.owner-calendar-group').length===1");
     await button(cdp,"Неделя");
     await requireDom(cdp,"week reads persisted Booking","document.querySelector('[aria-label=\"Записи за выбранный период\"]')?.innerText.includes('Synthetic E2E Staff')");
+    await requireDom(cdp,"seven local day groups without duplicate booking","document.querySelectorAll('.owner-calendar-group').length===7 && document.querySelectorAll('.owner-calendar-group [data-booking-id]').length===1");
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/owner-calendar")));
     await verifyOwnerBookingDetail(cdp, responses, {
       bookingId, duration: 50, buffer: 0, priceKopecks: "125050",
