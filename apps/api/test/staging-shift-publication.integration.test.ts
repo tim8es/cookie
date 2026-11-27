@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -82,10 +82,22 @@ test(
         enabled: true,
         cutoffMinutes: 60,
       },
+      stagingCustomerRescheduleRoutes: {
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 30,
+      },
     });
     const disabled = createApp(pool);
     const cutoffDenied = createApp(pool, {
       stagingCustomerCancellationRoutes: {
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 525600,
+      },
+      stagingCustomerRescheduleRoutes: {
         pool,
         verifier: sessions,
         enabled: true,
@@ -1152,6 +1164,57 @@ test(
       );
       assert.equal(eventForWinner.rows[0].count, 1);
       assert.deepEqual((await raceBook(winner.authorization)).json(), receipt);
+      // BOOK-05 recovery GET is scoped to the *verified actor*, not merely
+      // tenant + raw idempotency key. All 12 contenders shared raceKey but
+      // only the winner has a corresponding committed Create receipt.
+      const winnerRecovery = await app.inject({
+        method: "GET",
+        url: recoveryUrl,
+        headers: {
+          authorization: winner.authorization,
+          "idempotency-key": raceKey,
+        },
+      });
+      assert.equal(winnerRecovery.statusCode, 200, winnerRecovery.body);
+      assert.equal(winnerRecovery.headers["cache-control"], "no-store");
+      assert.deepEqual(winnerRecovery.json(), receipt);
+      for (const contender of contenders) {
+        if (contender.customerId === winner.customerId) continue;
+        const isolated = await app.inject({
+          method: "GET",
+          url: recoveryUrl,
+          headers: {
+            authorization: contender.authorization,
+            "idempotency-key": raceKey,
+          },
+        });
+        assert.equal(isolated.statusCode, 404, isolated.body);
+        assert.deepEqual(isolated.json(), { error: "receipt-unavailable" });
+        assert.equal(isolated.headers["cache-control"], "no-store");
+        assert.equal(isolated.headers.vary, "Authorization, Idempotency-Key");
+        for (const sensitive of [
+          receipt.bookingId,
+          receipt.startAt,
+          receipt.priceKopecks,
+        ]) {
+          assert.ok(!isolated.body.includes(sensitive));
+        }
+      }
+      const afterReceiptQueries = await pool.query(
+        `SELECT
+          (SELECT count(*)::int FROM cookie_booking.bookings
+            WHERE tenant_id=$1::uuid AND customer_id=ANY($2::uuid[])) AS bookings,
+          (SELECT count(*)::int FROM cookie_booking.command_receipts
+            WHERE tenant_id=$1::uuid) AS receipts,
+          (SELECT count(*)::int FROM cookie_jobs.outbox_events
+            WHERE tenant_id=$1::uuid AND topic='booking.confirmed') AS events`,
+        [owner.tenantId, contenders.map((c) => c.customerId)],
+      );
+      assert.deepEqual(
+        afterReceiptQueries.rows[0],
+        raceState.rows[0],
+        "Receipt GETs must not create Booking, command receipts or outbox events",
+      );
       const afterRace = (await clientSlots()).json().slots as Array<{
         startAt: string;
       }>;
@@ -1276,12 +1339,212 @@ test(
       assert.equal(expiredBooking.json().error, "grant-unavailable");
       assert.deepEqual((await history()).json(), beforeExpiry.json());
       await revokeStagingGrant(pool, owner.tenantId);
+      // Existing bookings stay manageable even after the publication grant
+      // expires; a customer time-only move never creates a new booking.
+      const moveRoot = prefix + "/staging-customer-reschedule";
+      const movedBookingId: string = rebooked.json().bookingId;
+      const moveTarget = afterRace.find(
+        (s) => s.startAt !== bookingPayload.startAt,
+      )?.startAt;
+      assert.ok(
+        moveTarget,
+        "Expected another server-available start for the same shift",
+      );
+      const moveUrl = moveRoot + "/" + movedBookingId;
+      const moveKey = randomUUID();
+      const move = (
+        key = moveKey,
+        newStartAt = moveTarget!,
+        target = moveUrl,
+      ) =>
+        app.inject({
+          method: "POST",
+          url: target,
+          headers: { ...clientHeaders, "idempotency-key": key },
+          payload: { newStartAt },
+        });
+      assert.deepEqual(
+        (
+          await app.inject({
+            method: "GET",
+            url: moveRoot + "/capability",
+            headers: clientHeaders,
+          })
+        ).json(),
+        { cutoffMinutes: 30 },
+      );
+      const ownSlotsUrl = moveUrl + "/slots?localDate=" + date;
+      const ownSlots = (url = ownSlotsUrl, instance = app) =>
+        instance.inject({ method: "GET", url, headers: clientHeaders });
+      const proposedSlots = await ownSlots();
+      assert.equal(proposedSlots.statusCode, 200, proposedSlots.body);
+      assert.equal(proposedSlots.headers["cache-control"], "no-store");
+      assert.equal(proposedSlots.headers["vary"], "Authorization");
+      assert.equal(proposedSlots.json().localDate, date);
+      assert.equal(proposedSlots.json().timeZone, "Europe/Moscow");
+      assert.ok(
+        proposedSlots
+          .json()
+          .slots.some(
+            (slot: { startAt: string }) => slot.startAt === moveTarget,
+          ),
+      );
+      assert.ok(
+        !proposedSlots
+          .json()
+          .slots.some(
+            (slot: { startAt: string }) =>
+              slot.startAt === bookingPayload.startAt,
+          ),
+      );
+      assert.equal((await ownSlots(ownSlotsUrl, disabled)).statusCode, 404);
+      assert.equal((await ownSlots(ownSlotsUrl, cutoffDenied)).statusCode, 409);
+      assert.equal(
+        (await ownSlots(ownSlotsUrl.replace(owner.tenantId, randomUUID())))
+          .statusCode,
+        403,
+      );
+      assert.equal(
+        (
+          await ownSlots(
+            moveRoot + "/" + another.rows[0]!.id + "/slots?localDate=" + date,
+          )
+        ).statusCode,
+        404,
+      );
+      assert.equal(
+        (await ownSlots(ownSlotsUrl + "&serviceId=" + serviceId)).statusCode,
+        400,
+      );
+      assert.equal(
+        (await ownSlots(moveUrl + "/slots?localDate=2028-02-30")).statusCode,
+        400,
+      );
+      assert.equal(
+        (await app.inject({ method: "GET", url: ownSlotsUrl })).statusCode,
+        401,
+      );
+
+      assert.equal(
+        (
+          await disabled.inject({
+            method: "POST",
+            url: moveUrl,
+            headers: { ...clientHeaders, "idempotency-key": moveKey },
+            payload: { newStartAt: moveTarget },
+          })
+        ).statusCode,
+        404,
+      );
+      assert.equal(
+        (
+          await app.inject({
+            method: "POST",
+            url: moveUrl,
+            payload: { newStartAt: moveTarget },
+          })
+        ).statusCode,
+        401,
+      );
+      assert.equal(
+        (
+          await move(
+            randomUUID(),
+            moveTarget,
+            moveUrl.replace(owner.tenantId, randomUUID()),
+          )
+        ).statusCode,
+        403,
+      );
+      assert.equal(
+        (
+          await move(
+            randomUUID(),
+            moveTarget,
+            moveRoot + "/" + another.rows[0]!.id,
+          )
+        ).statusCode,
+        404,
+      );
+      const deniedMove = await cutoffDenied.inject({
+        method: "POST",
+        url: moveUrl,
+        headers: { ...clientHeaders, "idempotency-key": moveKey },
+        payload: { newStartAt: moveTarget },
+      });
+      assert.equal(deniedMove.statusCode, 409);
+      assert.equal(deniedMove.json().error, "RESCHEDULE_POLICY_DENIED");
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.booking.reschedule') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
+      assert.equal((await move()).statusCode, 403);
+      assert.equal((await ownSlots()).statusCode, 403);
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.booking.reschedule') WHERE tenant_id=$1::uuid AND base_type='client'",
+        [owner.tenantId],
+      );
+      const [moved, sameKeyMove] = await Promise.all([move(), move()]);
+      assert.equal(moved.statusCode, 200, moved.body);
+      assert.deepEqual(sameKeyMove.json(), moved.json());
+      assert.equal(moved.json().bookingId, movedBookingId);
+      assert.equal(moved.json().status, "Confirmed");
+      assert.equal(moved.json().startAt, moveTarget);
+      assert.equal(moved.json().previousStartAt, bookingPayload.startAt);
+      assert.equal(moved.json().priceKopecks, rebooked.json().priceKopecks);
+      // Match the deployed customer fingerprint byte for byte. A successful
+      // same-key replay with only a newly generated hash is not upgrade proof.
+      const legacyHash = createHash("sha256")
+        .update(JSON.stringify([movedBookingId, moveTarget, "staging.client"]))
+        .digest("hex");
+      const persistedMove = await pool.query<{ request_sha256: string }>(
+        `SELECT request_sha256 FROM cookie_booking.command_receipts
+          WHERE tenant_id=$1::uuid AND booking_id=$2::uuid
+            AND operation='booking.reschedule'`,
+        [owner.tenantId, movedBookingId],
+      );
+      assert.deepEqual(persistedMove.rows, [{ request_sha256: legacyHash }]);
+      const legacyReplay = await move();
+      assert.equal(legacyReplay.statusCode, 200, legacyReplay.body);
+      assert.deepEqual(legacyReplay.json(), moved.json());
+      assert.equal((await move(moveKey, slots[10]!.startAt)).statusCode, 409);
+      const stateAfterMove = await pool.query(
+        "SELECT start_at,price_kopecks_snapshot::text AS price,service_id::text AS service,staff_id::text AS staff,location_id::text AS location FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [owner.tenantId, movedBookingId],
+      );
+      assert.equal(stateAfterMove.rows[0].start_at.toISOString(), moveTarget);
+      assert.equal(stateAfterMove.rows[0].price, "100000");
+      assert.equal(stateAfterMove.rows[0].service, serviceId);
+      assert.equal(stateAfterMove.rows[0].staff, staffId);
+      assert.equal(stateAfterMove.rows[0].location, owner.locationId);
+      const moveSideEffects = await pool.query(
+        "SELECT (SELECT count(*)::int FROM cookie_booking.time_change_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits, (SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.reschedule') AS receipts, (SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.rescheduled' AND payload->>'bookingId'=$2::text) AS events",
+        [owner.tenantId, movedBookingId],
+      );
+      assert.deepEqual(moveSideEffects.rows[0], {
+        audits: 1,
+        receipts: 1,
+        events: 1,
+      });
       const afterGrant = await cancel(
         randomUUID(),
         cancellationRoot + "/" + rebooked.json().bookingId,
       );
       assert.equal(afterGrant.statusCode, 200);
       assert.equal(afterGrant.json().status, "CancelledByClient");
+      // A legitimate old receipt is historical, not a new Confirmed write.
+      const historicalMove = await move();
+      assert.equal(historicalMove.statusCode, 200, historicalMove.body);
+      assert.deepEqual(historicalMove.json(), moved.json());
+      const afterHistoricalReplay = await pool.query(
+        "SELECT status,start_at FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [owner.tenantId, movedBookingId],
+      );
+      assert.equal(afterHistoricalReplay.rows[0].status, "CancelledByClient");
+      assert.equal(
+        afterHistoricalReplay.rows[0].start_at.toISOString(),
+        moveTarget,
+      );
       const finalCounts = await pool.query(
         "SELECT (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND operation='booking.cancel') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.cancelled') AS events",
         [owner.tenantId],
@@ -1299,6 +1562,7 @@ test(
       });
       assert.equal((await history()).statusCode, 401);
       assert.equal((await recover()).statusCode, 401);
+      assert.equal((await ownSlots()).statusCode, 401);
       const revokedReplay = await cancel();
       assert.equal(revokedReplay.statusCode, 401);
       assert.equal((await clientOffers()).statusCode, 401);
@@ -1321,7 +1585,7 @@ test(
         await app.close();
         if (tenantId) {
           await pool.query(
-            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic IN ('schedule.shift.draft.created','schedule.shift.published','booking.confirmed','booking.cancelled')",
+            "DELETE FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic IN ('schedule.shift.draft.created','schedule.shift.published','booking.confirmed','booking.cancelled','booking.rescheduled')",
             [tenantId],
           );
         }

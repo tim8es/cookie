@@ -6,6 +6,7 @@ import {
   ownerScreenFromPath,
   ownerScreenPath,
   screens,
+  isReservedPublicBookingPath,
 } from "./navigation";
 
 test("demo navigation contains unique screen targets for the owner and public flow", () => {
@@ -50,4 +51,29 @@ test("owner routes preserve launch context without auth data", () => {
     ownerRouteHref("services", { search: "", hash: "" }),
     "/services",
   );
+});
+
+test("unpublished public booking entry stays isolated from owner route labels", () => {
+  for (const path of [
+    "/book",
+    "/book/",
+    "/book/salon-a",
+    "/book/salon-a/location-1",
+    "/book//unresolved",
+  ]) {
+    assert.equal(isReservedPublicBookingPath(path), true, path);
+    assert.equal(ownerScreenFromPath(path), null, path);
+  }
+  for (const path of [
+    "/",
+    "/booking",
+    "/bookings",
+    "/bookcase",
+    "/Book/salon-a",
+    "/services",
+    "/overview",
+    "/demo",
+  ]) {
+    assert.equal(isReservedPublicBookingPath(path), false, path);
+  }
 });

@@ -393,6 +393,7 @@ async function scenario(cdp, origin, width, height) {
   await submitValidForm(cdp, ".welcome-form");
   await requireDom(cdp, name + " services", "document.querySelector('.section-head h1')?.textContent === 'Услуги и цены'");
   await requireDom(cdp, name + " canonical owner brand", "document.querySelector('.sidebar .brand strong')?.textContent.trim() === 'kuki.' && document.querySelector('.nav-links')?.getAttribute('aria-label') === 'Разделы kuki'");
+  await requireDom(cdp, name + " canonical demo footer brand", "document.querySelector('.footer > span')?.textContent.trim() === 'kuki · frontend preview · запись не отправляется на сервер'");
   // Incomplete business setup is a neutral guest state, not a link into owner forms.
   await click(cdp, ".nav-links button:last-child");
   await requireDom(cdp, name + " unavailable booking state", "document.querySelector('.booking-unavailable[role=status]')?.textContent.includes('Онлайн-запись пока недоступна')");

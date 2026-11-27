@@ -20,6 +20,7 @@ function moduleOf(path, root) {
 function importsIn(file, content) {
   const fileAst = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const imports = new Set();
+  const unresolved = [];
   function visit(node) {
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteralLike(node.moduleSpecifier)) {
       imports.add(node.moduleSpecifier.text);
@@ -29,12 +30,18 @@ function importsIn(file, content) {
       imports.add(node.argument.literal.text);
     } else if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === "require"))) {
       const first = node.arguments[0];
-      if (first && ts.isStringLiteralLike(first)) imports.add(first.text);
+      if (first && ts.isStringLiteralLike(first)) {
+        imports.add(first.text);
+      } else {
+        const line = fileAst.getLineAndCharacterOfPosition(node.getStart(fileAst)).line + 1;
+        const kind = node.expression.kind === ts.SyntaxKind.ImportKeyword ? "import" : "require";
+        unresolved.push({ kind, line });
+      }
     }
     ts.forEachChild(node, visit);
   }
   visit(fileAst);
-  return [...imports];
+  return { specifiers: [...imports], unresolved };
 }
 
 function destinationOf(specifier, file, root) {
@@ -55,7 +62,11 @@ export function checkFileImports({ root, file, content, exceptions = new Set() }
   if (!sourceModule) return { failures: [], usedExceptions: [] };
   const from = relative(root, file).split(sep).join("/");
   const failures = [], usedExceptions = [];
-  for (const specifier of importsIn(file, content)) {
+  const scan = importsIn(file, content);
+  for (const { kind, line } of scan.unresolved) {
+    failures.push(from + ":" + line + ": computed " + kind + "() specifier cannot be audited (Issue #201)");
+  }
+  for (const specifier of scan.specifiers) {
     const destination = destinationOf(specifier, file, root);
     if (!destination) continue; // External packages and Node builtins.
     const label = from + " imports " + specifier;
@@ -174,7 +185,7 @@ export async function checkRepository(root) {
   for (const file of sources) {
     const content = await readFile(file, "utf8");
     const sourceModule = moduleOf(file, root);
-    for (const specifier of importsIn(file, content)) {
+    for (const specifier of importsIn(file, content).specifiers) {
       const destination = destinationOf(specifier, file, root);
       if (sourceModule && destination?.module && destination.module !== sourceModule) {
         dependencies.push([sourceModule, destination.module]);

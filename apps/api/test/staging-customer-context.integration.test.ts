@@ -227,6 +227,7 @@ test(
             "staging.customer.booking.create",
             "staging.customer.bookings.read",
             "staging.customer.booking.cancel",
+            "staging.customer.booking.reschedule",
           ],
         },
       ]);

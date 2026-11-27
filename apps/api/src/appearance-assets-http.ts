@@ -32,6 +32,10 @@ export interface PrivateAppearanceAssetsDependencies {
   readonly verifier: BearerSessionVerifier;
   /** Operator-selected technical bounds, not a customer tariff/default. */
   readonly quota: AppearanceStorageQuota;
+  /** Direct-injection security-test seam for a paused codec boundary.
+   * Normal mounting uses the real isolated codec; never configure from HTTP/env.
+   */
+  readonly normalizeImage?: typeof normalizeAppearanceImage;
 }
 
 function kindOf(value: string): AssetKind | null {
@@ -66,6 +70,8 @@ export function registerPrivateAppearanceAssetRoutes(
   dependencies: PrivateAppearanceAssetsDependencies,
 ): void {
   const { pool, verifier } = dependencies;
+  const normalizeImage =
+    dependencies.normalizeImage ?? normalizeAppearanceImage;
   const quota = validateAppearanceStorageQuota(dependencies.quota);
   // Scope binary parsers, error mapping and admission to this plugin only.
   void app.register(async (scope) => {
@@ -145,7 +151,7 @@ export function registerPrivateAppearanceAssetRoutes(
           const kind = kindOf(request.params.kind);
           if (!kind || !Buffer.isBuffer(request.body))
             return reply.code(400).send({ error: "invalid-upload" });
-          const image = await normalizeAppearanceImage(
+          const image = await normalizeImage(
             request.body,
             request.headers["content-type"]!,
           );

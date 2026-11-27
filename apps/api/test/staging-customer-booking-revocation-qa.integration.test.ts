@@ -159,6 +159,12 @@ test(
       shiftPlanRoutes: { pool, verifier: sessions },
       stagingPublicationRoutes: { pool, verifier: sessions, enabled: true },
       stagingCustomerBookingRoutes: { pool, verifier: sessions, enabled: true },
+      stagingCustomerRescheduleRoutes: {
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 30,
+      },
     });
     let tenantId: string | undefined;
     try {
@@ -460,6 +466,124 @@ test(
       assert.deepEqual(foreignAfterGrant.json(), {
         error: "receipt-unavailable",
       });
+      // #23: a customer time-only move is legal even after the publication
+      // grant has expired. The exact customer session, Customer relation and
+      // reschedule permission must still be checked on the mutation.
+      const originalBookingId: string = successful.json().bookingId;
+      const moveStart = date + "T11:00:00.000Z";
+      const moveUrl = "/staging-customer-reschedule/" + originalBookingId;
+      const move = (token: string, moveKey: string, newStartAt = moveStart) =>
+        post(moveUrl, token, { newStartAt }, moveKey);
+      const moveRole: Sql = {
+        text: "UPDATE cookie_identity.roles SET permissions=array_remove(permissions,'staging.customer.booking.reschedule') WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        values: good.role.values,
+      };
+      const deniedKey = randomUUID();
+
+      // Revoke-first: the HTTP move reaches the staff lock, then a different
+      // PostgreSQL transaction removes the exact grant and commits first.
+      // The reschedule must reject rather than commit using stale preflight.
+      const moveDenied = await atBarrier(
+        pool,
+        staffBarrier,
+        () => move(good.token, deniedKey),
+        async () => {
+          assert.equal(
+            (await pool.query(moveRole.text, [...moveRole.values])).rowCount,
+            1,
+          );
+        },
+      );
+      assert.equal(moveDenied.statusCode, 403, moveDenied.body);
+      assert.deepEqual(await durable(pool, tenant), one);
+      const afterDenied = await pool.query<{ start_at: Date }>(
+        "SELECT start_at FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [tenant, originalBookingId],
+      );
+      assert.equal(afterDenied.rows[0]?.start_at.toISOString(), start);
+      // Restore the synthetic customer permission to test the opposite order.
+      await pool.query(
+        "UPDATE cookie_identity.roles SET permissions=array_append(permissions,'staging.customer.booking.reschedule') WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [...moveRole.values],
+      );
+
+      // Commit-first: reschedule already holds authorization/session locks
+      // while a real service FOR SHARE read waits for this test's FOR UPDATE.
+      // Each concurrent revocation must block until Booking commits.
+      const moveKey = randomUUID();
+      const moved = await atBarrier(
+        pool,
+        serviceBarrier,
+        () => move(good.token, moveKey),
+        async () => {
+          for (const change of [
+            moveRole,
+            good.assignment,
+            good.membership,
+            good.bearer,
+            good.link,
+          ]) {
+            await revokeMustWait(pool, change);
+          }
+          assert.deepEqual(await durable(pool, tenant), one);
+        },
+      );
+      assert.equal(moved.statusCode, 200, moved.body);
+      assert.equal(moved.json().bookingId, originalBookingId);
+      assert.equal(moved.json().previousStartAt, start);
+      assert.equal(moved.json().startAt, moveStart);
+      assert.equal(moved.json().status, "Confirmed");
+      assert.equal(moved.json().priceKopecks, successful.json().priceKopecks);
+      const sameKeyMove = await move(good.token, moveKey);
+      assert.equal(sameKeyMove.statusCode, 200);
+      assert.deepEqual(sameKeyMove.json(), moved.json());
+      const changedReplay = await move(
+        good.token,
+        moveKey,
+        date + "T12:00:00.000Z",
+      );
+      assert.equal(changedReplay.statusCode, 409);
+      assert.equal(changedReplay.json().error, "IDEMPOTENCY_KEY_REUSED");
+      const movedState = await pool.query<{
+        start_at: Date;
+        price: string;
+        status: string;
+        customer_id: string;
+      }>(
+        "SELECT start_at,price_kopecks_snapshot::text AS price,status,customer_id::text FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
+        [tenant, originalBookingId],
+      );
+      assert.equal(movedState.rows[0]?.start_at.toISOString(), moveStart);
+      assert.equal(movedState.rows[0]?.status, "Confirmed");
+      assert.equal(movedState.rows[0]?.customer_id, good.context.customerId);
+      assert.equal(movedState.rows[0]?.price, "100000");
+      const effects = await pool.query<{
+        audits: number;
+        receipts: number;
+        events: number;
+      }>(
+        `SELECT
+          (SELECT count(*)::int FROM cookie_booking.time_change_audit
+             WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,
+          (SELECT count(*)::int FROM cookie_booking.command_receipts
+             WHERE tenant_id=$1::uuid AND booking_id=$2::uuid
+               AND operation='booking.reschedule') AS receipts,
+          (SELECT count(*)::int FROM cookie_jobs.outbox_events
+             WHERE tenant_id=$1::uuid AND topic='booking.rescheduled'
+               AND payload->>'bookingId'=$2::text) AS events`,
+        [tenant, originalBookingId],
+      );
+      assert.deepEqual(effects.rows[0], {
+        audits: 1,
+        receipts: 1,
+        events: 1,
+      });
+      assert.deepEqual(await durable(pool, tenant), {
+        bookings: 1,
+        receipts: 2,
+        events: 1,
+      });
+
       assert.equal(await sessions.revokeBearerToken(good.token), true);
       const revokedRead = await getReceipt(good.token, key);
       assert.ok([401, 403].includes(revokedRead.statusCode));
@@ -468,7 +592,15 @@ test(
       assert.ok(
         [401, 403].includes((await request(good.token, start, key)).statusCode),
       );
-      assert.deepEqual(await durable(pool, tenant), one);
+      assert.ok(
+        [401, 403].includes((await move(good.token, moveKey)).statusCode),
+        "Revoked bearer must not replay a previously committed move",
+      );
+      assert.deepEqual(await durable(pool, tenant), {
+        bookings: 1,
+        receipts: 2,
+        events: 1,
+      });
     } finally {
       try {
         await app.close();

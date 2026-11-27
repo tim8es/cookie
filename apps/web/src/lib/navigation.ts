@@ -41,6 +41,15 @@ export function ownerScreenFromPath(path: string): Screen | null {
   );
 }
 
+/**
+ * Temporary fail-closed reservation for the proposed public salon URL family.
+ * This does not resolve a salon, publish a URL, or grant any tenant authority.
+ * Replace only after the #222 public catalog + proof contract is approved.
+ */
+export function isReservedPublicBookingPath(pathname: string): boolean {
+  return pathname === "/book" || pathname.startsWith("/book/");
+}
+
 /** Preserve launch context; never place session or tenant claims in the URL. */
 export function ownerRouteHref(
   screen: Screen,
