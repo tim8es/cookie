@@ -2,6 +2,7 @@
   import ActionButton from "../components/rhythm/ActionButton.svelte";
   import PageHeader from "../components/rhythm/PageHeader.svelte";
   import { onMount } from "svelte";
+  import { groupCalendar } from "../owner-calendar-groups";
   import { branchToday, type OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import OwnerBookingDetail from "./OwnerBookingDetail.svelte";
@@ -24,6 +25,7 @@
   let requestNumber = 0;
   let mounted = false;
   let expired = false;
+  $: groups = data ? groupCalendar(data) : [];
   $: calendarClock = data && new Intl.DateTimeFormat("ru-RU", {
     timeZone: data.timeZone, dateStyle: "short", timeStyle: "short",
   });
@@ -176,8 +178,11 @@
     {#if !data.entries.length}
       <div class="empty-mini"><strong>За выбранный период записей нет</strong><p>Это не означает, что всё время доступно для бронирования.</p></div>
     {:else}
-      <div class="list-items" aria-label="Записи за выбранный период">
-        {#each data.entries as item (item.id)}
+      <div class="list-items owner-calendar-groups" aria-label="Записи за выбранный период">
+        {#each groups as group (group.id)}
+          <section class="owner-calendar-group">
+            <h3>{group.label}</h3>
+            {#each group.entries as item (item.id)}
           <div class="schedule-summary">
             <div>
               <strong>{item.serviceName}</strong>
@@ -192,6 +197,10 @@
               {/key}
             </div>
           </div>
+            {:else}
+              <p class="owner-form-note">Нет записей</p>
+            {/each}
+          </section>
         {/each}
       </div>
     {/if}
@@ -229,6 +238,26 @@
     flex: 1 1 auto;
     min-width: 0;
     max-width: 100%;
+  }
+  .owner-calendar-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    align-items: start;
+    gap: 12px;
+  }
+  .owner-calendar-group {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--cookie-radius-panel);
+    padding: 12px;
+  }
+  .owner-calendar-group h3 {
+    margin: 0 0 8px;
+    font-size: 1rem;
+    overflow-wrap: anywhere;
+  }
+  @media (max-width: 900px) {
+    .owner-calendar-groups { grid-template-columns: minmax(0, 1fr); }
   }
   .owner-calendar .schedule-summary > div {
     min-width: 0;
