@@ -57,12 +57,20 @@ export interface CalendarEntry {
   readonly priceKopecks: string;
 }
 
+export interface CalendarResourceEntry extends CalendarEntry {
+  readonly staffId: string;
+}
+
+interface CalendarResourceRow extends CalendarRow {
+  staff_id: string;
+}
+
 export interface OwnerCalendar {
   readonly locationId: string;
   readonly localDate: string;
   readonly days: 1 | 7;
   readonly timeZone: string;
-  readonly entries: readonly CalendarEntry[];
+  readonly entries: readonly CalendarResourceEntry[];
 }
 
 /** Caller holds the current tenant policy transaction. No customer IDs or PII. */
@@ -95,8 +103,8 @@ export async function readOwnerCalendar(
     // A nonexistent or ambiguous local midnight must not silently shift the day.
     throw new CalendarRangeError();
   }
-  const result = await client.query<CalendarRow>(
-    `SELECT b.id::text,b.status,b.start_at,b.end_at,
+  const result = await client.query<CalendarResourceRow>(
+    `SELECT b.id::text,b.status,b.start_at,b.end_at,b.staff_id::text,
             p.display_name AS staff_name,s.display_name AS service_name,
             b.price_kopecks_snapshot::text AS price
        FROM cookie_booking.bookings b
@@ -120,6 +128,7 @@ export async function readOwnerCalendar(
       status: row.status,
       startAt: row.start_at.toISOString(),
       endAt: row.end_at.toISOString(),
+      staffId: row.staff_id,
       staffName: row.staff_name,
       serviceName: row.service_name,
       priceKopecks: row.price,

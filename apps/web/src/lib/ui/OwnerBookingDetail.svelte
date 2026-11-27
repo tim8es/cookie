@@ -1,3 +1,8 @@
+<script module lang="ts">
+  // Share the formatter across up to 500 mounted calendar detail controls.
+  const price = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB" });
+</script>
+
 <script lang="ts">
   import { onDestroy } from "svelte";
   import { Button } from "../components/ui/button/index.js";
@@ -42,7 +47,6 @@
     Completed: "Завершена",
     NoShow: "Неявка",
   };
-  const price = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB" });
 
   function close(): void {
     request?.abort();

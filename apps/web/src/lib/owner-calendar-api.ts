@@ -9,7 +9,7 @@ export const calendarStatuses = [
 ] as const;
 export type CalendarStatus = (typeof calendarStatuses)[number];
 export type CalendarDays = 1 | 7;
-export interface OwnerCalendarEntry {
+interface BookingEntry {
   readonly id: string;
   readonly status: CalendarStatus;
   readonly startAt: string;
@@ -17,6 +17,10 @@ export interface OwnerCalendarEntry {
   readonly staffName: string;
   readonly serviceName: string;
   readonly priceKopecks: string;
+}
+export interface OwnerCalendarEntry extends BookingEntry {
+  // Optional for compatibility with an older server during rolling updates.
+  readonly staffId?: string;
 }
 export interface OwnerCalendar {
   readonly locationId: string;
@@ -62,9 +66,9 @@ function zone(value: unknown): value is string {
     return false;
   }
 }
-function entry(value: unknown): value is OwnerCalendarEntry {
+function entry(value: unknown): value is BookingEntry {
   if (!value || typeof value !== "object") return false;
-  const item = value as Partial<OwnerCalendarEntry>;
+  const item = value as Partial<BookingEntry>;
   return (
     typeof item.id === "string" &&
     UUID.test(item.id) &&
@@ -77,6 +81,14 @@ function entry(value: unknown): value is OwnerCalendarEntry {
     name(item.serviceName) &&
     typeof item.priceKopecks === "string" &&
     /^(0|[1-9]\d{0,11})$/.test(item.priceKopecks)
+  );
+}
+
+function calendarEntry(value: unknown): value is OwnerCalendarEntry {
+  return (
+    entry(value) &&
+    (!("staffId" in value) ||
+      (typeof value.staffId === "string" && UUID.test(value.staffId)))
   );
 }
 
@@ -137,7 +149,7 @@ export async function readOwnerCalendar(
       !zone(data.timeZone) ||
       !Array.isArray(data.entries) ||
       data.entries.length > 500 ||
-      !data.entries.every(entry) ||
+      !data.entries.every(calendarEntry) ||
       new Set(data.entries.map((e) => e.id)).size !== data.entries.length
     )
       throw new Error("invalid");
@@ -153,6 +165,7 @@ export async function readOwnerCalendar(
           startAt,
           endAt,
           staffName,
+          staffId,
           serviceName,
           priceKopecks,
         }) => ({
@@ -161,6 +174,7 @@ export async function readOwnerCalendar(
           startAt,
           endAt,
           staffName,
+          ...(staffId === undefined ? {} : { staffId }),
           serviceName,
           priceKopecks,
         }),
@@ -171,7 +185,7 @@ export async function readOwnerCalendar(
   }
 }
 
-export interface OwnerBookingDetail extends OwnerCalendarEntry {
+export interface OwnerBookingDetail extends BookingEntry {
   readonly locationId: string;
   readonly timeZone: string;
   readonly durationMinutes: number;
