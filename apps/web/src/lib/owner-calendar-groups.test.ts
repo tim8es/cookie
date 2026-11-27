@@ -32,6 +32,12 @@ function booking(index: number, startAt: string): OwnerCalendarEntry {
   };
 }
 
+function legacyBooking(index: number, startAt: string): OwnerCalendarEntry {
+  const { staffId: removedStaffId, ...entry } = booking(index, startAt);
+  assert.equal(removedStaffId, staffId);
+  return entry;
+}
+
 const base: OwnerCalendar = {
   locationId,
   localDate: "2027-03-14",
@@ -43,7 +49,10 @@ const base: OwnerCalendar = {
 test("day groups by stable staff ID, not display label", () => {
   const first = booking(1, "2027-03-14T12:00:00.000Z");
   const second = booking(2, "2027-03-14T13:00:00.000Z");
-  const third = { ...booking(3, "2027-03-14T14:00:00.000Z"), staffId: otherStaff };
+  const third = {
+    ...booking(3, "2027-03-14T14:00:00.000Z"),
+    staffId: otherStaff,
+  };
   const groups = groupCalendar({ ...base, entries: [first, second, third] });
   assert.deepEqual(
     groups.map((group) => group.entries.map((entry) => entry.id)),
@@ -53,14 +62,8 @@ test("day groups by stable staff ID, not display label", () => {
 });
 
 test("legacy server entries without staff ID never merge by name", () => {
-  const { staffId: _first, ...first } = booking(
-    1,
-    "2027-03-14T12:00:00.000Z",
-  );
-  const { staffId: _second, ...second } = booking(
-    2,
-    "2027-03-14T13:00:00.000Z",
-  );
+  const first = legacyBooking(1, "2027-03-14T12:00:00.000Z");
+  const second = legacyBooking(2, "2027-03-14T13:00:00.000Z");
   assert.equal(groupCalendar({ ...base, entries: [first, second] }).length, 2);
 });
 
@@ -83,10 +86,7 @@ test("week groups local dates across DST and preserves carry-in once", () => {
 
 test("calendar parser preserves staff ID, accepts old contract, rejects invalid ID", async () => {
   const current = booking(1, "2027-03-14T12:00:00.000Z");
-  const { staffId: _legacy, ...legacy } = booking(
-    2,
-    "2027-03-14T13:00:00.000Z",
-  );
+  const legacy = legacyBooking(2, "2027-03-14T13:00:00.000Z");
   const data = { ...base, entries: [current, legacy] };
   const read = (value: unknown) =>
     readOwnerCalendar(session, locationId, base.localDate, 1, async () =>
