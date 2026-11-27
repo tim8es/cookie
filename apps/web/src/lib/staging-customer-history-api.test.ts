@@ -60,3 +60,16 @@ test("expired history access never reaches transport", async () => {
     /unauthorized/,
   );
 });
+
+test("own history distinguishes revoked context from temporary failure", async () => {
+  for (const status of [401, 403]) {
+    await assert.rejects(
+      readOwnBookings(session, async () => Response.json({}, { status })),
+      /unauthorized/,
+    );
+  }
+  await assert.rejects(
+    readOwnBookings(session, async () => Response.json({}, { status: 503 })),
+    /unavailable/,
+  );
+});
