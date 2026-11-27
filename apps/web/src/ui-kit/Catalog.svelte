@@ -11,6 +11,7 @@
     Modal,
     MetricStrip,
     PopoverMenu,
+    ScrollArea,
     ModuleSettings,
     Navigation,
     BookingTicket,
@@ -127,7 +128,7 @@
       <div>
         <p class="catalog-brand">kuki</p>
         <h1>Rhythm UI Kit</h1>
-        <p class="rhythm-muted">Внутренний каталог компонентов · RC7.1 · учебные данные</p>
+        <p class="rhythm-muted">Внутренний каталог компонентов · RC9.4 migration candidate · учебные данные</p>
       </div>
       <ActionButton onclick={reset}>Сбросить примеры</ActionButton>
     </header>
@@ -242,9 +243,24 @@
         />
         <div class="rhythm-panel rhythm-stack">
           <h3>PopoverMenu · филиал</h3>
-          <PopoverMenu label="Филиал" selected={branch}
-            items={[{ id: "all", label: "Все филиалы" }, { id: "center", label: "Центр" }, { id: "north", label: "Север" }]}
-            onSelect={(id) => (branch = id)} />
+          <div class="catalog-menu-clip" style="overflow: hidden; transform: translateZ(0)">
+            <PopoverMenu label="Филиал" selected={branch}
+              items={[{ id: "all", label: "Все филиалы" }, { id: "center", label: "Центр" }, { id: "north", label: "Север" }]}
+              onSelect={(id) => (branch = id)} />
+          </div>
+          <h3>ScrollArea · нативная прокрутка</h3>
+          <ScrollArea label="Вертикальный список" maxSize="140px">
+            {#each Array.from({ length: 12 }, (_, i) => i + 1) as i (i)}
+              <p>Строка {i} — пример прокрутки</p>
+            {/each}
+          </ScrollArea>
+          <ScrollArea axis="x" label="Горизонтальный список">
+            <div style="display: flex; width: max-content; gap: 12px">
+              {#each Array.from({ length: 12 }, (_, i) => i + 1) as i (i)}
+                <span>Филиал {i} — пример</span>
+              {/each}
+            </div>
+          </ScrollArea>
         </div>
         <ModuleSettings {modules} onToggle={(id, enabled) => {
           modules = modules.map((module) => module.id === id ? { ...module, enabled } : module);

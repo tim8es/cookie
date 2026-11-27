@@ -208,3 +208,10 @@ format, Svelte check, compiled catalog, browser matrix, screenshots across
 review with the owner. Build a vertical slice of a real page using these
 components after acceptance; do not deploy publicly or turn off real
 features from a browser-only preference.
+
+## RC9.4 incremental foundation (D6 candidate)
+
+- `ScrollArea` is a shared native keyboard/touch/wheel scroll region, used by DateStrip and represented on both axes in the isolated catalog. No synthetic drag implementation.
+- Common control minimum height is 44px. PopoverMenu uses the browser top layer and viewport placement, keeping scoped theme tokens and focus/selection. A native select is used where Popover API is unavailable; actual older WebView behavior requires device QA.
+- Catalog smoke includes an overflow-clipped transformed ancestor, overlay hit test and viewport geometry, focus return, both scroll axes and native keyboard scrolling. These are new checks, not a claim of passed CI before execution.
+- PageHeader, runtime token consolidation and real screen adoption remain separate follow-ups. No production or API change.

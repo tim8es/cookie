@@ -21,6 +21,7 @@ export { default as SalonPage } from "./SalonPage.svelte";
 export { default as BookingLayout } from "./BookingLayout.svelte";
 export { default as SlotGrid } from "./SlotGrid.svelte";
 export { default as DateStrip } from "./DateStrip.svelte";
+export { default as ScrollArea } from "./ScrollArea.svelte";
 export { default as ResourceDay } from "./ResourceDay.svelte";
 export { default as ScheduleRow } from "./ScheduleRow.svelte";
 export { default as MetricStrip } from "./MetricStrip.svelte";

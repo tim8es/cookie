@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from "$lib/components/ui/button/index.js";
+  import ScrollArea from "./ScrollArea.svelte";
   import type { DayOption } from "./contracts.js";
 
   let {
@@ -15,7 +16,8 @@
   } = $props();
 </script>
 
-<div class="rhythm-date-strip" role="group" aria-label={label} data-component="DateStrip">
+<div role="group" aria-label={label} data-component="DateStrip">
+  <ScrollArea axis="x" {label} className="rhythm-date-strip">
   {#each days as day (day.id)}
     <Button variant="outline" class="rhythm-day" aria-label={day.label} aria-pressed={day.id === selected}
       disabled={day.disabled} onclick={() => onSelect(day.id)}>
@@ -23,4 +25,5 @@
       <strong>{day.day}</strong>
     </Button>
   {/each}
+  </ScrollArea>
 </div>
