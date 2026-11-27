@@ -234,6 +234,14 @@ async function main() {
               "document.querySelector('[data-component=PopoverMenu] .rhythm-popover-trigger')?.textContent.includes('Центр') && !document.querySelector('[data-component=PopoverMenu] [popover]')?.matches(':popover-open') && document.activeElement === document.querySelector('[data-component=PopoverMenu] .rhythm-popover-trigger')");
             await click(cdp, '[data-component=PopoverMenu] .rhythm-popover-trigger');
             await requireDom(cdp, "popover reopened", "document.querySelector('[data-component=PopoverMenu] [popover]')?.matches(':popover-open')");
+            await requireDom(cdp, "popover selected option receives initial focus",
+              "document.activeElement === document.querySelector('[data-component=PopoverMenu] [aria-current=true]')");
+            for (const [key, code, label] of [["ArrowDown", 40, "Север"], ["Home", 36, "Все филиалы"], ["End", 35, "Север"]]) {
+              await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key, code: key, windowsVirtualKeyCode: code });
+              await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key, code: key, windowsVirtualKeyCode: code });
+              await requireDom(cdp, "popover keyboard " + key,
+                "document.activeElement?.matches('[data-component=PopoverMenu] .rhythm-popover-item') && document.activeElement.textContent.trim() === " + JSON.stringify(label));
+            }
             await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
             await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
             await requireDom(cdp, "popover Escape closes and restores focus",
