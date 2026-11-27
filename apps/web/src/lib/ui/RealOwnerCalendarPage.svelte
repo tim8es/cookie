@@ -14,6 +14,7 @@
 
   export let session: VerifiedOwnerSession;
   export let reads: OwnerReads;
+  export let initialLocationId = "";
 
   let branches: Pick<RealLocation, "id" | "displayName" | "timeZone">[] = [];
   let branchId = "";
@@ -78,8 +79,9 @@
         branches = loaded.filter((branch) => branch.timeZone !== null);
       }
       if (!branches.some((branch) => branch.id === branchId)) {
-        branchId = branches[0]?.id ?? "";
-        date = branches[0]?.timeZone ? branchToday(branches[0].timeZone) : "";
+        const initial = branches.find((branch) => branch.id === initialLocationId) ?? branches[0];
+        branchId = initial?.id ?? "";
+        date = initial?.timeZone ? branchToday(initial.timeZone) : "";
       }
       if (!branchId) return;
       const calendar = reads.calendar(branchId, date, days);
