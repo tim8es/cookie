@@ -14,6 +14,7 @@
   export let busy = false;
   export let locked = false;
   export let staffName: string;
+  export let nameInput: HTMLInputElement | null = null;
   export let staffTitle: string;
   export let staffService: string;
   export let onNameChange: (value: string) => void;
@@ -30,7 +31,7 @@
     <div class="owner-form-fields">
       <label class="field">
         Псевдоним мастера
-        <Input value={staffName} oninput={(event) => onNameChange(event.currentTarget.value)}
+        <Input bind:ref={nameInput} value={staffName} oninput={(event) => onNameChange(event.currentTarget.value)}
           required disabled={busy || locked} maxlength={80} placeholder="Алекс Демо" />
       </label>
       <label class="field">

@@ -19,6 +19,12 @@
   export let editing = false;
   export let frozen = false;
   export let onCancelEdit: () => void = () => undefined;
+
+  let nameInput: HTMLInputElement | null = null;
+
+  export function focusName(): void {
+    nameInput?.focus();
+  }
 </script>
 
 <Card.Root class="owner-form-panel">
@@ -28,7 +34,7 @@
     <div class="owner-form-fields">
       <label class="field">
         Название услуги
-        <Input value={serviceName} oninput={(event) => onNameChange(event.currentTarget.value)}
+        <Input bind:ref={nameInput} value={serviceName} oninput={(event) => onNameChange(event.currentTarget.value)}
           required maxlength={apiMode ? 200 : 100} disabled={busy || frozen} placeholder="Например, женская стрижка" />
       </label>
       <div class="form-pair">

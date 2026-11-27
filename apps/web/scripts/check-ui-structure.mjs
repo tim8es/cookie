@@ -71,7 +71,7 @@ for (const path of ["OnboardingScreen.svelte", "OwnerOverview.svelte", "BookingF
 }
 const runtime = read("App.svelte");
 assert.match(runtime, /<RealOwnerWorkspace\b/, "Runtime must compose the real owner workspace");
-assert.match(runtime, /<StagingCustomerGate\b/, "Runtime must compose the real customer workspace");
+assert.match(runtime, /\{#await import\("\.\/lib\/ui\/StagingCustomerGate\.svelte"\)\}/, "Runtime must lazily compose the real customer workspace");
 assert.match(runtime, /<IdentityAuthGate\b/, "Runtime must compose the self-service identity gate");
 assert.doesNotMatch(runtime, /createCookieUiApi|LegacyFixture|MockCookieApi|<DemoFooter\b/, "Runtime must not orchestrate the old mock");
 const app = read("LegacyFixture.svelte");

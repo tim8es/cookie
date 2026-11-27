@@ -243,6 +243,14 @@ async function pressButton(cdp, label) {
 }
 
 async function logoutVerified(cdp) {
+  const ownerMenu = "[...document.querySelectorAll('.workspace-account .rhythm-popover-trigger')].find(b=>b.getClientRects().length)";
+  if (await evaluate(cdp, "Boolean(document.querySelector('.real-owner-nav'))")) {
+    if (!await evaluate(cdp, "Boolean(" + ownerMenu + ")")) {
+      await evaluate(cdp, "document.querySelector('.real-owner-nav .mobile-nav button[aria-controls=mobile-more-panel]')?.click()");
+    }
+    await requireDom(cdp, "workspace account menu", "Boolean(" + ownerMenu + ")");
+    await evaluate(cdp, "(" + ownerMenu + ").click()");
+  }
   await pressButton(cdp, "Выйти");
   await requireDom(cdp, "server-confirmed logout",
     "document.body.innerText.includes('Вы вышли') && !document.querySelector('.real-owner-nav')");

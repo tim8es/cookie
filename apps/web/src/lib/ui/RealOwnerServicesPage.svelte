@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { Plus } from "@lucide/svelte";
+  import ActionButton from "../components/rhythm/ActionButton.svelte";
+  import PageHeader from "../components/rhythm/PageHeader.svelte";
   import { onMount } from "svelte";
   import type { OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
@@ -17,6 +20,8 @@
   export let session: VerifiedOwnerSession;
   export let reads: OwnerReads;
 
+  let editor: ServiceForm | undefined;
+
   let services: RealService[] = [];
   let loading = true;
   let loaded = false;
@@ -31,9 +36,12 @@
   let stale = false;
   let uncertain = false;
 
-  function catalogPrice(kopecks: number): string {
-    return new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(kopecks / 100);
-  }
+  const priceFormatter = new Intl.NumberFormat("ru-RU", {
+    style: "currency",
+    currency: "RUB",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 
   function description(reason: unknown): string {
     if (reason instanceof ServiceApiFailure) {
@@ -165,13 +173,19 @@
   });
 </script>
 
-<div class="section-head">
-  <div>
-    <span class="eyebrow">kuki / ЗАЩИЩЁННЫЙ КАБИНЕТ</span>
-    <h1>Услуги салона</h1>
-    <p>Изменения сохраняются в PostgreSQL. Новые услуги — черновики до публикации.</p>
-  </div>
-</div>
+<PageHeader title="Услуги салона" organization={session.organizationName}
+  description="Новые услуги доступны клиентам после публикации.">
+  {#snippet secondaryActions()}
+    <ActionButton onclick={() => void refresh()} disabled={loading || saving}>Обновить</ActionButton>
+  {/snippet}
+  {#snippet primaryAction()}
+    {#if loaded && !editing && !uncertain && !stale}
+      <ActionButton tone="primary" onclick={() => editor?.focusName()} disabled={loading || saving}>
+        <Plus size={17} aria-hidden="true" />Новая услуга
+      </ActionButton>
+    {/if}
+  {/snippet}
+</PageHeader>
 
 {#if readError}
   <div class="alert-error" role="alert">
@@ -190,7 +204,6 @@
   <section class="card">
     <div class="card-title">
       <div><span class="eyebrow">КАТАЛОГ</span><h2>Сохранённые услуги</h2></div>
-      <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || saving}>Обновить</Button>
     </div>
     {#if loading && !loaded}
       <OwnerReadPlaceholder label="Загружаем услуги с сервера…" />
@@ -206,7 +219,7 @@
               <small>{service.durationMinutes} мин · {service.active ? "Активна" : "Черновик"}</small>
               <small>Буфер: {service.postServiceBufferMinutes} мин</small>
             </div>
-            <strong class="price-label">{catalogPrice(service.basePriceKopecks)}</strong>
+            <strong class="price-label">{priceFormatter.format(service.basePriceKopecks / 100)}</strong>
             {#if !service.active}
               <Button type="button" variant="outline" size="sm" disabled={saving || uncertain || loading} onclick={() => startEdit(service)}>Изменить</Button>
             {/if}
@@ -217,6 +230,7 @@
   </section>
   {#if loaded}
     <ServiceForm
+      bind:this={editor}
       serviceName={form.serviceName}
       serviceDuration={form.serviceDuration}
       servicePrice={form.servicePrice}

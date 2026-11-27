@@ -5,6 +5,7 @@
 
   /** This component is transport-neutral. Server routes own save, assets, auth and publish. */
   export let organizationName: string;
+  export let showHeading = true;
   export let draft: BrandConfigV1;
   export let hasUnsavedChanges: boolean;
   export let publishedRevision: number | null = null;
@@ -86,11 +87,13 @@
 
 <div class="brand-editor">
   <div class="brand-editor-head">
-    <div>
-      <small>СТРАНИЦА ЗАПИСИ · ОФОРМЛЕНИЕ</small>
-      <h1>Внешний вид салона</h1>
-      <p>Выберите готовый дизайн и добавьте фирменные детали. Всё остальное настроится автоматически.</p>
-    </div>
+    {#if showHeading}
+      <div>
+        <small>СТРАНИЦА ЗАПИСИ · ОФОРМЛЕНИЕ</small>
+        <h1>Внешний вид салона</h1>
+        <p>Выберите готовый дизайн и добавьте фирменные детали. Всё остальное настроится автоматически.</p>
+      </div>
+    {/if}
     <span class="brand-state" role="status">
       {!publishedStatusKnown ? "Только черновик · публикация недоступна" : publishedRevision === null ? "Не опубликовано" : "Опубликовано · версия " + publishedRevision}
     </span>

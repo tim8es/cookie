@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { Plus } from "@lucide/svelte";
+  import ActionButton from "../components/rhythm/ActionButton.svelte";
+  import PageHeader from "../components/rhythm/PageHeader.svelte";
   import { onMount } from "svelte";
   import type { OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
@@ -17,6 +20,7 @@
   export let session: VerifiedOwnerSession;
   export let reads: OwnerReads;
 
+  let locationNameInput: HTMLInputElement | null = null;
   let locations: RealLocation[] = [];
   let loading = true;
   let loaded = false;
@@ -122,13 +126,19 @@
   });
 </script>
 
-<div class="section-head">
-  <div>
-    <span class="eyebrow">kuki / ЗАЩИЩЁННЫЙ КАБИНЕТ</span>
-    <h1>Филиалы</h1>
-    <p>Адреса и графики добавляются отдельно. У каждого филиала свой реальный часовой пояс.</p>
-  </div>
-</div>
+<PageHeader title="Филиалы" organization={session.organizationName}
+  description="У каждого филиала свой часовой пояс. Адреса и графики добавляются отдельно.">
+  {#snippet secondaryActions()}
+    <ActionButton onclick={() => void refresh()} disabled={loading || saving}>Обновить</ActionButton>
+  {/snippet}
+  {#snippet primaryAction()}
+    {#if loaded && !uncertain}
+      <ActionButton tone="primary" onclick={() => locationNameInput?.focus()} disabled={loading || saving}>
+        <Plus size={17} aria-hidden="true" />Новый филиал
+      </ActionButton>
+    {/if}
+  {/snippet}
+</PageHeader>
 
 {#if readError}
   <div class="alert-error" role="alert">
@@ -152,9 +162,6 @@
         <span class="eyebrow">ОРГАНИЗАЦИЯ</span>
         <h2>Сохранённые филиалы</h2>
       </div>
-      <Button type="button" variant="outline" onclick={() => void refresh()} disabled={loading || saving}>
-        Обновить
-      </Button>
     </div>
     {#if loading && !loaded}
       <OwnerReadPlaceholder label="Загружаем филиалы с сервера…" />
@@ -185,6 +192,7 @@
           <label class="field">
             Название
             <Input
+              bind:ref={locationNameInput}
               value={displayName}
               oninput={(event) => editName(event.currentTarget.value)}
               placeholder="Студия на Невском"

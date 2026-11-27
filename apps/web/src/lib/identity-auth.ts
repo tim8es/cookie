@@ -893,6 +893,9 @@ export async function restoreWorkspaceContext(
     throw new IdentityAuthFailure("unauthorized");
   return {
     role: "business",
-    session: await verifyOwnerWorkspaceSession(session, fetcher),
+    session: await verifyOwnerWorkspaceSession(
+      { ...session, organizationName: organization.organizationName },
+      fetcher,
+    ),
   };
 }

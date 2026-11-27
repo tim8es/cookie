@@ -21,6 +21,17 @@
   .atelier-welcome .welcome-form { padding: 32px; }
   .welcome-introline { gap: 8px; }
 }
+@media (min-width: 681px) and (max-width: 950px) {
+  .app-shell.verified-owner-shell .sidebar { position: relative; }
+  .verified-owner-shell .sidebar .brand { min-height: var(--rhythm-control-height); }
+  .verified-owner-shell .sidebar-bottom {
+    display: block;
+    position: absolute;
+    inset: 7px 16px auto auto;
+    padding: 0;
+    max-width: 50%;
+  }
+}
 @media(max-width:800px) {
   .public-content .booking-layout { grid-template-columns: minmax(0,1fr); }
   .public-content .booking-summary[data-slot=card] { position: static; }
@@ -169,6 +180,10 @@
     color: #44334c; text-align: left; font-size: 14px;
   }
   .mobile-more-panel button[aria-current=page] { background: #e5f2bb; }
+  .verified-owner-shell .mobile-more-panel {
+    max-height: calc(100dvh - 84px - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+  }
   .topbar button.btn-top[data-slot=button] { display: none; }
 
   /* Native iOS inputs need at least 16px to avoid involuntary page zoom. */

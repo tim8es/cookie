@@ -1,12 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { ViewState } from "./lib/model";
   import { defaultOwnerScreen, ownerRouteHref, ownerScreenFromPath, type Screen } from "./lib/navigation";
   import Sidebar from "./lib/ui/Sidebar.svelte";
-  import Topbar from "./lib/ui/Topbar.svelte";
+  import { Button } from "./lib/components/ui/button/index.js";
   import OnboardingHeader from "./lib/ui/OnboardingHeader.svelte";
   import IdentityAuthGate from "./lib/ui/IdentityAuthGate.svelte";
-  import StagingCustomerGate from "./lib/ui/StagingCustomerGate.svelte";
   import RealOwnerWorkspace from "./lib/ui/RealOwnerWorkspace.svelte";
   import {
     revokeTelegramOwnerSession,
@@ -18,6 +16,7 @@
   import { writeLogoutPending, writeWorkspaceHint } from "./lib/workspace-hint";
   import "./styles.css";
   import "./visual-system.css";
+  import "./lib/components/rhythm/workspace.css";
 
   // URL selects a customer presentation only; all access is checked by the API.
   let customerSurface = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("surface") === "customer-staging";
@@ -25,10 +24,10 @@
   let screen: Screen = typeof window === "undefined"
     ? defaultOwnerScreen
     : ownerScreenFromPath(window.location.pathname) ?? defaultOwnerScreen;
-  let preview: ViewState = "normal";
   let ownerSession: VerifiedOwnerSession | null = null;
   let customerSession: VerifiedCustomerSession | null = null;
   let customerAuthNotice = "";
+  let failedCustomerLoadLogoutPending = false;
   let ownerAuthPhase: "unavailable" | "verified" | "signing-out" | "signed-out" | "logout-failed" | "expired" | "denied" = "unavailable";
   let stopOwnerExpiry: (() => void) | null = null;
   let stopBrowserWatch: (() => void) | null = null;
@@ -188,6 +187,24 @@
         : "Клиентская сессия завершена или отозвана. Войдите снова.";
   }
 
+  async function logoutAfterCustomerLoadFailure(): Promise<void> {
+    const session = customerSession;
+    if (!session || failedCustomerLoadLogoutPending) return;
+    const globalIdentity = session.accessToken.startsWith("is_");
+    if (globalIdentity) writeLogoutPending(window.history, true);
+    failedCustomerLoadLogoutPending = true;
+    try {
+      await revokeTelegramOwnerSession(session);
+      if (customerSession !== session) return;
+      if (globalIdentity) writeLogoutPending(window.history, false);
+      clearCustomerSession("signed-out");
+    } catch {
+      if (customerSession === session) clearCustomerSession("logout-failed");
+    } finally {
+      failedCustomerLoadLogoutPending = false;
+    }
+  }
+
   function switchAccountContext(): void {
     const current = customerSession ?? ownerSession;
     if (!current?.accessToken.startsWith("is_")) return;
@@ -247,19 +264,38 @@
   <meta name="description" content="kuki: защищённый кабинет услуг и мастеров." />
 </svelte:head>
 
-<div class="app-shell real-owner-shell" data-cookie-mode="api" class:verified-owner-shell={verifiedOwner}>
+<div class="app-shell real-owner-shell" data-cookie-mode="api" class:verified-owner-shell={verifiedOwner} class:rhythm-scope={verifiedOwner}>
   {#if verifiedOwner}
-    <Sidebar {screen} stepCount={0} realOwner={true} onNavigate={navigateOwner} />
+    <Sidebar {screen} stepCount={0} realOwner={true} onNavigate={navigateOwner}
+      organizationName={ownerSession?.organizationName} onLogout={() => void logoutOwner()}
+      onSwitchAccount={ownerSession?.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
   {/if}
   <div class="main-area">
-    {#if verifiedOwner}
-      <Topbar {screen} bind:preview canCreateBooking={false} demoMode={false} onNavigate={navigateOwner} onLogout={() => void logoutOwner()} onSwitchAccount={ownerSession?.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
-    {:else}
+    {#if !verifiedOwner}
       <OnboardingHeader apiMode={true} label={customerMode ? "Клиентский staging" : "Вход и регистрация"} />
     {/if}
     <main class="content">
       {#if customerSession}
-        <StagingCustomerGate initialSession={customerSession} onContextDenied={() => void leaveDeniedCustomerContext()} onSessionCleared={clearCustomerSession} onSwitchAccount={customerSession.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
+        {#await import("./lib/ui/StagingCustomerGate.svelte")}
+          <p class="card" role="status">Загружаем кабинет клиента…</p>
+        {:then module}
+          <svelte:component this={module.default} initialSession={customerSession} onContextDenied={() => void leaveDeniedCustomerContext()} onSessionCleared={clearCustomerSession} onSwitchAccount={customerSession.accessToken.startsWith("is_") ? switchAccountContext : undefined} />
+        {:catch}
+          <section class="card">
+            <p role="alert">Не удалось загрузить кабинет клиента.</p>
+            <div class="customer-load-actions">
+              <Button variant="outline" href={window.location.href}>Перезагрузить страницу</Button>
+              {#if customerSession.accessToken.startsWith("is_")}
+                <Button type="button" variant="outline" disabled={failedCustomerLoadLogoutPending}
+                  onclick={switchAccountContext}>Сменить кабинет</Button>
+              {/if}
+              <Button type="button" variant="outline" disabled={failedCustomerLoadLogoutPending}
+                onclick={() => void logoutAfterCustomerLoadFailure()}>
+                {failedCustomerLoadLogoutPending ? "Завершаем сеанс…" : "Выйти"}
+              </Button>
+            </div>
+          </section>
+        {/await}
       {:else if verifiedOwner && ownerSession}
         {#key ownerSession}
           <RealOwnerWorkspace session={ownerSession} {screen} onNavigate={navigateOwner} onAccessDenied={denyOwnerSession} />
