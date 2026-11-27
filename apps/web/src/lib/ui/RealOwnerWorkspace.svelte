@@ -17,6 +17,7 @@
   export let onNavigate: (next: Screen) => void;
   export let onAccessDenied: (session: VerifiedOwnerSession) => void;
 
+  let overviewCalendarLocation = "";
   const currentSession = session;
   const reads = createOwnerReads(
     currentSession,
@@ -32,6 +33,7 @@
     onOpenLocations={() => onNavigate("locations")}
     onOpenServices={() => onNavigate("services")}
     onOpenStaff={() => onNavigate("staff")}
+    onOpenCalendar={(locationId) => { overviewCalendarLocation = locationId; onNavigate("calendar"); }}
   />
 {:else if screen === "services"}
   <RealOwnerServicesPage {session} {reads} />
@@ -40,7 +42,7 @@
 {:else if screen === "locations"}
   <RealOwnerLocationsPage {session} {reads} />
 {:else if screen === "calendar"}
-  <RealOwnerCalendarPage {session} {reads} />
+  <RealOwnerCalendarPage {session} {reads} initialLocationId={overviewCalendarLocation} />
 {:else if screen === "schedule"}
   {#await import("./RealOwnerSchedulePage.svelte")}
     <PageHeader title="Расписание" organization={session.organizationName} />
