@@ -173,6 +173,10 @@
       } else {
         uncertain = true;
         message = "Результат отмены не подтверждён. Повторите исходный запрос или проверьте статус в списке.";
+        // Like an uncertain move, a denied retry may mean the customer
+        // context was revoked. Revalidate without discarding the original
+        // command key or treating a later rejection as a failed commit.
+        if (reason instanceof CancellationError && reason.reason === "denied") await refresh();
       }
     } finally { if (mounted) cancellationBusy = false; }
   }

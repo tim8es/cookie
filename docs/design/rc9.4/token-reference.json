@@ -1,0 +1,94 @@
+{
+  "source": "RC9.4 product view, Chromium 1366x900, default organization",
+  "workspace_root_variables": {
+    "--paper": "#f3f0ec",
+    "--white": "#fff",
+    "--ink": "#29232c",
+    "--muted": "#625a65",
+    "--brand": "#422d49",
+    "--dark": "#342239",
+    "--rail": "#f3f0ec",
+    "--line": "#e2dadd",
+    "--soft": "#f0e7ed",
+    "--focus": "#765287",
+    "--strong-line": "#837786",
+    "--radius-control": "12px",
+    "--radius-surface": "15px",
+    "--rh-accent": "#b65648",
+    "--rh-paper": "#fcfaf7",
+    "--rh-shadow": "0 1px 1px #30223709,0 6px 22px #30223706",
+    "--rh-motion": "cubic-bezier(.2,.82,.24,1)"
+  },
+  "workspace": {
+    "primary_action": {
+      "height": 44,
+      "minHeight": "44px",
+      "borderRadius": "11px",
+      "fontSize": "13px",
+      "fontWeight": "650",
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(66, 45, 73)",
+      "borderColor": "rgb(66, 45, 73)"
+    },
+    "branch_select": null,
+    "page_header": {
+      "height": 57.265625,
+      "minHeight": "auto",
+      "borderRadius": "0px",
+      "fontSize": "15px",
+      "fontWeight": "400",
+      "color": "rgb(41, 35, 44)",
+      "background": "rgba(0, 0, 0, 0)",
+      "borderColor": "rgb(41, 35, 44)"
+    }
+  },
+  "booking": {
+    "progress_step": {
+      "height": 54,
+      "minHeight": "54px",
+      "borderRadius": "12px",
+      "fontSize": "12px",
+      "fontWeight": "600",
+      "color": "rgb(41, 35, 44)",
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(66, 45, 73)"
+    },
+    "service_search": {
+      "height": 48,
+      "minHeight": "48px",
+      "borderRadius": "12px",
+      "fontSize": "15px",
+      "fontWeight": "400",
+      "color": "rgb(41, 35, 44)",
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(196, 187, 197)"
+    },
+    "service_row": {
+      "height": 76,
+      "minHeight": "76px",
+      "borderRadius": "12px",
+      "fontSize": "15px",
+      "fontWeight": "400",
+      "color": "rgb(41, 35, 44)",
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(196, 187, 197)"
+    },
+    "summary_action": {
+      "height": 48,
+      "minHeight": "48px",
+      "borderRadius": "12px",
+      "fontSize": "14px",
+      "fontWeight": "700",
+      "color": "rgb(41, 35, 44)",
+      "background": "rgb(255, 255, 255)",
+      "borderColor": "rgb(196, 187, 197)"
+    }
+  },
+  "booking_variables": {
+    "--book-line": "#C4BBC5",
+    "--book-ink": "#29232C",
+    "--book-muted": "#665E69",
+    "--book-primary": "#422D49",
+    "--book-surface": "#fff"
+  }
+}

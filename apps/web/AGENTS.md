@@ -50,3 +50,7 @@ Owner scope: temporary, internal, disposable development preview only. Not a cus
 
 Chrome CSS viewport simulation does not substitute for physical touch
 devices or dedicated screen-reader testing.
+
+## RC9.4 handoff — current visual reference (2026-11-27)
+
+Read [design index](../../docs/design/README.md), [handoff](../../docs/design/rc9.4/HANDOFF.md), [component contracts](../../docs/design/rc9.4/COMPONENTS.md), [token reference](../../docs/design/rc9.4/token-reference.json) and both HTML references before migration. The reference is synthetic and not an API contract or final Design Freeze. Keep `src/styles/tokens.css` the runtime source of truth; migrate into existing typed UI primitives, avoid new parallel controls or CSS override layers. Use one shared Booking UI with environment adapters (ADR-0005). Never copy prototype sessionStorage/localStorage rules or fake success. Coordinate D6 with active #382; use existing real API/auth/tenant controls and do not expose unsupported features. Product UI contains no developer/fixture controls. Apply the responsive and state-based acceptance checklist in HANDOFF.md in addition to existing CI/real runtime requirements.
