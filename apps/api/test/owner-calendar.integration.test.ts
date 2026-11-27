@@ -242,6 +242,7 @@ test(
         status: "Confirmed",
         startAt: "2027-03-14T12:00:00.000Z",
         endAt: "2027-03-14T13:00:00.000Z",
+        staffId,
         staffName: "Synthetic planner staff",
         serviceName: "Synthetic service",
         priceKopecks: "123456",
