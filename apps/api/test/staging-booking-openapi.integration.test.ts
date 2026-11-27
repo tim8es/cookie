@@ -34,7 +34,7 @@ function proof(userId: number): string {
 }
 
 test(
-  "all eight staging customer success responses match the OpenAPI contract",
+  "staging customer success responses match the OpenAPI contract",
   { skip: !process.env.TEST_DATABASE_URL, timeout: 60000 },
   async () => {
     const pool = new Pool({
@@ -70,6 +70,12 @@ test(
         verifier: sessions,
         enabled: true,
         cutoffMinutes: 60,
+      },
+      stagingCustomerRescheduleRoutes: {
+        pool,
+        verifier: sessions,
+        enabled: true,
+        cutoffMinutes: 30,
       },
     });
     let tenantId: string | undefined;
@@ -232,6 +238,22 @@ test(
       assert.equal(history.json().bookings.length, 1);
       const bookingId: string = created.json().bookingId;
       assert.equal(history.json().bookings[0].bookingId, bookingId);
+      const moveSlotsRoute = "staging-customer-reschedule/{bookingId}/slots";
+      const moveSlots = await get(
+        "staging-customer-reschedule/" + bookingId + "/slots?localDate=" + date,
+      );
+      assertStagingBookingResponse(moveSlotsRoute, "get", 200, moveSlots);
+      assert.equal(moveSlots.json().localDate, date);
+      assert.equal(moveSlots.json().timeZone, "UTC");
+      assert.ok(moveSlots.json().slots.length > 0);
+      assert.ok(
+        !moveSlots
+          .json()
+          .slots.some(
+            (slot: { startAt: string }) =>
+              slot.startAt === created.json().startAt,
+          ),
+      );
       const cancelCapability = "staging-customer-cancellation/capability";
       assertStagingBookingResponse(
         cancelCapability,

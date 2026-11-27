@@ -156,6 +156,41 @@ export async function cancelStagingCustomerBooking(
   );
 }
 
+/** Synthetic operator-controlled staging only. The current owner and exact
+ * branch must be authorized in the same transaction even for receipt replay.
+ * Deadline policy applies to new writes, not authorized replays (#285). */
+export async function cancelStagingOwnerBooking(
+  pool: Pool,
+  input: InternalCancelBooking,
+  cutoffMinutes: number,
+  locationId: string,
+): Promise<CancelledBookingReceipt<"CancelledByBusiness">> {
+  if (
+    !Number.isSafeInteger(cutoffMinutes) ||
+    cutoffMinutes < 0 ||
+    cutoffMinutes > 525600 ||
+    !UUID.test(locationId)
+  )
+    invalid();
+  if (!input?.actor?.opaqueSessionAuthority)
+    throw new AuthorizationDeniedError();
+  return cancelBooking(
+    pool,
+    input,
+    "CancelledByBusiness",
+    async (client, booking) => {
+      const allowed = await client.query(
+        "SELECT 1 WHERE $1::timestamptz > clock_timestamp() + $2::int * interval '1 minute'",
+        [booking.startAt, cutoffMinutes],
+      );
+      if (allowed.rowCount !== 1)
+        throw new CancelBookingFailure("CANCELLATION_POLICY_DENIED");
+    },
+    cutoffMinutes,
+    locationId,
+  );
+}
+
 async function cancelBooking<
   Status extends "CancelledByBusiness" | "CancelledByClient",
 >(
@@ -164,6 +199,7 @@ async function cancelBooking<
   status: Status,
   assertMayCancel: AssertBookingMayCancel,
   cutoffMinutes?: number,
+  ownerLocationId?: string,
 ): Promise<CancelledBookingReceipt<Status>> {
   validate(input);
   const staging = status === "CancelledByClient";
@@ -240,6 +276,19 @@ async function cancelBooking<
       );
     }
 
+    // Preflight authorization cannot cover a concurrent owner change.
+    // Recheck scope under the command transaction before returning any receipt.
+    if (ownerLocationId !== undefined) {
+      if (current.location_id !== ownerLocationId)
+        throw new AuthorizationDeniedError();
+      const owner = await client.query(
+        `SELECT 1 FROM cookie_tenancy.organizations
+          WHERE id=$1::uuid AND owner_identity_id=$2::uuid FOR SHARE`,
+        [tenantId, actorId],
+      );
+      if (owner.rowCount !== 1) throw new AuthorizationDeniedError();
+    }
+
     // Match CreateBooking's scoped advisory lock protocol. A duplicate key
     // must yield the original committed response after authorization checks.
     await client.query(
@@ -292,7 +341,9 @@ async function cancelBooking<
     const cancelled = updated.rows[0];
     if (!cancelled) {
       throw new CancelBookingFailure(
-        staging ? "CANCELLATION_POLICY_DENIED" : "BOOKING_NOT_CONFIRMED",
+        cutoffMinutes !== undefined
+          ? "CANCELLATION_POLICY_DENIED"
+          : "BOOKING_NOT_CONFIRMED",
       );
     }
     const receipt: CancelledBookingReceipt<Status> = {

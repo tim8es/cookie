@@ -27,6 +27,18 @@ USER node
 EXPOSE 3000
 CMD ["node", "dist/apps/api/src/main.js"]
 
+# Testable Linux-only codec isolation candidate. Deliberately NOT connected to
+# the normal API. The container must be launched with the explicit restricted
+# flags in scripts/ci-codec-sandbox-smoke.sh; this image alone is not a sandbox.
+FROM node:26-trixie-slim AS codec-sandbox
+WORKDIR /workspace
+ENV NODE_ENV=production
+COPY --from=builder /workspace/node_modules ./node_modules
+COPY --from=builder /workspace/dist/packages/appearance-asset-adapter/src ./dist/packages/appearance-asset-adapter/src
+# No DB, app secrets, migrations or customer assets in the image.
+USER 65532:65532
+ENTRYPOINT ["node", "dist/packages/appearance-asset-adapter/src/codec-worker.js"]
+
 FROM nginx:1.27-alpine AS web
 COPY docker/nginx-staging.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /workspace/apps/web/dist /usr/share/nginx/html
