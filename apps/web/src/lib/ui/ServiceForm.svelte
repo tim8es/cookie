@@ -4,6 +4,8 @@
   import * as Card from "../components/ui/card/index.js";
   import { Input } from "../components/ui/input/index.js";
   import OwnerFormHeader from "./OwnerFormHeader.svelte";
+  import EntityEditor from "../components/rhythm/EntityEditor.svelte";
+  import ThemeScope from "../components/rhythm/ThemeScope.svelte";
 
   export let serviceName: string;
   export let serviceDuration: number | undefined;
@@ -27,10 +29,7 @@
   }
 </script>
 
-<Card.Root class="owner-form-panel">
-  <form class="owner-form" onsubmit={(event) => { event.preventDefault(); if (!busy) onSubmit(); }}>
-    <OwnerFormHeader kind="service" eyebrow="КАТАЛОГ / 01"
-      title={editing ? "Редактирование услуги" : "Новая услуга"} description={editing ? "Измените сохранённый черновик." : apiMode ? "Создайте сохранённый черновик услуги." : "Добавьте позицию для тестовой записи."} />
+{#snippet fields()}
     <div class="owner-form-fields">
       <label class="field">
         Название услуги
@@ -65,6 +64,27 @@
       <Info size={16} aria-hidden="true" />
       <span>Указана цена по каталогу, без скидок и надбавок. Итоговую стоимость рассчитывает только backend.</span>
     </div>
+{/snippet}
+
+{#if apiMode}
+<section class="owner-form-panel">
+  <ThemeScope>
+    <EntityEditor title={editing ? "Редактирование услуги" : "Новая услуга"}
+      description={editing ? "Измените сохранённый черновик." : "Создайте сохранённый черновик услуги."}
+      className="owner-form" {busy}
+      submitLabel={frozen ? "Повторить сохранение" : editing ? "Сохранить изменения" : "Сохранить черновик"}
+      onSubmit={onSubmit} onCancel={editing && !frozen ? onCancelEdit : undefined}
+      cancelLabel="Отменить редактирование">
+      {@render fields()}
+    </EntityEditor>
+  </ThemeScope>
+</section>
+{:else}
+<Card.Root class="owner-form-panel">
+  <form class="owner-form" onsubmit={(event) => { event.preventDefault(); if (!busy) onSubmit(); }}>
+    <OwnerFormHeader kind="service" eyebrow="КАТАЛОГ / 01"
+      title={editing ? "Редактирование услуги" : "Новая услуга"} description={editing ? "Измените сохранённый черновик." : apiMode ? "Создайте сохранённый черновик услуги." : "Добавьте позицию для тестовой записи."} />
+    {@render fields()}
     <Button class="owner-submit" type="submit" size="lg" disabled={busy}>
       {apiMode ? (busy ? "Сохраняем…" : editing ? "Сохранить изменения" : "Сохранить черновик") : "Добавить демо-услугу"} <ArrowUpRight size={17} aria-hidden="true" />
     </Button>
@@ -73,3 +93,4 @@
     {/if}
   </form>
 </Card.Root>
+{/if}
