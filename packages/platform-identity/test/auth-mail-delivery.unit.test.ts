@@ -153,18 +153,15 @@ test(
     const dir = await mkdtemp(join(tmpdir(), "kuki-mail-group-"));
     try {
       const executable = join(dir, "synthetic-sendmail");
-      await writeFile(
-        executable,
-        [
-          "#!/bin/sh",
-          "cat >/dev/null",
-          "( sleep 2; printf late > \"$0.late\" ) &",
-          "printf started > \"$0.started\"",
-          "wait",
-          "",
-        ].join("\n"),
-        { mode: 0o700 },
-      );
+      const script = [
+        "#!/bin/sh",
+        "cat >/dev/null",
+        "( sleep 2; printf late > \"$0.late\" ) &",
+        "printf started > \"$0.started\"",
+        "wait",
+        "",
+      ].join("\n");
+      await writeFile(executable, script, { mode: 0o700 });
       const transport = createSendmailAuthTransport({
         executable,
         fromAddress: "auth@example.invalid",
