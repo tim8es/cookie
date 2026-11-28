@@ -181,7 +181,8 @@ test(
         /^Error: Authentication mail submission failed$/,
       );
       // Ensure the fixture actually entered the descendant-spawn path.
-      assert.equal(await readFile(executable + ".started", "utf8"), "started");
+      const started = await readFile(executable + ".started", "utf8");
+      assert.equal(started, "started");
       await new Promise((resolve) => setTimeout(resolve, 1500));
       await assert.rejects(readFile(executable + ".late"), { code: "ENOENT" });
     } finally {
