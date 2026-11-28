@@ -43,6 +43,10 @@
   let message = "";
   let filter: HistoryFilter = "all";
   let selectedBookingId: string | null = null;
+  let historyHeading: HTMLHeadingElement | undefined;
+  export function focusHistory(): void {
+    historyHeading?.focus();
+  }
   function toggleBooking(id: string): void {
     if (busy || cancellationBusy || moveBusy || pending || moveBookingId || movePending) return;
     selectedBookingId = selectedBookingId === id ? null : id;
@@ -287,7 +291,7 @@
 
 <section class="card" aria-label="Мои записи">
   <div class="card-title">
-    <div><span class="eyebrow">STAGING / ЛИЧНЫЙ КАБИНЕТ</span><h2>Мои записи</h2></div>
+    <div><span class="eyebrow">STAGING / ЛИЧНЫЙ КАБИНЕТ</span><h2 tabindex="-1" bind:this={historyHeading}>Мои записи</h2></div>
     <div class="history-header-actions">
       <Button type="button" disabled={filterLocked || !newBookingAvailable} onclick={onNewBooking}>Новая запись</Button>
       <Button type="button" variant="outline" disabled={busy || cancellationBusy || moveBusy} onclick={() => void refresh()}>Обновить записи</Button>

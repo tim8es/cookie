@@ -4,6 +4,8 @@
   import StagingCustomerHistory from "./StagingCustomerHistory.svelte";
   import type { OwnBookingHistory } from "../staging-customer-history-api";
   import { Button } from "../components/ui/button/index.js";
+  import ActionButton from "../components/rhythm/ActionButton.svelte";
+  import ThemeScope from "../components/rhythm/ThemeScope.svelte";
   import * as Card from "../components/ui/card/index.js";
   import { authenticateTelegramCustomer, loadTelegramInitData, revokeTelegramOwnerSession, watchOwnerSessionExpiry, type VerifiedCustomerSession } from "../owner-auth";
   import { writeLogoutPending } from "../workspace-hint";
@@ -23,6 +25,10 @@
   let newBookingAvailable = false;
   let creationUnresolved = false;
   let historyMutationPending = false;
+  function switchAccount(): void {
+    if (phase !== "verified" || historyPanel?.hasPendingMutation()) return;
+    onSwitchAccount?.();
+  }
   function created(): void {
     historySnapshot = null;
     historyVersion++;
@@ -90,14 +96,17 @@
   {#if phase !== "verified"}<span class="feedback-overline">kuki / КЛИЕНТСКИЙ ВХОД STAGING</span>{/if}
   {#if phase === "verified" && session}
     <div class="customer-session-content">
-      <div><h1>Вход клиента подтверждён</h1><p>Вы вошли в тестовый клиентский кабинет.</p></div>
+      <div><h1>Вход клиента подтверждён</h1><p>Личный кабинет{session.organizationName ? " · " + session.organizationName : ""}</p><p>Вы вошли в тестовый клиентский кабинет.</p></div>
       <div class="customer-session-actions">
         {#if onSwitchAccount}
-          <Button type="button" variant="outline" onclick={onSwitchAccount}>Сменить кабинет</Button>
+          <Button type="button" variant="outline" disabled={historyMutationPending} onclick={switchAccount}>Сменить кабинет</Button>
         {/if}
         <Button type="button" variant="outline" onclick={() => void logout()}>Выйти</Button>
       </div>
     </div>
+    {#if historyMutationPending}
+      <p class="customer-session-note" role="status">Завершите управление записью перед сменой кабинета. Выход из сеанса остаётся доступен.</p>
+    {/if}
   {:else if phase === "loading"}
     <h1>Проверяем вход клиента</h1>
     <p role="status">Подтверждаем серверную сессию и принадлежность клиентской записи.</p>
@@ -116,6 +125,12 @@
 </Card.Root>
 
 {#if phase === "verified" && session}
+  <ThemeScope>
+    <nav class="customer-section-nav" aria-label="Разделы личного кабинета">
+      <ActionButton disabled={!offersPanel} onclick={() => offersPanel?.focusCatalog()}>К онлайн-записи</ActionButton>
+      <ActionButton disabled={!historyPanel} onclick={() => historyPanel?.focusHistory()}>К моим записям</ActionButton>
+    </nav>
+  </ThemeScope>
   <StagingCustomerOffers bind:this={offersPanel} {session} {historySnapshot}
     bind:newBookingAvailable bind:creationUnresolved {historyMutationPending}
     canStartCreate={() => !!historyPanel && !historyPanel.hasPendingMutation()}
@@ -138,6 +153,8 @@
     gap: 12px;
     padding: 16px;
   }
+  .customer-section-nav { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+  .customer-session-note { padding: 0 16px 12px; margin: 0; font-size: 13px; }
   .customer-session-content h1 { font-size: 16px; margin: 0; }
   .customer-session-content p { color: var(--muted-foreground); font-size: 13px; margin: 4px 0 0; }
   .customer-session-actions { display: flex; flex-wrap: wrap; gap: 8px; }
