@@ -54,6 +54,11 @@
   $: creationUnresolved = initializing || recoveryBusy || blocked || bookingState.phase === "submitting" || bookingState.phase === "error";
   $: newBookingAvailable = bookingEnabled && !busy && !creationUnresolved && !historyMutationPending && (bookingState.phase === "idle" || bookingState.phase === "confirmed");
   $: locked = creationUnresolved || bookingState.phase === "confirmed";
+  export function focusCatalog(): void {
+    if (bookingState.phase === "confirmed") receiptSummary?.focus();
+    else if (bookingLayout) bookingLayout.focusHeading();
+    else catalogSection?.focus();
+  }
   export function hasUnresolvedCreation(): boolean {
     return initializing || recoveryBusy || blocked || bookingState.phase === "submitting" || bookingState.phase === "error";
   }
