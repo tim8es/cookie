@@ -17,6 +17,9 @@
   export let bookingId: string;
   export let disabled = false;
   export let onChanged: () => void = () => {};
+  export let tryLock: () => boolean = () => true;
+  export let releaseLock: () => void = () => {};
+  export let mutationBlocked = false;
 
   let open = false;
   let request: AbortController | null = null;
@@ -72,7 +75,7 @@
   }
 
   $: if (disabled) close();
-  onDestroy(() => { mounted = false; close(); });
+  onDestroy(() => { mounted = false; close(); releaseLock(); });
 
   async function load(): Promise<void> {
     if (disabled) return;
@@ -113,11 +116,9 @@
     return field("year") + "-" + field("month") + "-" + field("day");
   }
 
-  function slotTime(value: string, zone: string): string {
-    return new Intl.DateTimeFormat("ru-RU", {
-      timeZone: zone, hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset",
-    }).format(new Date(value));
-  }
+  $: slotClock = moveSlots ? new Intl.DateTimeFormat("ru-RU", {
+    timeZone: moveSlots.timeZone, hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset",
+  }) : null;
 
   function closeMove(): void {
     if (moveBusy || moveUncertain) return;
@@ -159,7 +160,7 @@
 
   function startMove(): void {
     if (!detail || detail.status !== "Confirmed" || moveCutoff === null ||
-        disabled || cancelBusy || cancelPending || moveBusy || movePending ||
+        disabled || mutationBlocked || cancelBusy || cancelPending || moveBusy || movePending ||
         Date.parse(detail.startAt) <= Date.now() + moveCutoff * 60000) return;
     moveOpen = true;
     moveDate = branchDate(detail.startAt, detail.timeZone);
@@ -180,7 +181,7 @@
   }
 
   async function confirmMove(): Promise<void> {
-    if (!movePending || moveBusy || disabled || !detail) return;
+    if (!movePending || moveBusy || disabled || mutationBlocked || !detail || !tryLock()) return;
     const attempt = movePending;
     const previouslyUncertain = moveUncertain;
     moveBusy = true;
@@ -199,6 +200,7 @@
       movePending = null;
       moveUncertain = false;
       moveMessage = "Перенос подтверждён сервером.";
+      releaseLock();
       onChanged();
     } catch (reason) {
       if (!mounted || !open) return;
@@ -214,19 +216,23 @@
         movePending = null;
         moveUncertain = false;
         moveMessage = "Перенос не выполнен. Запись или свободный интервал изменились.";
+        releaseLock();
         onChanged();
       } else {
         moveUncertain = true;
         moveMessage = "Результат переноса неизвестен. Повторите исходный запрос с тем же ключом.";
       }
     } finally {
-      if (mounted) moveBusy = false;
+      if (mounted) {
+        moveBusy = false;
+        if (!moveUncertain) releaseLock();
+      }
     }
   }
 
   function startCancellation(): void {
     if (!detail || detail.status !== "Confirmed" || cancelCutoff === null ||
-        cancelBusy || cancelPending || moveOpen || moveBusy || disabled ||
+        cancelBusy || cancelPending || moveOpen || moveBusy || disabled || mutationBlocked ||
         Date.parse(detail.startAt) <= Date.now() + cancelCutoff * 60000) return;
     cancelPending = { key: globalThis.crypto.randomUUID() };
     cancelUncertain = false;
@@ -234,7 +240,7 @@
   }
 
   async function confirmCancellation(): Promise<void> {
-    if (!cancelPending || cancelBusy || !detail || disabled) return;
+    if (!cancelPending || cancelBusy || !detail || disabled || mutationBlocked || !tryLock()) return;
     const attempt = cancelPending;
     const previouslyUncertain = cancelUncertain;
     cancelBusy = true;
@@ -247,6 +253,7 @@
       cancelPending = null;
       cancelUncertain = false;
       cancelMessage = "Отмена подтверждена сервером.";
+      releaseLock();
       onChanged();
     } catch (reason) {
       if (!mounted || !open) return;
@@ -259,6 +266,7 @@
         cancelPending = null;
         cancelUncertain = false;
         cancelMessage = "Отмена не выполнена. Статус записи или тестовый срок изменился.";
+        releaseLock();
         onChanged();
       } else if (reason instanceof OwnerCancellationError && reason.reason === "denied") {
         cancelPending = null;
@@ -269,7 +277,10 @@
         cancelMessage = "Результат отмены неизвестен. Повторите исходный запрос с тем же ключом; не создавайте новую операцию.";
       }
     } finally {
-      if (mounted) cancelBusy = false;
+      if (mounted) {
+        cancelBusy = false;
+        if (!cancelUncertain) releaseLock();
+      }
     }
   }
 
@@ -309,7 +320,7 @@
           {#if !cancelUncertain}
             <p>Отменить подтверждённую запись для клиента? Это освободит время. Операция требует подтверждения сервера.</p>
           {/if}
-          <Button type="button" disabled={cancelBusy || disabled} onclick={() => void confirmCancellation()}>
+          <Button type="button" disabled={cancelBusy || disabled || mutationBlocked} onclick={() => void confirmCancellation()}>
             {cancelUncertain ? "Повторить исходную отмену" : "Подтвердить отмену"}
           </Button>
           {#if !cancelUncertain}
@@ -317,7 +328,7 @@
           {/if}
         {:else if !moveOpen && detail.status === "Confirmed" && cancelCutoff !== null &&
           Date.parse(detail.startAt) > Date.now() + cancelCutoff * 60000}
-          <Button type="button" variant="outline" disabled={disabled} onclick={startCancellation}>Отменить запись</Button>
+          <Button type="button" variant="outline" disabled={disabled || mutationBlocked} onclick={startCancellation}>Отменить запись</Button>
         {/if}
         {#if moveOpen && detail.status === "Confirmed"}
           <div class="owner-calendar-move" aria-label="Перенос записи владельцем">
@@ -347,7 +358,7 @@
                     onchange={(event) => { moveSlotId = event.currentTarget.value; moveSlotsError = ""; }}>
                     <option value="">Выберите время</option>
                     {#each moveSlots.slots as slot (slot.startAt)}
-                      <option value={slot.startAt}>{slotTime(slot.startAt, moveSlots.timeZone)} — {slotTime(slot.endAt, moveSlots.timeZone)}</option>
+                      <option value={slot.startAt}>{slotClock?.format(new Date(slot.startAt))} — {slotClock?.format(new Date(slot.endAt))}</option>
                     {/each}
                   </select>
                 </label>
@@ -355,7 +366,7 @@
             {/if}
             {#if movePending}
               <p>Подтвердить перенос на {format(movePending.newStartAt, detail.timeZone)}? Услуга, мастер, филиал и исходная стоимость сохранятся.</p>
-              <Button type="button" disabled={moveBusy || disabled} onclick={() => void confirmMove()}>
+              <Button type="button" disabled={moveBusy || disabled || mutationBlocked} onclick={() => void confirmMove()}>
                 {moveUncertain ? "Повторить исходный перенос" : "Подтвердить перенос"}
               </Button>
               {#if !moveUncertain}
@@ -370,7 +381,7 @@
           </div>
         {:else if !cancelPending && detail.status === "Confirmed" && moveCutoff !== null &&
           Date.parse(detail.startAt) > Date.now() + moveCutoff * 60000}
-          <Button type="button" variant="outline" disabled={disabled || cancelBusy} onclick={startMove}>Перенести время</Button>
+          <Button type="button" variant="outline" disabled={disabled || cancelBusy || mutationBlocked} onclick={startMove}>Перенести время</Button>
         {/if}
         <p class="owner-form-note">{cancelCutoff === null
           ? "Отмена из календаря недоступна в этом контуре."

@@ -103,3 +103,26 @@ test("calendar parser accepts current and legacy IDs, rejects invalid IDs", asyn
     );
   }
 });
+
+test("calendar range is additive, paired and contains every record", async () => {
+  const current = booking(1, "2027-03-14T12:00:00.000Z");
+  const data = {
+    ...base,
+    entries: [current],
+    rangeStartAt: "2027-03-14T05:00:00.000Z",
+    rangeEndAt: "2027-03-15T04:00:00.000Z",
+  };
+  const read = (value: unknown) => {
+    const fetcher = async () => Response.json(value);
+    return readOwnerCalendar(session, locationId, base.localDate, 1, fetcher);
+  };
+  assert.deepEqual(await read(data), data);
+  const invalid = [
+    { ...data, rangeEndAt: undefined },
+    { ...data, rangeEndAt: data.rangeStartAt },
+    { ...data, rangeStartAt: "2027-03-14T14:00:00.000Z" },
+  ];
+  for (const value of invalid) {
+    await assert.rejects(read(value), CalendarReadError);
+  }
+});
