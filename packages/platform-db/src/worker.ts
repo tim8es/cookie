@@ -152,7 +152,9 @@ export async function superviseOutboxWorker(
       if (error instanceof AbandonedOutboxLeaseError) {
         // A timed-out external handler may still be running. Do not claim
         // another event in this process or mistake timeout for a DB outage.
-        throw new Error("Outbox supervisor stopped after abandoned lease");
+        throw new Error(
+          `Outbox supervisor stopped after abandoned lease (${error.reason})`,
+        );
       }
       // Never expose PostgreSQL error strings, credentials or event payloads.
       consecutivePollErrors++;
@@ -193,7 +195,21 @@ export interface PostgresWorkerOptions extends OutboxWorkerOptions {
   readonly handlerTimeoutMs?: number;
 }
 
-class AbandonedOutboxLeaseError extends Error {}
+type AbandonedOutboxLeaseReason =
+  | "shutdown-after-claim"
+  | "renewal-refused"
+  | "shutdown-after-renewal"
+  | "dispatch-authority-refused"
+  | "shutdown-before-handler"
+  | "dispatch-transaction-before-handler"
+  | "dispatch-transaction-after-handler"
+  | "handler-deadline";
+
+class AbandonedOutboxLeaseError extends Error {
+  constructor(readonly reason: AbandonedOutboxLeaseReason) {
+    super("Outbox lease abandoned");
+  }
+}
 
 type HandlerOutcome = "completed" | "failed" | "timed-out";
 
@@ -214,7 +230,9 @@ async function runBoundedOutboxBatch(
 
   // A stop arriving during the claim must not initiate new external work.
   // The current lease can be recovered by a new worker after expiry.
-  if (options.signal.aborted) throw new AbandonedOutboxLeaseError();
+  if (options.signal.aborted) {
+    throw new AbandonedOutboxLeaseError("shutdown-after-claim");
+  }
 
   // The original claim's PostgreSQL lease clock can expire BEFORE the claim
   // result reaches this process. Re-check the authoritative DB state under
@@ -231,8 +249,11 @@ async function runBoundedOutboxBatch(
       RETURNING id`,
     [lease.id, lease.leaseToken, leaseMs],
   );
-  if (renewed.rowCount !== 1 || options.signal.aborted) {
-    throw new AbandonedOutboxLeaseError();
+  if (renewed.rowCount !== 1) {
+    throw new AbandonedOutboxLeaseError("renewal-refused");
+  }
+  if (options.signal.aborted) {
+    throw new AbandonedOutboxLeaseError("shutdown-after-renewal");
   }
 
   // Linearize the start of a handler with ownership of the current lease.
@@ -264,8 +285,13 @@ async function runBoundedOutboxBatch(
           RETURNING event.id`,
         [lease.id, lease.leaseToken, leaseMs],
       );
-      if (authority.rowCount !== 1 || options.signal.aborted) {
-        throw new AbandonedOutboxLeaseError();
+      if (authority.rowCount !== 1) {
+        // No row may mean expiry, reclaim, or a skipped lock; the
+        // statement does not distinguish those cases.
+        throw new AbandonedOutboxLeaseError("dispatch-authority-refused");
+      }
+      if (options.signal.aborted) {
+        throw new AbandonedOutboxLeaseError("shutdown-before-handler");
       }
 
       const timeout = new Promise<HandlerOutcome>((resolve) => {
@@ -290,7 +316,7 @@ async function runBoundedOutboxBatch(
       }
       return { work, timeout };
     });
-  } catch {
+  } catch (error) {
     if (timer) clearTimeout(timer);
     if (handlerStarted) {
       // The handler may already have issued an irreversible effect.
@@ -298,7 +324,12 @@ async function runBoundedOutboxBatch(
     }
     // No confirmed dispatch transaction: leave the lease fenced and stop.
     // Do not acknowledge/fail the event or start another handler here.
-    throw new AbandonedOutboxLeaseError();
+    if (error instanceof AbandonedOutboxLeaseError) throw error;
+    throw new AbandonedOutboxLeaseError(
+      handlerStarted
+        ? "dispatch-transaction-after-handler"
+        : "dispatch-transaction-before-handler",
+    );
   }
 
   let outcome: HandlerOutcome;
@@ -310,7 +341,7 @@ async function runBoundedOutboxBatch(
   if (outcome === "timed-out") {
     // An uncooperative handler may still perform an external effect.
     // NEVER ack/fail its lease, nor run another handler in this process.
-    throw new AbandonedOutboxLeaseError();
+    throw new AbandonedOutboxLeaseError("handler-deadline");
   }
 
   if (outcome === "completed") {

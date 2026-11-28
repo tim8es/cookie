@@ -139,7 +139,10 @@ test(
               },
             },
           ),
-          /Outbox supervisor stopped after abandoned lease/,
+          {
+            message:
+              "Outbox supervisor stopped after abandoned lease (dispatch-transaction-after-handler)",
+          },
         );
         assert.equal(tag, mode === "abort" ? "ROLLBACK" : "COMMIT");
         assert.deepEqual(releases, [true]);
