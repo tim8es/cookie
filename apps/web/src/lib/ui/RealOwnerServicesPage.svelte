@@ -2,7 +2,12 @@
   import { Plus } from "@lucide/svelte";
   import ActionButton from "../components/rhythm/ActionButton.svelte";
   import PageHeader from "../components/rhythm/PageHeader.svelte";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
+  import RecordRow from "../components/rhythm/RecordRow.svelte";
+  import EmptyState from "../components/rhythm/EmptyState.svelte";
+  import Segment from "../components/rhythm/Segment.svelte";
+  import ThemeScope from "../components/rhythm/ThemeScope.svelte";
+  import { Input } from "../components/ui/input/index.js";
   import type { OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import { Button } from "../components/ui/button/index.js";
@@ -23,6 +28,24 @@
   let editor: ServiceForm | undefined;
 
   let services: RealService[] = [];
+  let query = "";
+  let status: "all" | "active" | "draft" = "all";
+  const statusOptions = [
+    { id: "all", label: "Все" },
+    { id: "active", label: "Активные" },
+    { id: "draft", label: "Черновики" },
+  ];
+  $: normalizedQuery = query.trim().toLocaleLowerCase("ru-RU");
+  $: visibleServices = services.filter(service =>
+    (status === "all" || service.active === (status === "active")) &&
+    service.displayName.toLocaleLowerCase("ru-RU").includes(normalizedQuery));
+  function selectStatus(id: string): void {
+    if (id === "all" || id === "active" || id === "draft") status = id;
+  }
+  function clearFilters(): void {
+    query = "";
+    status = "all";
+  }
   let loading = true;
   let loaded = false;
   let saving = false;
@@ -100,6 +123,7 @@
     stale = false;
     saveError = "";
     notice = "";
+    void tick().then(() => editor?.focusName());
   }
 
   function resetForm(): void {
@@ -203,30 +227,48 @@
 <div class="workspace-grid">
   <section class="card">
     <div class="card-title">
-      <div><span class="eyebrow">КАТАЛОГ</span><h2>Сохранённые услуги</h2></div>
+      <h2>Сохранённые услуги</h2>
+      {#if loaded && !loading}<span class="counter-pill">{services.length}</span>{/if}
     </div>
-    {#if loading && !loaded}
-      <OwnerReadPlaceholder label="Загружаем услуги с сервера…" />
-    {:else if loaded && services.length === 0}
-      <div class="empty-mini"><strong>Услуг пока нет</strong><p>Создайте первый черновик.</p></div>
-    {:else if loaded}
-      <div class="list-items">
-        {#each services as service (service.id)}
-          <div class="entity-row">
-            <span class="service-tile" aria-hidden="true">✳</span>
-            <div class="entity-text">
-              <strong>{service.displayName}</strong>
-              <small>{service.durationMinutes} мин · {service.active ? "Активна" : "Черновик"}</small>
-              <small>Буфер: {service.postServiceBufferMinutes} мин</small>
-            </div>
-            <strong class="price-label">{priceFormatter.format(service.basePriceKopecks / 100)}</strong>
-            {#if !service.active}
-              <Button type="button" variant="outline" size="sm" disabled={saving || uncertain || loading} onclick={() => startEdit(service)}>Изменить</Button>
-            {/if}
+    <ThemeScope>
+      {#if loading}
+        <OwnerReadPlaceholder label="Загружаем услуги с сервера…" />
+      {:else if loaded && services.length === 0}
+        <EmptyState title="Услуг пока нет" description="Создайте первый черновик."
+          actionLabel={!saving && !uncertain && !stale && !editing ? "Добавить услугу" : undefined}
+          onAction={() => editor?.focusName()} />
+      {:else if loaded}
+        <div class="rhythm-stack service-directory" aria-label="Фильтры услуг">
+          <label class="field">Поиск услуг
+            <Input type="search" bind:value={query} placeholder="Название услуги" />
+          </label>
+          <Segment label="Статус услуги" options={statusOptions} selected={status} onSelect={selectStatus} />
+          <p class="rhythm-muted" role="status">Найдено: {visibleServices.length} из {services.length}</p>
+        </div>
+        {#if visibleServices.length === 0}
+          <EmptyState title="Услуги не найдены" description="Измените поиск или статус."
+            actionLabel="Сбросить фильтры" onAction={clearFilters} />
+        {:else}
+          <div class="list-items" aria-label="Сохранённые услуги">
+            {#each visibleServices as service (service.id)}
+              <RecordRow record={{
+                title: service.displayName,
+                subtitle: service.durationMinutes + " мин · " + (service.active ? "Активна" : "Черновик") + " · Буфер: " + service.postServiceBufferMinutes + " мин",
+                detail: priceFormatter.format(service.basePriceKopecks / 100),
+              }}>
+                {#snippet action()}
+                  {#if !service.active}
+                    <ActionButton disabled={saving || uncertain || loading}
+                      label={"Изменить услугу: " + service.displayName}
+                      onclick={() => startEdit(service)}>Изменить</ActionButton>
+                  {/if}
+                {/snippet}
+              </RecordRow>
+            {/each}
           </div>
-        {/each}
-      </div>
-    {/if}
+        {/if}
+      {/if}
+    </ThemeScope>
   </section>
   {#if loaded}
     <ServiceForm
