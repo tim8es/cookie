@@ -11,12 +11,11 @@
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import { Button } from "../components/ui/button/index.js";
   import { Input } from "../components/ui/input/index.js";
-  import * as Card from "../components/ui/card/index.js";
+  import EntityEditor from "../components/rhythm/EntityEditor.svelte";
   import type { VerifiedOwnerSession } from "../owner-auth";
   import { StaffApiFailure, type RealStaff } from "../staff-api";
   import { LocationApiFailure, type RealLocation } from "../locations-api";
-  import { createShiftPlan, ShiftPlanError, type ShiftPlan } from "../shift-plans-api";
-  import OwnerFormHeader from "./OwnerFormHeader.svelte";
+  import { createShiftPlan, ShiftPlanError, shiftPlanSaveIsUncertain, type ShiftPlan } from "../shift-plans-api";
   import StagingAvailabilityPanel from "./StagingAvailabilityPanel.svelte";
   import { readStagingPublicationCapacity } from "../staging-publication-api";
   import { publishStagingShift, readPublishedShifts, type PublishedShift } from "../staging-shift-publication-api";
@@ -35,7 +34,7 @@
   let selectedPublication: ShiftPlan | null = null;
   let publicationKey = "";
   let publishing = false;
-  $: canPublish = publicationReady && !loading && !saving && !publishing;
+  $: canPublish = publicationReady && !loading && !saving && !publishing && !saveUncertain;
 
   let hasMore = false;
   let staffInput: HTMLSelectElement | undefined;
@@ -44,6 +43,7 @@
   let startLocal = "";
   let endLocal = "";
   let pendingKey = "";
+  let saveUncertain = false;
   let loading = true;
   let loaded = false;
   let saving = false;
@@ -80,6 +80,7 @@
   }
 
   function chooseStaff(value: string): void {
+    if (saveUncertain) return;
     staffId = value;
     locationId = locations.find((location) => location.timeZone && staff.find((member) =>
       member.id === value)?.assignments.some((assignment) => assignment.locationId === location.id))?.id ?? "";
@@ -87,16 +88,19 @@
     saveError = "";
   }
   function editLocation(value: string): void {
+    if (saveUncertain) return;
     locationId = value;
     pendingKey = "";
     saveError = "";
   }
   function editStart(value: string): void {
+    if (saveUncertain) return;
     startLocal = value;
     pendingKey = "";
     saveError = "";
   }
   function editEnd(value: string): void {
+    if (saveUncertain) return;
     endLocal = value;
     pendingKey = "";
     saveError = "";
@@ -139,6 +143,7 @@
   }
 
   async function refresh(): Promise<void> {
+    if (saveUncertain) return;
     loading = true;
     readError = "";
     publicationReady = false;
@@ -188,7 +193,7 @@
   }
 
   async function save(): Promise<void> {
-    if (saving || publishing || loading || !loaded) return;
+    if (saving || publishing || loading || !loaded || selectedPublication) return;
     if (!staffId || !selectedLocation || !startLocal || !endLocal) {
       saveError = "Выберите мастера, филиал и время.";
       return;
@@ -201,6 +206,7 @@
       const plan = await createShiftPlan(session, { staffId, locationId, startLocal, endLocal }, pendingKey, reads.fetch);
       plans = [...plans.filter((item) => item.shiftId !== plan.shiftId), plan];
       pendingKey = "";
+      saveUncertain = false;
       startLocal = "";
       endLocal = "";
       notice = "Черновик сохранён. Доступность для записи клиентов не изменилась.";
@@ -208,7 +214,11 @@
       await refresh();
     } catch (reason) {
       reads.shifts.invalidate();
-      saveError = message(reason);
+      saveUncertain = shiftPlanSaveIsUncertain(saveUncertain, reason);
+      if (!saveUncertain) pendingKey = "";
+      saveError = saveUncertain
+        ? "Результат исходного сохранения смены не подтверждён. Повторите запрос с прежними параметрами."
+        : message(reason);
     } finally {
       saving = false;
     }
@@ -237,11 +247,11 @@
 <PageHeader title="Расписание" organization={session.organizationName}
   description="Смены планируются в часовом поясе филиала. Черновики не открывают запись клиентам.">
   {#snippet secondaryActions()}
-    <ActionButton onclick={() => void refresh()} disabled={loading || saving || publishing}>Обновить</ActionButton>
+    <ActionButton onclick={() => void refresh()} disabled={loading || saving || publishing || saveUncertain}>Обновить</ActionButton>
   {/snippet}
   {#snippet primaryAction()}
     {#if loaded && eligibleStaff.length > 0 && !pendingKey}
-      <ActionButton tone="primary" onclick={() => staffInput?.focus()} disabled={loading || saving || publishing}>
+      <ActionButton tone="primary" onclick={() => staffInput?.focus()} disabled={loading || saving || publishing || !!selectedPublication}>
         <Plus size={17} aria-hidden="true" />Новая смена
       </ActionButton>
     {/if}
@@ -345,43 +355,50 @@
     </ThemeScope>
   </section>
   {#if loaded}
-    <Card.Root class="owner-form-panel">
-      <form class="owner-form" onsubmit={(event) => { event.preventDefault(); void save(); }}>
-        <OwnerFormHeader kind="schedule" eyebrow="РАСПИСАНИЕ / 03" title="Новая смена" description="Укажите дату и локальное время филиала." />
+    <section class="owner-form-panel">
+      <ThemeScope>
+      <EntityEditor title="Новая смена" description="Укажите дату и локальное время филиала."
+        className="owner-form" busy={saving} disabled={publishing || loading || !selectedLocation || !!selectedPublication}
+        showSubmit={eligibleStaff.length > 0}
+        submitLabel={saveUncertain ? "Повторить сохранение смены" : "Сохранить черновик смены"}
+        onSubmit={() => void save()}>
         {#if eligibleStaff.length === 0}
           <p>Сначала нужен мастер с назначением в филиал.</p>
-          <Button type="button" variant="outline" class="owner-submit" onclick={onOpenStaff}>Перейти к мастерам</Button>
+          <Button type="button" variant="outline" class="owner-submit" onclick={onOpenStaff} disabled={saving || saveUncertain || !!selectedPublication}>Перейти к мастерам</Button>
         {:else}
           <div class="owner-form-fields">
             <label class="field">Мастер
-              <select bind:this={staffInput} value={staffId} onchange={(event) => chooseStaff(event.currentTarget.value)} disabled={saving} required>
+              <select bind:this={staffInput} value={staffId} onchange={(event) => chooseStaff(event.currentTarget.value)} disabled={saving || saveUncertain || publishing || !!selectedPublication} required>
                 <option value="" disabled>Выберите мастера</option>
                 {#each eligibleStaff as member (member.id)}<option value={member.id}>{member.displayName}</option>{/each}
               </select>
             </label>
             <label class="field">Филиал
-              <select value={locationId} onchange={(event) => editLocation(event.currentTarget.value)} disabled={saving} required>
+              <select value={locationId} onchange={(event) => editLocation(event.currentTarget.value)} disabled={saving || saveUncertain || publishing || !!selectedPublication} required>
                 <option value="" disabled>Выберите филиал</option>
                 {#each assignedBranches as location (location.id)}<option value={location.id}>{location.displayName}</option>{/each}
               </select>
             </label>
             <p class="owner-form-note">Часовой пояс: {selectedLocation?.timeZone ?? "не выбран"}</p>
             <label class="field">Начало смены
-              <Input type="datetime-local" value={startLocal} onchange={(event) => editStart(event.currentTarget.value)} required disabled={saving} />
+              <Input type="datetime-local" value={startLocal} onchange={(event) => editStart(event.currentTarget.value)} required disabled={saving || saveUncertain || publishing || !!selectedPublication} />
             </label>
             <label class="field">Окончание смены
-              <Input type="datetime-local" value={endLocal} onchange={(event) => editEnd(event.currentTarget.value)} required disabled={saving} />
+              <Input type="datetime-local" value={endLocal} onchange={(event) => editEnd(event.currentTarget.value)} required disabled={saving || saveUncertain || publishing || !!selectedPublication} />
             </label>
           </div>
           <p class="owner-form-note">Проверка конфликтов и активация доступны на отдельном этапе публикации. Смена остаётся черновиком.</p>
-          <Button class="owner-submit" type="submit" disabled={saving || publishing || loading || !selectedLocation}>{saving ? "Сохраняем…" : "Сохранить черновик смены"}</Button>
+          {#if saveUncertain}
+            <p class="owner-form-note" role="status">Не покидайте страницу до подтверждения. Поля заблокированы, повтор отправит исходную операцию.</p>
+          {/if}
         {/if}
-      </form>
-    </Card.Root>
+      </EntityEditor>
+      </ThemeScope>
+    </section>
   {/if}
 </div>
 {#if loaded && publicationReady}
-  <StagingAvailabilityPanel {session} fetcher={reads.fetch} {staff} {locations} disabled={loading || saving || publishing} />
+  <StagingAvailabilityPanel {session} fetcher={reads.fetch} {staff} {locations} disabled={loading || saving || publishing || saveUncertain || !!selectedPublication} />
 {/if}
 
 <style>
