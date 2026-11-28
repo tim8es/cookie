@@ -27,6 +27,8 @@ export interface OwnerCalendar {
   readonly localDate: string;
   readonly days: CalendarDays;
   readonly timeZone: string;
+  readonly rangeStartAt?: string;
+  readonly rangeEndAt?: string;
   readonly entries: OwnerCalendarEntry[];
 }
 export class CalendarReadError extends Error {
@@ -153,11 +155,28 @@ export async function readOwnerCalendar(
       new Set(data.entries.map((e) => e.id)).size !== data.entries.length
     )
       throw new Error("invalid");
+    const from = data.rangeStartAt;
+    const to = data.rangeEndAt;
+    const hasRange = "rangeStartAt" in data || "rangeEndAt" in data;
+    if (hasRange) {
+      if (!instant(from) || !instant(to)) throw new Error("invalid range");
+      const start = Date.parse(from);
+      const end = Date.parse(to);
+      if (end <= start || end - start > (days + 1) * 86400000) {
+        throw new Error("invalid range");
+      }
+      for (const item of data.entries) {
+        if (Date.parse(item.startAt) >= end || Date.parse(item.endAt) <= start) {
+          throw new Error("entry outside range");
+        }
+      }
+    }
     return {
       locationId,
       localDate,
       days,
       timeZone: data.timeZone,
+      ...(from && to ? { rangeStartAt: from, rangeEndAt: to } : {}),
       entries: data.entries.map(
         ({
           id,
