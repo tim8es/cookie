@@ -19,6 +19,10 @@
   export let onUnauthorized: () => void;
   export let onConfirmed: () => void = () => {};
   export let historySnapshot: OwnBookingHistory | null = null;
+  export let newBookingAvailable = false;
+  export let creationUnresolved = false;
+  export let historyMutationPending = false;
+  export let canStartCreate: () => boolean = () => true;
   let offers: CustomerOffer[] = [];
   let locationId = "";
   let serviceId = "";
@@ -42,10 +46,16 @@
   let bookingState: BookingAttemptState<ConfirmedBookingReceipt, CustomerSlot> = { phase: "idle" };
   let locked = false;
   let receiptSummary: HTMLDivElement | undefined;
+  let catalogSection: HTMLElement | undefined;
   let bookingLayout: BookingLayout | undefined;
   let step: "service" | "staff" | "time" | "review" = "service";
   $: disposition = bookingState.phase === "confirmed" ? receiptDisposition(bookingState.receipt, historySnapshot) : "unverified";
-  $: locked = recoveryBusy || blocked || bookingState.phase === "submitting" || bookingState.phase === "error" || bookingState.phase === "confirmed";
+  $: creationUnresolved = recoveryBusy || blocked || bookingState.phase === "submitting" || bookingState.phase === "error";
+  $: newBookingAvailable = bookingEnabled && !busy && !creationUnresolved && !historyMutationPending && (bookingState.phase === "idle" || bookingState.phase === "confirmed");
+  $: locked = creationUnresolved || bookingState.phase === "confirmed";
+  export function hasUnresolvedCreation(): boolean {
+    return recoveryBusy || blocked || bookingState.phase === "submitting" || bookingState.phase === "error";
+  }
   async function initialize(): Promise<void> {
     bookingEnabled = await canCreateCustomerBooking(session);
     if (!mounted) return;
@@ -63,7 +73,7 @@
   async function submitBooking(): Promise<void> {
     // The reactive locked flag is updated on the next Svelte flush. Guard the
     // synchronous phase too, before reading/writing the pending operation key.
-    if (!bookingEnabled || blocked || locked || busy || bookingState.phase !== "idle" || !selected || !chosen) return;
+    if (!bookingEnabled || blocked || locked || busy || historyMutationPending || !canStartCreate() || bookingState.phase !== "idle" || !selected || !chosen) return;
     const key = globalThis.crypto.randomUUID();
     try {
       // Non-secret marker only. No token, proof, price or selection is stored.
@@ -137,11 +147,18 @@
     if (mounted && bookingState.phase === "confirmed") receiptSummary?.focus();
   }
   function newSelection(): void {
-    if (blocked || bookingState.phase !== "confirmed") return;
+    if (bookingState.phase === "confirmed") void startNewFromHistory();
+  }
+  export async function startNewFromHistory(): Promise<void> {
+    if (!bookingEnabled || busy || hasUnresolvedCreation() || historyMutationPending || !canStartCreate() ||
+        (bookingState.phase !== "idle" && bookingState.phase !== "confirmed")) return;
     attempt = null; bookingState = { phase: "idle" };
     recovered = false; recoveryMessage = "";
-    step = "service";
-    void refresh();
+    await refresh();
+    await tick();
+    if (!mounted) return;
+    if (loaded && offers.length > 0) bookingLayout?.focusHeading();
+    else catalogSection?.focus();
   }
   function unique(items: CustomerOffer[], key: "locationId" | "serviceId" | "staffId") {
     return [...new Map(items.map(item => [item[key], item])).values()];
@@ -259,7 +276,7 @@
 </script>
 
 <ThemeScope>
-<section class="card" aria-label="Клиентская витрина staging">
+<section class="card" aria-label="Клиентская витрина staging" tabindex="-1" bind:this={catalogSection}>
   <div class="card-title">
     <ActionButton disabled={busy || locked} onclick={() => void refresh()}>Обновить каталог</ActionButton>
   </div>
@@ -318,7 +335,8 @@
             <p>{selected.serviceName} · {selected.staffName} · {selected.locationName}</p>
             <p>Время не забронировано. Итоговую стоимость подтвердит сервер.</p>
             {#if bookingEnabled}
-              <ActionButton tone="primary" disabled={locked || busy} onclick={() => void submitBooking()}>Записаться</ActionButton>
+              <ActionButton tone="primary" disabled={locked || busy || historyMutationPending} onclick={() => void submitBooking()}>Записаться</ActionButton>
+              {#if historyMutationPending}<p role="status">Завершите управление предыдущей записью перед созданием новой.</p>{/if}
             {:else}<p>Подтверждение записи пока недоступно.</p>{/if}
           </div>
         {/if}
@@ -358,7 +376,7 @@
         {/if}
         <p>Фактическая стоимость при создании: {receiptPrice(bookingState.receipt.priceKopecks)}</p>
       {/if}
-      <ActionButton tone="primary" onclick={newSelection}>Создать ещё запись</ActionButton>
+      <ActionButton tone="primary" disabled={!newBookingAvailable} onclick={newSelection}>Создать ещё запись</ActionButton>
     </div>
   {/if}
   {#if recoveryBusy}<p role="status">Проверяем исходную операцию на сервере…</p>{/if}
