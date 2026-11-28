@@ -6,6 +6,7 @@ import {
   readShiftPlans,
   createShiftPlan,
   ShiftPlanError,
+  shiftPlanSaveIsUncertain,
 } from "./shift-plans-api";
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const STAFF = "22222222-2222-4222-8222-222222222222";
@@ -96,5 +97,28 @@ test("denied or invalid local time never becomes a successful shift", async () =
       (failure: unknown) =>
         failure instanceof ShiftPlanError && failure.reason === reason,
     );
+  }
+});
+
+test("ambiguous shift writes remain unresolved after subsequent rejections", () => {
+  for (const reason of [
+    "unauthorized",
+    "target-unavailable",
+    "invalid-time",
+    "conflict",
+  ] as const) {
+    assert.equal(
+      shiftPlanSaveIsUncertain(false, new ShiftPlanError(reason)),
+      false,
+    );
+    assert.equal(shiftPlanSaveIsUncertain(true, new ShiftPlanError(reason)), true);
+  }
+  for (const error of [
+    new ShiftPlanError("unavailable"),
+    new ShiftPlanError("invalid-response"),
+    new Error("network"),
+  ]) {
+    assert.equal(shiftPlanSaveIsUncertain(false, error), true);
+    assert.equal(shiftPlanSaveIsUncertain(true, error), true);
   }
 });
