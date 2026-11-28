@@ -3,6 +3,11 @@
   import ActionButton from "../components/rhythm/ActionButton.svelte";
   import PageHeader from "../components/rhythm/PageHeader.svelte";
   import { onMount } from "svelte";
+  import RecordRow from "../components/rhythm/RecordRow.svelte";
+  import EmptyState from "../components/rhythm/EmptyState.svelte";
+  import ThemeScope from "../components/rhythm/ThemeScope.svelte";
+  import Segment from "../components/rhythm/Segment.svelte";
+  import { Input } from "../components/ui/input/index.js";
   import type { OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import { Button } from "../components/ui/button/index.js";
@@ -39,6 +44,29 @@
   // A failed/unknown response must reuse its key with unchanged request values.
   let pendingKey = "";
   let publicationPending = false;
+  let query = "";
+  let filterLocationId = "";
+  let status: "all" | "bookable" | "draft" = "all";
+  const statusOptions = [
+    { id: "all", label: "Все" },
+    { id: "bookable", label: "Активированы" },
+    { id: "draft", label: "Черновики" },
+  ];
+  $: normalizedQuery = query.trim().normalize("NFC").toLocaleLowerCase("ru-RU");
+  $: locationNames = new Map(locations.map(item => [item.id, item.displayName]));
+  $: serviceNames = new Map(services.map(item => [item.id, item.displayName]));
+  $: visibleStaff = staff.filter(member =>
+    (status === "all" || member.bookable === (status === "bookable")) &&
+    (!filterLocationId || member.assignments.some(assignment => assignment.locationId === filterLocationId)) &&
+    (member.displayName + " " + member.positionTitle).normalize("NFC").toLocaleLowerCase("ru-RU").includes(normalizedQuery));
+  function selectStatus(id: string): void {
+    if (id === "all" || id === "bookable" || id === "draft") status = id;
+  }
+  function clearFilters(): void {
+    query = "";
+    filterLocationId = "";
+    status = "all";
+  }
 
   function message(error: unknown): string {
     if (error instanceof ServiceApiFailure && error.reason === "unauthorized") {
@@ -87,6 +115,7 @@
       staff = directory.staff;
       locations = directory.locations;
       services = catalog;
+      if (!locations.some(item => item.id === filterLocationId)) filterLocationId = "";
       if (!locations.some((item) => item.id === staffLocation)) {
         staffLocation = locations[0]?.id ?? "";
       }
@@ -156,13 +185,11 @@
     }
   }
 
-  function namesFor(member: RealStaff): string {
+  function namesFor(member: RealStaff, branches: Map<string, string>, catalog: Map<string, string>): string {
     const refs = member.assignments.flatMap((assignment) => {
-      const branch = locations.find((item) => item.id === assignment.locationId);
-      return assignment.serviceIds.map((id) => {
-        const service = services.find((item) => item.id === id);
-        return (branch?.displayName ?? "Филиал") + " · " + (service?.displayName ?? "Услуга");
-      });
+      const branch = branches.get(assignment.locationId);
+      return assignment.serviceIds.map((id) =>
+        (branch ?? "Филиал") + " · " + (catalog.get(id) ?? "Услуга"));
     });
     return refs.join(", ") || "Назначений пока нет";
   }
@@ -204,26 +231,49 @@
 <div class="workspace-grid">
   <section class="card">
     <div class="card-title">
-      <div><span class="eyebrow">КОМАНДА</span><h2>Профили мастеров</h2></div>
+      <h2>Профили мастеров</h2>
+      {#if loaded && !loading}<span class="counter-pill">{staff.length}</span>{/if}
     </div>
-    {#if loading && !loaded}
-      <OwnerReadPlaceholder label="Загружаем профили…" />
-    {:else if loaded && staff.length === 0}
-      <div class="empty-mini"><strong>Профилей пока нет</strong><p>Добавьте первого мастера.</p></div>
-    {:else if loaded}
-      <div class="list-items">
-        {#each staff as member (member.id)}
-          <div class="entity-row">
-            <span class="staff-avatar">{member.displayName.slice(0, 1)}</span>
-            <div class="entity-text">
-              <strong>{member.displayName}</strong>
-              <small>{member.positionTitle || "Специалист"} · {namesFor(member)}</small>
-            </div>
-            <span class="status-pill">{member.bookable ? "Активирован" : "Черновик"}</span>
+    <ThemeScope>
+      {#if loading}
+        <OwnerReadPlaceholder label="Загружаем профили…" />
+      {:else if loaded && staff.length === 0}
+        <EmptyState title="Профилей пока нет" description="Добавьте первого мастера."
+          actionLabel={!pendingKey && !saving && !publicationPending && locations.length && services.length ? "Добавить профиль" : undefined}
+          onAction={() => staffNameInput?.focus()} />
+      {:else if loaded}
+        <div class="rhythm-stack staff-directory" aria-label="Фильтры мастеров">
+          <label class="field">Поиск мастеров
+            <Input type="search" bind:value={query} placeholder="Имя или специализация" />
+          </label>
+          <label class="field">Филиал
+            <select bind:value={filterLocationId}>
+              <option value="">Все филиалы</option>
+              {#each locations as location (location.id)}
+                <option value={location.id}>{location.displayName}</option>
+              {/each}
+            </select>
+          </label>
+          <Segment label="Статус мастера" options={statusOptions} selected={status} onSelect={selectStatus} />
+          <p class="rhythm-muted" role="status">Найдено: {visibleStaff.length} из {staff.length}</p>
+        </div>
+        {#if visibleStaff.length === 0}
+          <EmptyState title="Мастера не найдены" description="Измените поиск или фильтры."
+            actionLabel="Сбросить фильтры" onAction={clearFilters} />
+        {:else}
+          <div class="list-items" aria-label="Профили мастеров">
+            {#each visibleStaff as member (member.id)}
+              <RecordRow record={{
+                title: member.displayName,
+                initials: [...member.displayName][0] ?? "",
+                subtitle: (member.positionTitle || "Специалист") + " · " + namesFor(member, locationNames, serviceNames),
+                detail: member.bookable ? "Активирован" : "Черновик",
+              }} />
+            {/each}
           </div>
-        {/each}
-      </div>
-    {/if}
+        {/if}
+      {/if}
+    </ThemeScope>
   </section>
   {#if loaded}
     <StaffForm

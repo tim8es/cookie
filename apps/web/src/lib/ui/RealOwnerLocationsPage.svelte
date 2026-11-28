@@ -3,6 +3,9 @@
   import ActionButton from "../components/rhythm/ActionButton.svelte";
   import PageHeader from "../components/rhythm/PageHeader.svelte";
   import { onMount } from "svelte";
+  import RecordRow from "../components/rhythm/RecordRow.svelte";
+  import EmptyState from "../components/rhythm/EmptyState.svelte";
+  import ThemeScope from "../components/rhythm/ThemeScope.svelte";
   import type { OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import { Button } from "../components/ui/button/index.js";
@@ -31,6 +34,10 @@
   let { displayName, timeZone } = emptyLocationDraft();
   let pendingKey = "";
   let uncertain = false;
+  let query = "";
+  $: normalizedQuery = query.trim().normalize("NFC").toLocaleLowerCase("ru-RU");
+  $: visibleLocations = locations.filter(location =>
+    (location.displayName + " " + (location.timeZone ?? "")).normalize("NFC").toLocaleLowerCase("ru-RU").includes(normalizedQuery));
 
   function description(reason: unknown): string {
     if (reason instanceof LocationApiFailure) {
@@ -158,30 +165,38 @@
 <div class="workspace-grid">
   <section class="card">
     <div class="card-title">
-      <div>
-        <span class="eyebrow">ОРГАНИЗАЦИЯ</span>
-        <h2>Сохранённые филиалы</h2>
-      </div>
+      <h2>Сохранённые филиалы</h2>
+      {#if loaded && !loading}<span class="counter-pill">{locations.length}</span>{/if}
     </div>
-    {#if loading && !loaded}
-      <OwnerReadPlaceholder label="Загружаем филиалы с сервера…" />
-    {:else if loaded && locations.length === 0}
-      <div class="empty-mini">
-        <strong>Филиалов пока нет</strong>
-        <p>Добавьте первый филиал с часовой зоной.</p>
-      </div>
-    {:else if loaded}
-      <div class="list-items">
-        {#each locations as location (location.id)}
-          <div class="entity-row">
-            <div class="entity-text">
-              <strong>{location.displayName}</strong>
-              <small>{location.timeZone ?? "Часовой пояс не задан"}</small>
-            </div>
+    <ThemeScope>
+      {#if loading}
+        <OwnerReadPlaceholder label="Загружаем филиалы с сервера…" />
+      {:else if loaded && locations.length === 0}
+        <EmptyState title="Филиалов пока нет" description="Добавьте первый филиал с часовой зоной."
+          actionLabel={!saving && !uncertain ? "Добавить филиал" : undefined}
+          onAction={() => locationNameInput?.focus()} />
+      {:else if loaded}
+        <div class="rhythm-stack location-directory" aria-label="Фильтры филиалов">
+          <label class="field">Поиск филиалов
+            <Input type="search" bind:value={query} placeholder="Название или часовой пояс" />
+          </label>
+          <p class="rhythm-muted" role="status">Найдено: {visibleLocations.length} из {locations.length}</p>
+        </div>
+        {#if visibleLocations.length === 0}
+          <EmptyState title="Филиалы не найдены" description="Измените поисковый запрос."
+            actionLabel="Сбросить поиск" onAction={() => query = ""} />
+        {:else}
+          <div class="list-items" aria-label="Сохранённые филиалы">
+            {#each visibleLocations as location (location.id)}
+              <RecordRow record={{
+                title: location.displayName,
+                subtitle: location.timeZone ?? "Часовой пояс не задан",
+              }} />
+            {/each}
           </div>
-        {/each}
-      </div>
-    {/if}
+        {/if}
+      {/if}
+    </ThemeScope>
   </section>
 
   {#if loaded}

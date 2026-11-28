@@ -812,6 +812,20 @@ async function main() {
     await requireDom(cdp, "browser-created branch saved",
       "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(BRANCH_NAME) + ") && !document.querySelector('.owner-form button[type=submit]')?.disabled");
     const locationId = await assertBranch(pool, owner);
+    const locationsBeforeFilter = responses.filter(r=>r.path.endsWith("/locations")).length;
+    await fill(cdp, ".location-directory input[type=search]", BRANCH_ZONE.toUpperCase());
+    await requireDom(cdp, "location search by time zone", "document.querySelector('.list-items [data-component=RecordRow]')?.innerText.includes("+JSON.stringify(BRANCH_NAME)+")");
+    await fill(cdp, ".location-directory input[type=search]", "no-matching-branch");
+    await requireDom(cdp, "no matching location", "document.querySelector('[data-component=EmptyState]')?.innerText.includes('Филиалы не найдены') && !document.querySelector('.list-items')");
+    await button(cdp, "Сбросить поиск");
+    await requireDom(cdp, "location search reset", "document.querySelector('.location-directory input').value==='' && document.querySelector('.list-items')?.innerText.includes('Synthetic Central') && document.querySelector('.list-items')?.innerText.includes("+JSON.stringify(BRANCH_NAME)+")");
+    assert.equal(responses.filter(r=>r.path.endsWith("/locations")).length,locationsBeforeFilter,"Location filtering must not request new data");
+    for (const [width,height] of [[320,568],[375,812],[768,900],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"RC9.4 location directory "+width+"px");
+      await checkLabeledControls(cdp,"RC9.4 location directory "+width+"px");
+    }
+    await viewport(cdp,375,812);
     await requireOverview(cdp);
     await fill(cdp, ".owner-day-overview select", locationId, "change");
     await requireDom(cdp, "selected branch day loaded from API",
@@ -833,6 +847,29 @@ async function main() {
     await submitValidForm(cdp, ".owner-form");
     await requireDom(cdp, "persisted staff renders",
       "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff') && !document.querySelector('.owner-form button[type=submit]')?.disabled");
+    const staffReadsBeforeFilter = responses.filter(r=>r.path.endsWith("/staff")||r.path.endsWith("/services")).length;
+    await fill(cdp, ".staff-directory input[type=search]", "  STYLIST  ");
+    await requireDom(cdp, "staff search by specialization", "document.querySelector('.list-items [data-component=RecordRow]')?.innerText.includes('Synthetic E2E Staff')");
+    await fill(cdp, ".staff-directory select", locationId, "change");
+    await requireDom(cdp, "staff filter uses assigned location ID", "document.querySelector('.staff-directory select').value==="+JSON.stringify(locationId)+" && document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
+    await evaluate(cdp, "(()=>{const s=document.querySelector('.staff-directory select');s.value=[...s.options].find(o=>o.value&&o.value!=="+JSON.stringify(locationId)+").value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await requireDom(cdp, "other branch does not show staff", "document.querySelector('[data-component=EmptyState]')?.innerText.includes('Мастера не найдены') && !document.querySelector('.list-items')");
+    await fill(cdp, ".staff-directory select", locationId, "change");
+    await button(cdp, "Активированы");
+    await requireDom(cdp, "unpublished staff not bookable", "document.querySelector('[data-component=EmptyState]')?.innerText.includes('Мастера не найдены')");
+    await button(cdp, "Черновики");
+    await requireDom(cdp, "draft staff filter", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
+    await fill(cdp, ".staff-directory input[type=search]", "no-matching-staff");
+    await requireDom(cdp, "staff search no results", "document.querySelector('[data-component=EmptyState]')?.innerText.includes('Мастера не найдены')");
+    await button(cdp, "Сбросить фильтры");
+    await requireDom(cdp, "staff filters reset", "document.querySelector('.staff-directory input').value==='' && document.querySelector('.staff-directory select').value==='' && document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Staff')");
+    assert.equal(responses.filter(r=>r.path.endsWith("/staff")||r.path.endsWith("/services")).length,staffReadsBeforeFilter,"Staff filtering must not request new data");
+    for (const [width,height] of [[320,568],[375,812],[768,900],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"RC9.4 staff directory "+width+"px");
+      await checkLabeledControls(cdp,"RC9.4 staff directory "+width+"px");
+    }
+    await viewport(cdp,375,812);
     await button(cdp, "Услуги");
     await requireDom(cdp, "service edit button", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Service')");
     await button(cdp, "Изменить");
