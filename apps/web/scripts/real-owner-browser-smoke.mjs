@@ -781,6 +781,24 @@ async function main() {
     await submitValidForm(cdp, ".owner-form");
     await requireDom(cdp, "persisted service renders",
       "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Service') && document.querySelector('.list-items')?.innerText.includes('Буфер: 15 мин') && !document.querySelector('.owner-form button[type=submit]')?.disabled");
+    const serviceReadsBeforeFilter = responses.filter(r=>r.path.endsWith("/services")).length;
+    await fill(cdp, ".service-directory input[type=search]", "  SYNTHETIC E2E  ");
+    await requireDom(cdp, "case insensitive service search", "document.querySelector('.list-items [data-component=RecordRow]')?.innerText.includes('Synthetic E2E Service')");
+    await button(cdp, "Активные");
+    await requireDom(cdp, "draft not shown in active filter", "document.querySelector('[data-component=EmptyState]')?.innerText.includes('Услуги не найдены') && !document.querySelector('.list-items')");
+    await button(cdp, "Черновики");
+    await requireDom(cdp, "draft filter restores record", "document.querySelector('.list-items [data-component=RecordRow]')?.innerText.includes('Synthetic E2E Service')");
+    await fill(cdp, ".service-directory input[type=search]", "no-matching-service");
+    await requireDom(cdp, "search empty differs from empty catalog", "document.querySelector('[data-component=EmptyState]')?.innerText.includes('Услуги не найдены') && !document.querySelector('.list-items')");
+    await button(cdp, "Сбросить фильтры");
+    await requireDom(cdp, "reset restores catalog", "document.querySelector('.service-directory input').value==='' && document.querySelector('.list-items [data-component=RecordRow]') && [...document.querySelectorAll('.service-directory [aria-pressed=true]')].some(b=>b.textContent.trim()==='Все')");
+    assert.equal(responses.filter(r=>r.path.endsWith("/services")).length,serviceReadsBeforeFilter,"Filtering must use the existing server snapshot");
+    for (const [width,height] of [[320,568],[375,812],[768,900],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"RC9.4 service directory "+width+"px");
+      await checkLabeledControls(cdp,"RC9.4 service directory "+width+"px");
+    }
+    await viewport(cdp,375,812);
     const initialBuffer = await pool.query("SELECT post_service_buffer_minutes FROM cookie_catalog.services WHERE tenant_id=$1::uuid", [owner.tenantId]);
     assert.deepEqual(initialBuffer.rows, [{post_service_buffer_minutes:15}]);
     await button(cdp, "Филиалы");
@@ -819,6 +837,7 @@ async function main() {
     await requireDom(cdp, "service edit button", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Service')");
     await button(cdp, "Изменить");
     await requireDom(cdp, "edit selected", "document.querySelector('.owner-form')?.innerText.includes('Сохранить изменения') && document.querySelector('input[name=post-service-buffer-minutes]')?.value==='15'");
+    await requireDom(cdp, "edit focuses name input", "document.activeElement===document.querySelector('.owner-form input:not([type=number])')");
     await evaluate(cdp, "(() => {const inputs=document.querySelectorAll('.owner-form input');const values=['Synthetic E2E Edited Service','50','1250.50','0'];inputs.forEach((input,i)=>{input.value=values[i];input.dispatchEvent(new Event('input',{bubbles:true}));});})()");
     await submitValidForm(cdp, ".owner-form");
     await requireDom(cdp, "edited service visible", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service') && document.querySelector('.list-items')?.innerText.includes('50 мин') && document.querySelector('.list-items')?.innerText.includes('Буфер: 0 мин')");
