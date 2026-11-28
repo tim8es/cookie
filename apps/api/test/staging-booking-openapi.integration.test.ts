@@ -133,6 +133,7 @@ test(
         displayName: "Synthetic contract service",
         durationMinutes: 60,
         basePriceKopecks: 100000,
+        postServiceBufferMinutes: 15,
       });
       assert.equal(service.statusCode, 201);
       const serviceId: string = service.json().service.id;
@@ -276,7 +277,7 @@ test(
         previousStartAt: created.json().startAt,
         startAt: newStartAt,
         endAt: date + "T13:00:00.000Z",
-        occupiedUntil: date + "T13:00:00.000Z",
+        occupiedUntil: date + "T13:15:00.000Z",
         priceKopecks: created.json().priceKopecks,
       });
       const replay = await post(moveUrl, token, { newStartAt }, moveKey);
