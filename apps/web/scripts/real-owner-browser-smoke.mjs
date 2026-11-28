@@ -1063,11 +1063,29 @@ async function main() {
     await checkWidth(cdp, "activated staging staff");
     await button(cdp, "Расписание");
     await requireDom(cdp, "draft ready for explicit publication", "document.querySelector('.schedule-summary')?.innerText.includes('Черновик') && Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Подготовить публикацию')");
+    const scheduleReadsBeforeFilter = responses.filter(r=>r.path.endsWith("/shift-plans")||r.path.endsWith("/staging-shift-publication")||r.path.endsWith("/staff")||r.path.endsWith("/locations")).length;
+    await fill(cdp, ".schedule-directory select:first-of-type", beforeRestart.staffId, "change");
+    await requireDom(cdp, "staff schedule filter", "document.querySelector('.schedule-directory select').value==="+JSON.stringify(beforeRestart.staffId)+" && document.querySelector('.schedule-summary [data-component=RecordRow]')?.innerText.includes('Черновик')");
+    await evaluate(cdp, "(()=>{const s=document.querySelectorAll('.schedule-directory select')[1];s.value=[...s.options].find(o=>o.value&&o.value!=="+JSON.stringify(locationId)+").value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await requireDom(cdp, "other branch has no matching draft", "document.querySelector('[data-component=EmptyState]')?.innerText.includes('Черновики не найдены') && !document.querySelector('.schedule-summary')");
+    await button(cdp, "Сбросить фильтры");
+    await requireDom(cdp, "schedule reset restores draft and publish action", "[...document.querySelectorAll('.schedule-directory select')].every(s=>s.value==='') && document.querySelector('.schedule-summary')?.innerText.includes('Черновик')");
+    assert.equal(responses.filter(r=>r.path.endsWith("/shift-plans")||r.path.endsWith("/staging-shift-publication")||r.path.endsWith("/staff")||r.path.endsWith("/locations")).length,scheduleReadsBeforeFilter,"Schedule filtering must use existing reads");
     await button(cdp, "Подготовить публикацию");
     await requireDom(cdp, "confirmation before active shift", "document.querySelector('[aria-label=\"Подтверждение публикации смены\"]')");
     assert.equal((await pool.query("SELECT count(*)::int AS count FROM cookie_scheduling.shift_windows WHERE tenant_id=$1::uuid AND active",[owner.tenantId])).rows[0].count,0);
     await button(cdp, "Подтвердить публикацию");
-    await requireDom(cdp, "published shift read after commit", "document.querySelector('.schedule-summary')?.innerText.includes('Опубликована в тестовом контуре')");
+    await requireDom(cdp, "published shift read after commit", "document.querySelector('.schedule-summary [data-component=ScheduleRow]')?.innerText.includes('Опубликована в тестовом контуре')");
+    await evaluate(cdp, "(()=>{const s=document.querySelectorAll('.schedule-directory select')[1];s.value=[...s.options].find(o=>o.value&&o.value!=="+JSON.stringify(locationId)+").value;s.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await requireDom(cdp, "published shift filter no match", "[...document.querySelectorAll('[data-component=EmptyState]')].some(e=>e.innerText.includes('Опубликованные смены не найдены')) && !document.querySelector('[data-component=ScheduleRow]')");
+    await button(cdp, "Сбросить фильтры");
+    await requireDom(cdp, "published shift reset", "document.querySelector('[data-component=ScheduleRow]')?.innerText.includes('Опубликована в тестовом контуре')");
+    for (const [width,height] of [[320,568],[375,812],[768,900],[1280,800]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"RC9.4 schedule directory "+width+"px");
+      await checkLabeledControls(cdp,"RC9.4 schedule directory "+width+"px");
+    }
+    await viewport(cdp,375,812);
     const shifts = await pool.query("SELECT id::text,active FROM cookie_scheduling.shift_windows WHERE tenant_id=$1::uuid",[owner.tenantId]);
     assert.equal(shifts.rowCount,1);
     assert.equal(shifts.rows[0].active,true);
