@@ -254,6 +254,62 @@ test(
               slot.startAt === created.json().startAt,
           ),
       );
+      const moveCapability = "staging-customer-reschedule/capability";
+      const capability = await get(moveCapability);
+      assertStagingBookingResponse(moveCapability, "get", 200, capability);
+      assert.deepEqual(capability.json(), { cutoffMinutes: 30 });
+
+      const moveRoute = "staging-customer-reschedule/{bookingId}";
+      const moveUrl = "/staging-customer-reschedule/" + bookingId;
+      const newStartAt = date + "T12:00:00.000Z";
+      assert.ok(
+        moveSlots.json().slots.some(
+          (slot: { startAt: string }) => slot.startAt === newStartAt,
+        ),
+      );
+      const moveKey = randomUUID();
+      const moved = await post(moveUrl, token, { newStartAt }, moveKey);
+      assertStagingBookingResponse(moveRoute, "post", 200, moved);
+      assert.deepEqual(moved.json(), {
+        bookingId,
+        status: "Confirmed",
+        previousStartAt: created.json().startAt,
+        startAt: newStartAt,
+        endAt: date + "T13:00:00.000Z",
+        occupiedUntil: date + "T13:00:00.000Z",
+        priceKopecks: created.json().priceKopecks,
+      });
+      const replay = await post(moveUrl, token, { newStartAt }, moveKey);
+      assertStagingBookingResponse(moveRoute, "post", 200, replay);
+      assert.deepEqual(replay.json(), moved.json());
+      const changedReplay = await post(
+        moveUrl,
+        token,
+        { newStartAt: date + "T14:00:00.000Z" },
+        moveKey,
+      );
+      assertStagingBookingResponse(moveRoute, "post", 409, changedReplay);
+      assert.deepEqual(changedReplay.json(), {
+        error: "IDEMPOTENCY_KEY_REUSED",
+      });
+
+      const movedHistory = await get(historyRoute);
+      assertStagingBookingResponse(historyRoute, "get", 200, movedHistory);
+      assert.deepEqual(movedHistory.json().bookings, [
+        {
+          ...history.json().bookings[0],
+          startAt: newStartAt,
+          endAt: moved.json().endAt,
+        },
+      ]);
+      // The original Create receipt remains a committed historical result,
+      // not a mutable projection of the current booking.
+      const originalReceipt = await get(receiptRoute, {
+        "idempotency-key": createKey,
+      });
+      assertStagingBookingResponse(receiptRoute, "get", 200, originalReceipt);
+      assert.deepEqual(originalReceipt.json(), created.json());
+
       const cancelCapability = "staging-customer-cancellation/capability";
       assertStagingBookingResponse(
         cancelCapability,
@@ -275,7 +331,12 @@ test(
       assert.equal(cancelled.json().bookingId, bookingId);
       const finalHistory = await get(historyRoute);
       assertStagingBookingResponse(historyRoute, "get", 200, finalHistory);
-      assert.equal(finalHistory.json().bookings[0].status, "CancelledByClient");
+      assert.deepEqual(finalHistory.json().bookings, [
+        {
+          ...movedHistory.json().bookings[0],
+          status: "CancelledByClient",
+        },
+      ]);
     } finally {
       try {
         await app.close();
