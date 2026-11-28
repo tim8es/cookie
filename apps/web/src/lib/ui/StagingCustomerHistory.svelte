@@ -407,6 +407,7 @@
 </section>
 
 <style>
+  .card-title { flex-wrap: wrap; }
   .history-header-actions { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
   .history-header-actions :global(button) { min-width: 0; max-width: 100%; white-space: normal; height: auto; }
   .history-filters { display: grid; gap: 6px; margin-bottom: 12px; min-width: 0; }
