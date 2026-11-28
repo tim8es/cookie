@@ -1338,6 +1338,16 @@ async function main() {
     const historyPanel = '[aria-label="Мои записи"]';
     const historyContains = "document.querySelector("+JSON.stringify(historyPanel)+")?.innerText.includes("+JSON.stringify(realBooking.rows[0].id)+")";
     await requireDom(cdp,"own persisted booking in cabinet",historyContains);
+    const historyReadsBeforeFilter = responses.filter(r=>r.path.endsWith("/staging-customer-history")).length;
+    const historyFilter = '[aria-label="Мои записи"] .history-filters';
+    await requireDom(cdp,"history status filters ready","document.querySelector("+JSON.stringify(historyFilter+" [aria-pressed=true]")+")?.textContent.trim()==='Все' && [...document.querySelectorAll("+JSON.stringify(historyFilter+" button")+")].every(b=>!b.disabled)");
+    await button(cdp,"Активные");
+    await requireDom(cdp,"confirmed status filter retains own booking",historyContains);
+    await button(cdp,"Отменённые");
+    await requireDom(cdp,"empty filtered history differs from empty account","document.querySelector('[aria-label=\"Мои записи\"] [data-component=EmptyState]')?.innerText.includes('В выбранном разделе') && !document.querySelector('.customer-history li')");
+    await button(cdp,"Показать все записи");
+    await requireDom(cdp,"reset history filter restores booking",historyContains);
+    assert.equal(responses.filter(r=>r.path.endsWith("/staging-customer-history")).length,historyReadsBeforeFilter,"History filters must not fetch again");
     await button(cdp,"Обновить записи");
     await requireDom(cdp,"server history after refresh",historyContains);
     assert.ok(responses.some(r=>r.status===200&&r.path.endsWith("/staging-customer-history")));
@@ -1384,6 +1394,7 @@ async function main() {
     await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);let lost=false;window.__kukiClientMoveKeys=[];window.__kukiClientMoveBodies=[];window.__kukiClientMoveRejections=[];window.__kukiClientMoveNext=null;window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(clientMoveUrl)+")){window.__kukiClientMoveKeys.push(new Headers(init.headers).get('idempotency-key'));window.__kukiClientMoveBodies.push(init.body);const rejection=window.__kukiClientMoveNext;if(rejection!==null){window.__kukiClientMoveNext=null;window.__kukiClientMoveRejections.push(rejection.status);return Response.json({error:rejection.code},{status:rejection.status});}const reply=await send(input,init);if(!lost&&reply.status===200){lost=true;throw new Error('synthetic lost customer move response');}return reply;}return send(input,init);};})()");
     await button(cdp, "Подтвердить перенос");
     const clientMoveUnknown="document.querySelector("+JSON.stringify(historyPanel)+")";
+    await requireDom(cdp,"pending move disables status filters","[...document.querySelectorAll('.history-filters button')].length===3 && [...document.querySelectorAll('.history-filters button')].every(b=>b.disabled)");
     await requireDom(cdp,"client move commit not acknowledged",
       clientMoveUnknown+"?.innerText.includes('Результат переноса не подтверждён')&&[..."+clientMoveUnknown+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)&&!"+clientMoveUnknown+".innerText.includes('Перенос подтверждён сервером')");
     const readCommittedMove=()=>pool.query(
