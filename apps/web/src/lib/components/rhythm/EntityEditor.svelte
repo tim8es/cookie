@@ -7,6 +7,8 @@
     description,
     submitLabel = "Сохранить",
     className = "",
+    cancelLabel = "Отмена",
+    showSubmit = true,
     busy = false,
     disabled = false,
     onSubmit,
@@ -17,6 +19,8 @@
     description?: string;
     submitLabel?: string;
     className?: string;
+    cancelLabel?: string;
+    showSubmit?: boolean;
     busy?: boolean;
     disabled?: boolean;
     onSubmit: () => void;
@@ -32,7 +36,7 @@
   aria-busy={busy}
   onsubmit={(event) => {
     event.preventDefault();
-    if (!busy && !disabled) onSubmit();
+    if (showSubmit && !busy && !disabled) onSubmit();
   }}
 >
   <header>
@@ -43,9 +47,11 @@
   <div class="rhythm-actions">
     {#if onCancel}
       <ActionButton disabled={busy} onclick={onCancel}>
-        Отмена
+        {cancelLabel}
       </ActionButton>
     {/if}
-    <ActionButton type="submit" tone="primary" {busy} {disabled} busyLabel="Сохранение…">{submitLabel}</ActionButton>
+    {#if showSubmit}
+      <ActionButton type="submit" tone="primary" {busy} {disabled} busyLabel="Сохранение…">{submitLabel}</ActionButton>
+    {/if}
   </div>
 </form>
