@@ -6,6 +6,7 @@
     title,
     description,
     submitLabel = "Сохранить",
+    className = "",
     busy = false,
     disabled = false,
     onSubmit,
@@ -15,6 +16,7 @@
     title: string;
     description?: string;
     submitLabel?: string;
+    className?: string;
     busy?: boolean;
     disabled?: boolean;
     onSubmit: () => void;
@@ -24,7 +26,7 @@
 </script>
 
 <form
-  class="rhythm-panel rhythm-stack"
+  class={"rhythm-panel rhythm-stack " + className}
   data-component="EntityEditor"
   aria-label={title}
   aria-busy={busy}

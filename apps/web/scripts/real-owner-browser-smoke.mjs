@@ -806,7 +806,16 @@ async function main() {
       "document.querySelector('h1')?.textContent.trim()==='Филиалы' && document.querySelector('.list-items')?.innerText.includes('Synthetic Central') && document.querySelector('.owner-form input')");
     await checkWidth(cdp, "real locations 375px");
     await checkLabeledControls(cdp, "real locations form");
+    await requireDom(cdp, "shared location editor", "document.querySelector('form[data-component=EntityEditor].owner-form')?.getAttribute('aria-busy')==='false'");
+    await button(cdp, "Новый филиал");
+    await requireDom(cdp, "new location focuses name", "document.activeElement===document.querySelector('.owner-form input')");
+    assert.equal(await evaluate(cdp, "document.querySelector('.owner-form').checkValidity()"), false);
+    const requestsBeforeInvalidLocation = responses.filter(r=>r.path.endsWith("/locations")).length;
     await fill(cdp, ".owner-form input[placeholder='Студия на Невском']", BRANCH_NAME);
+    await fill(cdp, ".owner-form input[placeholder='Europe/Moscow']", "Invalid/Timezone");
+    await submitValidForm(cdp, ".owner-form");
+    await requireDom(cdp, "invalid location timezone retains input", "document.querySelector('.alert-error')?.innerText.includes('IANA') && document.querySelectorAll('.owner-form input')[1]?.value==='Invalid/Timezone'");
+    assert.equal(responses.filter(r=>r.path.endsWith("/locations")).length,requestsBeforeInvalidLocation,"Invalid timezone must not send a create request");
     await fill(cdp, ".owner-form input[placeholder='Europe/Moscow']", BRANCH_ZONE);
     await submitValidForm(cdp, ".owner-form");
     await requireDom(cdp, "browser-created branch saved",

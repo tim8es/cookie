@@ -5,6 +5,7 @@
   import { onMount } from "svelte";
   import RecordRow from "../components/rhythm/RecordRow.svelte";
   import EmptyState from "../components/rhythm/EmptyState.svelte";
+  import EntityEditor from "../components/rhythm/EntityEditor.svelte";
   import ThemeScope from "../components/rhythm/ThemeScope.svelte";
   import type { OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
@@ -200,10 +201,13 @@
   </section>
 
   {#if loaded}
-    <section class="card owner-form-panel">
-      <form class="owner-form" onsubmit={(event) => { event.preventDefault(); void save(); }}>
+    <section class="owner-form-panel">
+      <ThemeScope>
+      <EntityEditor title="Новый филиал" description="Укажите название и часовой пояс."
+        className="owner-form" busy={saving} disabled={loading}
+        submitLabel={uncertain ? "Повторить создание" : "Создать филиал"}
+        onSubmit={() => void save()}>
         <div class="owner-form-fields">
-          <h2>Новый филиал</h2>
           <label class="field">
             Название
             <Input
@@ -235,10 +239,8 @@
         {#if uncertain}
           <p class="owner-form-note" role="status">Результат создания не подтверждён. Повторите запрос с прежними параметрами; не создавайте другой филиал до подтверждения.</p>
         {/if}
-        <Button class="owner-submit" type="submit" disabled={saving || loading}>
-          {saving ? "Сохраняем…" : uncertain ? "Повторить создание" : "Создать филиал"}
-        </Button>
-      </form>
+      </EntityEditor>
+      </ThemeScope>
     </section>
   {/if}
 </div>
