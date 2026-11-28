@@ -200,7 +200,7 @@ async function verifySharedCatalog(cdp, databaseUrl, tenantId, example) {
     await requireDom(cdp, "actual owner service form",
       "document.querySelector('.owner-form input') && " + (example
         ? "document.querySelector('.list-items')?.innerText.includes(" + JSON.stringify(example.name) + ")"
-        : "document.querySelector('.empty-mini')"));
+        : "document.querySelector('[data-component=EmptyState]')?.innerText.includes('Услуг пока нет')"));
     for (const width of [1280, 375, 320]) {
       await cdp.send("Emulation.setDeviceMetricsOverride", {
         width, height: 812, deviceScaleFactor: 1, mobile: width < 600,
