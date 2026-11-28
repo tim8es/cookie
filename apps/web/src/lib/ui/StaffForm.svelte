@@ -5,6 +5,8 @@
   import { Input } from "../components/ui/input/index.js";
   import type { Service } from "../model";
   import OwnerFormHeader from "./OwnerFormHeader.svelte";
+  import EntityEditor from "../components/rhythm/EntityEditor.svelte";
+  import ThemeScope from "../components/rhythm/ThemeScope.svelte";
 
   export let services: ReadonlyArray<Pick<Service, "id" | "name">>;
   export let locations: ReadonlyArray<{ id: string; displayName: string }> = [];
@@ -24,10 +26,7 @@
   export let onOpenServices: () => void;
 </script>
 
-<Card.Root class="owner-form-panel">
-  <form class="owner-form" onsubmit={(event) => { event.preventDefault(); if (!busy) onSubmit(); }}>
-    <OwnerFormHeader kind="staff" eyebrow="КОМАНДА / 02"
-      title="Новый специалист" description={apiMode ? "Сохраните профиль мастера и начальное назначение услуги." : "Создайте демонстрационный профиль мастера."} />
+{#snippet fields()}
     <div class="owner-form-fields">
       <label class="field">
         Псевдоним мастера
@@ -66,6 +65,31 @@
       <Info size={16} aria-hidden="true" />
       <span>{apiMode ? "Профиль и назначения сохраняются как черновики без публикации. Название должности не предоставляет системных прав." : "Для демо используйте вымышленные имена. Настоящие права доступа здесь не назначаются."}</span>
     </div>
+{/snippet}
+
+{#if apiMode}
+<section class="owner-form-panel">
+  <ThemeScope>
+    <EntityEditor title="Новый специалист" description="Сохраните профиль мастера и начальное назначение услуги."
+      className="owner-form" {busy} disabled={locations.length === 0}
+      showSubmit={services.length > 0}
+      submitLabel={locked ? "Повторить сохранение" : "Сохранить профиль"}
+      onSubmit={onSubmit}>
+      {@render fields()}
+      {#if services.length === 0}
+        <Button class="owner-submit owner-submit-secondary" variant="outline" type="button" size="lg" onclick={onOpenServices} disabled={busy || locked}>
+          Сначала добавьте услугу <ArrowUpRight size={17} aria-hidden="true" />
+        </Button>
+      {/if}
+    </EntityEditor>
+  </ThemeScope>
+</section>
+{:else}
+<Card.Root class="owner-form-panel">
+  <form class="owner-form" onsubmit={(event) => { event.preventDefault(); if (!busy) onSubmit(); }}>
+    <OwnerFormHeader kind="staff" eyebrow="КОМАНДА / 02"
+      title="Новый специалист" description={apiMode ? "Сохраните профиль мастера и начальное назначение услуги." : "Создайте демонстрационный профиль мастера."} />
+    {@render fields()}
     {#if services.length === 0}
       <Button class="owner-submit owner-submit-secondary" variant="outline" type="button" size="lg" onclick={onOpenServices}>
         Сначала добавьте услугу <ArrowUpRight size={17} aria-hidden="true" />
@@ -77,3 +101,4 @@
     {/if}
   </form>
 </Card.Root>
+{/if}
