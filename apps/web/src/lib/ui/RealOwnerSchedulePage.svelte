@@ -3,6 +3,10 @@
   import ActionButton from "../components/rhythm/ActionButton.svelte";
   import PageHeader from "../components/rhythm/PageHeader.svelte";
   import { onMount } from "svelte";
+  import EmptyState from "../components/rhythm/EmptyState.svelte";
+  import RecordRow from "../components/rhythm/RecordRow.svelte";
+  import ScheduleRow from "../components/rhythm/ScheduleRow.svelte";
+  import ThemeScope from "../components/rhythm/ThemeScope.svelte";
   import type { OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import { Button } from "../components/ui/button/index.js";
@@ -46,6 +50,15 @@
   let readError = "";
   let saveError = "";
   let notice = "";
+  let filterStaffId = "";
+  let filterLocationId = "";
+  $: staffById = new Map(staff.map(member => [member.id, member]));
+  $: locationById = new Map(locations.map(location => [location.id, location]));
+  $: visiblePlans = plans.filter(plan => (!filterStaffId || plan.staffId === filterStaffId) &&
+    (!filterLocationId || plan.locationId === filterLocationId));
+  $: visiblePublished = published.filter(shift => (!filterStaffId || shift.staffId === filterStaffId) &&
+    (!filterLocationId || shift.locationId === filterLocationId));
+  const clocks = new Map<string, Intl.DateTimeFormat>();
   $: eligibleStaff = staff.filter((member) => member.active && member.assignments.some((assignment) =>
     locations.some((location) => location.id === assignment.locationId && location.timeZone)));
   $: assignedBranches = locations.filter((location) => location.timeZone &&
@@ -140,6 +153,8 @@
       ]);
       staff = directory.staff;
       locations = branches;
+      if (!staff.some(member => member.id === filterStaffId)) filterStaffId = "";
+      if (!locations.some(location => location.id === filterLocationId)) filterLocationId = "";
       plans = result.plans;
       hasMore = result.hasMore;
       const available = staff.filter((member) => member.active && member.assignments.some((assignment) =>
@@ -201,9 +216,16 @@
 
   function displayTime(value: string, location: RealLocation | undefined): string {
     try {
-      return new Intl.DateTimeFormat("ru-RU", {
-        timeZone: location?.timeZone ?? "UTC", dateStyle: "short", timeStyle: "short",
-      }).format(new Date(value)) + " (" + (location?.timeZone ?? "UTC") + ")";
+      const zone = location?.timeZone ?? "UTC";
+      let clock = clocks.get(zone);
+      if (!clock) {
+        clock = new Intl.DateTimeFormat("ru-RU", {
+          timeZone: zone, dateStyle: "short", timeStyle: "short",
+        });
+        if (clocks.size >= 100) clocks.clear();
+        clocks.set(zone, clock);
+      }
+      return clock.format(new Date(value)) + " (" + zone + ")";
     } catch {
       return value + " (UTC)";
     }
@@ -235,33 +257,59 @@
 {#if notice}<div class="alert-ok" role="status"><p>{notice}</p></div>{/if}
 <div class="workspace-grid">
   <section class="card">
-    <div class="card-title">
-      <div><span class="eyebrow">РАСПИСАНИЕ</span><h2>Будущие черновики</h2></div>
-    </div>
-    {#if loading && !loaded}
-      <OwnerReadPlaceholder label="Загружаем смены…" />
-    {:else if loaded && plans.length === 0}
-      <div class="empty-mini"><strong>Смен пока нет</strong><p>Запланируйте первую смену.</p></div>
-    {:else if loaded}
-      <div class="list-items">
-        {#each plans as plan (plan.shiftId)}
-          <div class="schedule-summary">
-            <div class="schedule-icon" aria-hidden="true">◷</div>
-            <div>
-              <strong>{staff.find((item) => item.id === plan.staffId)?.displayName ?? "Мастер"}</strong>
-              <p>{locations.find((item) => item.id === plan.locationId)?.displayName ?? "Филиал"}</p>
-              <p>{displayTime(plan.startAt, locations.find((item) => item.id === plan.locationId))} – {displayTime(plan.endAt, locations.find((item) => item.id === plan.locationId))}</p>
-              <span class="status-pill">Черновик</span>
-              {#if canPublish}
-                <Button type="button" variant="outline" onclick={() => choosePublication(plan)}>Подготовить публикацию</Button>
-              {/if}
-            </div>
+    <ThemeScope>
+      {#if loaded && !loading}
+        <div class="rhythm-stack schedule-directory" aria-label="Фильтры расписания">
+          <label class="field">Мастер
+            <select bind:value={filterStaffId}>
+              <option value="">Все мастера</option>
+              {#each staff as member (member.id)}<option value={member.id}>{member.displayName}</option>{/each}
+            </select>
+          </label>
+          <label class="field">Филиал
+            <select bind:value={filterLocationId}>
+              <option value="">Все филиалы</option>
+              {#each locations as location (location.id)}<option value={location.id}>{location.displayName}</option>{/each}
+            </select>
+          </label>
+          {#if filterStaffId || filterLocationId}
+            <ActionButton onclick={() => { filterStaffId = ""; filterLocationId = ""; }}>Сбросить фильтры</ActionButton>
+          {/if}
+          <p class="rhythm-muted" role="status">Черновики: {visiblePlans.length} из {plans.length}{#if !publicationError}. Опубликованные: {visiblePublished.length} из {published.length}{/if}</p>
+        </div>
+      {/if}
+      <div class="card-title"><h2>Будущие черновики</h2></div>
+      {#if loading}
+        <OwnerReadPlaceholder label="Загружаем смены…" />
+      {:else if loaded && plans.length === 0}
+        <EmptyState title="Смен пока нет" description="Запланируйте первую смену." />
+      {:else if loaded}
+        {#if visiblePlans.length === 0}
+          <EmptyState title="Черновики не найдены" description="Измените фильтры." />
+        {:else}
+          <div class="list-items">
+            {#each visiblePlans as plan (plan.shiftId)}
+              <div class="schedule-summary">
+                <div style="min-width: 0; width: 100%">
+                  <RecordRow record={{
+                    title: staffById.get(plan.staffId)?.displayName ?? "Мастер",
+                    subtitle: (locationById.get(plan.locationId)?.displayName ?? "Филиал") + " · " + displayTime(plan.startAt, locationById.get(plan.locationId)) + " – " + displayTime(plan.endAt, locationById.get(plan.locationId)),
+                    detail: "Черновик",
+                  }}>
+                    {#snippet action()}
+                      {#if canPublish}
+                        <ActionButton onclick={() => choosePublication(plan)}>Подготовить публикацию</ActionButton>
+                      {/if}
+                    {/snippet}
+                  </RecordRow>
+                </div>
+              </div>
+            {/each}
           </div>
-        {/each}
-      </div>
-      {#if hasMore}<p role="status">Показаны ближайшие 200 смен. Более поздние черновики не входят в текущую выдачу.</p>{/if}
-    {/if}
-    {#if loaded}
+        {/if}
+        {#if hasMore}<p role="status">Показаны ближайшие 200 смен. Более поздние черновики не входят в текущую выдачу.</p>{/if}
+      {/if}
+    {#if loaded && !loading}
       <p class="owner-form-note">Публикация возможна только в разрешённом тестовом контуре для активированного мастера.</p>
       {#if publicationError}<div class="alert-error" role="alert"><p>{publicationError}</p></div>{/if}
       {#if selectedPublication}
@@ -278,18 +326,23 @@
       {#if published.length === 0 && !publicationError}
         <p>Нет опубликованных смен.</p>
       {/if}
-      {#each published as shift (shift.shiftId)}
+      {#if published.length > 0 && visiblePublished.length === 0}
+        <EmptyState title="Опубликованные смены не найдены" description="Измените фильтры." />
+      {/if}
+      {#each visiblePublished as shift (shift.shiftId)}
         <div class="schedule-summary">
-          <div>
-            <strong>{staff.find((item) => item.id === shift.staffId)?.displayName ?? "Мастер"}</strong>
-            <p>{locations.find((item) => item.id === shift.locationId)?.displayName ?? "Филиал"}</p>
-            <p>{displayTime(shift.startAt, locations.find((item) => item.id === shift.locationId))} – {displayTime(shift.endAt, locations.find((item) => item.id === shift.locationId))}</p>
-            <span class="status-pill">Опубликована в тестовом контуре</span>
+          <div style="min-width: 0; width: 100%">
+            <ScheduleRow schedule={{
+              label: staffById.get(shift.staffId)?.displayName ?? "Мастер",
+              period: (locationById.get(shift.locationId)?.displayName ?? "Филиал") + " · " + displayTime(shift.startAt, locationById.get(shift.locationId)) + " – " + displayTime(shift.endAt, locationById.get(shift.locationId)),
+              status: "Опубликована в тестовом контуре",
+            }} />
           </div>
         </div>
       {/each}
       {#if publishedHasMore}<p role="status">Показаны ближайшие 200 опубликованных смен.</p>{/if}
     {/if}
+    </ThemeScope>
   </section>
   {#if loaded}
     <Card.Root class="owner-form-panel">
