@@ -1284,6 +1284,11 @@ async function main() {
     await fill(cdp,".owner-calendar input[type=date]",date,"change");
     await requireDom(cdp,"calendar reads persisted Booking","document.querySelector('[aria-label=\"Записи за выбранный период\"]')?.innerText.includes('Synthetic E2E Edited Service') && document.querySelector('.status-pill')?.innerText.includes('Подтверждена')");
     await requireDom(cdp,"day uses real staff resource group","document.querySelector('.owner-calendar-group h3')?.innerText==='Synthetic E2E Staff' && document.querySelectorAll('.owner-calendar-group').length===1");
+    await evaluate(cdp,"(()=>{const b=document.querySelector('.owner-timeline-toggle');if(b?.getAttribute('aria-expanded')==='false')b.click();})()");
+    await requireDom(cdp,"real day timeline contains persisted booking","document.querySelectorAll('.owner-day-timeline .owner-timeline-button').length===1 && document.querySelector('.owner-timeline-button')?.getAttribute('aria-label')?.includes('Synthetic E2E Edited Service')");
+    await evaluate(cdp,"document.querySelector('.owner-timeline-button').click()");
+    await requireDom(cdp,"timeline opens protected existing detail","document.querySelector('.owner-booking-detail dl')?.innerText.includes("+JSON.stringify(bookingId)+")");
+    await checkWidth(cdp,"real day timeline");
     await button(cdp,"Неделя");
     await requireDom(cdp,"week reads persisted Booking","document.querySelector('[aria-label=\"Записи за выбранный период\"]')?.innerText.includes('Synthetic E2E Staff')");
     await requireDom(cdp,"seven local day groups without duplicate booking","document.querySelectorAll('.owner-calendar-group').length===7 && document.querySelectorAll('.owner-calendar-group [data-booking-id]').length===1");
@@ -1779,6 +1784,7 @@ async function main() {
     await requireDom(cdp,"owner Calendar unknown move never shown as success",
       ownerEditRoot+"?.innerText.includes('Результат переноса неизвестен')&&[..."+ownerEditRoot+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)");
     assert.equal(ownerMoveRequests,1,"Unknown owner move must not auto-retry");
+    await requireDom(cdp,"unknown move locks calendar navigation","document.querySelector('.owner-calendar select')?.disabled && document.querySelector('.owner-calendar input[type=date]')?.disabled && [...document.querySelectorAll('.owner-calendar .calendar-move button,.owner-calendar .segmented button')].every(b=>b.disabled) && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Обновить'&&b.disabled)");
 
     const ownerMoved=await pool.query(
       "SELECT start_at,status,price_kopecks_snapshot::text AS price,staff_id::text AS staff,service_id::text AS service,location_id::text AS location FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
@@ -1824,6 +1830,7 @@ async function main() {
     await requireDom(cdp,"owner Calendar refreshed only after acknowledged same-key move",
       "(()=>{const root="+ownerEditRoot+";return root?.querySelector('button[aria-expanded=false]')&&!root?.querySelector('.owner-calendar-move')})()");
     assert.equal(ownerMoveRequests,2,"Owner move must retry exactly once after explicit confirmation");
+    await requireDom(cdp,"confirmed move unlocks calendar navigation","document.querySelector('.owner-calendar select')?.disabled===false && document.querySelector('.owner-calendar input[type=date]')?.disabled===false");
     const keys=await evaluate(cdp,"window.__kukiOwnerMoveKeys");
     assert.equal(keys.length,4,"Capture initial, two rejected and final real replay attempts");
     assert.equal(typeof keys[0],"string");
@@ -1862,6 +1869,7 @@ async function main() {
     );
     assert.deepEqual(ownerCommitted.rows,[{status:"CancelledByBusiness",price:"125050"}]);
     assert.equal(ownerCancellationRequests,1,"Unknown owner result may not spontaneously retry");
+    await requireDom(cdp,"unknown cancellation retains calendar navigation lock","document.querySelector('.owner-calendar select')?.disabled && document.querySelector('.owner-calendar input[type=date]')?.disabled && [...document.querySelectorAll('.owner-calendar .calendar-move button,.owner-calendar .segmented button')].every(b=>b.disabled)");
     const cancellationEffects=async()=> (await pool.query(
       "SELECT (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.cancel') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.cancelled' AND payload->>'bookingId'=$2::text) AS events",
       [owner.tenantId,bookingId],
@@ -1894,6 +1902,7 @@ async function main() {
     await evaluate(cdp,clickCancellationRetry);
     await requireDom(cdp,"owner calendar refreshed after acknowledged same-key receipt",
       "(()=>{const rows=[...document.querySelectorAll('[aria-label=\"Записи за выбранный период\"] .schedule-summary')];return rows.some(r=>r.querySelector('.owner-booking-detail[data-booking-id="+JSON.stringify(bookingId)+"]')&&r.querySelector('.status-pill')?.textContent==='Отменена салоном')})()");
+    await requireDom(cdp,"confirmed cancellation unlocks calendar navigation","document.querySelector('.owner-calendar select')?.disabled===false && document.querySelector('.owner-calendar input[type=date]')?.disabled===false");
     const ownerEffects=await pool.query(
       "SELECT (SELECT count(*)::int FROM cookie_booking.booking_state_audit WHERE tenant_id=$1::uuid AND booking_id=$2::uuid) AS audits,(SELECT count(*)::int FROM cookie_booking.command_receipts WHERE tenant_id=$1::uuid AND booking_id=$2::uuid AND operation='booking.cancel') AS receipts,(SELECT count(*)::int FROM cookie_jobs.outbox_events WHERE tenant_id=$1::uuid AND topic='booking.cancelled' AND payload->>'bookingId'=$2::text) AS events",
       [owner.tenantId,bookingId],

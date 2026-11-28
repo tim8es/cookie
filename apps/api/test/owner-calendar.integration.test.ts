@@ -127,6 +127,8 @@ test(
         localDate: "2027-03-14",
         days: 1,
         timeZone: "America/New_York",
+        rangeStartAt: "2027-03-14T05:00:00.000Z",
+        rangeEndAt: "2027-03-15T04:00:00.000Z",
         entries: [],
       });
       const foreign = await app.inject({
