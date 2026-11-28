@@ -166,9 +166,9 @@ export async function readOwnerCalendar(
         throw new Error("invalid range");
       }
       for (const item of data.entries) {
-        if (Date.parse(item.startAt) >= end || Date.parse(item.endAt) <= start) {
-          throw new Error("entry outside range");
-        }
+        const startsOutside = Date.parse(item.startAt) >= end;
+        const endsOutside = Date.parse(item.endAt) <= start;
+        if (startsOutside || endsOutside) throw new Error("entry outside range");
       }
     }
     return {
