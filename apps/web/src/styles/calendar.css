@@ -313,3 +313,41 @@
   .calendar-demo-actions { flex-direction: column; }
   .calendar-demo-actions button[data-slot=button] { flex-basis: auto; width: 100%; }
 }
+
+
+/* RC9.4 real day timeline: elapsed server minutes, not availability. */
+.owner-calendar .owner-timeline-toggle { min-height: 44px; margin-block: 8px; }
+.owner-day-timeline { min-width: 0; max-width: 100%; margin-block: 8px 16px; }
+.owner-day-timeline .rhythm-scroll-area { min-width: 0; max-width: 100%; overflow-x: auto; }
+.owner-timeline-grid { display: grid; min-width: max-content; align-items: stretch; }
+.owner-timeline-heading {
+  min-width: 0; padding: 10px; margin: 0; font-size: 13px;
+  font-weight: 650; overflow-wrap: anywhere; background: var(--card);
+  border-bottom: 1px solid var(--border); border-inline-end: 1px solid var(--border);
+}
+.owner-timeline-axis, .owner-timeline-lane {
+  position: relative; min-width: 0; border-inline-end: 1px solid var(--border);
+}
+.owner-timeline-axis span {
+  position: absolute; inset-inline-start: 6px; font-size: 11px;
+  color: var(--muted-foreground); line-height: 1.25;
+}
+.owner-timeline-lane {
+  background: repeating-linear-gradient(to bottom, var(--border) 0, var(--border) 1px, transparent 1px, transparent 60px);
+}
+.owner-timeline-event { position: absolute; padding-inline: 4px; box-sizing: border-box; }
+.owner-timeline-duration {
+  position: absolute; inset-inline-start: 1px; top: 0; width: 3px;
+  background: var(--primary); border-radius: var(--cookie-radius-control);
+}
+.owner-timeline-event .owner-timeline-button[data-slot=button] {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start;
+  gap: 1px; width: 100%; height: 100%; min-height: 44px; padding: 3px 7px;
+  overflow: hidden; text-align: start; line-height: 1.2; font-size: 11px;
+  border-radius: var(--cookie-radius-control); background: var(--secondary);
+}
+.owner-timeline-button span, .owner-timeline-button strong {
+  display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.owner-timeline-button .owner-timeline-status { color: var(--muted-foreground); }
+.owner-timeline-event:focus-within { z-index: 1; }

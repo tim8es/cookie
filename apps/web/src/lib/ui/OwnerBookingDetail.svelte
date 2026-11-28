@@ -113,11 +113,9 @@
     return field("year") + "-" + field("month") + "-" + field("day");
   }
 
-  function slotTime(value: string, zone: string): string {
-    return new Intl.DateTimeFormat("ru-RU", {
-      timeZone: zone, hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset",
-    }).format(new Date(value));
-  }
+  $: slotClock = moveSlots ? new Intl.DateTimeFormat("ru-RU", {
+    timeZone: moveSlots.timeZone, hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset",
+  }) : null;
 
   function closeMove(): void {
     if (moveBusy || moveUncertain) return;
@@ -347,7 +345,7 @@
                     onchange={(event) => { moveSlotId = event.currentTarget.value; moveSlotsError = ""; }}>
                     <option value="">Выберите время</option>
                     {#each moveSlots.slots as slot (slot.startAt)}
-                      <option value={slot.startAt}>{slotTime(slot.startAt, moveSlots.timeZone)} — {slotTime(slot.endAt, moveSlots.timeZone)}</option>
+                      <option value={slot.startAt}>{slotClock?.format(new Date(slot.startAt))} — {slotClock?.format(new Date(slot.endAt))}</option>
                     {/each}
                   </select>
                 </label>

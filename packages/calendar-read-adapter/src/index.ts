@@ -70,6 +70,8 @@ export interface OwnerCalendar {
   readonly localDate: string;
   readonly days: 1 | 7;
   readonly timeZone: string;
+  readonly rangeStartAt: string;
+  readonly rangeEndAt: string;
   readonly entries: readonly CalendarResourceEntry[];
 }
 
@@ -123,6 +125,8 @@ export async function readOwnerCalendar(
   return {
     ...input,
     timeZone,
+    rangeStartAt: new Date(from).toISOString(),
+    rangeEndAt: new Date(to).toISOString(),
     entries: result.rows.map((row) => ({
       id: row.id,
       status: row.status,
