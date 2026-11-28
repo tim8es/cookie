@@ -189,18 +189,15 @@ function intersects(
   return leftStart < right.end && right.start < leftEnd;
 }
 
-function availableAt(prepared: Prepared, start: number): AvailableSlot | null {
+/** A caller must already prove membership in a fitting shift's grid. */
+function availableGridCandidate(
+  prepared: Prepared,
+  start: number,
+): AvailableSlot | null {
   const end = start + prepared.durationMs;
   const occupiedUntil = start + prepared.occupiedDurationMs;
   if (localDateAt(prepared.dateFormatter, start) !== prepared.request.localDate)
     return null;
-  const fittingShift = prepared.shifts.some(
-    (shift) =>
-      start >= shift.start &&
-      occupiedUntil <= shift.end &&
-      (start - shift.start) % prepared.stepMs === 0,
-  );
-  if (!fittingShift) return null;
   if (
     prepared.unavailable.some((interval) =>
       intersects(start, occupiedUntil, interval),
@@ -215,6 +212,18 @@ function availableAt(prepared: Prepared, start: number): AvailableSlot | null {
   };
 }
 
+function availableAt(prepared: Prepared, start: number): AvailableSlot | null {
+  const occupiedUntil = start + prepared.occupiedDurationMs;
+  const fittingShift = prepared.shifts.some(
+    (shift) =>
+      start >= shift.start &&
+      occupiedUntil <= shift.end &&
+      (start - shift.start) % prepared.stepMs === 0,
+  );
+  if (!fittingShift) return null;
+  return availableGridCandidate(prepared, start);
+}
+
 /**
  * Read-side provisional slots only. Callers must authorize/tenant-scope reads,
  * and re-check every mutable condition under the same DB transaction as create.
@@ -223,6 +232,7 @@ export function listAvailableSlots(
   request: AvailabilityRequest,
 ): AvailableSlot[] {
   const prepared = prepare(request);
+  const seen = new Set<number>();
   const slots = new Map<number, AvailableSlot>();
   for (const shift of prepared.shifts) {
     for (
@@ -230,7 +240,12 @@ export function listAvailableSlots(
       start + prepared.occupiedDurationMs <= shift.end;
       start += prepared.stepMs
     ) {
-      const slot = availableAt(prepared, start);
+      // The loop proves grid membership and full occupancy fit in this
+      // shift. Neither date filtering nor busy checks depend on which
+      // fitting shift supplied the candidate, even when it is unavailable.
+      if (seen.has(start)) continue;
+      seen.add(start);
+      const slot = availableGridCandidate(prepared, start);
       if (slot) slots.set(start, slot);
     }
   }
