@@ -13,6 +13,7 @@ import {
 } from "../../../packages/platform-identity/src/index.js";
 import type { StagingPublicationDependencies } from "./staging-publication-http.js";
 import { verifyTenantActor } from "./session-context.js";
+import { stagingBookingTransportError } from "./staging-booking-transport.js";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -140,6 +141,7 @@ export function registerStagingCustomerReschedule(
   );
   app.post<{ Params: { tenantId: string; bookingId: string } }>(
     "/v1/organizations/:tenantId/staging-customer-reschedule/:bookingId",
+    { errorHandler: stagingBookingTransportError },
     async (request, reply) => {
       privacy(reply);
       const verified = await verifyTenantActor(
