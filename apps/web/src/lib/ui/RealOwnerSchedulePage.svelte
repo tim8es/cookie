@@ -256,7 +256,7 @@
 {#if saveError}<div class="alert-error" role="alert"><p>{saveError}</p></div>{/if}
 {#if notice}<div class="alert-ok" role="status"><p>{notice}</p></div>{/if}
 <div class="workspace-grid">
-  <section class="card">
+  <section class="card schedule-directory-panel">
     <ThemeScope>
       {#if loaded && !loading}
         <div class="rhythm-stack schedule-directory" aria-label="Фильтры расписания">
@@ -290,7 +290,7 @@
           <div class="list-items">
             {#each visiblePlans as plan (plan.shiftId)}
               <div class="schedule-summary">
-                <div style="min-width: 0; width: 100%">
+                <div class="schedule-record-content">
                   <RecordRow record={{
                     title: staffById.get(plan.staffId)?.displayName ?? "Мастер",
                     subtitle: (locationById.get(plan.locationId)?.displayName ?? "Филиал") + " · " + displayTime(plan.startAt, locationById.get(plan.locationId)) + " – " + displayTime(plan.endAt, locationById.get(plan.locationId)),
@@ -331,7 +331,7 @@
       {/if}
       {#each visiblePublished as shift (shift.shiftId)}
         <div class="schedule-summary">
-          <div style="min-width: 0; width: 100%">
+          <div class="schedule-record-content">
             <ScheduleRow schedule={{
               label: staffById.get(shift.staffId)?.displayName ?? "Мастер",
               period: (locationById.get(shift.locationId)?.displayName ?? "Филиал") + " · " + displayTime(shift.startAt, locationById.get(shift.locationId)) + " – " + displayTime(shift.endAt, locationById.get(shift.locationId)),
@@ -383,3 +383,29 @@
 {#if loaded && publicationReady}
   <StagingAvailabilityPanel {session} fetcher={reads.fetch} {staff} {locations} disabled={loading || saving || publishing} />
 {/if}
+
+<style>
+  .schedule-directory-panel,
+  .schedule-record-content,
+  .schedule-directory,
+  .schedule-directory .field {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .schedule-record-content { width: 100%; }
+  .schedule-directory { grid-template-columns: minmax(0, 1fr); }
+  .schedule-directory select {
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .schedule-directory-panel :global(button) {
+    min-width: 0;
+    max-width: 100%;
+    height: auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+</style>
