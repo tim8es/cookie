@@ -6,6 +6,7 @@
   import { branchToday, type OwnerReads } from "../owner-reads";
   import OwnerReadPlaceholder from "./OwnerReadPlaceholder.svelte";
   import OwnerBookingDetail from "./OwnerBookingDetail.svelte";
+  import OwnerCalendarTimeline from "./OwnerCalendarTimeline.svelte";
   import { Button } from "../components/ui/button/index.js";
   import { Input } from "../components/ui/input/index.js";
   import type { VerifiedOwnerSession } from "../owner-auth";
@@ -26,6 +27,21 @@
   let requestNumber = 0;
   let mounted = false;
   let expired = false;
+  let showTimeline = false;
+  let calendarRoot: HTMLElement;
+
+  function openTimelineBooking(id: string): void {
+    if (!data?.entries.some((entry) => entry.id === id) || expired || loading) return;
+    const detail = calendarRoot.querySelector<HTMLElement>(
+      '[data-booking-id="' + id + '"]',
+    );
+    const trigger = detail?.querySelector<HTMLButtonElement>("button[aria-expanded]");
+    if (!trigger) return;
+    detail?.scrollIntoView({ block: "nearest" });
+    if (trigger.disabled) return;
+    trigger.focus();
+    if (trigger.getAttribute("aria-expanded") === "false") trigger.click();
+  }
   $: groups = data ? groupCalendar(data) : [];
   $: calendarClock = data && new Intl.DateTimeFormat("ru-RU", {
     timeZone: data.timeZone, dateStyle: "short", timeStyle: "short",
@@ -131,6 +147,7 @@
 
   onMount(() => {
     mounted = true;
+    showTimeline = window.matchMedia("(min-width: 901px)").matches;
     const timer = window.setTimeout(expire, Math.max(0, session.expiresAtUnixSeconds * 1000 - Date.now()));
     void load();
     return () => {
@@ -147,7 +164,7 @@
   {/snippet}
 </PageHeader>
 
-<section class="card owner-calendar" aria-label="Календарь записей владельца">
+<section bind:this={calendarRoot} class="card owner-calendar" aria-label="Календарь записей владельца">
   {#if branches.length}
     <div class="owner-form-fields">
       <label class="field">Филиал
@@ -180,6 +197,14 @@
     {#if !data.entries.length}
       <div class="empty-mini"><strong>За выбранный период записей нет</strong><p>Это не означает, что всё время доступно для бронирования.</p></div>
     {:else}
+      {#if data.days === 1 && data.rangeStartAt && data.rangeEndAt}
+        <Button type="button" variant="outline" class="owner-timeline-toggle" aria-expanded={showTimeline} onclick={() => { showTimeline = !showTimeline; }}>
+          {showTimeline ? "Скрыть сетку" : "Показать сетку"}
+        </Button>
+        {#if showTimeline}
+          <OwnerCalendarTimeline {data} onOpen={openTimelineBooking} />
+        {/if}
+      {/if}
       <div class="list-items owner-calendar-groups" aria-label="Записи за выбранный период">
         {#each groups as group (group.id)}
           <section class="owner-calendar-group">
