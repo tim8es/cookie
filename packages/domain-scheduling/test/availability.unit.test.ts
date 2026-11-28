@@ -257,7 +257,7 @@ test("empty working hours return no slots, not invented availability", () => {
   assert.deepEqual(listAvailableSlots({ ...empty, shifts: [] }), []);
 });
 
-test("distinct fitting grids preserve single-start semantics across overlapping shifts", () => {
+test("overlapping grids preserve single-start evaluation semantics", () => {
   const request: AvailabilityRequest = {
     ...empty,
     serviceDurationMinutes: 20,
@@ -296,14 +296,16 @@ test("distinct fitting grids preserve single-start semantics across overlapping 
   assert.deepEqual(actual, expected);
   assert.ok(actual.some((slot) => slot.startAt === "2026-11-15T10:30:00.000Z"));
   assert.ok(actual.some((slot) => slot.startAt === "2026-11-15T11:17:00.000Z"));
-  assert.ok(!actual.some((slot) => slot.startAt === "2026-11-15T10:02:00.000Z"));
+  assert.ok(
+    !actual.some((slot) => slot.startAt === "2026-11-15T10:02:00.000Z"),
+  );
   assert.deepEqual(
     listAvailableSlots({ ...request, shifts: [...request.shifts].reverse() }),
     actual,
   );
 });
 
-test("repeated shifts preserve a bounded preview's sorted unique result", () => {
+test("repeated shifts preserve the sorted unique preview", () => {
   const request: AvailabilityRequest = {
     ...empty,
     localDate: "2026-11-01",
@@ -319,8 +321,12 @@ test("repeated shifts preserve a bounded preview's sorted unique result", () => 
     ],
   };
   const baseline = listAvailableSlots(request);
-  assert.ok(baseline.some((slot) => slot.startAt === "2026-11-01T06:15:00.000Z"));
-  assert.ok(!baseline.some((slot) => slot.startAt === "2026-11-01T05:15:00.000Z"));
+  assert.ok(
+    baseline.some((slot) => slot.startAt === "2026-11-01T06:15:00.000Z"),
+  );
+  assert.ok(
+    !baseline.some((slot) => slot.startAt === "2026-11-01T05:15:00.000Z"),
+  );
   assert.deepEqual(
     listAvailableSlots({
       ...request,
