@@ -344,6 +344,7 @@ async function verifyDemoBookingLifecycle(cdp, origin, state, databaseUrl, tenan
   await requireDom(cdp, "same booking after new client authentication",
     history + "?.innerText.includes(" + JSON.stringify(id) + ")");
   localStagingPhase = "cancel synthetic booking from client UI";
+  await pressButton(cdp, "Открыть запись");
   await pressButton(cdp, "Отменить запись");
   await pressButton(cdp, "Подтвердить отмену");
   await requireDom(cdp, "client cancellation on real runtime",

@@ -37,6 +37,11 @@
   let uncertain = false;
   let message = "";
   let filter: HistoryFilter = "all";
+  let selectedBookingId: string | null = null;
+  function toggleBooking(id: string): void {
+    if (busy || cancellationBusy || moveBusy || pending || moveBookingId || movePending) return;
+    selectedBookingId = selectedBookingId === id ? null : id;
+  }
   $: filterLocked = busy || cancellationBusy || moveBusy || !!pending || !!moveBookingId || !!movePending;
   $: filterOptions = [
     { id: "all", label: "Все", disabled: filterLocked },
@@ -46,7 +51,10 @@
   $: visibleBookings = filterOwnBookings(data?.bookings ?? [], filter);
   function selectFilter(id: string): void {
     if (busy || cancellationBusy || moveBusy || pending || moveBookingId || movePending) return;
-    if (id === "all" || id === "confirmed" || id === "cancelled") filter = id;
+    if (id === "all" || id === "confirmed" || id === "cancelled") {
+      filter = id;
+      selectedBookingId = null;
+    }
   }
   const historyClocks = new Map<string, Intl.DateTimeFormat>();
   const priceFormatter = new Intl.NumberFormat("ru-RU");
@@ -176,6 +184,7 @@
       await cancelOwnBooking(session, attempt.bookingId, attempt.key);
       if (!mounted) return;
       pending = null; uncertain = false;
+      filter = "all";
       message = "Запись отменена сервером. Для новой записи обновите свободное время.";
       await refresh();
     } catch (reason) {
@@ -224,6 +233,7 @@
       if (uncertain && pending && !cancellationBusy && result.bookings.some(row => row.bookingId === pending?.bookingId && row.status === "CancelledByClient")) {
         pending = null;
         uncertain = false;
+        filter = "all";
         message = "В списке сервера запись отменена клиентом.";
       }
       onHistory(result);
@@ -291,13 +301,39 @@
         {:else}
       <ul class="customer-history">
         {#each visibleBookings as booking (booking.bookingId)}
-          <li>
+          <li data-booking-id={booking.bookingId}>
             <div class="history-heading"><strong>{booking.serviceName}</strong><span>{statuses[booking.status]}</span></div>
             <p>{booking.staffName} · {booking.locationName}</p>
             <p><time datetime={booking.startAt}>{time(booking.startAt, booking.timeZone)}</time> — <time datetime={booking.endAt}>{time(booking.endAt, booking.timeZone)}</time></p>
             {#if !booking.timeZone}<p>Часовой пояс филиала не задан; показано UTC.</p>{/if}
             <p>Стоимость записи: {price(booking.priceKopecks)}</p>
             <p class="history-id">Номер: {booking.bookingId}</p>
+            <Button type="button" variant="outline" disabled={filterLocked}
+              aria-label={(selectedBookingId === booking.bookingId ? "Закрыть запись: " : "Открыть запись: ") + booking.serviceName + ", " + time(booking.startAt, booking.timeZone)}
+              aria-expanded={selectedBookingId === booking.bookingId}
+              aria-controls={"customer-visit-" + booking.bookingId}
+              onclick={() => toggleBooking(booking.bookingId)}>
+              {selectedBookingId === booking.bookingId ? "Закрыть запись" : "Открыть запись"}
+            </Button>
+            <div id={"customer-visit-" + booking.bookingId} hidden={selectedBookingId !== booking.bookingId}
+              class="history-detail" role="group" aria-label="Управление записью">
+            {#if selectedBookingId === booking.bookingId}
+              <h3>Управление визитом</h3>
+              {#if booking.status !== "Confirmed"}
+                <p>Запись имеет статус «{statuses[booking.status]}». Отмена и перенос недоступны.</p>
+              {:else}
+                {#if cutoff === null}
+                  <p>Отмена недоступна в текущем контуре.</p>
+                {:else if Date.parse(booking.startAt) <= Date.now() + cutoff * 60000}
+                  <p>Срок для самостоятельной отмены истёк.</p>
+                {/if}
+                {#if moveCutoff === null || !booking.timeZone}
+                  <p>Самостоятельный перенос недоступен.</p>
+                {:else if Date.parse(booking.startAt) <= Date.now() + moveCutoff * 60000}
+                  <p>Срок для самостоятельного переноса истёк.</p>
+                {/if}
+                <p>Перенос меняет только дату и время. Услуга, мастер, филиал и стоимость сохраняются. Если действие недоступно, обратитесь в салон.</p>
+              {/if}
             {#if pending?.bookingId === booking.bookingId && !uncertain}
               <p>Отменить эту запись? Время снова станет свободным, если его не занимает другая запись.</p>
               <Button type="button" disabled={cancellationBusy} onclick={() => void confirmCancellation()}>Подтвердить отмену</Button>
@@ -343,6 +379,8 @@
                 {/if}
               {/if}
             {/if}
+            {/if}
+            </div>
           </li>
         {/each}
       </ul>
@@ -363,4 +401,7 @@
   .customer-history p { margin: 0; }
   .history-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; justify-content: space-between; }
   .history-heading span, .history-id { font-size: .875rem; }
+  .history-detail:not([hidden]) { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); min-width: 0; }
+  .history-detail h3 { font-size: 1rem; margin: 0; }
+  .customer-history :global(button) { min-width: 0; max-width: 100%; height: auto; white-space: normal; overflow-wrap: anywhere; }
 </style>
