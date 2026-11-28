@@ -18,6 +18,11 @@
   let mounted = true;
   let historyVersion = 0;
   let historySnapshot: OwnBookingHistory | null = null;
+  let offersPanel: StagingCustomerOffers | undefined;
+  let historyPanel: StagingCustomerHistory | undefined;
+  let newBookingAvailable = false;
+  let creationUnresolved = false;
+  let historyMutationPending = false;
   function created(): void {
     historySnapshot = null;
     historyVersion++;
@@ -111,9 +116,16 @@
 </Card.Root>
 
 {#if phase === "verified" && session}
-  <StagingCustomerOffers {session} {historySnapshot} onUnauthorized={denyContext} onConfirmed={created} />
+  <StagingCustomerOffers bind:this={offersPanel} {session} {historySnapshot}
+    bind:newBookingAvailable bind:creationUnresolved {historyMutationPending}
+    canStartCreate={() => !!historyPanel && !historyPanel.hasPendingMutation()}
+    onUnauthorized={denyContext} onConfirmed={created} />
   {#key historyVersion}
-    <StagingCustomerHistory {session} onUnauthorized={denyContext} onHistory={value => historySnapshot = value} />
+    <StagingCustomerHistory bind:this={historyPanel} {session} {newBookingAvailable} {creationUnresolved}
+      bind:mutationPending={historyMutationPending}
+      canStartHistoryMutation={() => !!offersPanel && !offersPanel.hasUnresolvedCreation()}
+      onNewBooking={() => void offersPanel?.startNewFromHistory()}
+      onUnauthorized={denyContext} onHistory={value => historySnapshot = value} />
   {/key}
 {/if}
 
