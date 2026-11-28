@@ -37,6 +37,7 @@
   let generation = 0;
   let mounted = true;
   let bookingEnabled = false;
+  let initializing = true;
   let blocked = false;
   let storageKey = "";
   let recoveryBusy = false;
@@ -50,11 +51,11 @@
   let bookingLayout: BookingLayout | undefined;
   let step: "service" | "staff" | "time" | "review" = "service";
   $: disposition = bookingState.phase === "confirmed" ? receiptDisposition(bookingState.receipt, historySnapshot) : "unverified";
-  $: creationUnresolved = recoveryBusy || blocked || bookingState.phase === "submitting" || bookingState.phase === "error";
+  $: creationUnresolved = initializing || recoveryBusy || blocked || bookingState.phase === "submitting" || bookingState.phase === "error";
   $: newBookingAvailable = bookingEnabled && !busy && !creationUnresolved && !historyMutationPending && (bookingState.phase === "idle" || bookingState.phase === "confirmed");
   $: locked = creationUnresolved || bookingState.phase === "confirmed";
   export function hasUnresolvedCreation(): boolean {
-    return recoveryBusy || blocked || bookingState.phase === "submitting" || bookingState.phase === "error";
+    return initializing || recoveryBusy || blocked || bookingState.phase === "submitting" || bookingState.phase === "error";
   }
   async function initialize(): Promise<void> {
     bookingEnabled = await canCreateCustomerBooking(session);
@@ -64,6 +65,7 @@
       try { blocked = sessionStorage.getItem(storageKey) !== null; }
       catch { blocked = true; }
     }
+    initializing = false;
     await refresh();
   }
   function clearPending(): void {
