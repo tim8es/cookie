@@ -103,21 +103,31 @@ export function createSendmailAuthTransport(
       await new Promise<void>((resolve, reject) => {
         const child = spawn(executable, ["-i", "-f", fromAddress, "-t"], {
           shell: false,
+          // On POSIX, contain the submission and its ordinary helpers.
+          detached: process.platform !== "win32",
           stdio: ["pipe", "ignore", "ignore"],
           env: { PATH: "/usr/sbin:/usr/bin:/sbin:/bin" },
         });
         let failed = false;
-        const timer = setTimeout(() => {
+        const stop = () => {
+          if (failed) return;
           failed = true;
+          // Do not signal a group after its direct child has exited.
+          // A successful MTA may legitimately hand off to a background daemon.
+          if (child.exitCode !== null || child.signalCode !== null) return;
+          if (process.platform !== "win32" && child.pid && child.pid > 0) {
+            try {
+              process.kill(-child.pid, "SIGKILL");
+              return;
+            } catch {
+              // Group creation failed or the process already exited.
+            }
+          }
           child.kill("SIGKILL");
-        }, timeoutMs);
-        child.on("error", () => {
-          failed = true;
-        });
-        child.stdin.on("error", () => {
-          failed = true;
-          child.kill("SIGKILL");
-        });
+        };
+        const timer = setTimeout(stop, timeoutMs);
+        child.on("error", stop);
+        child.stdin.on("error", stop);
         child.once("close", (code) => {
           clearTimeout(timer);
           if (failed || code !== 0) {

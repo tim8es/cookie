@@ -145,3 +145,44 @@ test(
     }
   },
 );
+
+test(
+  "sendmail timeout terminates ordinary POSIX descendants",
+  { skip: process.platform === "win32" },
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "kuki-mail-group-"));
+    try {
+      const executable = join(dir, "synthetic-sendmail");
+      const script = [
+        "#!/bin/sh",
+        "cat >/dev/null",
+        '( sleep 2; printf late > "$0.late" ) &',
+        'printf started > "$0.started"',
+        "wait",
+        "",
+      ].join("\n");
+      await writeFile(executable, script, { mode: 0o700 });
+      const transport = createSendmailAuthTransport({
+        executable,
+        fromAddress: "auth@example.invalid",
+        timeoutMs: 1000,
+      });
+      const delivery = createAuthMailDelivery(links, transport);
+      await assert.rejects(
+        delivery.send("registration", {
+          address: recipient,
+          token: regToken,
+        }),
+        /^Error: Authentication mail submission failed$/,
+      );
+      // Ensure the fixture actually entered the descendant-spawn path.
+      const started = await readFile(executable + ".started", "utf8");
+      assert.equal(started, "started");
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const lateMarker = executable + ".late";
+      await assert.rejects(readFile(lateMarker), { code: "ENOENT" });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
