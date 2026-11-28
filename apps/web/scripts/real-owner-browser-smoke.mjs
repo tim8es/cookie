@@ -773,6 +773,8 @@ async function main() {
     await waitForm(cdp, "real service form");
     await checkWidth(cdp, "real services 375px");
     await checkLabeledControls(cdp, "real service form");
+    await requireDom(cdp, "shared service editor", "document.querySelector('form[data-component=EntityEditor].owner-form')?.getAttribute('aria-busy')==='false'");
+    assert.equal(await evaluate(cdp, "document.querySelector('.owner-form').checkValidity()"), false);
     await fill(cdp, ".owner-form input:not([type=number])", "Synthetic E2E Service");
     await fill(cdp, ".owner-form input[type=number]:nth-of-type(1)", "45");
     // Enter the business inputs explicitly, including the new buffer.
@@ -849,6 +851,10 @@ async function main() {
     await requireDom(cdp, "real staff form", "document.querySelectorAll('.owner-form select').length===2");
     await checkWidth(cdp, "real staff 375px");
     await checkLabeledControls(cdp, "real staff form");
+    await requireDom(cdp, "shared staff editor", "document.querySelector('form[data-component=EntityEditor].owner-form')?.getAttribute('aria-busy')==='false'");
+    await button(cdp, "Добавить мастера");
+    await requireDom(cdp, "new staff focuses name", "document.activeElement===document.querySelector('.owner-form input')");
+    assert.equal(await evaluate(cdp, "document.querySelector('.owner-form').checkValidity()"), false);
     await fill(cdp, ".owner-form select", locationId, "change");
     assert.equal(await evaluate(cdp, "document.querySelector('.owner-form select').value"), locationId);
     await fill(cdp, ".owner-form input:nth-of-type(1)", "Synthetic E2E Staff");
@@ -884,6 +890,13 @@ async function main() {
     await button(cdp, "Изменить");
     await requireDom(cdp, "edit selected", "document.querySelector('.owner-form')?.innerText.includes('Сохранить изменения') && document.querySelector('input[name=post-service-buffer-minutes]')?.value==='15'");
     await requireDom(cdp, "edit focuses name input", "document.activeElement===document.querySelector('.owner-form input:not([type=number])')");
+    const serviceWritesBeforeCancel = responses.filter(r=>r.path.endsWith("/services")||r.path.includes("/services/")).length;
+    await fill(cdp, ".owner-form input:not([type=number])", "Unsaved synthetic edit");
+    await button(cdp, "Отменить редактирование");
+    await requireDom(cdp, "cancel returns to empty create form", "document.querySelector('.owner-form input')?.value==='' && document.querySelector('.owner-form button[type=submit]')?.innerText.includes('Сохранить черновик')");
+    assert.equal(responses.filter(r=>r.path.endsWith("/services")||r.path.includes("/services/")).length,serviceWritesBeforeCancel);
+    await button(cdp, "Изменить");
+    await requireDom(cdp, "reopen uses persisted service", "document.querySelector('.owner-form input')?.value==='Synthetic E2E Service'");
     await evaluate(cdp, "(() => {const inputs=document.querySelectorAll('.owner-form input');const values=['Synthetic E2E Edited Service','50','1250.50','0'];inputs.forEach((input,i)=>{input.value=values[i];input.dispatchEvent(new Event('input',{bubbles:true}));});})()");
     await submitValidForm(cdp, ".owner-form");
     await requireDom(cdp, "edited service visible", "document.querySelector('.list-items')?.innerText.includes('Synthetic E2E Edited Service') && document.querySelector('.list-items')?.innerText.includes('50 мин') && document.querySelector('.list-items')?.innerText.includes('Буфер: 0 мин')");
