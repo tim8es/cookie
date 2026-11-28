@@ -111,7 +111,10 @@ test("ambiguous shift writes remain unresolved after subsequent rejections", () 
       shiftPlanSaveIsUncertain(false, new ShiftPlanError(reason)),
       false,
     );
-    assert.equal(shiftPlanSaveIsUncertain(true, new ShiftPlanError(reason)), true);
+    assert.equal(
+      shiftPlanSaveIsUncertain(true, new ShiftPlanError(reason)),
+      true,
+    );
   }
   for (const error of [
     new ShiftPlanError("unavailable"),
