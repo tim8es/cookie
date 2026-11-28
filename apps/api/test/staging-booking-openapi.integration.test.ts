@@ -263,11 +263,8 @@ test(
       const moveRoute = "staging-customer-reschedule/{bookingId}";
       const moveUrl = "/staging-customer-reschedule/" + bookingId;
       const newStartAt = date + "T12:00:00.000Z";
-      assert.ok(
-        moveSlots.json().slots.some(
-          (slot: { startAt: string }) => slot.startAt === newStartAt,
-        ),
-      );
+      const candidates: { startAt: string }[] = moveSlots.json().slots;
+      assert.ok(candidates.some((slot) => slot.startAt === newStartAt));
       const moveKey = randomUUID();
       const moved = await post(moveUrl, token, { newStartAt }, moveKey);
       assertStagingBookingResponse(moveRoute, "post", 200, moved);
