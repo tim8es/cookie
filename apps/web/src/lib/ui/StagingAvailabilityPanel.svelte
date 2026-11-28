@@ -64,7 +64,7 @@
   onMount(() => { void refresh(); });
 </script>
 
-<section class="card" aria-label="Предпросмотр записи staging">
+<section class="card availability-preview" aria-label="Предпросмотр записи staging">
   <div class="card-title">
     <div><span class="eyebrow">STAGING / ДОСТУПНОСТЬ</span><h2>Предпросмотр записи</h2></div>
     <Button variant="outline" type="button" disabled={disabled || loading || previewLoading} onclick={() => void refresh()}>Обновить услуги</Button>
@@ -96,3 +96,34 @@
   {/if}
   <p class="owner-form-note">Слоты — снимок доступности, не резервирование. Шаг предпросмотра 15 минут. Финальная запись потребует отдельной атомарной проверки.</p>
 </section>
+
+<style>
+  .availability-preview {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .availability-preview .card-title {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .availability-preview .card-title > div,
+  .availability-preview .field {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .availability-preview .field select,
+  .availability-preview .field :global(input) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .availability-preview :global(button) {
+    min-width: 0;
+    max-width: 100%;
+    height: auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+</style>
