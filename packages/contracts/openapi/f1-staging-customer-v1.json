@@ -3,7 +3,7 @@
   "info": {
     "title": "kuki F1 controlled staging customer Booking API",
     "version": "1.0.0-staging",
-    "description": "Implementation snapshot of the opt-in customer adapters on main e38443c6. Not a public/guest API or production contract. Only synthetic data. Context/sign-in is tracked separately in #309; quote, public URL and customer reschedule are not available here. Describes handler responses after HTTP parsing, not generic Fastify parser/size errors or disabled routing."
+    "description": "Implementation snapshot of opt-in controlled-staging customer adapters. Synthetic data only; not a public/guest API or production contract. Context/sign-in is tracked separately in #309; quote and public URL remain outside this contract. Includes handler responses and route-local 400/413/415 transport failures for the three booking mutation POST routes. Transport parsing may reject before authorization. Other framework errors and disabled routing remain outside scope."
   },
   "servers": [],
   "security": [
@@ -870,7 +870,7 @@
             }
           },
           "400": {
-            "description": "Controlled adapter error",
+            "description": "Invalid request (including malformed or empty JSON) or invalid command",
             "headers": {
               "Cache-Control": {
                 "required": true,
@@ -1046,6 +1046,96 @@
                         "BOOKING_NOT_AVAILABLE",
                         "BOOKING_CONFLICT",
                         "IDEMPOTENCY_KEY_REUSED"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds the configured HTTP size limit",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              },
+              "Vary": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "Authorization"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "payload-too-large"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported request content type",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              },
+              "Vary": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "Authorization"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "unsupported-media-type"
                       ]
                     }
                   }
@@ -1918,7 +2008,7 @@
             }
           },
           "400": {
-            "description": "Controlled adapter error",
+            "description": "Invalid request (including malformed or empty JSON) or invalid command",
             "headers": {
               "Cache-Control": {
                 "required": true,
@@ -2138,6 +2228,96 @@
                         "BOOKING_NOT_CONFIRMED",
                         "CANCELLATION_POLICY_DENIED",
                         "IDEMPOTENCY_KEY_REUSED"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds the configured HTTP size limit",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              },
+              "Vary": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "Authorization"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "payload-too-large"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported request content type",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              },
+              "Vary": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "Authorization"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "unsupported-media-type"
                       ]
                     }
                   }
@@ -2499,7 +2679,7 @@
             }
           },
           "400": {
-            "description": "Controlled adapter error",
+            "description": "Invalid request (including malformed or empty JSON) or invalid command",
             "headers": {
               "Cache-Control": {
                 "required": true,
@@ -2721,6 +2901,96 @@
                         "RESCHEDULE_CONFLICT",
                         "RESCHEDULE_POLICY_DENIED",
                         "IDEMPOTENCY_KEY_REUSED"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds the configured HTTP size limit",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              },
+              "Vary": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "Authorization"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "payload-too-large"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported request content type",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              },
+              "Vary": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "Authorization"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "unsupported-media-type"
                       ]
                     }
                   }
