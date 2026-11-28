@@ -26,6 +26,19 @@ export class ServiceApiFailure extends Error {
   }
 }
 
+/** A later rejection does not resolve an earlier ambiguous commit. */
+export function serviceSaveIsUncertain(
+  previous: boolean,
+  reason: unknown,
+): boolean {
+  return (
+    previous ||
+    !(reason instanceof ServiceApiFailure) ||
+    reason.reason === "unavailable" ||
+    reason.reason === "invalid-response"
+  );
+}
+
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
