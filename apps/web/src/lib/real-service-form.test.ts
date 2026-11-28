@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  ServiceApiFailure,
+  serviceSaveIsUncertain,
+  type ServiceFailureReason,
+} from "./services-api";
+
+import {
   emptyRealServiceForm,
   realServiceDraftFromForm,
 } from "./real-service-form";
@@ -61,5 +67,28 @@ test("missing, cleared or invalid numeric inputs are never sent as a draft", () 
   assert.equal(realServiceDraftFromForm(valid)?.postServiceBufferMinutes, 15);
   for (const serviceBuffer of [undefined, NaN, Infinity, -1, 0.5, 1441]) {
     assert.equal(realServiceDraftFromForm({ ...valid, serviceBuffer }), null);
+  }
+});
+
+test("service write uncertainty survives later definitive rejections", () => {
+  const definitive: ServiceFailureReason[] = [
+    "unauthorized",
+    "conflict",
+    "capacity",
+    "stale-revision",
+    "draft-unavailable",
+  ];
+  for (const reason of definitive) {
+    const error = new ServiceApiFailure(reason);
+    assert.equal(serviceSaveIsUncertain(false, error), false);
+    assert.equal(serviceSaveIsUncertain(true, error), true);
+  }
+  for (const error of [
+    new ServiceApiFailure("unavailable"),
+    new ServiceApiFailure("invalid-response"),
+    new Error("network"),
+  ]) {
+    assert.equal(serviceSaveIsUncertain(false, error), true);
+    assert.equal(serviceSaveIsUncertain(true, error), true);
   }
 });
