@@ -1698,7 +1698,6 @@ async function main() {
     // second cancellation's actual committed response, then reconcile only
     // from a fresh server history read, without issuing another mutation.
     script = await loadAndEnterTelegram(cdp, origin+"?surface=customer-staging", signedProof(botToken, customerUserId), script, "customer");
-    await requireDom(cdp, "fresh client before lost cancellation response", "Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)");
     let cancellationRequests = 0;
     cdp.onEvent("Network.requestWillBeSent", ({ request }) => {
       if (request.url.startsWith(origin) && request.method === "POST" && new URL(request.url).pathname.endsWith("/staging-customer-cancellation/"+restartBookingId)) cancellationRequests++;
@@ -1706,6 +1705,7 @@ async function main() {
     await evaluate(cdp, "(()=>{const send=window.fetch.bind(window);window.fetch=async(input,init)=>{const response=await send(input,init);if(init?.method==='POST'&&String(input).endsWith("+JSON.stringify("/staging-customer-cancellation/"+restartBookingId)+")&&response.status===200){window.fetch=send;throw new Error('synthetic lost cancellation response');}return response;};})()");
     await requireDom(cdp,"restarted booking detail ready","[...document.querySelectorAll('.customer-history li')].some(row=>row.dataset.bookingId==="+JSON.stringify(restartBookingId)+" && row.querySelector('button[aria-expanded]')&&!row.querySelector('button[aria-expanded]').disabled)");
     await evaluate(cdp,"[...document.querySelectorAll('.customer-history li')].find(row=>row.dataset.bookingId==="+JSON.stringify(restartBookingId)+").querySelector('button[aria-expanded]').click()");
+    await requireDom(cdp, "fresh client before lost cancellation response", "Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Отменить запись'&&!b.disabled)");
     await button(cdp, "Отменить запись");
     await button(cdp, "Подтвердить отмену");
     await requireDom(cdp, "uncertain cancellation remains retryable", "document.body.innerText.includes('Результат отмены не подтверждён') && Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Повторить запрос отмены'&&!b.disabled)");
