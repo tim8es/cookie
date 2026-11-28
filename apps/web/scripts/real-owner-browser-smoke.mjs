@@ -1402,6 +1402,7 @@ async function main() {
     await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);let lost=false;window.__kukiClientMoveKeys=[];window.__kukiClientMoveBodies=[];window.__kukiClientMoveRejections=[];window.__kukiClientMoveNext=null;window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(clientMoveUrl)+")){window.__kukiClientMoveKeys.push(new Headers(init.headers).get('idempotency-key'));window.__kukiClientMoveBodies.push(init.body);const rejection=window.__kukiClientMoveNext;if(rejection!==null){window.__kukiClientMoveNext=null;window.__kukiClientMoveRejections.push(rejection.status);return Response.json({error:rejection.code},{status:rejection.status});}const reply=await send(input,init);if(!lost&&reply.status===200){lost=true;throw new Error('synthetic lost customer move response');}return reply;}return send(input,init);};})()");
     await button(cdp, "Подтвердить перенос");
     const clientMoveUnknown="document.querySelector("+JSON.stringify(historyPanel)+")";
+    await requireDom(cdp,"pending move blocks new booking entry","[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Новая запись')?.disabled && [...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Создать ещё запись')?.disabled");
     await requireDom(cdp,"pending move cannot close or switch detail","[...document.querySelectorAll('.customer-history button[aria-expanded]')].every(b=>b.disabled) && document.querySelector('.history-detail:not([hidden])')");
     await requireDom(cdp,"pending move disables status filters","[...document.querySelectorAll('.history-filters button')].length===3 && [...document.querySelectorAll('.history-filters button')].every(b=>b.disabled)");
     await requireDom(cdp,"client move commit not acknowledged",
@@ -1487,9 +1488,12 @@ async function main() {
     const receiptCard = "document.querySelector("+JSON.stringify(panel+" .customer-choice-summary")+")";
     await requireDom(cdp,"creation receipt no longer presents cancelled booking as active",
       receiptCard+"?.innerText.includes('Запись изменена после создания') && !"+receiptCard+"?.innerText.includes('Время при создании') && !"+receiptCard+"?.innerText.includes('Статус на момент обновления списка: подтверждена')");
-    await button(cdp,"Создать ещё запись");
+    const offersBeforeNewEntry = responses.filter(r=>r.path.endsWith("/staging-customer-offers")).length;
+    await button(cdp,"Новая запись");
     await requireDom(cdp,"new selection returns to live catalog after cancellation",
       serviceChoice+" && !"+receiptCard);
+    await requireDom(cdp,"new booking focuses live service step","document.activeElement?.matches('[data-component=BookingLayout] h2') && document.activeElement.textContent.trim()==='Выберите услугу' && !document.querySelector('[data-component=ChoiceList] button[aria-pressed=true]')");
+    assert.equal(responses.filter(r=>r.path.endsWith("/staging-customer-offers")).length,offersBeforeNewEntry+1,"New entry must refresh offers exactly once");
     assert.equal(await evaluate(cdp,"localStorage.length + sessionStorage.length"),0,"Cancellation must not create a pending Create marker");
     await evaluate(cdp,serviceChoice+".click()");
     await button(cdp,"Продолжить");
@@ -1505,6 +1509,7 @@ async function main() {
     await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);window.fetch=async(input,init)=>{const response=await send(input,init);if(init?.method==='POST'&&String(input).endsWith('/staging-customer-bookings')&&response.status===201)throw new Error('synthetic lost response');return response;};})()");
     await button(cdp,"Записаться");
     await requireDom(cdp,"uncertain actual committed result","document.querySelector("+JSON.stringify(panel)+")?.innerText.includes('Статус записи не подтверждён')");
+    await requireDom(cdp,"unknown create blocks new history entry","[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Новая запись')?.disabled");
     await requireDom(cdp,"uncertain booking locks step navigation",
       "[...document.querySelectorAll("+JSON.stringify(panel+" .rhythm-steps button")+")].every(b=>b.disabled)");
     assert.equal(await evaluate(cdp,"sessionStorage.length"),1);
