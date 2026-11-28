@@ -36,9 +36,6 @@
         </div>
         {#each timeline.columns as column (column.id)}
           <div class="owner-timeline-lane" style:height={timeline.height + "px"}>
-            {#each timeline.ticks as tick (tick.top)}
-              <div class="owner-timeline-rule" style:top={tick.top + "px"} aria-hidden="true"></div>
-            {/each}
             {#each column.events as event (event.entry.id)}
               <div class="owner-timeline-event" style:top={event.top + "px"}
                 style:height={event.targetHeight + "px"}
@@ -50,6 +47,7 @@
                   onclick={() => onOpen(event.entry.id)}>
                   <span>{event.carryIn ? "← " : ""}{event.time}{event.carryOut ? " →" : ""}</span>
                   <strong>{event.entry.serviceName}</strong>
+                  <span class="owner-timeline-status">{statusNames[event.entry.status]}</span>
                 </Button>
               </div>
             {/each}
