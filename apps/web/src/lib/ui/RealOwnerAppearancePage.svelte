@@ -347,6 +347,7 @@
   {#if publication && !publication.canPublish}<p>Публикация недоступна: требуется разрешение организации и право пользователя.</p>{/if}
   <BrandingSettingsEditor
     showHeading={false}
+    responsivePreview={true}
     {organizationName}
     {draft}
     hasUnsavedChanges={dirty}
