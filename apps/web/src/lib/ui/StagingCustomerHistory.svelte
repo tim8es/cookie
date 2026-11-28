@@ -1,6 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { Button } from "../components/ui/button/index.js";
+  import Segment from "../components/rhythm/Segment.svelte";
+  import EmptyState from "../components/rhythm/EmptyState.svelte";
+  import ThemeScope from "../components/rhythm/ThemeScope.svelte";
+  import { filterOwnBookings, type HistoryFilter } from "../customer-history-filter";
   import { cancelOwnBooking, readCancellationCutoff, CancellationError } from "../staging-customer-cancellation-api";
   import { rescheduleOwnBooking, readRescheduleCutoff, readRescheduleSlots, CustomerRescheduleError, type CustomerRescheduleSlots } from "../staging-customer-reschedule-api";
   import type { VerifiedCustomerSession } from "../owner-auth";
@@ -32,6 +36,20 @@
   let cancellationBusy = false;
   let uncertain = false;
   let message = "";
+  let filter: HistoryFilter = "all";
+  $: filterLocked = busy || cancellationBusy || moveBusy || !!pending || !!moveBookingId || !!movePending;
+  $: filterOptions = [
+    { id: "all", label: "Все", disabled: filterLocked },
+    { id: "confirmed", label: "Активные", disabled: filterLocked },
+    { id: "cancelled", label: "Отменённые", disabled: filterLocked },
+  ];
+  $: visibleBookings = filterOwnBookings(data?.bookings ?? [], filter);
+  function selectFilter(id: string): void {
+    if (busy || cancellationBusy || moveBusy || pending || moveBookingId || movePending) return;
+    if (id === "all" || id === "confirmed" || id === "cancelled") filter = id;
+  }
+  const historyClocks = new Map<string, Intl.DateTimeFormat>();
+  const priceFormatter = new Intl.NumberFormat("ru-RU");
   function branchDate(value: string, zone: string): string {
     const parts = new Intl.DateTimeFormat("en-GB", {
       timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
@@ -229,14 +247,21 @@
   }
 
   function time(value: string, zone: string | null): string {
-    return new Intl.DateTimeFormat("ru-RU", {
-      timeZone: zone ?? "UTC", year: "numeric", month: "short",
-      day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset",
-    }).format(new Date(value));
+    const key = zone ?? "UTC";
+    let formatter = historyClocks.get(key);
+    if (!formatter) {
+      formatter = new Intl.DateTimeFormat("ru-RU", {
+        timeZone: key, year: "numeric", month: "short",
+        day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset",
+      });
+      if (historyClocks.size >= 64) historyClocks.clear();
+      historyClocks.set(key, formatter);
+    }
+    return formatter.format(new Date(value));
   }
   function price(value: string): string {
     const amount = BigInt(value);
-    return new Intl.NumberFormat("ru-RU").format(amount / 100n) + "," + String(amount % 100n).padStart(2, "0") + " ₽";
+    return priceFormatter.format(amount / 100n) + "," + String(amount % 100n).padStart(2, "0") + " ₽";
   }
   onMount(() => { void refresh(); return () => { mounted = false; generation++; moveGeneration++; }; });
 </script>
@@ -252,10 +277,20 @@
   {#if busy}<p role="status">Загружаем ваши записи…</p>
   {:else if failed}<p role="alert" class="alert-error">Не удалось получить ваши записи. Обновите список или проверьте доступ.</p>
   {:else if data}
-    {#if data.bookings.length === 0}<p>У вас пока нет записей.</p>
-    {:else}
+    <ThemeScope>
+      {#if data.bookings.length === 0}
+        <EmptyState title="У вас пока нет записей." description="После подтверждения записи она появится здесь." />
+      {:else}
+        <div class="history-filters">
+          <Segment label="Статус записи" options={filterOptions} selected={filter} onSelect={selectFilter} />
+          <p class="rhythm-muted" role="status">Показано: {visibleBookings.length} из {data.bookings.length}</p>
+        </div>
+        {#if visibleBookings.length === 0}
+          <EmptyState title="Нет записей" description="В выбранном разделе пока ничего нет."
+            actionLabel={filterLocked ? undefined : "Показать все записи"} onAction={() => selectFilter("all")} />
+        {:else}
       <ul class="customer-history">
-        {#each data.bookings as booking (booking.bookingId)}
+        {#each visibleBookings as booking (booking.bookingId)}
           <li>
             <div class="history-heading"><strong>{booking.serviceName}</strong><span>{statuses[booking.status]}</span></div>
             <p>{booking.staffName} · {booking.locationName}</p>
@@ -311,14 +346,18 @@
           </li>
         {/each}
       </ul>
-      {#if data.hasMore}<p>Показаны 200 последних по дате записей. Для более ранних записей обратитесь в салон.</p>{/if}
-    {/if}
+        {/if}
+      {#if data.hasMore}<p>Фильтры применяются к 200 последним по дате записям. Для более ранних записей обратитесь в салон.</p>{/if}
+      {/if}
+    </ThemeScope>
   {/if}
   <p class="owner-form-note">Статусы в списке отображаются на момент последнего обновления с сервера.</p>
   <p class="owner-form-note">{cutoff === null ? "Отмена в тестовом режиме недоступна." : "Отмена проверяется сервером; тестовый срок — до начала записи более чем " + cutoff + " мин."} {moveCutoff === null ? "Перенос в тестовом режиме недоступен." : "Перенос проверяется сервером; отдельный тестовый срок — более " + moveCutoff + " мин. до начала."} Перенос выбирается из предварительно доступных серверных слотов во времени филиала (с UTC-смещением для неоднозначных часов); подтверждение и проверка конфликтов выполняются сервером. Настройки политики владельца пока не подключены. Названия услуг, филиала и мастера — текущие данные каталога.</p>
 </section>
 
 <style>
+  .history-filters { display: grid; gap: 6px; margin-bottom: 12px; min-width: 0; }
+  .history-filters p { margin: 0; }
   .customer-history { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
   .customer-history li { border: 1px solid var(--border); border-radius: 12px; padding: 12px; min-width: 0; overflow-wrap: anywhere; display: grid; gap: 5px; }
   .customer-history p { margin: 0; }
