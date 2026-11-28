@@ -168,7 +168,9 @@ export async function readOwnerCalendar(
       for (const item of data.entries) {
         const startsOutside = Date.parse(item.startAt) >= end;
         const endsOutside = Date.parse(item.endAt) <= start;
-        if (startsOutside || endsOutside) throw new Error("entry outside range");
+        if (startsOutside || endsOutside) {
+          throw new Error("entry outside range");
+        }
       }
     }
     return {
