@@ -915,16 +915,32 @@ async function main() {
       "document.querySelector('.owner-form .owner-form-note')?.innerText.includes(" + JSON.stringify(BRANCH_ZONE) + ")");
     await checkWidth(cdp, "real schedule 375px");
     await checkLabeledControls(cdp, "real schedule form");
+    await requireDom(cdp, "shared schedule editor", "document.querySelector('form[data-component=EntityEditor].owner-form')?.getAttribute('aria-busy')==='false'");
+    await button(cdp, "Новая смена");
+    await requireDom(cdp, "new shift focuses staff selection", "document.activeElement===document.querySelector('.owner-form select')");
     const date = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
     await evaluate(cdp, "(() => {const fields=document.querySelectorAll('.owner-form input[type=datetime-local]');" +
       "const values=" + JSON.stringify([date + "T10:00", date + "T18:00"]) + ";" +
       "fields.forEach((field,index)=>{field.value=values[index];field.dispatchEvent(new Event('change',{bubbles:true}));});})()");
+    await evaluate(cdp, "(()=>{const send=window.fetch.bind(window);let lost=false;window.__rc94ShiftKeys=[];window.__rc94ShiftBodies=[];window.__rc94ShiftReject=false;window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).endsWith('/shift-plans')){window.__rc94ShiftKeys.push(new Headers(init.headers).get('idempotency-key'));window.__rc94ShiftBodies.push(init.body);if(window.__rc94ShiftReject){window.__rc94ShiftReject=false;return Response.json({error:'idempotency-conflict'},{status:409});}const response=await send(input,init);if(!lost&&response.status===201){lost=true;throw new Error('synthetic lost shift receipt');}return response;}return send(input,init);};})()");
     await submitValidForm(cdp, ".owner-form");
+    await requireDom(cdp, "shift commit unknown locks original form", "document.querySelector('.alert-error')?.innerText.includes('Результат исходного сохранения смены не подтверждён') && [...document.querySelectorAll('.owner-form input,.owner-form select')].every(e=>e.disabled) && document.querySelector('.owner-form button[type=submit]')?.innerText==='Повторить сохранение смены' && !document.querySelector('.alert-ok')");
+    const unknownShiftId = await assertPlan(pool, owner, beforeRestart.staffId, locationId, date);
+    await requireDom(cdp, "unknown shift blocks refresh", "[...document.querySelectorAll('[data-component=PageHeader] button')].some(b=>b.textContent.trim()==='Обновить'&&b.disabled)");
+    await evaluate(cdp, "window.__rc94ShiftReject=true");
+    await button(cdp, "Повторить сохранение смены");
+    await requireDom(cdp, "later conflict retains shift uncertainty", "window.__rc94ShiftKeys.length===2 && !window.__rc94ShiftReject && document.querySelector('.alert-error')?.innerText.includes('Результат исходного сохранения смены не подтверждён') && [...document.querySelectorAll('.owner-form input,.owner-form select')].every(e=>e.disabled) && !document.querySelector('.owner-form button[type=submit]')?.disabled");
+    await button(cdp, "Повторить сохранение смены");
     await requireDom(cdp, "browser shift draft and server confirmation",
       "document.querySelector('.schedule-summary')?.innerText.includes('Synthetic E2E Staff') && " +
       "document.querySelector('.schedule-summary')?.innerText.includes('Черновик') && " +
       "document.querySelector('.alert-ok')?.innerText.includes('Черновик сохранён') && !document.querySelector('.owner-form button[type=submit]')?.disabled");
     const shiftId = await assertPlan(pool, owner, beforeRestart.staffId, locationId, date);
+    assert.equal(shiftId,unknownShiftId,"Retry must resolve original persisted draft");
+    const shiftAttempts = await evaluate(cdp,"({keys:window.__rc94ShiftKeys,bodies:window.__rc94ShiftBodies})");
+    assert.equal(shiftAttempts.keys.length,3);
+    assert.equal(new Set(shiftAttempts.keys).size,1);
+    assert.equal(new Set(shiftAttempts.bodies).size,1);
     await benchmarkOwnerNavigation(cdp);
     // The compiled API mounts the real owner publish route only because BOTH
     // explicit staging flags are set, but a separately issued live Appearance

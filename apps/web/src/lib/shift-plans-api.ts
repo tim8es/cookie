@@ -32,6 +32,19 @@ export class ShiftPlanError extends Error {
   }
 }
 
+/** A later rejection cannot disprove an earlier possibly committed shift. */
+export function shiftPlanSaveIsUncertain(
+  previous: boolean,
+  reason: unknown,
+): boolean {
+  return (
+    previous ||
+    !(reason instanceof ShiftPlanError) ||
+    reason.reason === "unavailable" ||
+    reason.reason === "invalid-response"
+  );
+}
+
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function isInstant(value: unknown): value is string {
