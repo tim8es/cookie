@@ -1192,6 +1192,12 @@ async function main() {
     await button(cdp,"Продолжить");
     await requireDom(cdp,"next step heading receives focus",
       "document.activeElement?.matches("+JSON.stringify(panel+" [data-component=BookingLayout] h2")+") && document.activeElement.textContent==='Филиал и мастер'");
+    const beforeSectionJump = responses.length;
+    await button(cdp,"К моим записям");
+    await requireDom(cdp,"history navigation focus","document.activeElement?.matches('[aria-label=\"Мои записи\"] h2')");
+    await button(cdp,"К онлайн-записи");
+    await requireDom(cdp,"booking navigation preserves active step","document.activeElement?.matches('[data-component=BookingLayout] h2') && document.activeElement.textContent==='Филиал и мастер'");
+    assert.equal(responses.slice(beforeSectionJump).filter(r=>r.path.endsWith("/staging-customer-offers")||r.path.endsWith("/staging-customer-history")).length,0,"Section navigation must not remount or refetch");
     const choiceSelector = label => panel+' [data-component="ChoiceList"][aria-label="'+label+'"] button[data-component="ChoiceRow"]';
     const chooseBranchAndStaff = async () => {
       for (const label of ["Филиал", "Мастер"]) {
@@ -1360,7 +1366,6 @@ async function main() {
     // Independent real-browser customer reschedule path: the same Confirmed
     // Booking changes only its UTC minute, not ID, service/staff/location,
     // price snapshot, or customer. All evidence is from live PostgreSQL.
-    await requireDom(cdp, "real client move action", "Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Перенести запись'&&!b.disabled)");
     const beforeMove = await pool.query(
       "SELECT start_at,price_kopecks_snapshot::text AS price,service_id::text AS service,staff_id::text AS staff,location_id::text AS location FROM cookie_booking.bookings WHERE tenant_id=$1::uuid AND id=$2::uuid",
       [owner.tenantId, realBooking.rows[0].id],
@@ -1375,6 +1380,7 @@ async function main() {
     await button(cdp,"Закрыть запись");
     await requireDom(cdp,"customer detail collapsed","document.querySelector('.customer-history button[aria-expanded=false]') && !document.querySelector('.history-detail:not([hidden])')");
     await button(cdp,"Открыть запись");
+    await requireDom(cdp, "real client move action", "Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Перенести запись'&&!b.disabled)");
     assert.equal(responses.filter(r=>r.path.endsWith("/staging-customer-history")).length,historyBeforeOpen,"Opening details uses the existing verified snapshot");
     await button(cdp, "Перенести запись");
     await requireDom(cdp, "server-local staging date and verified available slot",
@@ -1404,6 +1410,10 @@ async function main() {
     const clientMoveUnknown="document.querySelector("+JSON.stringify(historyPanel)+")";
     await requireDom(cdp,"pending move blocks new booking entry","[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Новая запись')?.disabled && [...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Создать ещё запись')?.disabled");
     await requireDom(cdp,"pending move cannot close or switch detail","[...document.querySelectorAll('.customer-history button[aria-expanded]')].every(b=>b.disabled) && document.querySelector('.history-detail:not([hidden])')");
+    await button(cdp,"К онлайн-записи");
+    await requireDom(cdp,"pending move keeps receipt focus","document.activeElement?.matches('[aria-label=\"Клиентская витрина staging\"] .customer-choice-summary')");
+    await button(cdp,"К моим записям");
+    await requireDom(cdp,"pending move keeps history detail","document.activeElement?.matches('[aria-label=\"Мои записи\"] h2') && document.querySelector('.history-detail:not([hidden])')");
     await requireDom(cdp,"pending move disables status filters","[...document.querySelectorAll('.history-filters button')].length===3 && [...document.querySelectorAll('.history-filters button')].every(b=>b.disabled)");
     await requireDom(cdp,"client move commit not acknowledged",
       clientMoveUnknown+"?.innerText.includes('Результат переноса не подтверждён')&&[..."+clientMoveUnknown+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)&&!"+clientMoveUnknown+".innerText.includes('Перенос подтверждён сервером')");
