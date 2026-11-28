@@ -156,8 +156,8 @@ test(
       const script = [
         "#!/bin/sh",
         "cat >/dev/null",
-        "( sleep 2; printf late > \"$0.late\" ) &",
-        "printf started > \"$0.started\"",
+        '( sleep 2; printf late > "$0.late" ) &',
+        'printf started > "$0.started"',
         "wait",
         "",
       ].join("\n");
