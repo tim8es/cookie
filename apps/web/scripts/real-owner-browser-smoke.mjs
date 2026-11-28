@@ -1150,6 +1150,11 @@ async function main() {
     await fill(cdp,".owner-calendar input[type=date]",date,"change");
     await requireDom(cdp,"calendar reads persisted Booking","document.querySelector('[aria-label=\"Записи за выбранный период\"]')?.innerText.includes('Synthetic E2E Edited Service') && document.querySelector('.status-pill')?.innerText.includes('Подтверждена')");
     await requireDom(cdp,"day uses real staff resource group","document.querySelector('.owner-calendar-group h3')?.innerText==='Synthetic E2E Staff' && document.querySelectorAll('.owner-calendar-group').length===1");
+    await evaluate(cdp,"(()=>{const b=document.querySelector('.owner-timeline-toggle');if(b?.getAttribute('aria-expanded')==='false')b.click();})()");
+    await requireDom(cdp,"real day timeline contains persisted booking","document.querySelectorAll('.owner-day-timeline .owner-timeline-button').length===1 && document.querySelector('.owner-timeline-button')?.getAttribute('aria-label')?.includes('Synthetic E2E Edited Service')");
+    await evaluate(cdp,"document.querySelector('.owner-timeline-button').click()");
+    await requireDom(cdp,"timeline opens protected existing detail","document.querySelector('.owner-booking-detail dl')?.innerText.includes("+JSON.stringify(bookingId)+")");
+    await checkWidth(cdp,"real day timeline");
     await button(cdp,"Неделя");
     await requireDom(cdp,"week reads persisted Booking","document.querySelector('[aria-label=\"Записи за выбранный период\"]')?.innerText.includes('Synthetic E2E Staff')");
     await requireDom(cdp,"seven local day groups without duplicate booking","document.querySelectorAll('.owner-calendar-group').length===7 && document.querySelectorAll('.owner-calendar-group [data-booking-id]').length===1");
