@@ -30,10 +30,8 @@ test("history filters use server statuses and preserve order", () => {
   assert.equal(filterOwnBookings(rows, "all"), rows);
   assert.deepEqual(filterOwnBookings(rows, "confirmed"), [rows[0]]);
   assert.deepEqual(filterOwnBookings(rows, "cancelled"), [rows[1], rows[3]]);
-  assert.deepEqual(
-    rows.map((row) => row.status),
-    statuses,
-  );
+  const actualStatuses = rows.map((row) => row.status);
+  assert.deepEqual(actualStatuses, statuses);
 });
 
 test("empty and filtered-empty history never invents records", () => {
