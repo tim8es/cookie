@@ -166,6 +166,78 @@ test(
 );
 
 test(
+  "a busy IPC peer error cannot terminate the worker or release admission",
+  { skip: !supported },
+  async (t) => {
+    const { socketPath, client } = fixture(t);
+    let announce!: () => void;
+    let release!: () => void;
+    let firstClosed!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      announce = resolve;
+    });
+    const resume = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const closed = new Promise<void>((resolve) => {
+      firstClosed = resolve;
+    });
+    let calls = 0;
+    let connections = 0;
+    let injected = false;
+    const server = await startCodecIpcServer({
+      socketPath,
+      normalize: async (raw, mime) => {
+        calls++;
+        if (calls === 1) {
+          announce();
+          await resume;
+        }
+        return normalizeAppearanceImage(raw, mime);
+      },
+    });
+    // Registered after the server's own connection callback. Inject a
+    // deterministic write/reset error on a real rejected Unix peer, without
+    // relying on the OS scheduling a particular ECONNRESET/EPIPE race.
+    server.on("connection", (socket) => {
+      connections++;
+      if (connections === 1) socket.once("close", firstClosed);
+      if (connections === 2) {
+        injected = true;
+        socket.emit("error", new Error("Synthetic busy peer reset"));
+      }
+    });
+    t.after(async () => {
+      release();
+      await close(server);
+    });
+    const jpeg = await jpegFixture();
+    const first = normalizeImageOverCodecIpc(jpeg, "image/jpeg", client());
+    // Observe rejection immediately, including if an earlier assertion fails.
+    void first.catch(() => undefined);
+    await awaitSignal(entered);
+    await assert.rejects(
+      normalizeImageOverCodecIpc(jpeg, "image/jpeg", client()),
+      /codec-unavailable/,
+    );
+    assert.equal(injected, true);
+    await assert.rejects(
+      normalizeImageOverCodecIpc(jpeg, "image/jpeg", client()),
+      /codec-unavailable/,
+    );
+    assert.equal(calls, 1, "busy peer error released decoder admission");
+    release();
+    assert.equal((await first).width, 3);
+    await awaitSignal(closed);
+    assert.equal(
+      (await normalizeImageOverCodecIpc(jpeg, "image/jpeg", client())).width,
+      3,
+    );
+    assert.equal(calls, 2);
+  },
+);
+
+test(
   "private IPC timeout fails closed and does not release admission until work finishes",
   { skip: !supported },
   async (t) => {

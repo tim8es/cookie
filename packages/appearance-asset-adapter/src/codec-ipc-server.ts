@@ -185,6 +185,11 @@ export async function startCodecIpcServer(
       // With allowHalfOpen:true, end() alone leaves an unread peer half-open.
       // Destroy after the bounded denial frame is flushed; never retain a
       // busy client's socket or block shutdown on it.
+      // A rejected peer can reset the connection before the denial flushes.
+      // Its errors must never escape the socket and terminate the worker.
+      const denialDeadline = setTimeout(() => socket.destroy(), deadlineMs);
+      socket.on("error", () => socket.destroy());
+      socket.once("close", () => clearTimeout(denialDeadline));
       socket.end(codecIpcFailureResponse("codec-unavailable"), () =>
         socket.destroy(),
       );
