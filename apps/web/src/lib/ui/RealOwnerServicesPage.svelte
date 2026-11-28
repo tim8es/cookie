@@ -17,6 +17,7 @@
     createRealService,
     editRealService,
     ServiceApiFailure,
+    serviceSaveIsUncertain,
     type RealService,
   } from "../services-api";
   import ServiceForm from "./ServiceForm.svelte";
@@ -182,11 +183,12 @@
       reads.staff.invalidate();
       reads.invalidateCalendars();
       reads.shifts.invalidate();
-      saveError = description(reason);
-      stale = reason instanceof ServiceApiFailure &&
+      uncertain = serviceSaveIsUncertain(uncertain, reason);
+      stale = !uncertain && reason instanceof ServiceApiFailure &&
         (reason.reason === "stale-revision" || reason.reason === "draft-unavailable");
-      uncertain = !(reason instanceof ServiceApiFailure) ||
-        reason.reason === "unavailable" || reason.reason === "invalid-response";
+      saveError = uncertain
+        ? "Результат исходного сохранения не подтверждён. Повторите запрос с прежними параметрами."
+        : description(reason);
     } finally {
       saving = false;
     }
