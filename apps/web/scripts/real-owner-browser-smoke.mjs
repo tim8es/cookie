@@ -1368,6 +1368,14 @@ async function main() {
     assert.equal(beforeMove.rowCount, 1);
     const moveAt = date + "T10:00:00.000Z";
     assert.notEqual(beforeMove.rows[0].start_at.toISOString(), moveAt);
+    await requireDom(cdp,"customer visit starts collapsed","document.querySelector('.customer-history button[aria-expanded=false]') && ![...document.querySelectorAll('.customer-history button')].some(b=>b.textContent.trim()==='Перенести запись')");
+    const historyBeforeOpen = responses.filter(r=>r.path.endsWith("/staging-customer-history")).length;
+    await button(cdp,"Открыть запись");
+    await requireDom(cdp,"customer detail expanded","document.querySelector('.customer-history button[aria-expanded=true]') && document.querySelector('.history-detail:not([hidden])')?.innerText.includes('Управление визитом')");
+    await button(cdp,"Закрыть запись");
+    await requireDom(cdp,"customer detail collapsed","document.querySelector('.customer-history button[aria-expanded=false]') && !document.querySelector('.history-detail:not([hidden])')");
+    await button(cdp,"Открыть запись");
+    assert.equal(responses.filter(r=>r.path.endsWith("/staging-customer-history")).length,historyBeforeOpen,"Opening details uses the existing verified snapshot");
     await button(cdp, "Перенести запись");
     await requireDom(cdp, "server-local staging date and verified available slot",
       "(()=>{const panel=document.querySelector(" + JSON.stringify(historyPanel) + ");const datePicker=panel?.querySelector('input[type=date]');const select=panel?.querySelector('select');return datePicker?.value===" + JSON.stringify(date) +
@@ -1394,6 +1402,7 @@ async function main() {
     await evaluate(cdp,"(()=>{const send=window.fetch.bind(window);let lost=false;window.__kukiClientMoveKeys=[];window.__kukiClientMoveBodies=[];window.__kukiClientMoveRejections=[];window.__kukiClientMoveNext=null;window.fetch=async(input,init)=>{if(init?.method==='POST'&&String(input).split('?')[0].endsWith("+JSON.stringify(clientMoveUrl)+")){window.__kukiClientMoveKeys.push(new Headers(init.headers).get('idempotency-key'));window.__kukiClientMoveBodies.push(init.body);const rejection=window.__kukiClientMoveNext;if(rejection!==null){window.__kukiClientMoveNext=null;window.__kukiClientMoveRejections.push(rejection.status);return Response.json({error:rejection.code},{status:rejection.status});}const reply=await send(input,init);if(!lost&&reply.status===200){lost=true;throw new Error('synthetic lost customer move response');}return reply;}return send(input,init);};})()");
     await button(cdp, "Подтвердить перенос");
     const clientMoveUnknown="document.querySelector("+JSON.stringify(historyPanel)+")";
+    await requireDom(cdp,"pending move cannot close or switch detail","[...document.querySelectorAll('.customer-history button[aria-expanded]')].every(b=>b.disabled) && document.querySelector('.history-detail:not([hidden])')");
     await requireDom(cdp,"pending move disables status filters","[...document.querySelectorAll('.history-filters button')].length===3 && [...document.querySelectorAll('.history-filters button')].every(b=>b.disabled)");
     await requireDom(cdp,"client move commit not acknowledged",
       clientMoveUnknown+"?.innerText.includes('Результат переноса не подтверждён')&&[..."+clientMoveUnknown+".querySelectorAll('button')].some(b=>b.textContent.trim()==='Повторить исходный перенос'&&!b.disabled)&&!"+clientMoveUnknown+".innerText.includes('Перенос подтверждён сервером')");
@@ -1548,6 +1557,8 @@ async function main() {
     // First attempt loses transport BEFORE any server write; then revoke the
     // actual customer role and retry. The original booking must be untouched.
     const beforeDeniedMove=await durableBooking();
+    await requireDom(cdp,"second booking detail ready","[...document.querySelectorAll('.customer-history li')].some(row=>row.dataset.bookingId==="+JSON.stringify(restartBookingId)+" && row.querySelector('button[aria-expanded]')&&!row.querySelector('button[aria-expanded]').disabled)");
+    await evaluate(cdp,"[...document.querySelectorAll('.customer-history li')].find(row=>row.dataset.bookingId==="+JSON.stringify(restartBookingId)+").querySelector('button[aria-expanded]').click()");
     await requireDom(cdp,"second booking ready for revocation during unknown move",
       "[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Перенести запись'&&!b.disabled)");
     await button(cdp,"Перенести запись");
@@ -1678,6 +1689,8 @@ async function main() {
       if (request.url.startsWith(origin) && request.method === "POST" && new URL(request.url).pathname.endsWith("/staging-customer-cancellation/"+restartBookingId)) cancellationRequests++;
     });
     await evaluate(cdp, "(()=>{const send=window.fetch.bind(window);window.fetch=async(input,init)=>{const response=await send(input,init);if(init?.method==='POST'&&String(input).endsWith("+JSON.stringify("/staging-customer-cancellation/"+restartBookingId)+")&&response.status===200){window.fetch=send;throw new Error('synthetic lost cancellation response');}return response;};})()");
+    await requireDom(cdp,"restarted booking detail ready","[...document.querySelectorAll('.customer-history li')].some(row=>row.dataset.bookingId==="+JSON.stringify(restartBookingId)+" && row.querySelector('button[aria-expanded]')&&!row.querySelector('button[aria-expanded]').disabled)");
+    await evaluate(cdp,"[...document.querySelectorAll('.customer-history li')].find(row=>row.dataset.bookingId==="+JSON.stringify(restartBookingId)+").querySelector('button[aria-expanded]').click()");
     await button(cdp, "Отменить запись");
     await button(cdp, "Подтвердить отмену");
     await requireDom(cdp, "uncertain cancellation remains retryable", "document.body.innerText.includes('Результат отмены не подтверждён') && Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()==='Повторить запрос отмены'&&!b.disabled)");
