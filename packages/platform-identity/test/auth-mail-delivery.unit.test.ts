@@ -165,14 +165,12 @@ test(
         ].join("\n"),
         { mode: 0o700 },
       );
-      const delivery = createAuthMailDelivery(
-        links,
-        createSendmailAuthTransport({
-          executable,
-          fromAddress: "auth@example.invalid",
-          timeoutMs: 1000,
-        }),
-      );
+      const transport = createSendmailAuthTransport({
+        executable,
+        fromAddress: "auth@example.invalid",
+        timeoutMs: 1000,
+      });
+      const delivery = createAuthMailDelivery(links, transport);
       await assert.rejects(
         delivery.send("registration", {
           address: recipient,
