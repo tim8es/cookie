@@ -29,6 +29,17 @@
   let expired = false;
   let showTimeline = false;
   let calendarRoot: HTMLElement;
+  let lockedBookingId = "";
+
+  function tryLock(id: string): boolean {
+    if (!mounted || loading || expired || (lockedBookingId && lockedBookingId !== id)) return false;
+    lockedBookingId = id;
+    return true;
+  }
+
+  function releaseLock(id: string): void {
+    if (lockedBookingId === id) lockedBookingId = "";
+  }
 
   function openTimelineBooking(id: string): void {
     if (!data?.entries.some((entry) => entry.id === id) || expired || loading) return;
@@ -84,6 +95,7 @@
       if (mounted && !expired) expire();
       return;
     }
+    if (lockedBookingId) return;
     const current = ++requestNumber;
     data = null;
     loading = true;
@@ -124,6 +136,7 @@
   }
 
   function changeBranch(value: string): void {
+    if (lockedBookingId) return;
     branchId = value;
     const branch = branches.find((item) => item.id === value);
     if (branch?.timeZone) date = branchToday(branch.timeZone);
@@ -131,6 +144,7 @@
   }
 
   function move(delta: number): void {
+    if (lockedBookingId) return;
     const next = new Date(Date.parse(date + "T00:00:00Z") + delta * days * 86400000);
     if (!Number.isFinite(next.getTime())) return;
     date = next.toISOString().slice(0, 10);
@@ -138,6 +152,7 @@
   }
 
   function today(): void {
+    if (lockedBookingId) return;
     const branch = branches.find((item) => item.id === branchId);
     if (branch?.timeZone) {
       date = branchToday(branch.timeZone);
@@ -160,7 +175,7 @@
 
 <PageHeader title="Календарь записей" organization={session.organizationName}>
   {#snippet secondaryActions()}
-    <ActionButton onclick={() => void load()} disabled={loading || expired}>Обновить</ActionButton>
+    <ActionButton onclick={() => void load()} disabled={loading || expired || !!lockedBookingId}>Обновить</ActionButton>
   {/snippet}
 </PageHeader>
 
@@ -168,23 +183,26 @@
   {#if branches.length}
     <div class="owner-form-fields">
       <label class="field">Филиал
-        <select value={branchId} onchange={(event) => changeBranch(event.currentTarget.value)} disabled={expired}>
+        <select value={branchId} onchange={(event) => changeBranch(event.currentTarget.value)} disabled={expired || !!lockedBookingId}>
           {#each branches as branch (branch.id)}<option value={branch.id}>{branch.displayName}</option>{/each}
         </select>
       </label>
       <label class="field">Начало периода
-        <Input type="date" value={date} min="2000-01-01" max="2099-12-24" onchange={(event) => { date = event.currentTarget.value; void load(true); }} disabled={expired} required />
+        <Input type="date" value={date} min="2000-01-01" max="2099-12-24" onchange={(event) => { if (!lockedBookingId) { date = event.currentTarget.value; void load(true); } }} disabled={expired || !!lockedBookingId} required />
       </label>
       <div class="segmented" role="group" aria-label="Период календаря">
-        <Button type="button" variant={days === 1 ? "default" : "outline"} aria-pressed={days === 1} onclick={() => { days = 1; void load(true); }} disabled={expired}>День</Button>
-        <Button type="button" variant={days === 7 ? "default" : "outline"} aria-pressed={days === 7} onclick={() => { days = 7; void load(true); }} disabled={expired}>Неделя</Button>
+        <Button type="button" variant={days === 1 ? "default" : "outline"} aria-pressed={days === 1} onclick={() => { if (!lockedBookingId) { days = 1; void load(true); } }} disabled={expired || !!lockedBookingId}>День</Button>
+        <Button type="button" variant={days === 7 ? "default" : "outline"} aria-pressed={days === 7} onclick={() => { if (!lockedBookingId) { days = 7; void load(true); } }} disabled={expired || !!lockedBookingId}>Неделя</Button>
       </div>
       <div class="calendar-move" role="group" aria-label="Навигация по датам">
-        <Button type="button" variant="outline" aria-label="Предыдущий период" onclick={() => move(-1)} disabled={expired}>Назад</Button>
-        <Button type="button" variant="outline" onclick={today} disabled={expired}>Сегодня</Button>
-        <Button type="button" variant="outline" aria-label="Следующий период" onclick={() => move(1)} disabled={expired}>Вперёд</Button>
+        <Button type="button" variant="outline" aria-label="Предыдущий период" onclick={() => move(-1)} disabled={expired || !!lockedBookingId}>Назад</Button>
+        <Button type="button" variant="outline" onclick={today} disabled={expired || !!lockedBookingId}>Сегодня</Button>
+        <Button type="button" variant="outline" aria-label="Следующий период" onclick={() => move(1)} disabled={expired || !!lockedBookingId}>Вперёд</Button>
       </div>
     </div>
+  {/if}
+  {#if lockedBookingId}
+    <p class="owner-form-note" role="status">Дождитесь результата операции или повторите исходный запрос в карточке записи. Смена периода и обновление временно недоступны.</p>
   {/if}
   {#if loading && !data}
     <OwnerReadPlaceholder label="Загружаем календарь…" />
@@ -219,7 +237,7 @@
               <span class="status-pill">{statusNames[item.status]}</span>
               {#key session}
                 {#key data.locationId + "/" + data.localDate + "/" + data.days}
-                  <OwnerBookingDetail {session} fetcher={reads.fetch} locationId={data.locationId} bookingId={item.id} disabled={loading || expired} onChanged={afterBookingChange} />
+                  <OwnerBookingDetail {session} fetcher={reads.fetch} locationId={data.locationId} bookingId={item.id} disabled={loading || expired} mutationBlocked={!!lockedBookingId && lockedBookingId !== item.id} tryLock={() => tryLock(item.id)} releaseLock={() => releaseLock(item.id)} onChanged={afterBookingChange} />
                 {/key}
               {/key}
             </div>
