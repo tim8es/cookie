@@ -256,3 +256,76 @@ test("malformed dates, timezone, ranges and duration are rejected", () => {
 test("empty working hours return no slots, not invented availability", () => {
   assert.deepEqual(listAvailableSlots({ ...empty, shifts: [] }), []);
 });
+
+test("distinct fitting grids preserve single-start semantics across overlapping shifts", () => {
+  const request: AvailabilityRequest = {
+    ...empty,
+    serviceDurationMinutes: 20,
+    postServiceBufferMinutes: 10,
+    stepMinutes: 15,
+    shifts: [
+      { startAt: at("10:00"), endAt: at("10:45") },
+      { startAt: at("10:00"), endAt: at("13:00") },
+      { startAt: at("10:02"), endAt: at("12:02") },
+      { startAt: at("10:00"), endAt: at("13:00") },
+    ],
+    breaks: [{ startAt: at("11:00"), endAt: at("11:15") }],
+    exceptions: [{ startAt: at("12:20"), endAt: at("12:30") }],
+    occupied: [
+      {
+        organizationId: "org-a",
+        staffId: "staff-1",
+        locationId: "loc-b",
+        startAt: at("10:15"),
+        occupiedUntil: at("10:30"),
+      },
+    ],
+  };
+  // Independent single-start evaluation on every minute, including the
+  // second grid's :02 offset and starts fitting only the longer shift.
+  const expected = [];
+  for (
+    let ms = Date.parse(at("09:59"));
+    ms <= Date.parse(at("13:00"));
+    ms += 60_000
+  ) {
+    const slot = evaluateAvailableStart(request, new Date(ms).toISOString());
+    if (slot) expected.push(slot);
+  }
+  const actual = listAvailableSlots(request);
+  assert.deepEqual(actual, expected);
+  assert.ok(actual.some((slot) => slot.startAt === "2026-11-15T10:30:00.000Z"));
+  assert.ok(actual.some((slot) => slot.startAt === "2026-11-15T11:17:00.000Z"));
+  assert.ok(!actual.some((slot) => slot.startAt === "2026-11-15T10:02:00.000Z"));
+  assert.deepEqual(
+    listAvailableSlots({ ...request, shifts: [...request.shifts].reverse() }),
+    actual,
+  );
+});
+
+test("repeated shifts preserve a bounded preview's sorted unique result", () => {
+  const request: AvailabilityRequest = {
+    ...empty,
+    localDate: "2026-11-01",
+    timeZone: "America/New_York",
+    serviceDurationMinutes: 30,
+    postServiceBufferMinutes: 0,
+    stepMinutes: 15,
+    shifts: [
+      { startAt: "2026-11-01T04:00:00Z", endAt: "2026-11-01T08:00:00Z" },
+    ],
+    breaks: [
+      { startAt: "2026-11-01T05:15:00Z", endAt: "2026-11-01T05:45:00Z" },
+    ],
+  };
+  const baseline = listAvailableSlots(request);
+  assert.ok(baseline.some((slot) => slot.startAt === "2026-11-01T06:15:00.000Z"));
+  assert.ok(!baseline.some((slot) => slot.startAt === "2026-11-01T05:15:00.000Z"));
+  assert.deepEqual(
+    listAvailableSlots({
+      ...request,
+      shifts: Array.from({ length: 200 }, () => request.shifts[0]!),
+    }),
+    baseline,
+  );
+});
