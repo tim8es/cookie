@@ -11,6 +11,7 @@ import {
 } from "../../../packages/platform-identity/src/index.js";
 import type { StagingPublicationDependencies } from "./staging-publication-http.js";
 import { verifyTenantActor } from "./session-context.js";
+import { stagingBookingTransportError } from "./staging-booking-transport.js";
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9._:-]{16,128}$/;
@@ -81,6 +82,7 @@ export function registerStagingCustomerCancellation(
   );
   app.post<{ Params: { tenantId: string; bookingId: string } }>(
     "/v1/organizations/:tenantId/staging-customer-cancellation/:bookingId",
+    { errorHandler: stagingBookingTransportError },
     async (req, reply) => {
       privacy(reply);
       const verified = await verifyTenantActor(
