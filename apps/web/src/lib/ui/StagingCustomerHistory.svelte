@@ -13,6 +13,11 @@
   export let session: VerifiedCustomerSession;
   export let onUnauthorized: () => void;
   export let onHistory: (value: OwnBookingHistory | null) => void = () => {};
+  export let onNewBooking: () => void = () => {};
+  export let newBookingAvailable = false;
+  export let creationUnresolved = false;
+  export let mutationPending = false;
+  export let canStartHistoryMutation: () => boolean = () => true;
   let data: OwnBookingHistory | null = null;
   let busy = true;
   let failed = false;
@@ -42,7 +47,11 @@
     if (busy || cancellationBusy || moveBusy || pending || moveBookingId || movePending) return;
     selectedBookingId = selectedBookingId === id ? null : id;
   }
-  $: filterLocked = busy || cancellationBusy || moveBusy || !!pending || !!moveBookingId || !!movePending;
+  $: mutationPending = cancellationBusy || moveBusy || !!pending || !!moveBookingId || !!movePending;
+  $: filterLocked = busy || mutationPending;
+  export function hasPendingMutation(): boolean {
+    return cancellationBusy || moveBusy || !!pending || !!moveBookingId || !!movePending;
+  }
   $: filterOptions = [
     { id: "all", label: "Все", disabled: filterLocked },
     { id: "confirmed", label: "Активные", disabled: filterLocked },
@@ -111,7 +120,7 @@
     }
   }
   function startMove(booking: OwnBooking): void {
-    if (busy || moveBusy || cancellationBusy || pending || movePending || moveCutoff === null || !booking.timeZone)
+    if (creationUnresolved || !canStartHistoryMutation() || busy || moveBusy || cancellationBusy || pending || movePending || moveCutoff === null || !booking.timeZone)
       return;
     moveGeneration++;
     moveBookingId = booking.bookingId;
@@ -170,7 +179,7 @@
     } finally { if (mounted) moveBusy = false; }
   }
   function selectCancellation(bookingId: string): void {
-    if (pending || cancellationBusy || busy || cutoff === null || moveBusy || movePending || moveBookingId) return;
+    if (creationUnresolved || !canStartHistoryMutation() || pending || cancellationBusy || busy || cutoff === null || moveBusy || movePending || moveBookingId) return;
     pending = { bookingId, key: globalThis.crypto.randomUUID() };
     uncertain = false; message = "";
   }
@@ -279,9 +288,13 @@
 <section class="card" aria-label="Мои записи">
   <div class="card-title">
     <div><span class="eyebrow">STAGING / ЛИЧНЫЙ КАБИНЕТ</span><h2>Мои записи</h2></div>
-    <Button type="button" variant="outline" disabled={busy || cancellationBusy || moveBusy} onclick={() => void refresh()}>Обновить записи</Button>
+    <div class="history-header-actions">
+      <Button type="button" disabled={filterLocked || !newBookingAvailable} onclick={onNewBooking}>Новая запись</Button>
+      <Button type="button" variant="outline" disabled={busy || cancellationBusy || moveBusy} onclick={() => void refresh()}>Обновить записи</Button>
+    </div>
   </div>
   {#if message}<p role="status">{message}</p>{/if}
+  {#if creationUnresolved}<p role="status">Сначала подтвердите результат новой записи. Отмена и перенос временно недоступны.</p>{/if}
   {#if uncertain && pending}<Button type="button" disabled={cancellationBusy || busy} onclick={() => void confirmCancellation()}>Повторить запрос отмены</Button>{/if}
   {#if moveUncertain && movePending}<Button type="button" disabled={moveBusy || busy} onclick={() => void confirmMove()}>Повторить исходный перенос</Button>{/if}
   {#if busy}<p role="status">Загружаем ваши записи…</p>
@@ -340,7 +353,7 @@
               <Button type="button" variant="outline" disabled={cancellationBusy} onclick={() => { pending = null; }}>Оставить запись</Button>
             {:else}
               {#if cutoff !== null && booking.status === "Confirmed" && Date.parse(booking.startAt) > Date.now() + cutoff * 60000}
-                <Button type="button" variant="outline" disabled={!!pending || cancellationBusy || !!moveBookingId || moveBusy} onclick={() => selectCancellation(booking.bookingId)}>Отменить запись</Button>
+                <Button type="button" variant="outline" disabled={creationUnresolved || !!pending || cancellationBusy || !!moveBookingId || moveBusy} onclick={() => selectCancellation(booking.bookingId)}>Отменить запись</Button>
               {/if}
               {#if moveCutoff !== null && booking.status === "Confirmed" && booking.timeZone && Date.parse(booking.startAt) > Date.now() + moveCutoff * 60000}
                 {#if moveBookingId === booking.bookingId}
@@ -375,7 +388,7 @@
                     <Button type="button" variant="outline" disabled={moveBusy} onclick={closeMove}>Назад</Button>
                   {/if}
                 {:else}
-                  <Button type="button" variant="outline" disabled={!!pending || cancellationBusy || !!moveBookingId || moveBusy} onclick={() => startMove(booking)}>Перенести запись</Button>
+                  <Button type="button" variant="outline" disabled={creationUnresolved || !!pending || cancellationBusy || !!moveBookingId || moveBusy} onclick={() => startMove(booking)}>Перенести запись</Button>
                 {/if}
               {/if}
             {/if}
@@ -394,6 +407,8 @@
 </section>
 
 <style>
+  .history-header-actions { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+  .history-header-actions :global(button) { min-width: 0; max-width: 100%; white-space: normal; height: auto; }
   .history-filters { display: grid; gap: 6px; margin-bottom: 12px; min-width: 0; }
   .history-filters p { margin: 0; }
   .customer-history { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
