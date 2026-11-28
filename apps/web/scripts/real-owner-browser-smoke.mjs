@@ -751,7 +751,23 @@ async function main() {
     );
     await requireDom(cdp, "real appearance draft loaded", "document.querySelector('.brand-editor') && document.body.innerText.includes('Не опубликовано') && document.querySelector('.brand-presets button')");
     await checkWidth(cdp, "real appearance 375px");
+    await requireDom(cdp,"narrow appearance starts in settings","document.querySelector('.brand-settings').getClientRects().length>0 && document.querySelector('.brand-preview').getClientRects().length===0");
+    const appearanceBeforePreview = responses.filter(r=>r.path.includes("/appearance")).length;
     await evaluate(cdp, "[...document.querySelectorAll('.brand-presets button')].find(b=>b.textContent.includes('Ботаника')).click()");
+    await button(cdp, "Предпросмотр");
+    await requireDom(cdp,"draft preview is visible with unsaved state","document.querySelector('.brand-preview').getClientRects().length>0 && document.querySelector('.brand-settings').getClientRects().length===0 && document.querySelector('.brand-preview').innerText.includes('не опубликованная страница') && document.querySelector('.brand-view-switch').innerText.includes('несохранённые изменения')");
+    for (const [width,height] of [[320,568],[375,812],[768,900]]) {
+      await viewport(cdp,width,height);
+      await checkWidth(cdp,"RC9.4 appearance preview "+width+"px");
+      await requireDom(cdp,"preview retained at "+width,"document.querySelector('.brand-preview').getClientRects().length>0 && document.querySelector('.brand-settings').getClientRects().length===0");
+    }
+    await viewport(cdp,1280,800);
+    await requireDom(cdp,"desktop settings and preview side by side","document.querySelector('.brand-settings').getClientRects().length>0 && document.querySelector('.brand-preview').getClientRects().length>0 && document.querySelector('.brand-view-switch').getClientRects().length===0");
+    await checkWidth(cdp,"RC9.4 desktop appearance");
+    await viewport(cdp,375,812);
+    await button(cdp, "Настройки");
+    await requireDom(cdp,"return to settings preserves draft","document.querySelector('.brand-settings').getClientRects().length>0 && document.querySelector('.brand-preview').getClientRects().length===0 && document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника')");
+    assert.equal(responses.filter(r=>r.path.includes("/appearance")).length,appearanceBeforePreview,"Preview navigation must not save, publish or refetch");
     await button(cdp, "Сохранить черновик");
     await requireDom(cdp, "appearance saved on server", "document.body.innerText.includes('Черновик сохранён на сервере') && document.querySelector('.brand-presets button.active')?.textContent.includes('Ботаника')");
     const brand = await pool.query("SELECT draft_revision::text, draft_config, published_revision FROM cookie_appearance.organization_branding WHERE tenant_id=$1::uuid", [owner.tenantId]);
