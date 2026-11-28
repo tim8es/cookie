@@ -1,11 +1,14 @@
 <script lang="ts">
   import { Button } from "../components/ui/button/index.js";
+  import Segment from "../components/rhythm/Segment.svelte";
+  import ThemeScope from "../components/rhythm/ThemeScope.svelte";
   import { brandPresets, compileBrandPreviewTokens, createBrandConfig, safeBrandPresetId, validateBrandConfig } from "../branding-config";
   import type { BrandConfigV1, BrandPresetId, BrandColorMode, BrandButtonRadius, BrandTypography, BrandAccentStyle } from "../branding-config";
 
   /** This component is transport-neutral. Server routes own save, assets, auth and publish. */
   export let organizationName: string;
   export let showHeading = true;
+  export let responsivePreview = false;
   export let draft: BrandConfigV1;
   export let hasUnsavedChanges: boolean;
   export let publishedRevision: number | null = null;
@@ -28,6 +31,11 @@
   export let onRemoveBackground: () => void;
 
   let uploadError = "";
+  let view: "settings" | "preview" = "settings";
+  const views = [{ id: "settings", label: "Настройки" }, { id: "preview", label: "Предпросмотр" }];
+  function selectView(id: string): void {
+    if (id === "settings" || id === "preview") view = id;
+  }
   $: validationError = (() => {
     try { validateBrandConfig(draft); return ""; }
     catch (error) { return error instanceof Error ? error.message : "Недопустимые настройки"; }
@@ -85,7 +93,7 @@
   $: safeBackground = sameOriginUrl(backgroundPreviewUrl, allowPrivateBlobPreview);
 </script>
 
-<div class="brand-editor">
+<div class="brand-editor" class:responsive-preview={responsivePreview} class:preview-selected={view === "preview"}>
   <div class="brand-editor-head">
     {#if showHeading}
       <div>
@@ -98,6 +106,16 @@
       {!publishedStatusKnown ? "Только черновик · публикация недоступна" : publishedRevision === null ? "Не опубликовано" : "Опубликовано · версия " + publishedRevision}
     </span>
   </div>
+  {#if responsivePreview}
+    <div class="brand-view-switch">
+      <ThemeScope>
+        <Segment label="Режим редактора оформления" options={views} selected={view} onSelect={selectView} />
+      </ThemeScope>
+      {#if hasUnsavedChanges}
+        <p class="brand-info" role="status">Есть несохранённые изменения.</p>
+      {/if}
+    </div>
+  {/if}
   <div class="brand-editor-grid">
     <section class="brand-settings" aria-label="Настройки дизайна">
       <fieldset disabled={saving || publishing || uploading}>
@@ -199,6 +217,9 @@
       <div class="brand-preview-head"><strong>Как увидит клиент</strong>
         <small>{validationError ? "Показан безопасный пресет" : "Предпросмотр"}</small>
       </div>
+      {#if responsivePreview}
+        <p class="brand-info">Предпросмотр черновика · не опубликованная страница.</p>
+      {/if}
       <div class="brand-preview-page" style={previewStyle}>
         <div class="brand-preview-logo">
           {#if safeLogo}<img src={safeLogo} alt={"Логотип " + organizationName} />
@@ -223,6 +244,11 @@
 
 <style>
   .brand-editor { color: #34283c; }
+  .brand-view-switch { display: none; }
+  .responsive-preview .brand-state { white-space: normal; overflow-wrap: anywhere; }
+  .responsive-preview .brand-preview-logo span { flex: none; }
+  .responsive-preview .brand-preview-logo strong { min-width: 0; }
+  .responsive-preview .brand-actions :global(button) { min-width: 0; max-width: 100%; white-space: normal; height: auto; overflow-wrap: anywhere; }
   .brand-editor-head { display: flex; justify-content: space-between; gap: 18px; margin-bottom: 21px; }
   .brand-editor-head small { font-size: 10px; font-weight: 750; letter-spacing: .1em; color: #725c7c; }
   .brand-editor-head h1 { margin: 8px 0; font-size: clamp(24px, 3vw, 36px); }
@@ -269,6 +295,11 @@
   .brand-preview-form > span { border: 1px solid currentColor; padding: 10px; border-radius: 8px; }
   .brand-preview-cta { background: var(--preview-accent); color: var(--preview-accent-ink); min-height: 42px; border-radius: var(--preview-radius); display: grid; place-items: center; font-size: 12px; font-weight: 750; }
   @media (max-width: 900px) { .brand-editor-grid { grid-template-columns: minmax(0, 1fr); } .brand-preview { position: static; } }
+  @media (max-width: 900px) {
+    .responsive-preview .brand-view-switch { display: block; margin-bottom: 14px; }
+    .responsive-preview:not(.preview-selected) .brand-preview,
+    .responsive-preview.preview-selected .brand-settings { display: none; }
+  }
   @media (max-width: 480px) {
     .brand-editor-head { flex-direction: column; }
     .brand-settings, .brand-preview { padding: 14px; }
