@@ -184,7 +184,8 @@ test(
       const started = await readFile(executable + ".started", "utf8");
       assert.equal(started, "started");
       await new Promise((resolve) => setTimeout(resolve, 1500));
-      await assert.rejects(readFile(executable + ".late"), { code: "ENOENT" });
+      const lateMarker = executable + ".late";
+      await assert.rejects(readFile(lateMarker), { code: "ENOENT" });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
